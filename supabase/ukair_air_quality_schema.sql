@@ -137,3 +137,62 @@ create table if not exists pm25_amct_sites (
   collected_at timestamptz default now()
 );
 create index if not exists pm25_amct_site_year_idx on pm25_amct_sites(site_code, year);
+
+-- ----------------------------
+-- Row Level Security (RLS)
+-- ----------------------------
+-- Enable RLS on all tables and add safe-to-reapply policies:
+--   - authenticated + service_role: read
+--   - service_role: write
+-- Assumes Supabase roles where auth.role() is available.
+
+-- Enable RLS
+alter table if exists services enable row level security;
+alter table if exists categories enable row level security;
+alter table if exists phenomena enable row level security;
+alter table if exists offerings enable row level security;
+alter table if exists features enable row level security;
+alter table if exists procedures enable row level security;
+alter table if exists stations enable row level security;
+alter table if exists timeseries enable row level security;
+alter table if exists reference_values enable row level security;
+alter table if exists observations enable row level security;
+alter table if exists pm25_population_exposure enable row level security;
+alter table if exists pm25_amct_sites enable row level security;
+
+-- Helper DO block to add policies idempotently
+do $$
+declare
+  t text;
+begin
+  for t in select unnest(array[
+    'services','categories','phenomena','offerings','features','procedures','stations','timeseries','reference_values','observations','pm25_population_exposure','pm25_amct_sites'
+  ])
+  loop
+    -- Read policy for authenticated + service_role
+    if not exists (
+      select 1 from pg_policies p
+      where p.schemaname = current_schema()
+        and p.tablename = t
+        and p.policyname = t || '_select_authenticated'
+    ) then
+      execute format(
+        'create policy %I on %I for select using (auth.role() in (''authenticated'',''service_role''));',
+        t || '_select_authenticated', t
+      );
+    end if;
+
+    -- Write policy for service_role
+    if not exists (
+      select 1 from pg_policies p
+      where p.schemaname = current_schema()
+        and p.tablename = t
+        and p.policyname = t || '_write_service_role'
+    ) then
+      execute format(
+        'create policy %I on %I for all using (auth.role() = ''service_role'') with check (auth.role() = ''service_role'');',
+        t || '_write_service_role', t
+      );
+    end if;
+  end loop;
+end $$;
