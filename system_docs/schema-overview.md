@@ -1,6 +1,6 @@
 # UK-AIR Supabase Schema Overview
 
-This document summarizes the schema defined in `supabase/ukair_air_quality_schema.sql` for ingesting UK-AIR SOS / 52°North timeseries data and PM2.5 target tracking.
+This document summarizes the schema defined in `supabase/uk_air_quality_schema.sql` for ingesting UK-AIR SOS / 52°North timeseries data and PM2.5 target tracking.
 
 ## Extensions
 - `postgis` for spatial columns (geography Point).
@@ -13,10 +13,10 @@ This document summarizes the schema defined in `supabase/ukair_air_quality_schem
 - `offerings`: logical groupings, per service.
 - `features`: features of interest with geometry (Point, 4326), per service.
 - `procedures`: sensors/methods; optional raw_formats list, per service.
-- `stations`: monitoring sites; includes type, region, geometry, links to service/category/phenomenon.
+- `stations`: monitoring sites; composite primary key `(id, service_id)` with lifecycle fields `first_seen_at`, `last_seen_at`, `removed_at`.
 
 ## Timeseries and metadata
-- `timeseries`: SOS timeseries metadata (uom, station, service, offering, feature, procedure, phenomenon, category, first/last value, extras, rendering_hints, status_intervals, last_value).
+- `timeseries`: SOS timeseries metadata; station linkage uses `(station_id, service_id)` to avoid cross-service ID collisions.
 - `reference_values`: optional reference lines attached to a timeseries (name, color, value).
 
 ## Observations

@@ -10,11 +10,11 @@ This script:
 Environment:
 - SUPABASE_URL
 - SUPABASE_SERVICE_ROLE_KEY
-- UKAIR_BASE_URL (optional; defaults to https://uk-air.defra.gov.uk/sos-ukair/api/v1)
+- UK_AIR_BASE_URL (optional; defaults to https://uk-air.defra.gov.uk/sos-ukair/api/v1)
 
 Examples:
-  python scripts/ukair_aurn_ingest.py --discover --backfill-2025
-  python scripts/ukair_aurn_ingest.py --refresh-recent --hours 6
+  python scripts/uk_air_aurn_ingest.py --discover --backfill-2025
+  python scripts/uk_air_aurn_ingest.py --refresh-recent --hours 6
 """
 
 import argparse
@@ -30,14 +30,16 @@ from supabase import Client, create_client
 
 load_dotenv()
 
-LOG = logging.getLogger("ukair_aurn")
+LOG = logging.getLogger("uk_air_aurn")
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(message)s",
 )
 
-UKAIR_BASE_URL = os.getenv(
-    "UKAIR_BASE_URL", "https://uk-air.defra.gov.uk/sos-ukair/api/v1"
+UK_AIR_BASE_URL = (
+    os.getenv("UK_AIR_BASE_URL")
+    or os.getenv("UKAIR_BASE_URL")
+    or "https://uk-air.defra.gov.uk/sos-ukair/api/v1"
 ).rstrip("/")
 
 BRISTOL_BBOX = {
@@ -56,7 +58,7 @@ def utcnow() -> datetime:
 
 
 class UkAirClient:
-    def __init__(self, base_url: str = UKAIR_BASE_URL, timeout: int = 60, retries: int = 3):
+    def __init__(self, base_url: str = UK_AIR_BASE_URL, timeout: int = 60, retries: int = 3):
         self.base_url = base_url
         self.timeout = timeout
         self.retries = retries
@@ -85,26 +87,53 @@ class UkAirClient:
 
     def services(self) -> List[Dict[str, Any]]:
         data = self.get("/services")
-        return data.get("services", data.get("data", []))
+        return _extract_list(data, ("services", "data"))
 
     def stations(
         self, service_id: str, bbox: Dict[str, float], region: str = BRISTOL_REGION
     ) -> List[Dict[str, Any]]:
-        params = {
-            "service": service_id,
-            "bbox": f"{bbox['west']},{bbox['south']},{bbox['east']},{bbox['north']}",
-        }
-        if region:
-            params["region"] = region
-        data = self.get("/stations", params=params)
-        return data.get("stations", data.get("data", []))
+        bbox_param = f"{bbox['west']},{bbox['south']},{bbox['east']},{bbox['north']}"
+        params_options: List[Dict[str, Any]] = []
+
+        def add_param_sets(expanded: Optional[str]) -> None:
+            base = {"service": service_id}
+            if expanded:
+                base["expanded"] = expanded
+            if region:
+                params_options.append({**base, "bbox": bbox_param, "region": region})
+            params_options.append({**base, "bbox": bbox_param})
+            params_options.append(base.copy())
+            params_options.append({"bbox": bbox_param, **({"expanded": expanded} if expanded else {})})
+            if expanded:
+                params_options.append({"expanded": expanded})
+            params_options.append({})
+
+        add_param_sets("true")
+        add_param_sets(None)
+
+        seen = set()
+        for params in params_options:
+            key = tuple(sorted(params.items()))
+            if key in seen:
+                continue
+            seen.add(key)
+            try:
+                data = self.get("/stations", params=params or None)
+                LOG.info("Station query succeeded with params: %s", params or {})
+                return _extract_list(data, ("stations", "data"))
+            except requests.HTTPError as exc:
+                if exc.response is not None and exc.response.status_code == 400:
+                    LOG.warning("Station query failed (400) with params %s; trying fallback.", params)
+                    continue
+                raise
+        return []
 
     def timeseries(self, service_id: str, station_ids: Sequence[str]) -> List[Dict[str, Any]]:
         params: Dict[str, Any] = {"service": service_id, "expanded": "true"}
         for station_id in station_ids:
             params.setdefault("station", []).append(station_id)
         data = self.get("/timeseries", params=params)
-        return data.get("timeseries", data.get("data", []))
+        return _extract_list(data, ("timeseries", "data"))
 
     def timeseries_data(
         self, series_id: str, timespan: str, format_: str = "tvp"
@@ -166,13 +195,10 @@ class SupabaseWriter:
                     "geometry": f"SRID=4326;POINT({lon} {lat})" if lon is not None and lat is not None else None,
                     "service_id": service_id,
                     "category_id": props.get("category", {}).get("id") if isinstance(props.get("category"), dict) else None,
-                    "phenomenon_id": props.get("phenomenon", {}).get("id")
-                    if isinstance(props.get("phenomenon"), dict)
-                    else None,
                 }
             )
         if rows:
-            self.client.table("stations").upsert(rows, on_conflict="id").execute()
+            self.client.table("stations").upsert(rows, on_conflict="id,service_id").execute()
 
     def upsert_timeseries(self, series: Iterable[Dict[str, Any]]) -> None:
         rows = []
@@ -255,13 +281,22 @@ class UkAirIngestor:
         return services[0].get("id")
 
     def discover_bristol_stations(self, service_id: str) -> List[Dict[str, Any]]:
-        stations = self.client.stations(service_id, BRISTOL_BBOX, region=BRISTOL_REGION)
+        raw_stations = self.client.stations(service_id, BRISTOL_BBOX, region=BRISTOL_REGION)
         stations = [
             stn
-            for stn in stations
+            for stn in raw_stations
+            if _station_matches_area(stn, BRISTOL_BBOX, BRISTOL_REGION)
             if (stn.get("properties", {}) or {}).get("stationType") == AURN_STATION_TYPE
             or stn.get("stationType") == AURN_STATION_TYPE
         ]
+        if not stations and raw_stations:
+            sample = raw_stations[0]
+            props = sample.get("properties") if isinstance(sample.get("properties"), dict) else {}
+            LOG.warning(
+                "Station filtering removed all items; sample keys=%s properties=%s",
+                list(sample.keys()),
+                list(props.keys()),
+            )
         self.writer.upsert_stations(stations, service_id)
         return stations
 
@@ -329,6 +364,75 @@ def _parse_datapoints(values: Iterable[Sequence[Any]]) -> List[Dict[str, Any]]:
             continue
         datapoints.append({"observed_at": obs_time.isoformat(), "value": value, "status": status})
     return datapoints
+
+
+def _extract_list(payload: Any, keys: Sequence[str]) -> List[Dict[str, Any]]:
+    if isinstance(payload, list):
+        return payload
+    if isinstance(payload, dict):
+        for key in keys:
+            items = payload.get(key)
+            if isinstance(items, list):
+                return items
+    return []
+
+
+def _station_matches_area(
+    station: Dict[str, Any], bbox: Dict[str, float], region: Optional[str]
+) -> bool:
+    if _station_in_bbox(station, bbox):
+        return True
+    station_region = _station_region(station)
+    if region and station_region:
+        return station_region.strip().lower() == region.strip().lower()
+    station_label = _station_label(station)
+    if region and station_label and region.strip().lower() in station_label.strip().lower():
+        return True
+    return False
+
+
+def _station_in_bbox(station: Dict[str, Any], bbox: Dict[str, float]) -> bool:
+    coords = None
+    geometry = station.get("geometry")
+    if isinstance(geometry, dict):
+        coords = geometry.get("coordinates")
+    if coords is None:
+        props = station.get("properties", {}) if isinstance(station.get("properties"), dict) else {}
+        geometry = props.get("geometry")
+        if isinstance(geometry, dict):
+            coords = geometry.get("coordinates")
+    if coords and len(coords) >= 2:
+        lon, lat = coords[:2]
+        if lon is not None and lat is not None:
+            return bbox["west"] <= lon <= bbox["east"] and bbox["south"] <= lat <= bbox["north"]
+
+    props = station.get("properties", {}) if isinstance(station.get("properties"), dict) else {}
+    lon = _coerce_float(props.get("longitude") or props.get("lon") or props.get("lng"))
+    lat = _coerce_float(props.get("latitude") or props.get("lat"))
+    if lon is None or lat is None:
+        return False
+    if not (-180 <= lon <= 180 and -90 <= lat <= 90):
+        return False
+    return bbox["west"] <= lon <= bbox["east"] and bbox["south"] <= lat <= bbox["north"]
+
+
+def _station_region(station: Dict[str, Any]) -> Optional[str]:
+    props = station.get("properties", {}) if isinstance(station.get("properties"), dict) else {}
+    return props.get("region") or station.get("region")
+
+
+def _station_label(station: Dict[str, Any]) -> Optional[str]:
+    props = station.get("properties", {}) if isinstance(station.get("properties"), dict) else {}
+    return station.get("label") or props.get("label") or station.get("name")
+
+
+def _coerce_float(value: Any) -> Optional[float]:
+    try:
+        if value is None:
+            return None
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _parse_timestamp(raw: Any) -> Optional[datetime]:

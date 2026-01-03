@@ -1,0 +1,31 @@
+name: UK-AIR Stations Daily Sync
+
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+jobs:
+  sync-stations:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install requests python-dotenv supabase
+
+      - name: Sync stations
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          UK_AIR_BASE_URL: ${{ secrets.UK_AIR_BASE_URL }}
+        run: |
+          python3 scripts/uk_air_list_stations.py --to-supabase 
