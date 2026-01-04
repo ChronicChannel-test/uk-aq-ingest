@@ -7,6 +7,7 @@ This document summarizes the UK-AIR helper scripts and their inputs/outputs.
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `UK_AIR_BASE_URL` (optional; defaults to `https://uk-air.defra.gov.uk/sos-ukair/api/v1`)
   - The scripts also accept the legacy `UKAIR_BASE_URL` if set.
+- `UK_AIR_SERVICE_LABEL` (optional; defaults to `UK-AIR-SOS`)
 
 ## Scripts
 

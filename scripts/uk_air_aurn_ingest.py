@@ -41,6 +41,7 @@ UK_AIR_BASE_URL = (
     or os.getenv("UKAIR_BASE_URL")
     or "https://uk-air.defra.gov.uk/sos-ukair/api/v1"
 ).rstrip("/")
+UK_AIR_SERVICE_LABEL = os.getenv("UK_AIR_SERVICE_LABEL", "UK-AIR-SOS")
 
 BRISTOL_BBOX = {
     "west": -2.75,
@@ -154,8 +155,8 @@ class SupabaseWriter:
         payload = [
             {
                 "id": svc.get("id"),
-                "label": svc.get("label") or svc.get("name"),
-                "service_url": svc.get("serviceUrl") or svc.get("url"),
+                "label": _normalize_service_label(svc.get("label") or svc.get("name")),
+                "service_url": svc.get("serviceUrl") or svc.get("url") or UK_AIR_BASE_URL,
                 "version": svc.get("version"),
                 "type": svc.get("type"),
                 "supports_first_latest": svc.get("supportsFirstLatest"),
@@ -364,6 +365,17 @@ def _parse_datapoints(values: Iterable[Sequence[Any]]) -> List[Dict[str, Any]]:
             continue
         datapoints.append({"observed_at": obs_time.isoformat(), "value": value, "status": status})
     return datapoints
+
+
+def _normalize_service_label(label: Optional[str]) -> Optional[str]:
+    if label is None:
+        return UK_AIR_SERVICE_LABEL
+    trimmed = label.strip()
+    if not trimmed:
+        return UK_AIR_SERVICE_LABEL
+    if trimmed.lower().startswith("my timeseries service"):
+        return UK_AIR_SERVICE_LABEL
+    return trimmed
 
 
 def _extract_list(payload: Any, keys: Sequence[str]) -> List[Dict[str, Any]]:

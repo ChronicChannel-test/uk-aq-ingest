@@ -14,6 +14,8 @@ SUPABASE_URL=your_supabase_url
 SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
 # Optional override (default shown)
 UK_AIR_BASE_URL=https://uk-air.defra.gov.uk/sos-ukair/api/v1
+# Optional override for the services label
+UK_AIR_SERVICE_LABEL=UK-AIR-SOS
 # Legacy support: UKAIR_BASE_URL also works
 ```
 

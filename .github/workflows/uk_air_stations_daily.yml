@@ -28,4 +28,11 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           UK_AIR_BASE_URL: ${{ secrets.UK_AIR_BASE_URL }}
         run: |
-          python3 scripts/uk_air_list_stations.py --to-supabase 
+          python3 scripts/uk_air_list_stations.py --to-supabase
+
+      - name: Upload stations JSON
+        uses: actions/upload-artifact@v4
+        with:
+          name: uk-air-stations-json
+          path: uk_air_stations.json
+          retention-days: 7
