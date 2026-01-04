@@ -1,5 +1,8 @@
 name: UK-AIR Stations Daily Sync
 
+permissions:
+  contents: write
+
 on:
   schedule:
     - cron: "0 3 * * *"
@@ -30,9 +33,14 @@ jobs:
         run: |
           python3 scripts/uk_air_list_stations.py --to-supabase
 
-      - name: Upload stations JSON
-        uses: actions/upload-artifact@v4
-        with:
-          name: uk-air-stations-json
-          path: uk_air_stations.json
-          retention-days: 7
+      - name: Commit stations JSON
+        run: |
+          if git status --porcelain | grep -q " uk_air_stations.json"; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add uk_air_stations.json
+            git commit -m "chore: update uk_air_stations.json"
+            git push
+          else
+            echo "No changes to commit."
+          fi
