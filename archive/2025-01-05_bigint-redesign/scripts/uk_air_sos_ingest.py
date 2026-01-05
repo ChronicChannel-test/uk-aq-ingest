@@ -22,12 +22,10 @@ Examples:
 """
 
 import argparse
-import html
 import logging
 import os
 import re
 import time
-from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Set
 
@@ -65,14 +63,6 @@ UK_BBOX = {
 DEFAULT_POLLUTANTS = {"no2", "o3", "pm10", "pm2.5"}
 EIONET_POLLUTANT_RE = re.compile(r"https?://dd\.eionet\.europa\.eu/vocabulary/aq/pollutant/\d+")
 DEFAULT_TIMESERIES_STATION_BATCH_SIZE = 50
-
-
-@dataclass(frozen=True)
-class ServiceContext:
-    id: int
-    ref: str
-    label: str
-    service_url: str
 
 
 def utcnow() -> datetime:
@@ -234,42 +224,20 @@ class SupabaseWriter:
             raise RuntimeError("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required.")
         self.client: Client = create_client(supabase_url, supabase_key)
 
-    def upsert_services(self, services: Iterable[Dict[str, Any]]) -> Dict[str, int]:
-        payload_by_ref: Dict[str, Dict[str, Any]] = {}
-        for svc in services:
-            ref = svc.get("id")
-            if ref is None:
-                continue
-            service_ref = str(ref)
-            payload_by_ref[service_ref] = {
-                "service_ref": service_ref,
+    def upsert_services(self, services: Iterable[Dict[str, Any]]) -> None:
+        payload = [
+            {
+                "id": svc.get("id"),
                 "label": _normalize_service_label(svc.get("label") or svc.get("name")),
                 "service_url": svc.get("serviceUrl") or svc.get("url") or UK_AIR_SOS_BASE_URL,
             }
-        payload = list(payload_by_ref.values())
+            for svc in services
+            if svc.get("id")
+        ]
         if payload:
-            self.client.table("services").upsert(payload, on_conflict="service_ref").execute()
-        return self.get_service_id_map(list(payload_by_ref.keys()))
+            self.client.table("services").upsert(payload, on_conflict="id").execute()
 
-    def get_service_id_map(self, service_refs: Sequence[str]) -> Dict[str, int]:
-        mapping: Dict[str, int] = {}
-        if not service_refs:
-            return mapping
-        for chunk in _chunked(list(service_refs), 500):
-            resp = (
-                self.client.table("services")
-                .select("id,service_ref")
-                .in_("service_ref", chunk)
-                .execute()
-            )
-            rows = resp.data if hasattr(resp, "data") else resp.get("data")
-            if not rows:
-                continue
-            for row in rows:
-                mapping[str(row["service_ref"])] = int(row["id"])
-        return mapping
-
-    def get_service_settings(self, service_id: int) -> Dict[str, Optional[object]]:
+    def get_service_settings(self, service_id: str) -> Dict[str, Optional[object]]:
         try:
             resp = (
                 self.client.table("services")
@@ -321,123 +289,42 @@ class SupabaseWriter:
             "timeseries_station_filter_supported": station_filter_supported,
         }
 
-    def upsert_reference_table(
-        self,
-        table: str,
-        ref_key: str,
-        items: Iterable[Dict[str, Any]],
-        service_id: int,
-    ) -> Dict[str, int]:
-        payload_by_ref: Dict[str, Dict[str, Any]] = {}
+    def upsert_reference_table(self, table: str, items: Iterable[Dict[str, Any]]) -> None:
+        payload_by_id: Dict[str, Dict[str, Any]] = {}
         for item in items:
             if not item or not isinstance(item, dict):
                 continue
-            ref = item.get("id") or item.get(ref_key)
-            if not ref:
+            item_id = item.get("id")
+            if not item_id:
                 continue
-            ref_value = str(ref)
             label = (
                 item.get("label")
                 or item.get("notation")
                 or item.get("eionet_uri")
-                or ref_value
+                or item_id
             )
-            row: Dict[str, Any] = {
-                ref_key: ref_value,
-                "label": label,
-                "service_id": service_id,
-            }
-            payload_by_ref.setdefault(ref_value, row)
-        payload = list(payload_by_ref.values())
+            row = {"id": item_id, "label": label, "service_id": item.get("service", {}).get("id")}
+            if table == "phenomena":
+                row["eionet_uri"] = item.get("eionet_uri")
+                row["notation"] = item.get("notation")
+            existing = payload_by_id.get(item_id)
+            if existing:
+                if not existing.get("label") and row.get("label"):
+                    existing["label"] = row.get("label")
+                if not existing.get("service_id") and row.get("service_id"):
+                    existing["service_id"] = row.get("service_id")
+                if table == "phenomena":
+                    if not existing.get("eionet_uri") and row.get("eionet_uri"):
+                        existing["eionet_uri"] = row.get("eionet_uri")
+                    if not existing.get("notation") and row.get("notation"):
+                        existing["notation"] = row.get("notation")
+            else:
+                payload_by_id[item_id] = row
+        payload = list(payload_by_id.values())
         if payload:
-            self.client.table(table).upsert(payload, on_conflict=f"service_id,{ref_key}").execute()
-        return self.get_ref_id_map(table, ref_key, list(payload_by_ref.keys()), service_id)
+            self.client.table(table).upsert(payload, on_conflict="id").execute()
 
-    def upsert_phenomena(
-        self,
-        items: Iterable[Dict[str, Any]],
-        service_id: int,
-    ) -> Dict[str, int]:
-        payload_by_uri: Dict[str, Dict[str, Any]] = {}
-        for item in items:
-            if not item or not isinstance(item, dict):
-                continue
-            uri = item.get("eionet_uri") or item.get("id")
-            if not uri:
-                continue
-            uri_value = str(uri)
-            label = item.get("label") or item.get("notation") or uri_value
-            notation = item.get("notation")
-            row = payload_by_uri.get(uri_value)
-            if row is None:
-                row = {
-                    "eionet_uri": uri_value,
-                    "label": label,
-                    "notation": notation,
-                    "service_id": service_id,
-                }
-                payload_by_uri[uri_value] = row
-                continue
-            if label and (not row.get("label") or row.get("label") == uri_value):
-                row["label"] = label
-            if notation and not row.get("notation"):
-                row["notation"] = notation
-        payload = list(payload_by_uri.values())
-        if payload:
-            self.client.table("phenomena").upsert(payload, on_conflict="service_id,eionet_uri").execute()
-        return self.get_phenomena_id_map(list(payload_by_uri.keys()), service_id)
-
-    def get_ref_id_map(
-        self,
-        table: str,
-        ref_key: str,
-        refs: Sequence[str],
-        service_id: int,
-    ) -> Dict[str, int]:
-        mapping: Dict[str, int] = {}
-        if not refs:
-            return mapping
-        for chunk in _chunked(list(refs), 500):
-            resp = (
-                self.client.table(table)
-                .select(f"id,{ref_key}")
-                .eq("service_id", service_id)
-                .in_(ref_key, chunk)
-                .execute()
-            )
-            rows = resp.data if hasattr(resp, "data") else resp.get("data")
-            if not rows:
-                continue
-            for row in rows:
-                mapping[str(row[ref_key])] = int(row["id"])
-        return mapping
-
-    def get_phenomena_id_map(self, eionet_uris: Sequence[str], service_id: int) -> Dict[str, int]:
-        mapping: Dict[str, int] = {}
-        if not eionet_uris:
-            return mapping
-        for chunk in _chunked(list(eionet_uris), 500):
-            resp = (
-                self.client.table("phenomena")
-                .select("id,eionet_uri")
-                .eq("service_id", service_id)
-                .in_("eionet_uri", chunk)
-                .execute()
-            )
-            rows = resp.data if hasattr(resp, "data") else resp.get("data")
-            if not rows:
-                continue
-            for row in rows:
-                if row.get("eionet_uri"):
-                    mapping[str(row["eionet_uri"])] = int(row["id"])
-        return mapping
-
-    def upsert_stations(
-        self,
-        stations: Iterable[Dict[str, Any]],
-        service_id: int,
-        category_id_map: Optional[Dict[str, int]] = None,
-    ) -> None:
+    def upsert_stations(self, stations: Iterable[Dict[str, Any]], service_id: str) -> None:
         rows = []
         for station in stations:
             coords = (
@@ -447,65 +334,57 @@ class SupabaseWriter:
             )
             lon, lat = (coords or [None, None])[:2]
             props = station.get("properties", {})
-            station_ref = station.get("id") or props.get("id")
-            if not station_ref:
+            station_id = station.get("id") or props.get("id")
+            if not station_id:
                 continue
-            category_ref = None
-            if isinstance(props.get("category"), dict):
-                category_ref = props.get("category", {}).get("id")
-            category_id = None
-            if category_id_map and category_ref is not None:
-                category_id = category_id_map.get(str(category_ref))
             rows.append(
                 {
-                    "station_ref": str(station_ref),
+                    "source_id": station_id,
                     "label": station.get("label") or props.get("label"),
                     "station_type": props.get("stationType") or station.get("stationType"),
                     "region": props.get("region") or station.get("region"),
                     "geometry": f"SRID=4326;POINT({lon} {lat})" if lon is not None and lat is not None else None,
                     "service_id": service_id,
-                    "category_id": category_id,
+                    "category_id": props.get("category", {}).get("id") if isinstance(props.get("category"), dict) else None,
                 }
             )
         if rows:
-            self.client.table("stations").upsert(rows, on_conflict="service_id,station_ref").execute()
+            self.client.table("stations").upsert(rows, on_conflict="service_id,source_id").execute()
 
     def upsert_timeseries(
         self,
         series: Iterable[Dict[str, Any]],
-        service_id: int,
+        default_service_id: Optional[str],
         station_id_map: Dict[str, int],
-        category_id_map: Dict[str, int],
-        feature_id_map: Dict[str, int],
-        procedure_id_map: Dict[str, int],
-        offering_id_map: Dict[str, int],
-        phenomenon_id_map: Dict[str, int],
     ) -> None:
         rows = []
         for ts in series:
-            station_ref = (
+            station_source_id = (
                 ts.get("station", {}).get("id")
                 if isinstance(ts.get("station"), dict)
                 else ts.get("station")
             )
-            station_db_id = station_id_map.get(str(station_ref)) if station_ref is not None else None
-            category_ref = ts.get("category", {}).get("id") if isinstance(ts.get("category"), dict) else None
-            feature_ref = ts.get("feature", {}).get("id") if isinstance(ts.get("feature"), dict) else None
-            procedure_ref = ts.get("procedure", {}).get("id") if isinstance(ts.get("procedure"), dict) else None
-            offering_ref = ts.get("offering", {}).get("id") if isinstance(ts.get("offering"), dict) else None
-            phen_uri = ts.get("phenomenon", {}).get("eionet_uri") if isinstance(ts.get("phenomenon"), dict) else None
+            station_db_id = station_id_map.get(str(station_source_id)) if station_source_id is not None else None
+            phenomenon_id = ts.get("phenomenon", {}).get("id") if isinstance(ts.get("phenomenon"), dict) else None
+            procedure_id = ts.get("procedure", {}).get("id") if isinstance(ts.get("procedure"), dict) else None
+            offering_id = ts.get("offering", {}).get("id") if isinstance(ts.get("offering"), dict) else None
+            feature_id = ts.get("feature", {}).get("id") if isinstance(ts.get("feature"), dict) else None
+            category_id = ts.get("category", {}).get("id") if isinstance(ts.get("category"), dict) else None
+            service_id = ts.get("service", {}).get("id") if isinstance(ts.get("service"), dict) else None
+            if not service_id:
+                service_id = default_service_id
             rows.append(
                 {
-                    "timeseries_ref": str(ts.get("id")) if ts.get("id") is not None else None,
+                    "source_id": ts.get("id"),
                     "label": ts.get("label"),
                     "uom": ts.get("uom"),
                     "station_id": station_db_id,
                     "service_id": service_id,
-                    "offering_id": offering_id_map.get(str(offering_ref)) if offering_ref is not None else None,
-                    "feature_id": feature_id_map.get(str(feature_ref)) if feature_ref is not None else None,
-                    "procedure_id": procedure_id_map.get(str(procedure_ref)) if procedure_ref is not None else None,
-                    "phenomenon_id": phenomenon_id_map.get(str(phen_uri)) if phen_uri else None,
-                    "category_id": category_id_map.get(str(category_ref)) if category_ref is not None else None,
+                    "offering_id": offering_id,
+                    "feature_id": feature_id,
+                    "procedure_id": procedure_id,
+                    "phenomenon_id": phenomenon_id,
+                    "category_id": category_id,
                     "first_value_at": _parse_timestamp(ts.get("firstValueTimestamp")),
                     "last_value_at": _parse_timestamp(ts.get("lastValueTimestamp")),
                     "last_value": _safe_number(ts.get("lastValue")),
@@ -514,15 +393,46 @@ class SupabaseWriter:
                     "status_intervals": ts.get("statusIntervals"),
                 }
             )
-        rows = [row for row in rows if row.get("timeseries_ref")]
         if rows:
-            self.client.table("timeseries").upsert(rows, on_conflict="service_id,timeseries_ref").execute()
+            self.client.table("timeseries").upsert(rows, on_conflict="service_id,source_id").execute()
 
-    def get_station_id_map(self, service_id: int, station_refs: Sequence[str]) -> Dict[str, int]:
-        return self.get_ref_id_map("stations", "station_ref", station_refs, service_id)
+    def get_station_id_map(self, service_id: str, source_ids: Sequence[str]) -> Dict[str, int]:
+        mapping: Dict[str, int] = {}
+        if not source_ids:
+            return mapping
+        for chunk in _chunked(list(source_ids), 500):
+            resp = (
+                self.client.table("stations")
+                .select("id,source_id")
+                .eq("service_id", service_id)
+                .in_("source_id", chunk)
+                .execute()
+            )
+            rows = resp.data if hasattr(resp, "data") else resp.get("data")
+            if not rows:
+                continue
+            for row in rows:
+                mapping[str(row["source_id"])] = int(row["id"])
+        return mapping
 
-    def get_timeseries_id_map(self, service_id: int, timeseries_refs: Sequence[str]) -> Dict[str, int]:
-        return self.get_ref_id_map("timeseries", "timeseries_ref", timeseries_refs, service_id)
+    def get_timeseries_id_map(self, service_id: str, source_ids: Sequence[str]) -> Dict[str, int]:
+        mapping: Dict[str, int] = {}
+        if not source_ids:
+            return mapping
+        for chunk in _chunked(list(source_ids), 500):
+            resp = (
+                self.client.table("timeseries")
+                .select("id,source_id")
+                .eq("service_id", service_id)
+                .in_("source_id", chunk)
+                .execute()
+            )
+            rows = resp.data if hasattr(resp, "data") else resp.get("data")
+            if not rows:
+                continue
+            for row in rows:
+                mapping[str(row["source_id"])] = int(row["id"])
+        return mapping
 
     def upsert_observations(
         self, series_id: int, datapoints: Iterable[Dict[str, Any]]
@@ -560,57 +470,37 @@ class UkAirIngestor:
         self.client = client
         self.writer = writer
 
-    def discover_service(
-        self,
-        preferred_ref: Optional[str],
-        preferred_label: Optional[str],
-    ) -> ServiceContext:
+    def discover_service(self, preferred_id: Optional[str], preferred_label: Optional[str]) -> str:
         services = self.client.services()
-        if not services:
-            raise RuntimeError("No services returned from UK-AIR SOS.")
-        service_map = self.writer.upsert_services(services)
-        chosen: Optional[Dict[str, Any]] = None
-        if preferred_ref:
+        self.writer.upsert_services(services)
+        if preferred_id:
             for svc in services:
-                if str(svc.get("id")) == str(preferred_ref):
-                    chosen = svc
-                    break
-            if not chosen:
-                LOG.warning("Preferred service ref %s not found; falling back.", preferred_ref)
-        if not chosen and preferred_label:
+                if str(svc.get("id")) == str(preferred_id):
+                    return svc.get("id")
+            LOG.warning("Preferred service id %s not found; falling back.", preferred_id)
+        if preferred_label:
             needle = preferred_label.strip().lower()
             for svc in services:
                 label = (svc.get("label") or "").lower()
                 if needle and needle in label:
-                    chosen = svc
-                    break
-        if not chosen:
-            for svc in services:
-                label = (svc.get("label") or "").lower()
-                if "uk" in label and "air" in label:
-                    chosen = svc
-                    break
-        if not chosen:
-            chosen = services[0]
-        service_ref = str(chosen.get("id"))
-        service_id = service_map.get(service_ref)
-        if not service_id:
-            service_id = self.writer.get_service_id_map([service_ref]).get(service_ref)
-        if not service_id:
-            raise RuntimeError(f"Failed to resolve service id for ref {service_ref}.")
-        label = _normalize_service_label(chosen.get("label") or chosen.get("name")) or UK_AIR_SOS_SERVICE_LABEL
-        service_url = chosen.get("serviceUrl") or chosen.get("url") or UK_AIR_SOS_BASE_URL
-        return ServiceContext(id=service_id, ref=service_ref, label=label, service_url=service_url)
+                    return svc.get("id")
+        for svc in services:
+            label = (svc.get("label") or "").lower()
+            if "uk" in label and "air" in label:
+                return svc.get("id")
+        if not services:
+            raise RuntimeError("No services returned from UK-AIR SOS.")
+        return services[0].get("id")
 
     def discover_stations(
         self,
-        service: ServiceContext,
+        service_id: str,
         bbox: Optional[Dict[str, float]],
         region: Optional[str],
         station_types: Optional[Sequence[str]],
         allow_missing_coords: bool,
     ) -> List[Dict[str, Any]]:
-        raw_stations = self.client.stations(service.ref, bbox=bbox, region=region)
+        raw_stations = self.client.stations(service_id, bbox=bbox, region=region)
         stations = []
         for stn in raw_stations:
             if bbox or region:
@@ -629,30 +519,18 @@ class UkAirIngestor:
                 list(sample.keys()),
                 list(props.keys()),
             )
-        category_items = []
-        for stn in stations:
-            props = stn.get("properties") if isinstance(stn.get("properties"), dict) else {}
-            category = props.get("category") if isinstance(props.get("category"), dict) else None
-            if category:
-                category_items.append(category)
-        category_map = self.writer.upsert_reference_table(
-            "categories",
-            "category_ref",
-            category_items,
-            service.id,
-        )
-        self.writer.upsert_stations(stations, service.id, category_map)
+        self.writer.upsert_stations(stations, service_id)
         return stations
 
     def discover_timeseries(
         self,
-        service: ServiceContext,
-        station_refs: Optional[Sequence[str]],
+        service_id: str,
+        station_ids: Optional[Sequence[str]],
         pollutants: Optional[Sequence[str]],
         batch_size: Optional[int],
         sample_count: int,
     ) -> List[Dict[str, Any]]:
-        series = self.client.timeseries(service.ref, station_refs, batch_size=batch_size)
+        series = self.client.timeseries(service_id, station_ids, batch_size=batch_size)
         LOG.info("Timeseries fetched: %s", len(series))
         resolver = EionetPollutantResolver()
         for ts in series:
@@ -673,76 +551,42 @@ class UkAirIngestor:
                 LOG.info("No timeseries matched pollutants; sample phenomena=%s", sample)
         else:
             filtered = series
-        phenomenon_map = self.writer.upsert_phenomena(
-            (ts.get("phenomenon") or {} for ts in filtered),
-            service.id,
-        )
-        procedure_map = self.writer.upsert_reference_table(
-            "procedures",
-            "procedure_ref",
-            (ts.get("procedure") or {} for ts in filtered),
-            service.id,
-        )
-        offering_map = self.writer.upsert_reference_table(
-            "offerings",
-            "offering_ref",
-            (ts.get("offering") or {} for ts in filtered),
-            service.id,
-        )
-        feature_map = self.writer.upsert_reference_table(
-            "features",
-            "feature_ref",
-            (ts.get("feature") or {} for ts in filtered),
-            service.id,
-        )
-        category_map = self.writer.upsert_reference_table(
-            "categories",
-            "category_ref",
-            (ts.get("category") or {} for ts in filtered),
-            service.id,
-        )
-        station_refs_to_map = []
-        if station_refs is not None:
-            station_refs_to_map = [str(station_ref) for station_ref in station_refs]
+        self.writer.upsert_reference_table("phenomena", (ts.get("phenomenon") or {} for ts in filtered))
+        self.writer.upsert_reference_table("procedures", (ts.get("procedure") or {} for ts in filtered))
+        self.writer.upsert_reference_table("offerings", (ts.get("offering") or {} for ts in filtered))
+        station_source_ids = []
+        if station_ids is not None:
+            station_source_ids = [str(station_id) for station_id in station_ids]
         else:
             for ts in filtered:
                 station_value = ts.get("station", {}).get("id") if isinstance(ts.get("station"), dict) else ts.get("station")
                 if station_value is not None:
-                    station_refs_to_map.append(str(station_value))
-        station_id_map = self.writer.get_station_id_map(service.id, station_refs_to_map)
-        self.writer.upsert_timeseries(
-            filtered,
-            service.id,
-            station_id_map,
-            category_map,
-            feature_map,
-            procedure_map,
-            offering_map,
-            phenomenon_map,
-        )
+                    station_source_ids.append(str(station_value))
+        station_id_map = self.writer.get_station_id_map(service_id, station_source_ids)
+        self.writer.upsert_timeseries(filtered, service_id, station_id_map)
         timeseries_id_map = self.writer.get_timeseries_id_map(
-            service.id, [str(ts.get("id")) for ts in filtered if ts.get("id")]
+            service_id, [str(ts.get("id")) for ts in filtered if ts.get("id")]
         )
         for ts in filtered:
-            ts_ref = ts.get("id")
-            if ts_ref is None:
+            ts_source_id = ts.get("id")
+            if ts_source_id is None:
                 continue
-            ts["_db_id"] = timeseries_id_map.get(str(ts_ref))
+            ts["_db_id"] = timeseries_id_map.get(str(ts_source_id))
         return filtered
 
     def backfill_year(self, series: Sequence[Dict[str, Any]], year: int, chunk_days: int = 31) -> None:
         start = datetime(year, 1, 1, tzinfo=timezone.utc)
         end = datetime(year + 1, 1, 1, tzinfo=timezone.utc)
         for ts in series:
-            ts_ref = ts.get("id")
+            ts_source_id = ts.get("id")
             ts_db_id = ts.get("_db_id")
-            if ts_ref is None or ts_db_id is None:
+            if ts_source_id is None or ts_db_id is None:
                 continue
-            LOG.info("Backfilling %s for %s", ts_ref, year)
+            LOG.info("Backfilling %s for %s", ts_source_id, year)
             for chunk_start in _range_chunks(start, end, timedelta(days=chunk_days)):
                 chunk_end = min(chunk_start + timedelta(days=chunk_days), end)
                 timespan = f"{chunk_start.isoformat()}/{chunk_end.isoformat()}"
-                data = self.client.timeseries_data(str(ts_ref), timespan)
+                data = self.client.timeseries_data(str(ts_source_id), timespan)
                 points = _parse_datapoints(data.get("values", []))
                 self.writer.upsert_observations(ts_db_id, points)
                 last_val = data.get("lastValue") or (points[-1]["value"] if points else None)
@@ -757,12 +601,12 @@ class UkAirIngestor:
         window_end = utcnow()
         timespan = f"{window_start.isoformat()}/{window_end.isoformat()}"
         for ts in series:
-            ts_ref = ts.get("id")
+            ts_source_id = ts.get("id")
             ts_db_id = ts.get("_db_id")
-            if ts_ref is None or ts_db_id is None:
+            if ts_source_id is None or ts_db_id is None:
                 continue
-            LOG.info("Refreshing recent window for %s (%sh)", ts_ref, hours)
-            data = self.client.timeseries_data(str(ts_ref), timespan)
+            LOG.info("Refreshing recent window for %s (%sh)", ts_source_id, hours)
+            data = self.client.timeseries_data(str(ts_source_id), timespan)
             points = _parse_datapoints(data.get("values", []))
             self.writer.upsert_observations(ts_db_id, points)
             last_val = data.get("lastValue") or (points[-1]["value"] if points else None)
@@ -1020,65 +864,33 @@ class EionetPollutantResolver:
         for attempt in range(1, self.retries + 1):
             try:
                 payload = self._fetch_json(uri)
-                notation = (
-                    _find_json_value(payload, "notation")
-                    or _find_json_value(payload, "skos:notation")
-                    or _find_json_value(payload, "http://www.w3.org/2004/02/skos/core#notation")
-                )
+                notation = _find_json_value(payload, "notation")
                 label = _extract_eionet_label(payload)
-                if not notation or not label:
-                    html = self._fetch_html(uri)
-                    if html:
-                        if not label:
-                            label = _extract_eionet_label_from_html(html)
-                        if not notation:
-                            notation = _extract_eionet_notation_from_html(html)
                 break
             except requests.RequestException:
                 if attempt == self.retries:
                     break
         self.cache[uri] = label
         self.cache[f"{uri}#notation"] = notation
-        if notation is None:
-            LOG.info("Eionet notation missing for uri=%s label=%s", uri, label)
         return {"label": label, "notation": notation}
 
     def _fetch_json(self, uri: str) -> Any:
-        headers = {"Accept": "application/ld+json, application/json"}
-        urls = [
-            uri,
-            f"{uri}?format=application/ld+json",
-            f"{uri}?format=application/json",
-            f"{uri}.jsonld",
-            f"{uri}.json",
-        ]
-        for url in urls:
-            resp = self.session.get(url, headers=headers, timeout=self.timeout)
-            if not resp.ok:
-                continue
-            try:
-                return resp.json()
-            except ValueError:
-                continue
+        headers = {"Accept": "application/ld+json"}
+        resp = self.session.get(uri, headers=headers, timeout=self.timeout)
+        if resp.ok:
+            return resp.json()
+        resp = self.session.get(f"{uri}.json", timeout=self.timeout)
+        if resp.ok:
+            return resp.json()
+        resp.raise_for_status()
         return {}
-
-    def _fetch_html(self, uri: str) -> Optional[str]:
-        resp = self.session.get(uri, headers={"Accept": "text/html"}, timeout=self.timeout)
-        if resp.ok:
-            return resp.text
-        resp = self.session.get(uri, timeout=self.timeout)
-        if resp.ok:
-            return resp.text
-        return None
 
 
 def _extract_pollutant_uri(ts: Dict[str, Any]) -> Optional[str]:
     candidates = []
     phenomenon = ts.get("phenomenon")
     if isinstance(phenomenon, dict):
-        candidates.extend(
-            [phenomenon.get("id"), phenomenon.get("eionet_uri"), phenomenon.get("label")]
-        )
+        candidates.extend([phenomenon.get("id"), phenomenon.get("label")])
     candidates.extend([ts.get("label"), ts.get("id")])
     for candidate in candidates:
         if not candidate:
@@ -1097,7 +909,9 @@ def _ensure_phenomenon(ts: Dict[str, Any], resolver: EionetPollutantResolver) ->
     phen_label = phenomenon.get("label")
     phen_uri = phenomenon.get("eionet_uri")
     phen_notation = phenomenon.get("notation")
-    uri = _extract_pollutant_uri(ts)
+    uri = None
+    if not phen_id or not phen_label:
+        uri = _extract_pollutant_uri(ts)
     if not phen_id and uri:
         phenomenon["id"] = uri
     if uri and not phen_uri:
@@ -1117,56 +931,7 @@ def _ensure_phenomenon(ts: Dict[str, Any], resolver: EionetPollutantResolver) ->
 
 
 def _extract_eionet_label(payload: Any) -> Optional[str]:
-    return (
-        _find_json_value(payload, "prefLabel")
-        or _find_json_value(payload, "skos:prefLabel")
-        or _find_json_value(payload, "http://www.w3.org/2004/02/skos/core#prefLabel")
-    )
-
-
-def _extract_eionet_label_from_html(html: str) -> Optional[str]:
-    return _extract_html_table_value(html, "Preferred label")
-
-
-def _extract_eionet_notation_from_html(html: str) -> Optional[str]:
-    return _extract_html_table_value(html, "Notation")
-
-
-def _extract_html_table_value(html: str, label: str) -> Optional[str]:
-    label_norm = _normalize_html_label(label)
-    dt_match = re.search(
-        rf"<dt[^>]*>\\s*{re.escape(label)}\\s*</dt>\\s*<dd[^>]*>(.*?)</dd>",
-        html,
-        re.IGNORECASE | re.DOTALL,
-    )
-    if dt_match:
-        value = _strip_html(dt_match.group(1))
-        if value:
-            return value
-    for row in re.findall(r"<tr[^>]*>.*?</tr>", html, re.IGNORECASE | re.DOTALL):
-        if label_norm not in _normalize_html_label(row):
-            continue
-        cells = re.findall(r"<t[dh][^>]*>(.*?)</t[dh]>", row, re.IGNORECASE | re.DOTALL)
-        texts = [_strip_html(cell) for cell in cells]
-        for idx, text in enumerate(texts):
-            text_norm = _normalize_html_label(text)
-            if label_norm in text_norm:
-                if idx + 1 < len(texts):
-                    return texts[idx + 1] or None
-        if len(texts) >= 2:
-            return texts[1] or None
-    return None
-
-
-def _strip_html(value: str) -> str:
-    cleaned = re.sub(r"<[^>]+>", " ", value)
-    cleaned = html.unescape(cleaned)
-    cleaned = re.sub(r"\\s+", " ", cleaned)
-    return cleaned.strip()
-
-
-def _normalize_html_label(value: str) -> str:
-    return re.sub(r"\\s+", " ", value).strip().rstrip(":").lower()
+    return _find_json_value(payload, "prefLabel")
 
 
 def _find_json_value(payload: Any, key: str) -> Optional[str]:
@@ -1233,12 +998,7 @@ def parse_args() -> argparse.Namespace:
         help="Comma-separated pollutant ids/labels to include (default: common pollutants). Use 'all' for no filter.",
     )
     parser.add_argument("--all-pollutants", action="store_true", help="Disable pollutant filtering.")
-    parser.add_argument(
-        "--service-ref",
-        "--service-id",
-        dest="service_ref",
-        help="Explicit service ref to use (optional).",
-    )
+    parser.add_argument("--service-id", help="Explicit service id to use (optional).")
     parser.add_argument("--service-label", help="Match service label by substring (optional).")
     parser.add_argument(
         "--sample-timeseries",
@@ -1267,8 +1027,8 @@ def main() -> None:
         if pollutants and len(pollutants) == 1 and pollutants[0].lower() in {"all", "*"}:
             pollutants = None
 
-    service = ingestor.discover_service(args.service_ref, args.service_label)
-    settings = writer.get_service_settings(service.id)
+    service_id = ingestor.discover_service(args.service_id, args.service_label)
+    settings = writer.get_service_settings(service_id)
     batch_size = settings.get("poll_timeseries_batch_size")
     bbox_supported = settings.get("stations_bbox_supported")
     station_filter_supported = settings.get("timeseries_station_filter_supported")
@@ -1276,16 +1036,15 @@ def main() -> None:
         LOG.info("Using timeseries batch size from services: %s", batch_size)
     if bbox_supported is False:
         bbox = None
-        LOG.info("Skipping bbox for service id %s (stations_bbox_supported=false)", service.id)
+        LOG.info("Skipping bbox for service id %s (stations_bbox_supported=false)", service_id)
     if station_filter_supported is False:
         LOG.info(
             "Skipping station filter for service id %s (timeseries_station_filter_supported=false)",
-            service.id,
+            service_id,
         )
     LOG.info(
-        "Using service id: %s ref=%s (bbox=%s region=%s station_types=%s pollutants=%s)",
-        service.id,
-        service.ref,
+        "Using service id: %s (bbox=%s region=%s station_types=%s pollutants=%s)",
+        service_id,
         bbox,
         region,
         station_types,
@@ -1293,22 +1052,22 @@ def main() -> None:
     )
 
     stations = ingestor.discover_stations(
-        service,
+        service_id,
         bbox,
         region,
         station_types,
         allow_missing_coords,
     )
-    station_refs = [
+    station_ids = [
         stn.get("id") or (stn.get("properties", {}) or {}).get("id")
         for stn in stations
         if stn.get("id") or (stn.get("properties", {}) or {}).get("id")
     ]
-    if not station_refs:
+    if not station_ids:
         LOG.warning("No stations discovered for the given filters.")
     series = ingestor.discover_timeseries(
-        service,
-        None if station_filter_supported is False else station_refs,
+        service_id,
+        None if station_filter_supported is False else station_ids,
         pollutants,
         batch_size,
         args.sample_timeseries,

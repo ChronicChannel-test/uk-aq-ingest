@@ -3,6 +3,9 @@
 ## Naming
 - Prefer `uk_air` in filenames, scripts, and docs (avoid `ukair`).
 
+## Archive
+- Files in `archive/` can be referenced for context but must never be modified.
+
 ## Code removal
 - Remove any legacy code if it is definitely redundant.
 - This project was never completed, so assume all existing code is still relevant.

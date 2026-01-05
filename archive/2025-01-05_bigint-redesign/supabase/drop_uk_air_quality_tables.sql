@@ -1,0 +1,19 @@
+-- Drop all tables defined in supabase/uk_air_quality_schema.sql.
+-- Run this before re-applying the schema.
+
+drop table if exists observations cascade;
+drop table if exists reference_values cascade;
+drop table if exists timeseries cascade;
+drop table if exists stations cascade;
+drop table if exists procedures cascade;
+drop table if exists features cascade;
+drop table if exists offerings cascade;
+drop table if exists phenomena cascade;
+drop table if exists categories cascade;
+drop table if exists pm25_amct_sites cascade;
+drop table if exists pm25_population_exposure cascade;
+drop table if exists services cascade;
+
+-- Views + helper tables from supabase/uk_air_quality_views.sql
+drop view if exists bristol_latest_pollutants cascade;
+drop table if exists pollutant_thresholds cascade;

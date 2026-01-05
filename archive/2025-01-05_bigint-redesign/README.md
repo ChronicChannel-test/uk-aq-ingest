@@ -5,7 +5,7 @@ Tools for ingesting UK-AIR SOS data into Supabase.
 ## Prerequisites
 - Python 3.10+
 - Supabase project with the schema applied from `supabase/uk_air_quality_schema.sql`
-  - This schema uses bigint internal ids; external identifiers stored as text use `_ref` (even if numeric).
+  - If migrating from older text IDs, also run `supabase/migrations/20250104_bigint_ids.sql`.
 
 ## Setup
 Create a `.env` file in the repo root with:
@@ -59,15 +59,15 @@ python3 scripts/uk_air_sos_ingest.py --backfill-2025 --chunk-days 14
 
 ## Notes
 - Filters are configurable in `scripts/uk_air_sos_ingest.py` (bbox, region, station type, pollutants).
-- The script upserts into `services`, `stations`, `timeseries`, `observations`, and reference tables.
+- The script upserts into `services`, `stations`, `timeseries`, and `observations`.
 
 ## Edge function polling (optional)
 For continuous updates, deploy the Edge Function in `supabase/functions/ingest_uk_air_sos`.
 
-Supabase secrets required (Edge Function runtime):
+Supabase secrets required:
 ```
-SB_SUPABASE_URL=your_supabase_url
-SB_SERVICE_ROLE_KEY=your_service_role_key
+SUPABASE_URL=your_supabase_url
+SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
 UK_AIR_SOS_BASE_URL=https://uk-air.defra.gov.uk/sos-ukair/api/v1
 UK_AIR_SOS_SERVICE_LABEL=UK-AIR-SOS
 ```

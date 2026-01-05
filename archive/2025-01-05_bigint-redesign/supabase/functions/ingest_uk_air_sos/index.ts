@@ -12,7 +12,6 @@ type PollRequest = {
 
 type ServiceRow = {
   id: string;
-  service_ref: string;
   label: string;
   service_url: string | null;
   poll_enabled: boolean | null;
@@ -76,11 +75,11 @@ serve(async (req) => {
   if (requestedSeries?.length) {
     const requestedSet = new Set(requestedSeries.map((value) => value.toLowerCase()));
     series = series.filter((row) => {
-    const idMatch = row.id && requestedSet.has(String(row.id).toLowerCase());
-    const sourceMatch = row.timeseries_ref
-      && requestedSet.has(String(row.timeseries_ref).toLowerCase());
-    return idMatch || sourceMatch;
-  });
+      const idMatch = row.id && requestedSet.has(String(row.id).toLowerCase());
+      const sourceMatch = row.source_id
+        && requestedSet.has(String(row.source_id).toLowerCase());
+      return idMatch || sourceMatch;
+    });
   }
 
   if (pollutants?.length) {
@@ -105,7 +104,7 @@ serve(async (req) => {
 
   await runPool(series, CONCURRENCY_LIMIT, async (row) => {
     try {
-      const sourceId = row.timeseries_ref || String(row.id);
+      const sourceId = row.source_id || String(row.id);
       const data = await fetchJson(
         baseUrl,
         `/timeseries/${encodeURIComponent(sourceId)}/getData`,
@@ -219,26 +218,18 @@ async function loadService(
   if (serviceId) {
     const { data } = await supabase
       .from("services")
-      .select("id,service_ref,label,service_url,poll_enabled,poll_window_hours,poll_timeseries_batch_size")
+      .select("id,label,service_url,poll_enabled,poll_window_hours,poll_timeseries_batch_size")
       .eq("id", serviceId)
       .maybeSingle();
     if (data) {
       return data as ServiceRow;
-    }
-    const { data: refData } = await supabase
-      .from("services")
-      .select("id,service_ref,label,service_url,poll_enabled,poll_window_hours,poll_timeseries_batch_size")
-      .eq("service_ref", serviceId)
-      .maybeSingle();
-    if (refData) {
-      return refData as ServiceRow;
     }
   }
 
   if (serviceLabel) {
     const { data } = await supabase
       .from("services")
-      .select("id,service_ref,label,service_url,poll_enabled,poll_window_hours,poll_timeseries_batch_size")
+      .select("id,label,service_url,poll_enabled,poll_window_hours,poll_timeseries_batch_size")
       .ilike("label", `%${serviceLabel}%`)
       .limit(1)
       .maybeSingle();
@@ -251,19 +242,21 @@ async function loadService(
   if (!discovered) {
     return null;
   }
-  await supabase.from("services").upsert([discovered], { onConflict: "service_ref" });
-  const { data } = await supabase
-    .from("services")
-    .select("id,service_ref,label,service_url,poll_enabled,poll_window_hours,poll_timeseries_batch_size")
-    .eq("service_ref", discovered.service_ref)
-    .maybeSingle();
-  return data as ServiceRow | null;
+  await supabase.from("services").upsert([discovered], { onConflict: "id" });
+  return {
+    id: discovered.id,
+    label: discovered.label,
+    service_url: discovered.service_url,
+    poll_enabled: true,
+    poll_window_hours: DEFAULT_WINDOW_HOURS,
+    poll_timeseries_batch_size: null,
+  };
 }
 
 async function discoverService(
   preferredId: string | undefined,
   preferredLabel: string,
-): Promise<{ service_ref: string; label: string; service_url: string } | null> {
+): Promise<{ id: string; label: string; service_url: string } | null> {
   try {
     const data = await fetchJson(UK_AIR_SOS_BASE_URL, "/services", {});
     const services = extractList(data, ["services", "data"]);
@@ -274,7 +267,7 @@ async function discoverService(
       const match = services.find((svc) => String(svc?.id) === preferredId);
       if (match) {
         return {
-          service_ref: String(match.id),
+          id: String(match.id),
           label: normalizeServiceLabel(match.label || match.name),
           service_url: match.serviceUrl || match.url || UK_AIR_SOS_BASE_URL,
         };
@@ -286,7 +279,7 @@ async function discoverService(
     );
     if (labelMatch) {
       return {
-        service_ref: String(labelMatch.id),
+        id: String(labelMatch.id),
         label: normalizeServiceLabel(labelMatch.label || labelMatch.name),
         service_url: labelMatch.serviceUrl || labelMatch.url || UK_AIR_SOS_BASE_URL,
       };
@@ -296,7 +289,7 @@ async function discoverService(
         && String(svc?.label || "").toLowerCase().includes("air")
     ) || services[0];
     return {
-      service_ref: String(fallback.id),
+      id: String(fallback.id),
       label: normalizeServiceLabel(fallback.label || fallback.name),
       service_url: fallback.serviceUrl || fallback.url || UK_AIR_SOS_BASE_URL,
     };
@@ -308,13 +301,13 @@ async function discoverService(
 
 async function loadTimeseries(
   serviceId: string,
-): Promise<Array<{ id: number; timeseries_ref: string | null; phenomenon_id: string | null }>> {
-  const rows: Array<{ id: number; timeseries_ref: string | null; phenomenon_id: string | null }> = [];
+): Promise<Array<{ id: number; source_id: string | null; phenomenon_id: string | null }>> {
+  const rows: Array<{ id: number; source_id: string | null; phenomenon_id: string | null }> = [];
   let offset = 0;
   while (true) {
     const { data, error } = await supabase
       .from("timeseries")
-      .select("id,timeseries_ref,phenomenon_id")
+      .select("id,source_id,phenomenon_id")
       .eq("service_id", serviceId)
       .range(offset, offset + PAGE_SIZE - 1);
     if (error) {
@@ -325,7 +318,7 @@ async function loadTimeseries(
     }
     rows.push(...data.map((row) => ({
       id: Number(row.id),
-      timeseries_ref: row.timeseries_ref ? String(row.timeseries_ref) : null,
+      source_id: row.source_id ? String(row.source_id) : null,
       phenomenon_id: row.phenomenon_id ? String(row.phenomenon_id) : null,
     })));
     if (data.length < PAGE_SIZE) {
@@ -340,7 +333,7 @@ async function loadPhenomena(serviceId: string, filters: string[]): Promise<Set<
   const needle = new Set(filters.map((value) => value.toLowerCase()));
   const { data, error } = await supabase
     .from("phenomena")
-    .select("id,label,notation,eionet_uri")
+    .select("id,label")
     .eq("service_id", serviceId);
   if (error) {
     throw new Error(`Failed to load phenomena: ${error.message}`);
@@ -349,13 +342,9 @@ async function loadPhenomena(serviceId: string, filters: string[]): Promise<Set<
   for (const row of data || []) {
     const id = row.id ? String(row.id) : "";
     const label = row.label ? String(row.label) : "";
-    const notation = row.notation ? String(row.notation) : "";
-    const uri = row.eionet_uri ? String(row.eionet_uri) : "";
     if (
       (id && needle.has(id.toLowerCase())) ||
-      (label && needle.has(label.toLowerCase())) ||
-      (notation && needle.has(notation.toLowerCase())) ||
-      (uri && needle.has(uri.toLowerCase()))
+      (label && needle.has(label.toLowerCase()))
     ) {
       if (id) {
         matches.add(id);

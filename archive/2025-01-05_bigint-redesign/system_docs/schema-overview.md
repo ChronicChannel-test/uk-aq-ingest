@@ -7,17 +7,16 @@ This document summarizes the schema defined in `supabase/uk_air_quality_schema.s
 - `pgcrypto` for UUID generation (gen_random_uuid).
 
 ## Core reference tables
-- External identifiers that arrive as text (even if numeric) are stored as `*_ref`; all `*_id` columns are internal bigint keys.
-- `services`: SOS instances with bigint `id` (internal) and `service_ref` (external), plus URL and polling fields (`poll_enabled`, `poll_interval_minutes`, `poll_window_hours`, `poll_timeseries_batch_size`, `stations_bbox_supported`, `timeseries_station_filter_supported`, `last_polled_at`).
+- `services`: SOS instances (id, label, URL, polling fields such as `poll_enabled`, `poll_interval_minutes`, `poll_window_hours`, `poll_timeseries_batch_size`, `stations_bbox_supported`, `timeseries_station_filter_supported`, `last_polled_at`).
 - `categories`: high-level grouping, per service.
 - `phenomena`: what is measured (pollutant/parameter), per service; includes optional `eionet_uri` + `notation`.
 - `offerings`: logical groupings, per service.
 - `features`: features of interest with geometry (Point, 4326), per service.
 - `procedures`: sensors/methods; optional raw_formats list, per service.
-- `stations`: monitoring sites; bigint `id` (internal) with `station_ref` (external), unique `(service_id, station_ref)`, plus lifecycle fields `first_seen_at`, `last_seen_at`, `removed_at`.
+- `stations`: monitoring sites; bigint `id` (internal) with `source_id` (upstream), unique `(service_id, source_id)`, plus lifecycle fields `first_seen_at`, `last_seen_at`, `removed_at`.
 
 ## Timeseries and metadata
-- `timeseries`: SOS timeseries metadata; bigint `id` (internal) with `timeseries_ref` (external) and `station_id` bigint FK.
+- `timeseries`: SOS timeseries metadata; bigint `id` (internal) with `source_id` (upstream) and `station_id` bigint FK.
 - `reference_values`: optional reference lines attached to a timeseries (name, color, value).
 
 ## Observations

@@ -34,7 +34,7 @@ Key flags:
 - `--pollutants no2,o3,pm10,pm2.5` (default common pollutants)
 - `--all-pollutants` to disable pollutant filtering
 - `--backfill-year 2025` to backfill a specific year
-- `--service-ref` (alias `--service-id`) or `--service-label` to target a specific SOS service
+- `--service-id` or `--service-label` to target a specific SOS service
 - `--sample-timeseries 1` to log a short summary of the first N timeseries objects
 Batching:
 - If `services.poll_timeseries_batch_size` is set for the chosen service, it overrides the default batch size for timeseries discovery.
@@ -66,10 +66,10 @@ Default outputs:
 - `uk_air_stations_all.json` (when using `--no-filter`)
 Optional raw output:
 - `--raw-output` writes raw station payloads to a separate JSON file.
-Service refs:
-- By default, if the SOS reports a single service, that service ref is applied to stations in the JSON output.
-- The JSON output also includes a top-level `service_ref` when a single service is detected.
-- Use `--service-ref-from-timeseries` (alias `--service-id-from-timeseries`) to resolve `service_ref` from timeseries metadata.
+Service IDs:
+- By default, if the SOS reports a single service, that service ID is applied to stations in the JSON output.
+- The JSON output also includes a top-level `service_id` when a single service is detected.
+- Use `--service-id-from-timeseries` to resolve `service_id` from timeseries metadata.
 
 Writes to (when `--to-supabase` is set):
 - `services`, `stations`
@@ -83,7 +83,9 @@ Writes to (when `--to-supabase` is set):
 - `offering`: A logical grouping of observations, often representing a dataset or station-level collection.
 
 ## Keys
-- `stations` uses bigint `id` with `station_ref` for upstream identifiers (unique by `service_id, station_ref`).
-- `timeseries` uses bigint `id` with `timeseries_ref` for upstream identifiers (unique by `service_id, timeseries_ref`).
+- `stations` uses bigint `id` with `source_id` for upstream identifiers (unique by `service_id, source_id`).
+- `timeseries` uses bigint `id` with `source_id` for upstream identifiers (unique by `service_id, source_id`).
 - `observations` references `timeseries.id` (bigint) and uses `(timeseries_id, observed_at)` as the primary key.
-- External identifiers that arrive as text (even if numeric) use `*_ref`; internal joins always use bigint `*_id`.
+
+Migration:
+- Use `supabase/migrations/20250104_bigint_ids.sql` to convert existing text IDs to bigint internal keys.

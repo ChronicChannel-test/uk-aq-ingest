@@ -30,16 +30,13 @@ Applied in `scripts/uk_air_sos_ingest.py`:
 - `phenomena`
 - `procedures`
 - `offerings`
-- `categories`
-- `features`
 
 ## Station pollutant coverage
 - Station-to-pollutant coverage is derived from `timeseries` (via `timeseries.phenomenon_id`).
 - `stations` does not store a single pollutant because stations often monitor multiple pollutants.
 
 ## IDs
-- `services`, `stations`, and `timeseries` use bigint `id` internally, with upstream identifiers stored in `service_ref`, `station_ref`, and `timeseries_ref`.
-- Any upstream identifier that arrives as text (even if numeric) uses a `*_ref` column; internal joins always use bigint `*_id`.
+- `stations` and `timeseries` use bigint `id` internally, with upstream identifiers stored in `source_id`.
 - `observations` references `timeseries.id`.
 
 ## Commands
@@ -74,10 +71,10 @@ Request body options (JSON):
 - `service_id` or `service_label` (optional; defaults to `UK-AIR-SOS`)
 - `window_hours` (optional; defaults to `services.poll_window_hours` or 6)
 - `pollutants` (optional; array or comma-separated list)
-- `timeseries_ids` (optional; array or comma-separated list of timeseries_ref or internal id)
+- `timeseries_ids` (optional; array or comma-separated list of source_id or internal id)
 - `timeseries_limit` (optional; integer)
 
-When `service_id` is provided, the function treats it as either a bigint internal id or `service_ref`, then uses `services.service_url` from the database.
+When `service_id` is provided, the function uses `services.service_url` from the database.
 Environment variables are only a fallback for discovery or missing service rows.
 
 If `timeseries_limit` is not provided, the function uses `services.poll_timeseries_batch_size` when set.
