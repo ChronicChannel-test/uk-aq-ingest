@@ -1,10 +1,11 @@
 # CIC UK Air Quality Networks
 
-Tools for ingesting UK-AIR SOS data (Bristol AURN focus) into Supabase.
+Tools for ingesting UK-AIR SOS data into Supabase.
 
 ## Prerequisites
 - Python 3.10+
 - Supabase project with the schema applied from `supabase/uk_air_quality_schema.sql`
+  - If migrating from older text IDs, also run `supabase/migrations/20250104_bigint_ids.sql`.
 
 ## Setup
 Create a `.env` file in the repo root with:
@@ -13,11 +14,21 @@ Create a `.env` file in the repo root with:
 SUPABASE_URL=your_supabase_url
 SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
 # Optional override (default shown)
-UK_AIR_BASE_URL=https://uk-air.defra.gov.uk/sos-ukair/api/v1
+UK_AIR_SOS_BASE_URL=https://uk-air.defra.gov.uk/sos-ukair/api/v1
 # Optional override for the services label
-UK_AIR_SERVICE_LABEL=UK-AIR-SOS
-# Legacy support: UKAIR_BASE_URL also works
+UK_AIR_SOS_SERVICE_LABEL=UK-AIR-SOS
+# Legacy support: UK_AIR_BASE_URL, UK_AIR_SERVICE_LABEL, and UKAIR_BASE_URL also work
 ```
+
+`.env` is local-only. Keep it out of git and mirror the same values in GitHub Secrets/Vars so CI matches your local runs.
+
+Env quick reference:
+
+| Context | Required | Optional |
+| --- | --- | --- |
+| Local scripts (.env) | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | `UK_AIR_SOS_BASE_URL`, `UK_AIR_SOS_SERVICE_LABEL` |
+| Edge function runtime (Supabase secrets) | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | `UK_AIR_SOS_BASE_URL`, `UK_AIR_SOS_SERVICE_LABEL` |
+| GitHub Actions deploy | `SUPABASE_ACCESS_TOKEN`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (Secrets), `SUPABASE_PROJECT_REF` (Vars) | `UK_AIR_SOS_BASE_URL`, `UK_AIR_SOS_SERVICE_LABEL` (Secrets) |
 
 Install dependencies in a virtual environment:
 
@@ -27,25 +38,53 @@ source .venv/bin/activate
 pip install requests python-dotenv supabase
 ```
 
-## Run the Bristol AURN SOS ingestion
-Discover Bristol AURN stations and timeseries, then backfill 2025:
+## Run the UK-AIR SOS ingestion
+Discover stations and timeseries, then backfill 2025:
 
 ```
-python3 scripts/uk_air_aurn_ingest.py --discover --backfill-2025
+python3 scripts/uk_air_sos_ingest.py --discover --backfill-2025
 ```
 
 Refresh the last N hours (default 6h):
 
 ```
-python3 scripts/uk_air_aurn_ingest.py --refresh-recent --hours 6
+python3 scripts/uk_air_sos_ingest.py --refresh-recent --hours 6
 ```
 
 Optional backfill chunk size (days):
 
 ```
-python3 scripts/uk_air_aurn_ingest.py --backfill-2025 --chunk-days 14
+python3 scripts/uk_air_sos_ingest.py --backfill-2025 --chunk-days 14
 ```
 
 ## Notes
-- The Bristol AURN filter is defined in `scripts/uk_air_aurn_ingest.py` (bounding box, region, station type, pollutants).
+- Filters are configurable in `scripts/uk_air_sos_ingest.py` (bbox, region, station type, pollutants).
 - The script upserts into `services`, `stations`, `timeseries`, and `observations`.
+
+## Edge function polling (optional)
+For continuous updates, deploy the Edge Function in `supabase/functions/ingest_uk_air_sos`.
+
+Supabase secrets required:
+```
+SUPABASE_URL=your_supabase_url
+SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+UK_AIR_SOS_BASE_URL=https://uk-air.defra.gov.uk/sos-ukair/api/v1
+UK_AIR_SOS_SERVICE_LABEL=UK-AIR-SOS
+```
+
+Example cron SQL to schedule the poller lives in `supabase/uk_air_polling_cron.sql`.
+
+GitHub Actions deployment secrets (used by `.github/workflows/supabase_edge_deploy.yml`):
+- `SUPABASE_ACCESS_TOKEN`
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+GitHub Actions variables (non-sensitive):
+- `SUPABASE_PROJECT_REF`
+
+Note: `SUPABASE_ACCESS_TOKEN` is only required for deployments (GitHub Actions or `supabase` CLI). The publishable key is safe to expose; the service role key is not.
+
+## Environment naming convention
+For new networks, use `NETWORK_BASE_URL` and `NETWORK_SERVICE_LABEL`.
+Examples:
+- `UK_AIR_SOS_BASE_URL`, `UK_AIR_SOS_SERVICE_LABEL`
+- `SCOMM_BASE_URL`, `SCOMM_SERVICE_LABEL` (Sensor.Community)

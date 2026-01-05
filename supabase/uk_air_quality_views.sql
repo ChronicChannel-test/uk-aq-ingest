@@ -78,7 +78,6 @@ select
 from timeseries ts
 join bristol_stations stn
   on ts.station_id = stn.id
-  and ts.service_id = stn.service_id
 left join latest on latest.timeseries_id = ts.id
 left join phenomena phen on phen.id = ts.phenomenon_id
 left join pollutant_thresholds th

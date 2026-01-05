@@ -2,15 +2,11 @@
 -- Integrates with existing UK-AIR SOS structure
 
 -- PurpleAir Service entry
-insert into services (id, label, service_url, version, type, supports_first_latest, quantities)
+insert into services (id, label, service_url)
 values (
   'purpleair',
   'PurpleAir Community Sensor Network',
-  'https://api.purpleair.com/v1',
-  'v1',
-  'sensor_network',
-  true,
-  '{"pm25": {"label": "PM2.5", "uom": "μg/m³"}, "pm10": {"label": "PM10", "uom": "μg/m³"}, "temperature": {"label": "Temperature", "uom": "°C"}, "humidity": {"label": "Humidity", "uom": "%"}, "pressure": {"label": "Pressure", "uom": "hPa"}}'
+  'https://api.purpleair.com/v1'
 ) on conflict (id) do nothing;
 
 -- PurpleAir Categories

@@ -9,4 +9,4 @@
 
 ## Documentation
 - Add a script note to `system_docs/uk_air_scripts.md` when new scripts are added.
-- Add a per-network doc in `system_docs/` (e.g., `uk_air_aurn.md`) when a new network is introduced.
+- Add a per-network doc in `system_docs/` (e.g., `uk_air_sos.md`) when a new network is introduced.

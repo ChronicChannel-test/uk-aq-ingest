@@ -7,20 +7,20 @@ This document summarizes the schema defined in `supabase/uk_air_quality_schema.s
 - `pgcrypto` for UUID generation (gen_random_uuid).
 
 ## Core reference tables
-- `services`: SOS instances (id, label, URL, version, type, supports_first_latest, quantities).
+- `services`: SOS instances (id, label, URL, polling fields such as `poll_enabled`, `poll_interval_minutes`, `poll_window_hours`, `poll_timeseries_batch_size`, `stations_bbox_supported`, `timeseries_station_filter_supported`, `last_polled_at`).
 - `categories`: high-level grouping, per service.
-- `phenomena`: what is measured (pollutant/parameter), per service.
+- `phenomena`: what is measured (pollutant/parameter), per service; includes optional `eionet_uri` + `notation`.
 - `offerings`: logical groupings, per service.
 - `features`: features of interest with geometry (Point, 4326), per service.
 - `procedures`: sensors/methods; optional raw_formats list, per service.
-- `stations`: monitoring sites; composite primary key `(id, service_id)` with lifecycle fields `first_seen_at`, `last_seen_at`, `removed_at`.
+- `stations`: monitoring sites; bigint `id` (internal) with `source_id` (upstream), unique `(service_id, source_id)`, plus lifecycle fields `first_seen_at`, `last_seen_at`, `removed_at`.
 
 ## Timeseries and metadata
-- `timeseries`: SOS timeseries metadata; station linkage uses `(station_id, service_id)` to avoid cross-service ID collisions.
+- `timeseries`: SOS timeseries metadata; bigint `id` (internal) with `source_id` (upstream) and `station_id` bigint FK.
 - `reference_values`: optional reference lines attached to a timeseries (name, color, value).
 
 ## Observations
-- `observations`: raw time-value pairs for each timeseries (observed_at timestamptz, value, status flag). Indexed by (timeseries_id, observed_at).
+- `observations`: raw time-value pairs for each timeseries (observed_at timestamptz, value, status flag). Primary key is `(timeseries_id, observed_at)`.
 
 ## PM2.5 target tracking (optional)
 - `pm25_population_exposure`: yearly Population Exposure Indicator (PEI) series with deltas and % change vs 2018 baseline.

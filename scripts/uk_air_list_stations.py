@@ -21,17 +21,23 @@ import requests
 from dotenv import load_dotenv
 from supabase import Client, create_client
 
+from ingest_helpers import station_coords, station_in_bbox_or_missing_coords
 load_dotenv()
 
 LOG = logging.getLogger("uk_air_stations")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
-UK_AIR_BASE_URL = (
-    os.getenv("UK_AIR_BASE_URL")
+UK_AIR_SOS_BASE_URL = (
+    os.getenv("UK_AIR_SOS_BASE_URL")
+    or os.getenv("UK_AIR_BASE_URL")
     or os.getenv("UKAIR_BASE_URL")
     or "https://uk-air.defra.gov.uk/sos-ukair/api/v1"
 ).rstrip("/")
-UK_AIR_SERVICE_LABEL = os.getenv("UK_AIR_SERVICE_LABEL", "UK-AIR-SOS")
+UK_AIR_SOS_SERVICE_LABEL = (
+    os.getenv("UK_AIR_SOS_SERVICE_LABEL")
+    or os.getenv("UK_AIR_SERVICE_LABEL")
+    or "UK-AIR-SOS"
+)
 
 UK_BBOX = {
     "west": -11.0,
@@ -46,7 +52,7 @@ def utcnow() -> datetime:
 
 
 class UkAirClient:
-    def __init__(self, base_url: str = UK_AIR_BASE_URL, timeout: int = 60, retries: int = 3):
+    def __init__(self, base_url: str = UK_AIR_SOS_BASE_URL, timeout: int = 60, retries: int = 3):
         self.base_url = base_url
         self.timeout = timeout
         self.retries = retries
@@ -129,11 +135,7 @@ class SupabaseWriter:
             {
                 "id": svc.get("id"),
                 "label": _normalize_service_label(svc.get("label") or svc.get("name")),
-                "service_url": svc.get("serviceUrl") or svc.get("url") or UK_AIR_BASE_URL,
-                "version": svc.get("version"),
-                "type": svc.get("type"),
-                "supports_first_latest": svc.get("supportsFirstLatest"),
-                "quantities": svc.get("quantities"),
+                "service_url": svc.get("serviceUrl") or svc.get("url") or UK_AIR_SOS_BASE_URL,
             }
             for svc in services
             if svc.get("id")
@@ -175,7 +177,7 @@ class SupabaseWriter:
             station_id = station.get("id") or props.get("id")
             if not station_id:
                 continue
-            lon, lat = _station_coords(station, bbox=UK_BBOX)
+            lon, lat = station_coords(station, bbox=UK_BBOX)
             raw_service = station.get("service") or props.get("service")
             service_id = None
             if isinstance(raw_service, dict):
@@ -192,7 +194,7 @@ class SupabaseWriter:
                 continue
             rows.append(
                 {
-                    "id": station_id,
+                    "source_id": station_id,
                     "label": station.get("label") or props.get("label") or station.get("name"),
                     "station_type": props.get("stationType") or station.get("stationType"),
                     "region": props.get("region") or station.get("region"),
@@ -203,7 +205,7 @@ class SupabaseWriter:
                 }
             )
         if rows:
-            self.client.table("stations").upsert(rows, on_conflict="id,service_id").execute()
+            self.client.table("stations").upsert(rows, on_conflict="service_id,source_id").execute()
         return len(rows)
 
     def mark_removed(self, seen_at: datetime, service_ids: Sequence[str]) -> None:
@@ -226,23 +228,14 @@ def _extract_list(payload: Any, keys: Sequence[str]) -> List[Dict[str, Any]]:
     return []
 
 
-def _coerce_float(value: Any) -> Optional[float]:
-    try:
-        if value is None:
-            return None
-        return float(value)
-    except (TypeError, ValueError):
-        return None
-
-
 def _normalize_service_label(label: Optional[str]) -> Optional[str]:
     if label is None:
-        return UK_AIR_SERVICE_LABEL
+        return UK_AIR_SOS_SERVICE_LABEL
     trimmed = label.strip()
     if not trimmed:
-        return UK_AIR_SERVICE_LABEL
+        return UK_AIR_SOS_SERVICE_LABEL
     if trimmed.lower().startswith("my timeseries service"):
-        return UK_AIR_SERVICE_LABEL
+        return UK_AIR_SOS_SERVICE_LABEL
     return trimmed
 
 
@@ -257,65 +250,6 @@ def _item_service_id(item: Dict[str, Any]) -> Optional[str]:
     if service is not None:
         return str(service)
     return None
-
-
-def _maybe_swap_coords(
-    lon: Optional[float], lat: Optional[float], bbox: Optional[Dict[str, float]]
-) -> Tuple[Optional[float], Optional[float]]:
-    if lon is None or lat is None or bbox is None:
-        return lon, lat
-    # If the values look swapped for the target bbox, swap them.
-    if (
-        bbox["south"] <= lon <= bbox["north"]
-        and bbox["west"] <= lat <= bbox["east"]
-        and not (bbox["west"] <= lon <= bbox["east"])
-        and not (bbox["south"] <= lat <= bbox["north"])
-    ):
-        return lat, lon
-    return lon, lat
-
-
-def _station_coords(
-    station: Dict[str, Any], bbox: Optional[Dict[str, float]] = None
-) -> Tuple[Optional[float], Optional[float]]:
-    coords = None
-    geometry = station.get("geometry")
-    if isinstance(geometry, dict):
-        coords = geometry.get("coordinates")
-    if coords is None:
-        props = station.get("properties", {}) if isinstance(station.get("properties"), dict) else {}
-        geometry = props.get("geometry")
-        if isinstance(geometry, dict):
-            coords = geometry.get("coordinates")
-    if coords and len(coords) >= 2:
-        lon = _coerce_float(coords[0])
-        lat = _coerce_float(coords[1])
-        lon, lat = _maybe_swap_coords(lon, lat, bbox)
-        return lon, lat
-
-    props = station.get("properties", {}) if isinstance(station.get("properties"), dict) else {}
-    lon = _coerce_float(props.get("longitude") or props.get("lon") or props.get("lng"))
-    lat = _coerce_float(props.get("latitude") or props.get("lat"))
-    lon, lat = _maybe_swap_coords(lon, lat, bbox)
-    return lon, lat
-
-
-def _station_in_bbox(station: Dict[str, Any], bbox: Dict[str, float]) -> bool:
-    lon, lat = _station_coords(station, bbox=bbox)
-    if lon is None or lat is None:
-        return False
-    if not (-180 <= lon <= 180 and -90 <= lat <= 90):
-        return False
-    return bbox["west"] <= lon <= bbox["east"] and bbox["south"] <= lat <= bbox["north"]
-
-
-def _station_in_bbox_or_missing_coords(station: Dict[str, Any], bbox: Dict[str, float]) -> bool:
-    lon, lat = _station_coords(station, bbox=bbox)
-    if lon is None or lat is None:
-        return True
-    if not (-180 <= lon <= 180 and -90 <= lat <= 90):
-        return False
-    return bbox["west"] <= lon <= bbox["east"] and bbox["south"] <= lat <= bbox["north"]
 
 
 def _collect_reference(store: Dict[str, Dict[str, Any]], item: Any) -> None:
@@ -381,7 +315,7 @@ def _normalize_station(
     default_service_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     props = station.get("properties", {}) if isinstance(station.get("properties"), dict) else {}
-    lon, lat = _station_coords(station, bbox=UK_BBOX)
+    lon, lat = station_coords(station, bbox=UK_BBOX)
     timeseries = props.get("timeseries") if isinstance(props.get("timeseries"), list) else []
     timeseries_ids = []
     for entry in timeseries:
@@ -508,12 +442,12 @@ def main() -> None:
     filtered = (
         stations
         if args.no_filter
-        else [s for s in stations if _station_in_bbox_or_missing_coords(s, UK_BBOX)]
+        else [s for s in stations if station_in_bbox_or_missing_coords(s, UK_BBOX)]
     )
     missing_coords = sum(
         1
         for station in filtered
-        if _station_coords(station, bbox=UK_BBOX) == (None, None)
+        if station_coords(station, bbox=UK_BBOX) == (None, None)
     )
     LOG.info(
         "Stations total=%s, uk_filtered=%s (missing coords=%s)",
@@ -581,7 +515,7 @@ def main() -> None:
         raw_payload = None
         if args.raw_output:
             raw_payload = {
-                "source": UK_AIR_BASE_URL,
+                "source": UK_AIR_SOS_BASE_URL,
                 "fetched_at": utcnow().isoformat(),
                 "bbox": None if args.no_filter else UK_BBOX,
                 "count": len(filtered),
@@ -589,7 +523,7 @@ def main() -> None:
             }
             _write_json(args.raw_output, raw_payload)
         payload = {
-            "source": UK_AIR_BASE_URL,
+            "source": UK_AIR_SOS_BASE_URL,
             "fetched_at": utcnow().isoformat(),
             "bbox": None if args.no_filter else UK_BBOX,
             "count": len(filtered),
