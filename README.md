@@ -22,13 +22,13 @@ UK_AIR_SOS_SERVICE_LABEL=UK-AIR-SOS
 
 `.env` is local-only. Keep it out of git and mirror the same values in GitHub Secrets/Vars so CI matches your local runs.
 
-Env quick reference:
+Env quick reference (Supabase blocks secrets prefixed with `SUPABASE_`):
 
 | Context | Required | Optional |
 | --- | --- | --- |
 | Local scripts (.env) | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | `UK_AIR_SOS_BASE_URL`, `UK_AIR_SOS_SERVICE_LABEL` |
-| Edge function runtime (Supabase secrets) | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | `UK_AIR_SOS_BASE_URL`, `UK_AIR_SOS_SERVICE_LABEL` |
-| GitHub Actions deploy | `SUPABASE_ACCESS_TOKEN`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (Secrets), `SUPABASE_PROJECT_REF` (Vars) | `UK_AIR_SOS_BASE_URL`, `UK_AIR_SOS_SERVICE_LABEL` (Secrets) |
+| Edge function runtime (Supabase secrets) | `SB_SUPABASE_URL`, `SB_SERVICE_ROLE_KEY` | `UK_AIR_SOS_BASE_URL`, `UK_AIR_SOS_SERVICE_LABEL` |
+| GitHub Actions deploy | `SUPABASE_ACCESS_TOKEN`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_PROJECT_REF` (Secrets) | `UK_AIR_SOS_BASE_URL`, `UK_AIR_SOS_SERVICE_LABEL` (Secrets) |
 
 Install dependencies in a virtual environment:
 
@@ -78,7 +78,6 @@ GitHub Actions deployment secrets (used by `.github/workflows/supabase_edge_depl
 - `SUPABASE_ACCESS_TOKEN`
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
-GitHub Actions variables (non-sensitive):
 - `SUPABASE_PROJECT_REF`
 
 Note: `SUPABASE_ACCESS_TOKEN` is only required for deployments (GitHub Actions or `supabase` CLI). The publishable key is safe to expose; the service role key is not.

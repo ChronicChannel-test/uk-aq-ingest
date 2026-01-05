@@ -26,8 +26,12 @@ const DEFAULT_TIMEOUT_MS = 30_000;
 const PAGE_SIZE = 1000;
 const CONCURRENCY_LIMIT = 5;
 
-const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
-const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL")
+  ?? Deno.env.get("SB_SUPABASE_URL")
+  ?? "";
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")
+  ?? Deno.env.get("SB_SERVICE_ROLE_KEY")
+  ?? "";
 const UK_AIR_SOS_BASE_URL = (Deno.env.get("UK_AIR_SOS_BASE_URL")
   ?? Deno.env.get("UK_AIR_BASE_URL")
   ?? DEFAULT_BASE_URL).replace(/\/$/, "");

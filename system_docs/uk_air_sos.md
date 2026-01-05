@@ -52,20 +52,20 @@ python3 scripts/uk_air_sos_ingest.py --station-type AURN --region Bristol --bbox
 The Edge Function `ingest_uk_air_sos` polls recent observations using the existing `timeseries` rows.
 
 Environment variables (Supabase secrets):
-- `SUPABASE_URL`
-- `SUPABASE_SERVICE_ROLE_KEY`
+- `SB_SUPABASE_URL`
+- `SB_SERVICE_ROLE_KEY`
 - `UK_AIR_SOS_BASE_URL` (optional override)
 - `UK_AIR_SOS_SERVICE_LABEL` (optional override)
 
-For local runs, keep these in `.env` (gitignored). For GitHub Actions deploys, set the same values in Secrets/Vars. `SUPABASE_ACCESS_TOKEN` is only needed for deployment, not for runtime polling.
+For local runs, keep the `SUPABASE_*` values in `.env` (gitignored). For Edge Functions, use `SB_*` secrets instead. `SUPABASE_ACCESS_TOKEN` is only needed for deployment, not for runtime polling.
 
-Env quick reference:
+Env quick reference (Supabase blocks secrets prefixed with `SUPABASE_`):
 
 | Context | Required | Optional |
 | --- | --- | --- |
 | Local scripts (.env) | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | `UK_AIR_SOS_BASE_URL`, `UK_AIR_SOS_SERVICE_LABEL` |
-| Edge function runtime (Supabase secrets) | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | `UK_AIR_SOS_BASE_URL`, `UK_AIR_SOS_SERVICE_LABEL` |
-| GitHub Actions deploy | `SUPABASE_ACCESS_TOKEN`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (Secrets), `SUPABASE_PROJECT_REF` (Vars) | `UK_AIR_SOS_BASE_URL`, `UK_AIR_SOS_SERVICE_LABEL` (Secrets) |
+| Edge function runtime (Supabase secrets) | `SB_SUPABASE_URL`, `SB_SERVICE_ROLE_KEY` | `UK_AIR_SOS_BASE_URL`, `UK_AIR_SOS_SERVICE_LABEL` |
+| GitHub Actions deploy | `SUPABASE_ACCESS_TOKEN`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_PROJECT_REF` (Secrets) | `UK_AIR_SOS_BASE_URL`, `UK_AIR_SOS_SERVICE_LABEL` (Secrets) |
 
 Request body options (JSON):
 - `service_id` or `service_label` (optional; defaults to `UK-AIR-SOS`)
