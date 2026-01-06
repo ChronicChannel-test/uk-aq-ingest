@@ -518,7 +518,7 @@ def main() -> None:
     )
 
     station_service_ref_map: Dict[str, str] = {}
-    if args.service_id_from_timeseries:
+    if args.service_ref_from_timeseries:
         station_ids = [
             s.get("id") or (s.get("properties") or {}).get("id")
             for s in filtered

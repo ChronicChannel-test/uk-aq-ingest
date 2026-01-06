@@ -9,7 +9,7 @@ select cron.schedule(
   $$
     select net.http_post(
       url := 'https://nmgierafoeuxfkkscrln.supabase.co/functions/v1/ingest_uk_air_sos',
-      headers := '{"Content-Type":"application/json","Authorization":"Bearer sb_publishable_a6RslXF8rRzJqNo3RjjSSg_mFwfSNMP","apikey":"sb_publishable_a6RslXF8rRzJqNo3RjjSSg_mFwfSNMP"}'::jsonb,
+      headers := '{"Content-Type":"application/json","Authorization":"Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5tZ2llcmFmb2V1eGZra3NjcmxuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUzMjIzMDMsImV4cCI6MjA4MDg5ODMwM30.x6rKhvMTFRyJCZNlaFG-5tUiSuwehCLLu3qbulNTe7A","apikey":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5tZ2llcmFmb2V1eGZra3NjcmxuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUzMjIzMDMsImV4cCI6MjA4MDg5ODMwM30.x6rKhvMTFRyJCZNlaFG-5tUiSuwehCLLu3qbulNTe7A"}'::jsonb,
       body := '{"service_id":"1","window_hours": 3}'::jsonb
     );
   $$

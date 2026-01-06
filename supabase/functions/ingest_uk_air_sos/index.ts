@@ -111,7 +111,7 @@ serve(async (req) => {
         `/timeseries/${encodeURIComponent(sourceId)}/getData`,
         { timespan, format: "tvp" },
       );
-      const points = parseDatapoints(data?.values);
+      const points = parseDatapoints(data?.values, row.id);
       if (points.length) {
         const { error } = await supabase
           .from("observations")
@@ -404,30 +404,65 @@ async function fetchJson(
   }
 }
 
-function parseDatapoints(values: unknown): Array<{ observed_at: string; value: number | null; status: string | null }> {
-  if (!Array.isArray(values)) {
+let emptySeriesLogs = 0;
+
+function parseDatapoints(
+  values: unknown,
+  seriesId?: number,
+): Array<{ observed_at: string; value: number | null; status: string | null }> {
+  let rows = values;
+  if (!Array.isArray(rows) && rows && typeof rows === "object") {
+    const nested = (rows as Record<string, unknown>).values
+      ?? (rows as Record<string, unknown>).data;
+    if (Array.isArray(nested)) {
+      rows = nested;
+    }
+  }
+  if (!Array.isArray(rows)) {
+    logEmptySeries(seriesId, rows, "values not array");
     return [];
   }
   const points: Array<{ observed_at: string; value: number | null; status: string | null }> = [];
-  for (const row of values) {
-    if (!Array.isArray(row) || row.length < 2) {
+  for (const row of rows) {
+    if (Array.isArray(row)) {
+      if (row.length < 2) {
+        continue;
+      }
+      const observedAt = parseTimestamp(row[0]);
+      if (!observedAt) {
+        continue;
+      }
+      const value = toNumber(row[1]);
+      const status = row.length > 2 && row[2] != null ? String(row[2]) : null;
+      points.push({
+        observed_at: observedAt.toISOString(),
+        value,
+        status,
+      });
       continue;
     }
-    const timestamp = Number(row[0]);
-    if (!Number.isFinite(timestamp)) {
-      continue;
+    if (row && typeof row === "object") {
+      const record = row as Record<string, unknown>;
+      const observedAt = parseTimestamp(
+        record.timestamp ?? record.time ?? record.phenomenonTime ?? record.dateTime ?? record.datetime,
+      );
+      if (!observedAt) {
+        continue;
+      }
+      const value = toNumber(record.value ?? record.result ?? record.v);
+      const status = record.status != null ? String(record.status)
+        : record.quality != null ? String(record.quality)
+        : record.qc != null ? String(record.qc)
+        : null;
+      points.push({
+        observed_at: observedAt.toISOString(),
+        value,
+        status,
+      });
     }
-    const observedAt = new Date(timestamp);
-    if (Number.isNaN(observedAt.getTime())) {
-      continue;
-    }
-    const value = toNumber(row[1]);
-    const status = row.length > 2 && row[2] != null ? String(row[2]) : null;
-    points.push({
-      observed_at: observedAt.toISOString(),
-      value,
-      status,
-    });
+  }
+  if (!points.length) {
+    logEmptySeries(seriesId, rows[0], "no parsed datapoints");
   }
   return points;
 }
@@ -441,6 +476,44 @@ function toNumber(value: unknown): number | null {
     return null;
   }
   return num;
+}
+
+function parseTimestamp(value: unknown): Date | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const timestamp = value < 1e12 ? value * 1000 : value;
+    const observedAt = new Date(timestamp);
+    return Number.isNaN(observedAt.getTime()) ? null : observedAt;
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return null;
+    }
+    const numeric = Number(trimmed);
+    if (Number.isFinite(numeric)) {
+      const timestamp = numeric < 1e12 ? numeric * 1000 : numeric;
+      const observedAt = new Date(timestamp);
+      return Number.isNaN(observedAt.getTime()) ? null : observedAt;
+    }
+    const observedAt = new Date(trimmed);
+    return Number.isNaN(observedAt.getTime()) ? null : observedAt;
+  }
+  return null;
+}
+
+function logEmptySeries(seriesId: number | undefined, sample: unknown, reason: string): void {
+  if (emptySeriesLogs >= 3) {
+    return;
+  }
+  emptySeriesLogs += 1;
+  console.warn("No datapoints parsed", {
+    series_id: seriesId ?? null,
+    reason,
+    sample,
+  });
 }
 
 async function upsertLastValue(
