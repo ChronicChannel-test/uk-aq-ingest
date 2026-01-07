@@ -1,8 +1,9 @@
+// @ts-nocheck
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2?target=deno";
 
 const DEFAULT_STATION_LIKE = "Bristol";
-const DEFAULT_LIMIT = 200;
+const DEFAULT_LIMIT = 1000;
 const MAX_LIMIT = 1000;
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")
@@ -70,6 +71,10 @@ async function loadLatest({ region, stationLike, serviceId, limit }: LoadOptions
   if (region) {
     query = query.ilike("stations.region", `%${region}%`);
   }
+  if (stationLike) {
+    const match = `%${stationLike}%`;
+    query = query.or(`label.ilike.${match},stations.label.ilike.${match}`);
+  }
   if (serviceId) {
     query = query.eq("service_id", serviceId);
   }
@@ -79,31 +84,32 @@ async function loadLatest({ region, stationLike, serviceId, limit }: LoadOptions
     throw new Error(error.message);
   }
 
-  let rows = data ?? [];
-  if (stationLike) {
-    const match = stationLike.toLowerCase();
-    rows = rows.filter((row) => {
-      const stationLabel = row.station?.label ?? "";
-      const seriesLabel = row.label ?? "";
-      return stationLabel.toLowerCase().includes(match)
-        || seriesLabel.toLowerCase().includes(match);
-    });
-  }
+  const rows = data ?? [];
 
   return rows.map((row) => ({
     ...row,
-    station_label: row.station?.label ?? deriveStationLabel(row.label),
-    phenomenon_label: row.phenomenon?.label ?? null,
+    station_label: resolveStationLabel(row.station?.label, row.station?.station_ref, row.label),
+    phenomenon_label: resolvePhenomenonLabel(
+      row.phenomenon?.label,
+      row.phenomenon?.notation,
+      row.phenomenon?.eionet_uri,
+    ),
+    pollutant_label: resolvePhenomenonLabel(
+      row.phenomenon?.label,
+      row.phenomenon?.notation,
+      row.phenomenon?.eionet_uri,
+    ),
+    uom_display: formatUnit(row.uom),
   })).sort((a, b) => {
-    const aStation = a.station?.label ?? "";
-    const bStation = b.station?.label ?? "";
-    const stationCompare = aStation.localeCompare(bStation);
-    if (stationCompare !== 0) {
-      return stationCompare;
+    const aPollutant = a.phenomenon?.label ?? a.phenomenon_label ?? "";
+    const bPollutant = b.phenomenon?.label ?? b.phenomenon_label ?? "";
+    const pollutantCompare = aPollutant.localeCompare(bPollutant);
+    if (pollutantCompare !== 0) {
+      return pollutantCompare;
     }
-    const aPhenomenon = a.phenomenon?.label ?? "";
-    const bPhenomenon = b.phenomenon?.label ?? "";
-    return aPhenomenon.localeCompare(bPhenomenon);
+    const aStation = a.station?.label ?? a.station_label ?? "";
+    const bStation = b.station?.label ?? b.station_label ?? "";
+    return aStation.localeCompare(bStation);
   });
 }
 
@@ -145,5 +151,62 @@ function deriveStationLabel(label: string | null): string | null {
   if (!parts.length) {
     return label;
   }
+  if (parts.length > 1 && (looksLikePollutantUri(parts[0]) || looksLikeUrl(parts[0]))) {
+    return parts[parts.length - 1];
+  }
+  if (parts.length === 1 && looksLikeUrl(parts[0])) {
+    return null;
+  }
   return parts[0];
+}
+
+function resolveStationLabel(
+  stationLabel: string | null | undefined,
+  stationRef: string | null | undefined,
+  seriesLabel: string | null,
+): string | null {
+  return stationLabel
+    ?? deriveStationLabel(seriesLabel)
+    ?? stationRef
+    ?? null;
+}
+
+function resolvePhenomenonLabel(
+  label: string | null | undefined,
+  notation: string | null | undefined,
+  eionetUri: string | null | undefined,
+): string | null {
+  if (label) {
+    return label;
+  }
+  if (notation) {
+    return notation;
+  }
+  if (eionetUri) {
+    return eionetUri.split("/").filter(Boolean).pop() ?? null;
+  }
+  return null;
+}
+
+function looksLikeUrl(value: string): boolean {
+  return /^https?:\/\//i.test(value.trim());
+}
+
+function looksLikePollutantUri(value: string): boolean {
+  return /dd\.eionet\.europa\.eu\/vocabulary\/aq\/pollutant\//i.test(value);
+}
+
+function formatUnit(unit: string | null): string | null {
+  if (!unit) {
+    return null;
+  }
+  const trimmed = unit.trim();
+  if (!trimmed) {
+    return null;
+  }
+  const normalized = trimmed.toLowerCase().replace(/µ/g, "u");
+  if (normalized.includes("ug") && /m\s*[-^]?\s*3/.test(normalized)) {
+    return "µg/m³";
+  }
+  return trimmed;
 }

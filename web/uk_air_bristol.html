@@ -128,6 +128,29 @@
         color: var(--ink-soft);
       }
 
+      .filters {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        align-items: center;
+        font-size: 0.9rem;
+        color: var(--ink-soft);
+      }
+
+      .filters label {
+        font-weight: 600;
+        color: var(--ink);
+      }
+
+      .filters select {
+        background: #fff;
+        border: 1px solid rgba(20, 34, 37, 0.15);
+        border-radius: 999px;
+        padding: 6px 12px;
+        font-size: 0.9rem;
+        color: var(--ink);
+      }
+
       button {
         border: none;
         background: var(--teal);
@@ -241,13 +264,19 @@
           </div>
         </div>
         <div class="hint" id="endpoint-hint"></div>
+        <div class="filters">
+          <label for="pollutant-filter">Pollutant</label>
+          <select id="pollutant-filter">
+            <option value="">All pollutants</option>
+          </select>
+        </div>
         <div class="error" id="error"></div>
         <div style="overflow-x: auto;">
           <table>
             <thead>
               <tr>
                 <th>Station</th>
-                <th>Phenomenon</th>
+                <th>Pollutant</th>
                 <th>Value</th>
                 <th>Unit</th>
                 <th>Observed</th>
@@ -266,6 +295,7 @@
       const regionParam = params.get("region");
       const region = regionParam || "Bristol";
       const stationLike = params.get("station_like") || (regionParam ? null : region);
+      const limitParam = params.get("limit");
       const projectRefParam = params.get("project_ref");
       const anonKeyParam = params.get("anon_key");
       const inferredProjectRef = inferProjectRefFromHost();
@@ -286,6 +316,8 @@
       const lastUpdated = document.getElementById("last-updated");
       const regionBadge = document.getElementById("region-badge");
       const endpointHint = document.getElementById("endpoint-hint");
+      const pollutantSelect = document.getElementById("pollutant-filter");
+      let cachedRows = [];
 
       regionBadge.textContent = region;
       endpointHint.textContent = EDGE_URL
@@ -325,6 +357,95 @@
         return Date.now() - value > 2 * 60 * 60 * 1000;
       }
 
+      function getPollutantLabel(row) {
+        return row.pollutant_label
+          || row.phenomenon?.label
+          || row.phenomenon_label
+          || "Unknown";
+      }
+
+      function sortRows(rows) {
+        return [...rows].sort((a, b) => {
+          const aPollutant = getPollutantLabel(a);
+          const bPollutant = getPollutantLabel(b);
+          const pollutantCompare = aPollutant.localeCompare(bPollutant);
+          if (pollutantCompare !== 0) {
+            return pollutantCompare;
+          }
+          const aStation = a.station?.label || a.station_label || "";
+          const bStation = b.station?.label || b.station_label || "";
+          return aStation.localeCompare(bStation);
+        });
+      }
+
+      function updatePollutantOptions(rows) {
+        if (!pollutantSelect) {
+          return;
+        }
+        const current = pollutantSelect.value;
+        const options = Array.from(new Set(rows.map((row) => getPollutantLabel(row))))
+          .filter(Boolean)
+          .sort((a, b) => a.localeCompare(b));
+        pollutantSelect.innerHTML = "";
+        const allOption = document.createElement("option");
+        allOption.value = "";
+        allOption.textContent = "All pollutants";
+        pollutantSelect.appendChild(allOption);
+        options.forEach((label) => {
+          const option = document.createElement("option");
+          option.value = label;
+          option.textContent = label;
+          pollutantSelect.appendChild(option);
+        });
+        if (current && options.includes(current)) {
+          pollutantSelect.value = current;
+        }
+      }
+
+      function renderRows(rows) {
+        const selected = pollutantSelect ? pollutantSelect.value : "";
+        const filtered = selected
+          ? rows.filter((row) => getPollutantLabel(row) === selected)
+          : rows;
+        const ordered = sortRows(filtered);
+        tableBody.innerHTML = "";
+
+        ordered.forEach((row) => {
+          const tr = document.createElement("tr");
+          const station = row.station?.label || row.station_label || "Unknown station";
+          const pollutant = getPollutantLabel(row);
+          const value = formatValue(row.last_value);
+          const unit = row.uom_display || row.uom || "";
+          const observed = formatTime(row.last_value_at);
+
+          const stationCell = document.createElement("td");
+          stationCell.textContent = station;
+
+          const pollutantCell = document.createElement("td");
+          pollutantCell.textContent = pollutant;
+
+          const valueCell = document.createElement("td");
+          valueCell.className = `value ${isStale(row.last_value_at) ? "stale" : ""}`;
+          valueCell.textContent = value;
+
+          const unitCell = document.createElement("td");
+          unitCell.textContent = unit;
+
+          const observedCell = document.createElement("td");
+          observedCell.textContent = observed;
+
+          tr.appendChild(stationCell);
+          tr.appendChild(pollutantCell);
+          tr.appendChild(valueCell);
+          tr.appendChild(unitCell);
+          tr.appendChild(observedCell);
+
+          tableBody.appendChild(tr);
+        });
+
+        rowCount.textContent = `${ordered.length} series`;
+      }
+
       function buildEndpoint() {
         if (!EDGE_URL) {
           return "";
@@ -335,6 +456,11 @@
         }
         if (stationLike) {
           url.searchParams.set("station_like", stationLike);
+        }
+        if (limitParam) {
+          url.searchParams.set("limit", limitParam);
+        } else {
+          url.searchParams.set("limit", "1000");
         }
         return url.toString();
       }
@@ -364,43 +490,9 @@
             throw new Error(`Request failed: ${response.status}`);
           }
           const payload = await response.json();
-          const rows = payload.data || [];
-          tableBody.innerHTML = "";
-
-          rows.forEach((row) => {
-            const tr = document.createElement("tr");
-            const station = row.station?.label || row.station_label || "Unknown station";
-            const phenomenon = row.phenomenon?.label || row.phenomenon_label || "Unknown";
-            const value = formatValue(row.last_value);
-            const unit = row.uom || "";
-            const observed = formatTime(row.last_value_at);
-
-            const stationCell = document.createElement("td");
-            stationCell.textContent = station;
-
-            const phenomenonCell = document.createElement("td");
-            phenomenonCell.textContent = phenomenon;
-
-            const valueCell = document.createElement("td");
-            valueCell.className = `value ${isStale(row.last_value_at) ? "stale" : ""}`;
-            valueCell.textContent = value;
-
-            const unitCell = document.createElement("td");
-            unitCell.textContent = unit;
-
-            const observedCell = document.createElement("td");
-            observedCell.textContent = observed;
-
-            tr.appendChild(stationCell);
-            tr.appendChild(phenomenonCell);
-            tr.appendChild(valueCell);
-            tr.appendChild(unitCell);
-            tr.appendChild(observedCell);
-
-            tableBody.appendChild(tr);
-          });
-
-          rowCount.textContent = `${rows.length} series`;
+          cachedRows = payload.data || [];
+          updatePollutantOptions(cachedRows);
+          renderRows(cachedRows);
           lastUpdated.textContent = `Updated ${new Date().toLocaleTimeString()}`;
           statusEl.textContent = "Live";
         } catch (error) {
@@ -411,6 +503,9 @@
       }
 
       document.getElementById("refresh").addEventListener("click", loadData);
+      if (pollutantSelect) {
+        pollutantSelect.addEventListener("change", () => renderRows(cachedRows));
+      }
       loadData();
       setInterval(loadData, 5 * 60 * 1000);
 

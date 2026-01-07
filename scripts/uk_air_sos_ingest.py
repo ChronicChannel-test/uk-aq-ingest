@@ -44,6 +44,7 @@ load_dotenv()
 
 DEFAULT_LOG_LEVEL = os.getenv("UK_AIR_LOG_LEVEL", "WARNING").upper()
 DEFAULT_FILE_LOG_LEVEL = os.getenv("UK_AIR_FILE_LOG_LEVEL", "INFO").upper()
+PROGRESS_DOT_EVERY = 50
 LOG = logging.getLogger("uk_air_sos")
 logging.basicConfig(
     level=getattr(logging, DEFAULT_LOG_LEVEL, logging.WARNING),
@@ -186,6 +187,27 @@ def _configure_logging(console_level_name: str, file_level_name: str) -> None:
 def _emit_info(message: str) -> None:
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S,%f")[:-3]
     print(f"{timestamp} INFO {message}")
+
+
+def _progress_start(label: str, total: int) -> None:
+    if total <= 0:
+        print(f"{label}: none.")
+        return
+    print(f"{label}: {total} items", end="", flush=True)
+
+
+def _progress_tick(current: int, total: int) -> None:
+    if total <= 0:
+        return
+    if current % PROGRESS_DOT_EVERY == 0 or current == total:
+        print(".", end="", flush=True)
+
+
+def _progress_done(label: str, total: int) -> None:
+    if total <= 0:
+        return
+    print("")
+    print(f"{label} complete.")
 
 
 def _add_file_logger(path: Path, level_name: str) -> logging.Handler:
@@ -1062,11 +1084,12 @@ class UkAirIngestor:
         errors = 0
         start = datetime(year, 1, 1, tzinfo=timezone.utc)
         end = datetime(year + 1, 1, 1, tzinfo=timezone.utc)
-        for ts in series:
+        eligible = [ts for ts in series if ts.get("id") is not None and ts.get("_db_id") is not None]
+        total = len(eligible)
+        _progress_start(f"Backfill {year}", total)
+        for idx, ts in enumerate(eligible, start=1):
             ts_ref = ts.get("id")
             ts_db_id = ts.get("_db_id")
-            if ts_ref is None or ts_db_id is None:
-                continue
             try:
                 LOG.debug("Backfilling %s for %s", ts_ref, year)
                 for chunk_start in _range_chunks(start, end, timedelta(days=chunk_days)):
@@ -1084,6 +1107,8 @@ class UkAirIngestor:
             except Exception as exc:
                 errors += 1
                 LOG.debug("Backfill failed for %s: %s", ts_ref, exc)
+            _progress_tick(idx, total)
+        _progress_done(f"Backfill {year}", total)
         return errors
 
     def refresh_recent(self, series: Sequence[Dict[str, Any]], hours: int = 6) -> int:
@@ -1091,11 +1116,12 @@ class UkAirIngestor:
         window_start = utcnow() - timedelta(hours=hours)
         window_end = utcnow()
         timespan = f"{window_start.isoformat()}/{window_end.isoformat()}"
-        for ts in series:
+        eligible = [ts for ts in series if ts.get("id") is not None and ts.get("_db_id") is not None]
+        total = len(eligible)
+        _progress_start(f"Refresh recent ({hours}h)", total)
+        for idx, ts in enumerate(eligible, start=1):
             ts_ref = ts.get("id")
             ts_db_id = ts.get("_db_id")
-            if ts_ref is None or ts_db_id is None:
-                continue
             try:
                 LOG.debug("Refreshing recent window for %s (%sh)", ts_ref, hours)
                 data = self.client.timeseries_data(str(ts_ref), timespan)
@@ -1110,6 +1136,8 @@ class UkAirIngestor:
             except Exception as exc:
                 errors += 1
                 LOG.debug("Refresh failed for %s: %s", ts_ref, exc)
+            _progress_tick(idx, total)
+        _progress_done(f"Refresh recent ({hours}h)", total)
         return errors
 
 

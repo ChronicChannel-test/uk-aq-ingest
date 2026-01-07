@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2?target=deno";
 
@@ -288,7 +289,7 @@ function createLogBuffer(): LogBuffer {
   const push = (level: string, message: string, context?: Record<string, unknown>) => {
     const timestamp = new Date().toISOString();
     const base = `${timestamp} ${level} ${message}`;
-    lines.push(context ? `${base} ${JSON.stringify(context)}` : base);
+    lines.push(context ? `${base} ${formatContext(context)}` : base);
   };
   return {
     lines,
@@ -296,6 +297,25 @@ function createLogBuffer(): LogBuffer {
     warn: (message, context) => push("WARN", message, context),
     error: (message, context) => push("ERROR", message, context),
   };
+}
+
+function formatContext(context: Record<string, unknown>): string {
+  return Object.entries(context)
+    .map(([key, value]) => `${key}=${formatLogValue(value)}`)
+    .join(" ");
+}
+
+function formatLogValue(value: unknown): string {
+  if (value === null || value === undefined) {
+    return "null";
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map((entry) => formatLogValue(entry)).join(",")}]`;
+  }
+  if (typeof value === "object") {
+    return JSON.stringify(value);
+  }
+  return String(value);
 }
 
 function createRawRecorder(): RawRecorder {
