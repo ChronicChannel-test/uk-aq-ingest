@@ -106,6 +106,23 @@ Environment:
 - `DROPBOX_APP_KEY`, `DROPBOX_APP_SECRET`, `DROPBOX_REFRESH_TOKEN`
 - Optional `UK_AIR_RAW_DROPBOX_FOLDER` (defaults to `/raw_data`)
 
+### `scripts/uk_air_error_log_archive.py`
+Purpose:
+- Zip each day of per-error Dropbox logs into `/error_log/YYYY-MM-DD.zip`.
+- Delete the original per-error folder after archiving.
+- Delete archived ZIPs older than the retention window (default: 365 days).
+
+Common commands:
+```
+python3 scripts/uk_air_error_log_archive.py
+python3 scripts/uk_air_error_log_archive.py --date 2026-01-07
+```
+
+Environment:
+- `DROPBOX_APP_KEY`, `DROPBOX_APP_SECRET`, `DROPBOX_REFRESH_TOKEN`
+- `SUPABASE_URL` + `UK_AIR_ERROR_DROPBOX_ALLOWED_SUPABASE_URL` (must match to run)
+- Optional `UK_AIR_ERROR_DROPBOX_FOLDER` (defaults to `/error_log`)
+
 ### `scripts/uk_air_inject_project_ref.mjs`
 Purpose:
 - Inject `SUPABASE_PROJECT_REF` and the anon JWT into `web/uk_air_bristol.html` for the live Edge Function URL.

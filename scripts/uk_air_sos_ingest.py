@@ -30,6 +30,8 @@ import os
 import re
 import tempfile
 import time
+import traceback
+import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -73,6 +75,7 @@ DEFAULT_POLLUTANTS = {"no2", "o3", "pm10", "pm2.5"}
 EIONET_POLLUTANT_RE = re.compile(r"https?://dd\.eionet\.europa\.eu/vocabulary/aq/pollutant/\d+")
 DEFAULT_TIMESERIES_STATION_BATCH_SIZE = 50
 DEFAULT_RAW_DROPBOX_FOLDER = "/raw_data"
+DEFAULT_ERROR_DROPBOX_FOLDER = "/error_log"
 DROPBOX_TOKEN_URL = "https://api.dropbox.com/oauth2/token"
 DROPBOX_UPLOAD_URL = "https://content.dropboxapi.com/2/files/upload"
 DROPBOX_LIST_FOLDER_URL = "https://api.dropboxapi.com/2/files/list_folder"
@@ -165,6 +168,81 @@ class RawDropboxSession:
             LOG.warning("Dropbox upload failed: %s", exc)
         finally:
             self.temp_dir.cleanup()
+
+
+class ErrorLogger:
+    def __init__(self, client: Client) -> None:
+        self.client = client
+        self.dropbox_config = _load_error_dropbox_config()
+        self._dropbox_access_token: Optional[str] = None
+
+    def log_error(
+        self,
+        *,
+        source: str,
+        severity: str,
+        message: str,
+        context: Optional[Dict[str, Any]] = None,
+        service_id: Optional[int] = None,
+        station_id: Optional[int] = None,
+        timeseries_id: Optional[int] = None,
+        exc: Optional[BaseException] = None,
+    ) -> None:
+        error_id = str(uuid.uuid4())
+        created_at = utcnow().isoformat()
+        stack = None
+        if exc is not None:
+            stack = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+        payload: Dict[str, Any] = {
+            "id": error_id,
+            "source": source,
+            "severity": severity,
+            "message": message,
+            "stack": stack,
+            "context": context,
+            "service_id": service_id,
+            "station_id": station_id,
+            "timeseries_id": timeseries_id,
+        }
+        try:
+            self.client.table("error_logs").insert(payload).execute()
+        except Exception as insert_exc:
+            LOG.warning("Failed to insert error_logs row: %s", insert_exc)
+            return
+
+        if not self.dropbox_config:
+            return
+
+        dropbox_path = _dropbox_error_target_path(
+            self.dropbox_config.folder,
+            _build_error_filename(created_at, error_id),
+        )
+        error_payload = {
+            "id": error_id,
+            "created_at": created_at,
+            "source": source,
+            "severity": severity,
+            "message": message,
+            "stack": stack,
+            "context": context,
+            "service_id": service_id,
+            "station_id": station_id,
+            "timeseries_id": timeseries_id,
+        }
+        try:
+            if not self._dropbox_access_token:
+                self._dropbox_access_token = _dropbox_refresh_access_token(self.dropbox_config)
+            _dropbox_upload_bytes(
+                self._dropbox_access_token,
+                json.dumps(error_payload, ensure_ascii=True, indent=2).encode("utf-8"),
+                dropbox_path,
+            )
+            self.client.table("error_logs").update({"dropbox_path": dropbox_path}).eq(
+                "id",
+                error_id,
+            ).execute()
+        except Exception as exc:
+            LOG.warning("Dropbox error log upload failed: %s", exc)
 
 
 def utcnow() -> datetime:
@@ -324,6 +402,25 @@ def _dropbox_log_target_path(folder: str, filename: str) -> str:
     return f"{_dropbox_log_folder_path(folder)}/{filename}"
 
 
+def _dropbox_error_root_folder(folder: str) -> str:
+    root = _dropbox_root_folder(folder or DEFAULT_ERROR_DROPBOX_FOLDER)
+    if root.endswith("/error_log"):
+        root = root[: -len("/error_log")]
+    if root:
+        return f"{root}/error_log"
+    return "/error_log"
+
+
+def _dropbox_error_folder_path(folder: str, date_folder: Optional[str] = None) -> str:
+    root = _dropbox_error_root_folder(folder)
+    date_folder = date_folder or utcnow().strftime("%Y-%m-%d")
+    return f"{root}/{date_folder}"
+
+
+def _dropbox_error_target_path(folder: str, filename: str) -> str:
+    return f"{_dropbox_error_folder_path(folder)}/{filename}"
+
+
 def _dropbox_archive_logs(
     access_token: str,
     log_root: str,
@@ -446,6 +543,14 @@ def _build_log_filename(args: argparse.Namespace) -> str:
     return f"{'_'.join(parts)}.log"
 
 
+def _build_error_filename(created_at: str, error_id: str) -> str:
+    try:
+        stamp = datetime.fromisoformat(created_at.replace("Z", "+00:00")).strftime("%Y%m%dT%H%M%SZ")
+    except ValueError:
+        stamp = utcnow().strftime("%Y%m%dT%H%M%SZ")
+    return f"uk_air_error_{stamp}_{error_id}.json"
+
+
 def _load_dropbox_config(folder_override: Optional[str]) -> Optional[DropboxConfig]:
     app_key = os.getenv("DROPBOX_APP_KEY", "").strip()
     app_secret = os.getenv("DROPBOX_APP_SECRET", "").strip()
@@ -453,6 +558,24 @@ def _load_dropbox_config(folder_override: Optional[str]) -> Optional[DropboxConf
     folder = (folder_override or os.getenv("UK_AIR_RAW_DROPBOX_FOLDER") or DEFAULT_RAW_DROPBOX_FOLDER).strip()
     if not (app_key and app_secret and refresh_token):
         LOG.warning("Dropbox credentials missing; skipping raw payload upload.")
+        return None
+    return DropboxConfig(
+        app_key=app_key,
+        app_secret=app_secret,
+        refresh_token=refresh_token,
+        folder=folder,
+    )
+
+
+def _load_error_dropbox_config() -> Optional[DropboxConfig]:
+    if not _error_dropbox_allowed():
+        return None
+    app_key = os.getenv("DROPBOX_APP_KEY", "").strip()
+    app_secret = os.getenv("DROPBOX_APP_SECRET", "").strip()
+    refresh_token = os.getenv("DROPBOX_REFRESH_TOKEN", "").strip()
+    folder = (os.getenv("UK_AIR_ERROR_DROPBOX_FOLDER") or DEFAULT_ERROR_DROPBOX_FOLDER).strip()
+    if not (app_key and app_secret and refresh_token):
+        LOG.warning("Dropbox credentials missing; skipping error Dropbox upload.")
         return None
     return DropboxConfig(
         app_key=app_key,
@@ -470,6 +593,18 @@ def _raw_dropbox_allowed() -> bool:
         return False
     if supabase_url != allowed_url:
         LOG.warning("Raw Dropbox upload disabled (SUPABASE_URL does not match allowed URL).")
+        return False
+    return True
+
+
+def _error_dropbox_allowed() -> bool:
+    supabase_url = os.getenv("SUPABASE_URL", "").strip()
+    allowed_url = os.getenv("UK_AIR_ERROR_DROPBOX_ALLOWED_SUPABASE_URL", "").strip()
+    if not allowed_url:
+        LOG.warning("UK_AIR_ERROR_DROPBOX_ALLOWED_SUPABASE_URL not set; error Dropbox upload disabled.")
+        return False
+    if supabase_url != allowed_url:
+        LOG.warning("Error Dropbox upload disabled (SUPABASE_URL does not match allowed URL).")
         return False
     return True
 
@@ -992,9 +1127,33 @@ class SupabaseWriter:
 
 
 class UkAirIngestor:
-    def __init__(self, client: UkAirClient, writer: SupabaseWriter) -> None:
+    def __init__(self, client: UkAirClient, writer: SupabaseWriter, error_logger: Optional[ErrorLogger]) -> None:
         self.client = client
         self.writer = writer
+        self.error_logger = error_logger
+
+    def _log_error(
+        self,
+        message: str,
+        exc: BaseException,
+        *,
+        context: Optional[Dict[str, Any]] = None,
+        service_id: Optional[int] = None,
+        station_id: Optional[int] = None,
+        timeseries_id: Optional[int] = None,
+    ) -> None:
+        if not self.error_logger:
+            return
+        self.error_logger.log_error(
+            source="ingest",
+            severity="error",
+            message=message,
+            context=context,
+            service_id=service_id,
+            station_id=station_id,
+            timeseries_id=timeseries_id,
+            exc=exc,
+        )
 
     def discover_service(
         self,
@@ -1169,7 +1328,13 @@ class UkAirIngestor:
             ts["_db_id"] = timeseries_id_map.get(str(ts_ref))
         return filtered
 
-    def backfill_year(self, series: Sequence[Dict[str, Any]], year: int, chunk_days: int = 31) -> int:
+    def backfill_year(
+        self,
+        series: Sequence[Dict[str, Any]],
+        year: int,
+        chunk_days: int = 31,
+        service_id: Optional[int] = None,
+    ) -> int:
         errors = 0
         start = datetime(year, 1, 1, tzinfo=timezone.utc)
         end = datetime(year + 1, 1, 1, tzinfo=timezone.utc)
@@ -1196,11 +1361,23 @@ class UkAirIngestor:
             except Exception as exc:
                 errors += 1
                 LOG.debug("Backfill failed for %s: %s", ts_ref, exc)
+                self._log_error(
+                    "Backfill failed for timeseries.",
+                    exc,
+                    context={"timeseries_ref": ts_ref, "year": year},
+                    service_id=service_id,
+                    timeseries_id=ts_db_id,
+                )
             _progress_tick(idx, total)
         _progress_done(f"Backfill {year}", total)
         return errors
 
-    def refresh_recent(self, series: Sequence[Dict[str, Any]], hours: int = 6) -> int:
+    def refresh_recent(
+        self,
+        series: Sequence[Dict[str, Any]],
+        hours: int = 6,
+        service_id: Optional[int] = None,
+    ) -> int:
         errors = 0
         window_start = utcnow() - timedelta(hours=hours)
         window_end = utcnow()
@@ -1225,6 +1402,13 @@ class UkAirIngestor:
             except Exception as exc:
                 errors += 1
                 LOG.debug("Refresh failed for %s: %s", ts_ref, exc)
+                self._log_error(
+                    "Refresh failed for timeseries.",
+                    exc,
+                    context={"timeseries_ref": ts_ref, "window_hours": hours},
+                    service_id=service_id,
+                    timeseries_id=ts_db_id,
+                )
             _progress_tick(idx, total)
         _progress_done(f"Refresh recent ({hours}h)", total)
         return errors
@@ -1765,7 +1949,8 @@ def main() -> None:
     raw_session = _prepare_raw_dropbox_session(args)
     client = UkAirClient(raw_recorder=raw_session.recorder if raw_session else None)
     writer = SupabaseWriter()
-    ingestor = UkAirIngestor(client, writer)
+    error_logger = ErrorLogger(writer.client)
+    ingestor = UkAirIngestor(client, writer, error_logger)
     stations_count = 0
     errors = 0
 
@@ -1852,11 +2037,26 @@ def main() -> None:
 
         backfill_year = args.backfill_year or (2025 if args.backfill_2025 else None)
         if backfill_year:
-            errors += ingestor.backfill_year(series, backfill_year, chunk_days=args.chunk_days)
+            errors += ingestor.backfill_year(
+                series,
+                backfill_year,
+                chunk_days=args.chunk_days,
+                service_id=service.id,
+            )
         if args.refresh_recent:
-            errors += ingestor.refresh_recent(series, hours=args.hours)
+            errors += ingestor.refresh_recent(series, hours=args.hours, service_id=service.id)
         if not any([args.discover, backfill_year, args.refresh_recent]):
             LOG.debug("No action flags set; use --discover, --backfill-year, or --refresh-recent.")
+    except Exception as exc:
+        errors += 1
+        LOG.warning("Unhandled ingest error: %s", exc)
+        error_logger.log_error(
+            source="ingest",
+            severity="error",
+            message="Unhandled ingest error.",
+            context={"station_like": args.station_like, "region": args.region},
+            exc=exc,
+        )
     finally:
         if raw_session:
             raw_session.finalize()

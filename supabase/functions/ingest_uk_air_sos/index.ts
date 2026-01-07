@@ -27,6 +27,17 @@ type DropboxConfig = {
   refreshToken: string;
 };
 
+type ErrorLogEntry = {
+  source: string;
+  severity: string;
+  message: string;
+  stack?: string | null;
+  context?: Record<string, unknown> | null;
+  service_id?: string | number | null;
+  station_id?: string | number | null;
+  timeseries_id?: string | number | null;
+};
+
 const DEFAULT_BASE_URL = "https://uk-air.defra.gov.uk/sos-ukair/api/v1";
 const DEFAULT_SERVICE_LABEL = "UK-AIR-SOS";
 const DEFAULT_WINDOW_HOURS = 6;
@@ -50,8 +61,15 @@ const DROPBOX_APP_KEY = Deno.env.get("DROPBOX_APP_KEY") ?? "";
 const DROPBOX_APP_SECRET = Deno.env.get("DROPBOX_APP_SECRET") ?? "";
 const DROPBOX_REFRESH_TOKEN = Deno.env.get("DROPBOX_REFRESH_TOKEN") ?? "";
 const DROPBOX_ALLOWED_SUPABASE_URL = Deno.env.get("UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL") ?? "";
+const DROPBOX_ERROR_ALLOWED_SUPABASE_URL =
+  Deno.env.get("UK_AIR_ERROR_DROPBOX_ALLOWED_SUPABASE_URL") ?? "";
 const DROPBOX_LOG_FOLDER = "/log";
 const DROPBOX_RAW_FOLDER = "/raw_data";
+const DROPBOX_ERROR_FOLDER = (() => {
+  const raw = Deno.env.get("UK_AIR_ERROR_DROPBOX_FOLDER") ?? "error_log";
+  const cleaned = raw.startsWith("/") ? raw : `/${raw}`;
+  return cleaned.replace(/\/$/, "");
+})();
 const DROPBOX_LOG_RETENTION_DAYS = 31;
 const DROPBOX_TOKEN_URL = "https://api.dropbox.com/oauth2/token";
 const DROPBOX_UPLOAD_URL = "https://content.dropboxapi.com/2/files/upload";
@@ -68,6 +86,11 @@ serve(async (req) => {
   }
   const log = createLogBuffer();
   const dropboxConfig = loadDropboxConfig();
+  const errorDropboxConfig = loadErrorDropboxConfig();
+  const errorLogger = createErrorLogger(
+    errorDropboxConfig,
+    Boolean(SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY),
+  );
   const rawRecorder = dropboxConfig ? createRawRecorder() : null;
   const errors: string[] = [];
   let status = 200;
@@ -195,6 +218,19 @@ serve(async (req) => {
               const message = err instanceof Error ? err.message : String(err);
               errors.push(`${row.id}: ${message}`);
               console.warn(`Poll failed for ${row.id}: ${message}`);
+              await errorLogger.logError({
+                source: "edge",
+                severity: "error",
+                message: `Poll failed for timeseries ${row.id}.`,
+                stack: err instanceof Error ? err.stack : undefined,
+                context: {
+                  timeseries_ref: row.timeseries_ref,
+                  timespan,
+                  service_id: service?.id ?? requestedServiceId ?? null,
+                },
+                service_id: service?.id ?? requestedServiceId ?? null,
+                timeseries_id: row.id,
+              });
             }
           });
 
@@ -204,6 +240,16 @@ serve(async (req) => {
             .eq("id", service.id);
           if (pollUpdateError) {
             errors.push(`service last_polled_at update failed: ${pollUpdateError.message}`);
+            await errorLogger.logError({
+              source: "edge",
+              severity: "error",
+              message: "Failed to update services.last_polled_at.",
+              context: {
+                service_id: service.id,
+                error: pollUpdateError.message,
+              },
+              service_id: service.id,
+            });
           }
 
           status = errors.length ? 207 : 200;
@@ -223,6 +269,17 @@ serve(async (req) => {
     status = 500;
     responsePayload = { error: "Unhandled error", message };
     log.error("Unhandled error during poll.", { message });
+    await errorLogger.logError({
+      source: "edge",
+      severity: "error",
+      message: "Unhandled error during poll.",
+      stack: err instanceof Error ? err.stack : undefined,
+      context: {
+        service_id: requestedServiceId ?? null,
+        service_label: requestedServiceLabel,
+      },
+      service_id: requestedServiceId ?? null,
+    });
   } finally {
     log.info("Poll summary", {
       service_id: service?.id ?? requestedServiceId ?? null,
@@ -408,6 +465,20 @@ function loadDropboxConfig(): DropboxConfig | null {
   };
 }
 
+function loadErrorDropboxConfig(): DropboxConfig | null {
+  if (!DROPBOX_APP_KEY || !DROPBOX_APP_SECRET || !DROPBOX_REFRESH_TOKEN) {
+    return null;
+  }
+  if (!DROPBOX_ERROR_ALLOWED_SUPABASE_URL || DROPBOX_ERROR_ALLOWED_SUPABASE_URL !== SUPABASE_URL) {
+    return null;
+  }
+  return {
+    appKey: DROPBOX_APP_KEY,
+    appSecret: DROPBOX_APP_SECRET,
+    refreshToken: DROPBOX_REFRESH_TOKEN,
+  };
+}
+
 function buildDropboxLogPath(serviceId: string | null, timestamp: Date): string {
   const stamp = formatCompactTimestamp(timestamp);
   const dateFolder = formatDateYmd(timestamp);
@@ -420,6 +491,12 @@ function buildDropboxRawPath(serviceId: string | null, timestamp: Date): string 
   const dateFolder = formatDateYmd(timestamp);
   const suffix = serviceId ? `_service_${serviceId}` : "";
   return `${DROPBOX_RAW_FOLDER}/${dateFolder}/uk_air_raw_edge_${stamp}${suffix}.zip`;
+}
+
+function buildDropboxErrorPath(errorId: string, createdAt: string): string {
+  const dateFolder = createdAt.slice(0, 10);
+  const stamp = formatCompactTimestamp(new Date(createdAt));
+  return `${DROPBOX_ERROR_FOLDER}/${dateFolder}/uk_air_error_${stamp}_${errorId}.json`;
 }
 
 function formatCompactTimestamp(timestamp: Date): string {
@@ -472,6 +549,53 @@ async function uploadDropboxRaw(
   } catch (err) {
     console.warn("Dropbox raw upload failed:", err);
   }
+}
+
+function createErrorLogger(config: DropboxConfig | null, enabled: boolean) {
+  let accessToken: string | null = null;
+  return {
+    async logError(entry: ErrorLogEntry): Promise<void> {
+      if (!enabled) {
+        return;
+      }
+      const errorId = crypto.randomUUID();
+      const createdAt = new Date().toISOString();
+      const row = {
+        id: errorId,
+        source: entry.source,
+        severity: entry.severity,
+        message: entry.message,
+        stack: entry.stack ?? null,
+        context: entry.context ?? null,
+        service_id: entry.service_id ?? null,
+        station_id: entry.station_id ?? null,
+        timeseries_id: entry.timeseries_id ?? null,
+      };
+      const { error } = await supabase.from("error_logs").insert(row);
+      if (error) {
+        console.warn("error_logs insert failed:", error.message);
+        return;
+      }
+      if (!config) {
+        return;
+      }
+      try {
+        if (!accessToken) {
+          accessToken = await dropboxRefreshAccessToken(config);
+        }
+        const dropboxPath = buildDropboxErrorPath(errorId, createdAt);
+        const payload = {
+          ...row,
+          created_at: createdAt,
+          dropbox_path: dropboxPath,
+        };
+        await dropboxUploadFile(accessToken, dropboxPath, JSON.stringify(payload, null, 2));
+        await supabase.from("error_logs").update({ dropbox_path: dropboxPath }).eq("id", errorId);
+      } catch (err) {
+        console.warn("Dropbox error log upload failed:", err);
+      }
+    },
+  };
 }
 
 async function dropboxRefreshAccessToken(config: DropboxConfig): Promise<string> {
