@@ -16,7 +16,7 @@ create table if not exists services (
   poll_enabled boolean default true,
   poll_interval_minutes int default 60,
   poll_window_hours int default 6,
-  poll_timeseries_batch_size int default 50,
+  poll_timeseries_batch_size int,
   stations_bbox_supported boolean default true,
   timeseries_station_filter_supported boolean default true,
   last_polled_at timestamptz,
@@ -44,7 +44,8 @@ for each row execute function services_apply_known_defaults();
 
 update services
 set stations_bbox_supported = false,
-    timeseries_station_filter_supported = false
+    timeseries_station_filter_supported = false,
+    poll_timeseries_batch_size = null
 where service_url = 'https://uk-air.defra.gov.uk/sos-ukair/api/v1'
    or label = 'UK-AIR-SOS';
 

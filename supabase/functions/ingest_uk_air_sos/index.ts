@@ -667,6 +667,18 @@ function crc32(data: Uint8Array): number {
   return (crc ^ 0xffffffff) >>> 0;
 }
 
+function toDosDateTime(date: Date): { dosTime: number; dosDate: number } {
+  const year = Math.max(1980, date.getFullYear());
+  const month = date.getMonth() + 1;
+  const day = date.getDate();
+  const hour = date.getHours();
+  const minute = date.getMinutes();
+  const second = date.getSeconds();
+  const dosTime = (hour << 11) | (minute << 5) | Math.floor(second / 2);
+  const dosDate = ((year - 1980) << 9) | (month << 5) | day;
+  return { dosTime, dosDate };
+}
+
 async function zipTextCompressed(filename: string, content: string): Promise<Uint8Array> {
   const encoder = new TextEncoder();
   const data = encoder.encode(content);
@@ -675,6 +687,7 @@ async function zipTextCompressed(filename: string, content: string): Promise<Uin
   const fileSize = data.length;
   const compressed = await deflateRaw(data);
   const compressedSize = compressed.length;
+  const { dosTime, dosDate } = toDosDateTime(new Date());
 
   const header: number[] = [];
   const push16 = (value: number) => {
@@ -689,8 +702,8 @@ async function zipTextCompressed(filename: string, content: string): Promise<Uin
   push16(20);
   push16(0);
   push16(8);
-  push16(0);
-  push16(0);
+  push16(dosTime);
+  push16(dosDate);
   push32(crc);
   push32(compressedSize);
   push32(fileSize);
@@ -715,8 +728,8 @@ async function zipTextCompressed(filename: string, content: string): Promise<Uin
   c16(20);
   c16(0);
   c16(8);
-  c16(0);
-  c16(0);
+  c16(dosTime);
+  c16(dosDate);
   c32(crc);
   c32(compressedSize);
   c32(fileSize);
