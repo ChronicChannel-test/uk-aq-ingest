@@ -89,5 +89,5 @@ The default schedule runs 5 minutes past each quarter-hour (:05, :20, :35, :50) 
 
 Dropbox log output (optional):
 - When Dropbox credentials and the allowlist URL are set, each run uploads a log file to `/log/YYYY-MM-DD` in the Dropbox app root.
-- Logs older than 31 days are deleted on each run.
+- Logs older than 31 days are zipped into `/log/archive/YYYY-MM-DD.zip`; archive files older than 1 year are removed.
 - When the allowlist URL matches the test Supabase project, the Edge Function also uploads a zipped raw payload capture to `/raw_data/YYYY-MM-DD`.

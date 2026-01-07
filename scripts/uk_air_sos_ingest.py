@@ -76,6 +76,7 @@ DEFAULT_RAW_DROPBOX_FOLDER = "/raw_data"
 DROPBOX_TOKEN_URL = "https://api.dropbox.com/oauth2/token"
 DROPBOX_UPLOAD_URL = "https://content.dropboxapi.com/2/files/upload"
 DROPBOX_LIST_FOLDER_URL = "https://api.dropboxapi.com/2/files/list_folder"
+DROPBOX_DOWNLOAD_ZIP_URL = "https://content.dropboxapi.com/2/files/download_zip"
 DROPBOX_DELETE_URL = "https://api.dropboxapi.com/2/files/delete_v2"
 
 
@@ -159,7 +160,7 @@ class RawDropboxSession:
                 LOG.debug("Raw payload capture produced no response entries; skipping raw Dropbox upload.")
             log_dropbox_path = _dropbox_log_target_path(self.config.folder, self.log_path.name)
             _dropbox_upload_file(access_token, self.log_path, log_dropbox_path)
-            _dropbox_cleanup_logs(access_token, _dropbox_log_root_folder(self.config.folder), days=31)
+            _dropbox_archive_logs(access_token, _dropbox_log_root_folder(self.config.folder), days=31)
         except Exception as exc:
             LOG.warning("Dropbox upload failed: %s", exc)
         finally:
@@ -254,6 +255,33 @@ def _dropbox_upload_file(access_token: str, local_path: Path, dropbox_path: str)
     if resp.status_code >= 400:
         raise RuntimeError(f"Dropbox upload failed ({resp.status_code}): {resp.text}")
 
+def _dropbox_upload_bytes(access_token: str, payload: bytes, dropbox_path: str) -> None:
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Dropbox-API-Arg": json.dumps(
+            {
+                "path": dropbox_path,
+                "mode": "add",
+                "autorename": True,
+                "mute": False,
+            }
+        ),
+        "Content-Type": "application/octet-stream",
+    }
+    resp = requests.post(DROPBOX_UPLOAD_URL, headers=headers, data=payload, timeout=120)
+    if resp.status_code >= 400:
+        raise RuntimeError(f"Dropbox upload failed ({resp.status_code}): {resp.text}")
+
+
+def _dropbox_download_zip(access_token: str, folder_path: str) -> bytes:
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Dropbox-API-Arg": json.dumps({"path": folder_path}),
+    }
+    resp = requests.post(DROPBOX_DOWNLOAD_ZIP_URL, headers=headers, timeout=120)
+    if resp.status_code >= 400:
+        raise RuntimeError(f"Dropbox download_zip failed ({resp.status_code}): {resp.text}")
+    return resp.content
 
 def _dropbox_base_folder(folder: str) -> str:
     root = _dropbox_root_folder(folder or DEFAULT_RAW_DROPBOX_FOLDER)
@@ -296,46 +324,101 @@ def _dropbox_log_target_path(folder: str, filename: str) -> str:
     return f"{_dropbox_log_folder_path(folder)}/{filename}"
 
 
-def _dropbox_cleanup_logs(access_token: str, log_folder: str, days: int = 31) -> None:
-    cutoff = utcnow() - timedelta(days=days)
+def _dropbox_archive_logs(
+    access_token: str,
+    log_root: str,
+    days: int = 31,
+    archive_days: int = 365,
+) -> None:
     headers = {"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"}
-    payload: Dict[str, Any] = {"path": log_folder, "recursive": True}
-    while True:
-        resp = requests.post(DROPBOX_LIST_FOLDER_URL, headers=headers, json=payload, timeout=30)
-        if resp.status_code == 409:
-            LOG.debug("Dropbox log folder not found; skipping cleanup.")
-            return
-        if resp.status_code >= 400:
-            raise RuntimeError(f"Dropbox list_folder failed ({resp.status_code}): {resp.text}")
-        data = resp.json()
-        entries = data.get("entries", [])
-        for entry in entries:
-            if entry.get(".tag") != "file":
-                continue
-            modified = entry.get("client_modified") or entry.get("server_modified")
-            if not modified:
-                continue
-            try:
-                modified_at = datetime.fromisoformat(modified.replace("Z", "+00:00"))
-            except ValueError:
-                continue
-            if modified_at >= cutoff:
-                continue
-            delete_payload = {"path": entry.get("path_lower") or entry.get("path_display")}
-            if not delete_payload["path"]:
-                continue
-            delete_resp = requests.post(
-                DROPBOX_DELETE_URL, headers=headers, json=delete_payload, timeout=30
+    cutoff_date = (utcnow() - timedelta(days=days)).date()
+    archive_cutoff = (utcnow() - timedelta(days=archive_days)).date()
+    archive_root = f"{log_root}/archive"
+
+    def list_folder(path: str) -> List[Dict[str, Any]]:
+        payload: Dict[str, Any] = {"path": path}
+        entries: List[Dict[str, Any]] = []
+        while True:
+            resp = requests.post(DROPBOX_LIST_FOLDER_URL, headers=headers, json=payload, timeout=30)
+            if resp.status_code == 409:
+                return []
+            if resp.status_code >= 400:
+                raise RuntimeError(f"Dropbox list_folder failed ({resp.status_code}): {resp.text}")
+            data = resp.json()
+            entries.extend(data.get("entries", []))
+            if not data.get("has_more"):
+                return entries
+            payload = {"cursor": data.get("cursor")}
+
+    entries = list_folder(log_root)
+    archive_entries = list_folder(archive_root)
+    existing_archives = {
+        entry.get("name")
+        for entry in archive_entries
+        if entry.get(".tag") == "file" and entry.get("name")
+    }
+
+    for entry in entries:
+        if entry.get(".tag") != "folder":
+            continue
+        name = entry.get("name")
+        if not name or name == "archive":
+            continue
+        try:
+            folder_date = datetime.strptime(name, "%Y-%m-%d").date()
+        except ValueError:
+            continue
+        if folder_date >= cutoff_date:
+            continue
+        archive_name = f"{name}.zip"
+        archive_path = f"{archive_root}/{archive_name}"
+        folder_path = entry.get("path_lower") or entry.get("path_display")
+        if not folder_path:
+            continue
+        if archive_name not in existing_archives:
+            zip_payload = _dropbox_download_zip(access_token, folder_path)
+            _dropbox_upload_bytes(access_token, zip_payload, archive_path)
+        delete_resp = requests.post(
+            DROPBOX_DELETE_URL,
+            headers=headers,
+            json={"path": folder_path},
+            timeout=30,
+        )
+        if delete_resp.status_code >= 400:
+            LOG.warning(
+                "Dropbox log folder delete failed (%s): %s",
+                delete_resp.status_code,
+                delete_resp.text,
             )
-            if delete_resp.status_code >= 400:
-                LOG.warning(
-                    "Dropbox log delete failed (%s): %s",
-                    delete_resp.status_code,
-                    delete_resp.text,
-                )
-        if not data.get("has_more"):
-            return
-        payload = {"cursor": data.get("cursor")}
+
+    for entry in archive_entries:
+        if entry.get(".tag") != "file":
+            continue
+        name = entry.get("name") or ""
+        if not name.endswith(".zip"):
+            continue
+        date_part = name[:-4]
+        try:
+            archive_date = datetime.strptime(date_part, "%Y-%m-%d").date()
+        except ValueError:
+            continue
+        if archive_date >= archive_cutoff:
+            continue
+        path = entry.get("path_lower") or entry.get("path_display")
+        if not path:
+            continue
+        delete_resp = requests.post(
+            DROPBOX_DELETE_URL,
+            headers=headers,
+            json={"path": path},
+            timeout=30,
+        )
+        if delete_resp.status_code >= 400:
+            LOG.warning(
+                "Dropbox archive delete failed (%s): %s",
+                delete_resp.status_code,
+                delete_resp.text,
+            )
 
 
 def _slugify(value: str) -> str:

@@ -445,7 +445,7 @@ async function uploadDropboxLog(
   try {
     const logPath = buildDropboxLogPath(serviceId, new Date());
     await dropboxUploadFile(accessToken, logPath, content);
-    await dropboxCleanupLogs(accessToken, DROPBOX_LOG_FOLDER, DROPBOX_LOG_RETENTION_DAYS);
+    await dropboxArchiveLogs(accessToken, DROPBOX_LOG_FOLDER, DROPBOX_LOG_RETENTION_DAYS, 365);
   } catch (err) {
     console.warn("Dropbox log upload failed:", err);
   }
@@ -639,60 +639,137 @@ async function deflateRaw(data: Uint8Array): Promise<Uint8Array> {
   return new Uint8Array(buffer);
 }
 
-async function dropboxCleanupLogs(
+async function dropboxArchiveLogs(
   accessToken: string,
   folder: string,
   days: number,
+  archiveDays: number,
 ): Promise<void> {
   const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
-  let payload: Record<string, unknown> = { path: folder, recursive: true };
-  while (true) {
-    const resp = await fetch(DROPBOX_LIST_FOLDER_URL, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(payload),
-    });
-    if (resp.status === 409) {
-      return;
-    }
-    if (!resp.ok) {
-      throw new Error(`Dropbox list_folder failed (${resp.status})`);
-    }
-    const data = await resp.json();
-    const entries = Array.isArray(data?.entries) ? data.entries : [];
-    for (const entry of entries) {
-      if (entry?.[".tag"] !== "file") {
-        continue;
-      }
-      const modified = entry?.client_modified || entry?.server_modified;
-      if (!modified) {
-        continue;
-      }
-      const modifiedAt = Date.parse(modified);
-      if (!Number.isFinite(modifiedAt) || modifiedAt >= cutoff) {
-        continue;
-      }
-      const path = entry?.path_lower || entry?.path_display;
-      if (!path) {
-        continue;
-      }
-      await fetch(DROPBOX_DELETE_URL, {
+  const archiveCutoff = Date.now() - archiveDays * 24 * 60 * 60 * 1000;
+  const archiveFolder = `${folder}/archive`;
+  const listFolder = async (path: string): Promise<Array<Record<string, unknown>>> => {
+    let payload: Record<string, unknown> = { path };
+    const entries: Array<Record<string, unknown>> = [];
+    while (true) {
+      const resp = await fetch(DROPBOX_LIST_FOLDER_URL, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${accessToken}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ path }),
+        body: JSON.stringify(payload),
       });
+      if (resp.status === 409) {
+        return [];
+      }
+      if (!resp.ok) {
+        throw new Error(`Dropbox list_folder failed (${resp.status})`);
+      }
+      const data = await resp.json();
+      entries.push(...(Array.isArray(data?.entries) ? data.entries : []));
+      if (!data?.has_more) {
+        return entries;
+      }
+      payload = { cursor: data.cursor };
     }
-    if (!data?.has_more) {
-      return;
+  };
+
+  const [rootEntries, archiveEntries] = await Promise.all([
+    listFolder(folder),
+    listFolder(archiveFolder),
+  ]);
+  const archiveNames = new Set(
+    archiveEntries
+      .filter((entry) => entry?.[".tag"] === "file")
+      .map((entry) => String(entry?.name ?? "")),
+  );
+
+  for (const entry of rootEntries) {
+    if (entry?.[".tag"] !== "folder") {
+      continue;
     }
-    payload = { cursor: data.cursor };
+    const name = String(entry?.name ?? "");
+    if (!name || name === "archive") {
+      continue;
+    }
+    const parsed = parseYmd(name);
+    if (!parsed || parsed.getTime() >= cutoff) {
+      continue;
+    }
+    const archiveName = `${name}.zip`;
+    const folderPath = String(entry?.path_lower || entry?.path_display || "");
+    if (!folderPath) {
+      continue;
+    }
+    if (!archiveNames.has(archiveName)) {
+      const zipped = await dropboxDownloadZip(accessToken, folderPath);
+      await dropboxUploadFile(accessToken, `${archiveFolder}/${archiveName}`, new Uint8Array(zipped));
+      archiveNames.add(archiveName);
+    }
+    await fetch(DROPBOX_DELETE_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ path: folderPath }),
+    });
   }
+
+  for (const entry of archiveEntries) {
+    if (entry?.[".tag"] !== "file") {
+      continue;
+    }
+    const name = String(entry?.name ?? "");
+    if (!name.endsWith(".zip")) {
+      continue;
+    }
+    const parsed = parseYmd(name.slice(0, -4));
+    if (!parsed || parsed.getTime() >= archiveCutoff) {
+      continue;
+    }
+    const path = String(entry?.path_lower || entry?.path_display || "");
+    if (!path) {
+      continue;
+    }
+    await fetch(DROPBOX_DELETE_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ path }),
+    });
+  }
+}
+
+async function dropboxDownloadZip(accessToken: string, path: string): Promise<ArrayBuffer> {
+  const resp = await fetch(DROPBOX_DOWNLOAD_ZIP_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Dropbox-API-Arg": JSON.stringify({ path }),
+    },
+  });
+  if (!resp.ok) {
+    throw new Error(`Dropbox download_zip failed (${resp.status})`);
+  }
+  return await resp.arrayBuffer();
+}
+
+function parseYmd(value: string): Date | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) {
+    return null;
+  }
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) {
+    return null;
+  }
+  return new Date(Date.UTC(year, month - 1, day));
 }
 
 async function loadService(
