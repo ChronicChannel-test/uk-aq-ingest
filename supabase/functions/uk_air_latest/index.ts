@@ -64,14 +64,11 @@ async function loadLatest({ region, stationLike, serviceId, limit }: LoadOptions
   let query = supabase
     .from("timeseries")
     .select(
-      "id,timeseries_ref,label,uom,last_value,last_value_at,station:stations!inner(id,station_ref,label,region),phenomenon:phenomena(id,label,notation,eionet_uri)",
+      "id,timeseries_ref,label,uom,last_value,last_value_at,station:stations(id,station_ref,label,region),phenomenon:phenomena(id,label,notation,eionet_uri)",
     );
 
   if (region) {
     query = query.ilike("stations.region", `%${region}%`);
-  }
-  if (stationLike) {
-    query = query.ilike("stations.label", `%${stationLike}%`);
   }
   if (serviceId) {
     query = query.eq("service_id", serviceId);
@@ -82,7 +79,22 @@ async function loadLatest({ region, stationLike, serviceId, limit }: LoadOptions
     throw new Error(error.message);
   }
 
-  return (data ?? []).sort((a, b) => {
+  let rows = data ?? [];
+  if (stationLike) {
+    const match = stationLike.toLowerCase();
+    rows = rows.filter((row) => {
+      const stationLabel = row.station?.label ?? "";
+      const seriesLabel = row.label ?? "";
+      return stationLabel.toLowerCase().includes(match)
+        || seriesLabel.toLowerCase().includes(match);
+    });
+  }
+
+  return rows.map((row) => ({
+    ...row,
+    station_label: row.station?.label ?? deriveStationLabel(row.label),
+    phenomenon_label: row.phenomenon?.label ?? null,
+  })).sort((a, b) => {
     const aStation = a.station?.label ?? "";
     const bStation = b.station?.label ?? "";
     const stationCompare = aStation.localeCompare(bStation);
@@ -122,4 +134,16 @@ function json(payload: unknown, status = 200): Response {
       ...CORS_HEADERS,
     },
   });
+}
+
+function deriveStationLabel(label: string | null): string | null {
+  if (!label) {
+    return null;
+  }
+  const separator = label.includes(" - ") ? " - " : "-";
+  const parts = label.split(separator).map((part) => part.trim()).filter(Boolean);
+  if (!parts.length) {
+    return label;
+  }
+  return parts[0];
 }

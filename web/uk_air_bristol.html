@@ -369,8 +369,8 @@
 
           rows.forEach((row) => {
             const tr = document.createElement("tr");
-            const station = row.station?.label || "Unknown station";
-            const phenomenon = row.phenomenon?.label || "Unknown";
+            const station = row.station?.label || row.station_label || "Unknown station";
+            const phenomenon = row.phenomenon?.label || row.phenomenon_label || "Unknown";
             const value = formatValue(row.last_value);
             const unit = row.uom || "";
             const observed = formatTime(row.last_value_at);

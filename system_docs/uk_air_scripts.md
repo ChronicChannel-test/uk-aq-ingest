@@ -29,6 +29,7 @@ Writes to:
 Key flags:
 - `--bbox west,south,east,north` (default: UK bbox)
 - `--region Bristol` (optional)
+- `--station-like Bristol` (optional label filter)
 - `--station-type AURN` (optional)
 - `--strict-bbox` to exclude stations with missing coordinates
 - `--pollutants no2,o3,pm10,pm2.5` (default common pollutants)
@@ -36,6 +37,10 @@ Key flags:
 - `--backfill-year 2025` to backfill a specific year
 - `--service-ref` (alias `--service-id`) or `--service-label` to target a specific SOS service
 - `--sample-timeseries 1` to log a short summary of the first N timeseries objects
+- `--raw-dropbox` to write raw payloads to Dropbox (testing only; guarded by `UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL`)
+- `--raw-dropbox-folder /raw_data` to override the Dropbox folder
+- `--log-level WARNING` to reduce logging output
+  - Default output prints only station count, error count, and Dropbox upload info.
 Batching:
 - If `services.poll_timeseries_batch_size` is set for the chosen service, it overrides the default batch size for timeseries discovery.
 Stations bbox:
@@ -44,6 +49,14 @@ Timeseries station filter:
 - If `services.timeseries_station_filter_supported` is false, the script skips station filtering for `/timeseries`.
 Phenomenon lookup:
 - If a timeseries label contains a `dd.eionet.europa.eu/vocabulary/aq/pollutant/` URL and `phenomenon` is missing, the script resolves Eionet metadata and stores `phenomena.eionet_uri` + `phenomena.notation` (shortname), with `label` falling back to `prefLabel`.
+
+Raw payloads (testing only):
+- Raw payload uploads are disabled unless `SUPABASE_URL` matches `UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL`.
+- Dropbox credentials required: `DROPBOX_APP_KEY`, `DROPBOX_APP_SECRET`, `DROPBOX_REFRESH_TOKEN`.
+- The raw capture writes all SOS responses fetched during the run into a single gzipped JSONL file and uploads it to Dropbox.
+- Uploads are organized under `raw_data/YYYY-MM-DD` within the configured Dropbox folder (for scoped apps, do not include `/Apps/<app>` in the path).
+- Each run also uploads a log file to `/log/` (Dropbox app root) and deletes logs older than 31 days.
+- If `UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL` is unset in live environments, the upload never runs (even if `--raw-dropbox` is passed).
 
 ### `scripts/uk_air_list_stations.py`
 Purpose:
@@ -77,6 +90,20 @@ Writes to (when `--to-supabase` is set):
 - `phenomena`, `procedures`, `offerings` (unless `--skip-metadata` is used)
   - `stations` lifecycle fields: `first_seen_at`, `last_seen_at`, `removed_at`
   - Stations not seen in the current run are marked with `removed_at`.
+
+### `scripts/uk_air_dropbox_test.py`
+Purpose:
+- Validate Dropbox OAuth refresh token and optionally upload a small test file.
+
+Common commands:
+```
+python3 scripts/uk_air_dropbox_test.py
+python3 scripts/uk_air_dropbox_test.py --upload
+```
+
+Environment:
+- `DROPBOX_APP_KEY`, `DROPBOX_APP_SECRET`, `DROPBOX_REFRESH_TOKEN`
+- Optional `UK_AIR_RAW_DROPBOX_FOLDER` (defaults to `/raw_data`)
 
 ### `scripts/uk_air_inject_project_ref.mjs`
 Purpose:

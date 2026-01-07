@@ -22,13 +22,17 @@ Examples:
 """
 
 import argparse
+import gzip
 import html
+import json
 import logging
 import os
 import re
+import tempfile
 import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Set
 
 import requests
@@ -38,9 +42,11 @@ from supabase import Client, create_client
 from ingest_helpers import station_in_bbox, station_in_bbox_or_missing_coords
 load_dotenv()
 
+DEFAULT_LOG_LEVEL = os.getenv("UK_AIR_LOG_LEVEL", "WARNING").upper()
+DEFAULT_FILE_LOG_LEVEL = os.getenv("UK_AIR_FILE_LOG_LEVEL", "INFO").upper()
 LOG = logging.getLogger("uk_air_sos")
 logging.basicConfig(
-    level=logging.INFO,
+    level=getattr(logging, DEFAULT_LOG_LEVEL, logging.WARNING),
     format="%(asctime)s %(levelname)s %(message)s",
 )
 
@@ -65,6 +71,11 @@ UK_BBOX = {
 DEFAULT_POLLUTANTS = {"no2", "o3", "pm10", "pm2.5"}
 EIONET_POLLUTANT_RE = re.compile(r"https?://dd\.eionet\.europa\.eu/vocabulary/aq/pollutant/\d+")
 DEFAULT_TIMESERIES_STATION_BATCH_SIZE = 50
+DEFAULT_RAW_DROPBOX_FOLDER = "/raw_data"
+DROPBOX_TOKEN_URL = "https://api.dropbox.com/oauth2/token"
+DROPBOX_UPLOAD_URL = "https://content.dropboxapi.com/2/files/upload"
+DROPBOX_LIST_FOLDER_URL = "https://api.dropboxapi.com/2/files/list_folder"
+DROPBOX_DELETE_URL = "https://api.dropboxapi.com/2/files/delete_v2"
 
 
 @dataclass(frozen=True)
@@ -75,16 +86,320 @@ class ServiceContext:
     service_url: str
 
 
+@dataclass(frozen=True)
+class DropboxConfig:
+    app_key: str
+    app_secret: str
+    refresh_token: str
+    folder: str
+
+
+class RawPayloadRecorder:
+    def __init__(self, output_path: Path) -> None:
+        self.output_path = output_path
+        self._handle = gzip.open(output_path, "wt", encoding="utf-8")
+        self.count = 0
+        self.record_event("meta", {"created_at": utcnow().isoformat()})
+
+    def record_event(self, name: str, payload: Dict[str, Any]) -> None:
+        self._write(
+            {
+                "type": name,
+                "recorded_at": utcnow().isoformat(),
+                "payload": payload,
+            }
+        )
+
+    def record_response(
+        self,
+        path: str,
+        params: Optional[Dict[str, Any]],
+        status_code: int,
+        payload: Any,
+    ) -> None:
+        self._write(
+            {
+                "type": "response",
+                "fetched_at": utcnow().isoformat(),
+                "path": path,
+                "params": params,
+                "status_code": status_code,
+                "payload": payload,
+            }
+        )
+
+    def _write(self, payload: Dict[str, Any]) -> None:
+        self._handle.write(json.dumps(payload, ensure_ascii=True) + "\n")
+        self.count += 1
+
+    def close(self) -> None:
+        self._handle.close()
+
+
+@dataclass
+class RawDropboxSession:
+    recorder: RawPayloadRecorder
+    config: DropboxConfig
+    temp_dir: tempfile.TemporaryDirectory
+    log_path: Path
+    log_handler: logging.Handler
+
+    def finalize(self) -> None:
+        logging.getLogger().removeHandler(self.log_handler)
+        self.log_handler.close()
+        self.recorder.close()
+        try:
+            access_token = _dropbox_refresh_access_token(self.config)
+            if self.recorder.count > 1:
+                dropbox_path = _dropbox_target_path(self.config.folder, self.recorder.output_path.name)
+                _dropbox_upload_file(access_token, self.recorder.output_path, dropbox_path)
+                _emit_info(f"Uploaded raw payloads to Dropbox: {dropbox_path}")
+            else:
+                LOG.debug("Raw payload capture produced no response entries; skipping raw Dropbox upload.")
+            log_dropbox_path = _dropbox_log_target_path(self.config.folder, self.log_path.name)
+            _dropbox_upload_file(access_token, self.log_path, log_dropbox_path)
+            _dropbox_cleanup_logs(access_token, _dropbox_log_folder_path(self.config.folder), days=31)
+        except Exception as exc:
+            LOG.warning("Dropbox upload failed: %s", exc)
+        finally:
+            self.temp_dir.cleanup()
+
+
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _configure_logging(console_level_name: str, file_level_name: str) -> None:
+    console_level = getattr(logging, (console_level_name or "").upper(), logging.WARNING)
+    file_level = getattr(logging, (file_level_name or "").upper(), logging.INFO)
+    logging.getLogger().setLevel(min(console_level, file_level))
+    LOG.setLevel(min(console_level, file_level))
+    for handler in logging.getLogger().handlers:
+        handler.setLevel(console_level)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
+    logging.getLogger("supabase").setLevel(logging.WARNING)
+    logging.getLogger("postgrest").setLevel(logging.WARNING)
+    logging.getLogger("gotrue").setLevel(logging.WARNING)
+
+
+def _emit_info(message: str) -> None:
+    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S,%f")[:-3]
+    print(f"{timestamp} INFO {message}")
+
+
+def _add_file_logger(path: Path, level_name: str) -> logging.Handler:
+    level = getattr(logging, (level_name or "").upper(), logging.INFO)
+    handler = logging.FileHandler(path, encoding="utf-8")
+    handler.setLevel(level)
+    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+    logging.getLogger().addHandler(handler)
+    return handler
+
+
+def _dropbox_refresh_access_token(config: DropboxConfig) -> str:
+    payload = {
+        "grant_type": "refresh_token",
+        "refresh_token": config.refresh_token,
+        "client_id": config.app_key,
+        "client_secret": config.app_secret,
+    }
+    resp = requests.post(DROPBOX_TOKEN_URL, data=payload, timeout=30)
+    if resp.status_code >= 400:
+        raise RuntimeError(f"Dropbox token request failed ({resp.status_code}): {resp.text}")
+    data = resp.json()
+    token = data.get("access_token")
+    if not token:
+        raise RuntimeError("Dropbox token response missing access_token.")
+    return token
+
+
+def _dropbox_upload_file(access_token: str, local_path: Path, dropbox_path: str) -> None:
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Dropbox-API-Arg": json.dumps(
+            {
+                "path": dropbox_path,
+                "mode": "add",
+                "autorename": True,
+                "mute": False,
+            }
+        ),
+        "Content-Type": "application/octet-stream",
+    }
+    with local_path.open("rb") as handle:
+        resp = requests.post(DROPBOX_UPLOAD_URL, headers=headers, data=handle, timeout=120)
+    if resp.status_code >= 400:
+        raise RuntimeError(f"Dropbox upload failed ({resp.status_code}): {resp.text}")
+
+
+def _dropbox_base_folder(folder: str) -> str:
+    root = _dropbox_root_folder(folder or DEFAULT_RAW_DROPBOX_FOLDER)
+    if root:
+        return f"{root}/raw_data"
+    return "/raw_data"
+
+
+def _dropbox_root_folder(folder: str) -> str:
+    cleaned = (folder or "").strip()
+    if not cleaned:
+        return ""
+    if not cleaned.startswith("/"):
+        cleaned = f"/{cleaned}"
+    cleaned = cleaned.rstrip("/")
+    if cleaned.endswith("/raw_data"):
+        cleaned = cleaned[: -len("/raw_data")]
+    return cleaned
+
+
+def _dropbox_target_path(folder: str, filename: str) -> str:
+    date_folder = utcnow().strftime("%Y-%m-%d")
+    return f"{_dropbox_base_folder(folder)}/{date_folder}/{filename}"
+
+
+def _dropbox_log_folder_path(folder: str) -> str:
+    root = _dropbox_root_folder(folder)
+    if root:
+        return f"{root}/log"
+    return "/log"
+
+
+def _dropbox_log_target_path(folder: str, filename: str) -> str:
+    return f"{_dropbox_log_folder_path(folder)}/{filename}"
+
+
+def _dropbox_cleanup_logs(access_token: str, log_folder: str, days: int = 31) -> None:
+    cutoff = utcnow() - timedelta(days=days)
+    headers = {"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"}
+    payload: Dict[str, Any] = {"path": log_folder}
+    while True:
+        resp = requests.post(DROPBOX_LIST_FOLDER_URL, headers=headers, json=payload, timeout=30)
+        if resp.status_code == 409:
+            LOG.debug("Dropbox log folder not found; skipping cleanup.")
+            return
+        if resp.status_code >= 400:
+            raise RuntimeError(f"Dropbox list_folder failed ({resp.status_code}): {resp.text}")
+        data = resp.json()
+        entries = data.get("entries", [])
+        for entry in entries:
+            if entry.get(".tag") != "file":
+                continue
+            modified = entry.get("client_modified") or entry.get("server_modified")
+            if not modified:
+                continue
+            try:
+                modified_at = datetime.fromisoformat(modified.replace("Z", "+00:00"))
+            except ValueError:
+                continue
+            if modified_at >= cutoff:
+                continue
+            delete_payload = {"path": entry.get("path_lower") or entry.get("path_display")}
+            if not delete_payload["path"]:
+                continue
+            delete_resp = requests.post(
+                DROPBOX_DELETE_URL, headers=headers, json=delete_payload, timeout=30
+            )
+            if delete_resp.status_code >= 400:
+                LOG.warning(
+                    "Dropbox log delete failed (%s): %s",
+                    delete_resp.status_code,
+                    delete_resp.text,
+                )
+        if not data.get("has_more"):
+            return
+        payload = {"cursor": data.get("cursor")}
+
+
+def _slugify(value: str) -> str:
+    cleaned = re.sub(r"[^a-zA-Z0-9]+", "-", value.strip().lower()).strip("-")
+    return cleaned or "unknown"
+
+
+def _build_raw_label(args: argparse.Namespace) -> str:
+    stamp = utcnow().strftime("%Y%m%dT%H%M%SZ")
+    parts = ["uk_air_raw", stamp]
+    if args.station_like:
+        parts.append(_slugify(args.station_like))
+    if args.region:
+        parts.append(_slugify(args.region))
+    return "_".join(parts)
+
+
+def _build_log_filename(args: argparse.Namespace) -> str:
+    stamp = utcnow().strftime("%Y%m%dT%H%M%SZ")
+    parts = ["uk_air_log", stamp]
+    if args.station_like:
+        parts.append(_slugify(args.station_like))
+    if args.region:
+        parts.append(_slugify(args.region))
+    return f"{'_'.join(parts)}.log"
+
+
+def _load_dropbox_config(folder_override: Optional[str]) -> Optional[DropboxConfig]:
+    app_key = os.getenv("DROPBOX_APP_KEY", "").strip()
+    app_secret = os.getenv("DROPBOX_APP_SECRET", "").strip()
+    refresh_token = os.getenv("DROPBOX_REFRESH_TOKEN", "").strip()
+    folder = (folder_override or os.getenv("UK_AIR_RAW_DROPBOX_FOLDER") or DEFAULT_RAW_DROPBOX_FOLDER).strip()
+    if not (app_key and app_secret and refresh_token):
+        LOG.warning("Dropbox credentials missing; skipping raw payload upload.")
+        return None
+    return DropboxConfig(
+        app_key=app_key,
+        app_secret=app_secret,
+        refresh_token=refresh_token,
+        folder=folder,
+    )
+
+
+def _raw_dropbox_allowed() -> bool:
+    supabase_url = os.getenv("SUPABASE_URL", "").strip()
+    allowed_url = os.getenv("UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL", "").strip()
+    if not allowed_url:
+        LOG.warning("UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL not set; raw Dropbox upload disabled.")
+        return False
+    if supabase_url != allowed_url:
+        LOG.warning("Raw Dropbox upload disabled (SUPABASE_URL does not match allowed URL).")
+        return False
+    return True
+
+
+def _prepare_raw_dropbox_session(args: argparse.Namespace) -> Optional[RawDropboxSession]:
+    if not args.raw_dropbox:
+        return None
+    if not _raw_dropbox_allowed():
+        return None
+    config = _load_dropbox_config(args.raw_dropbox_folder)
+    if not config:
+        return None
+    temp_dir = tempfile.TemporaryDirectory(prefix="uk_air_raw_")
+    filename = f"{_build_raw_label(args)}.jsonl.gz"
+    output_path = Path(temp_dir.name) / filename
+    recorder = RawPayloadRecorder(output_path)
+    log_path = Path(temp_dir.name) / _build_log_filename(args)
+    log_handler = _add_file_logger(log_path, DEFAULT_FILE_LOG_LEVEL)
+    LOG.debug("Raw Dropbox capture enabled (output=%s).", output_path.name)
+    return RawDropboxSession(
+        recorder=recorder,
+        config=config,
+        temp_dir=temp_dir,
+        log_path=log_path,
+        log_handler=log_handler,
+    )
+
+
 class UkAirClient:
-    def __init__(self, base_url: str = UK_AIR_SOS_BASE_URL, timeout: int = 60, retries: int = 3):
+    def __init__(
+        self,
+        base_url: str = UK_AIR_SOS_BASE_URL,
+        timeout: int = 60,
+        retries: int = 3,
+        raw_recorder: Optional[RawPayloadRecorder] = None,
+    ):
         self.base_url = base_url
         self.timeout = timeout
         self.retries = retries
         self.session = requests.Session()
+        self.raw_recorder = raw_recorder
 
     def get(self, path: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         url = f"{self.base_url}/{path.lstrip('/')}"
@@ -95,7 +410,10 @@ class UkAirClient:
                     self._sleep(attempt)
                     continue
                 resp.raise_for_status()
-                return resp.json()
+                data = resp.json()
+                if self.raw_recorder:
+                    self.raw_recorder.record_response(path, params, resp.status_code, data)
+                return data
             except requests.HTTPError as exc:
                 status = exc.response.status_code if exc.response is not None else "unknown"
                 level = logging.INFO if status == 400 else logging.WARNING
@@ -542,17 +860,24 @@ class SupabaseWriter:
     def update_last_value(
         self,
         series_id: int,
-        last_value_at: Optional[datetime],
+        last_value_at: Optional[Any],
         last_value: Optional[float],
     ) -> None:
-        if last_value_at is None and last_value is None:
+        parsed_last_value_at = (
+            last_value_at
+            if isinstance(last_value_at, datetime)
+            else _parse_timestamp(last_value_at)
+        )
+        if parsed_last_value_at is None and last_value is None:
             return
-        payload: Dict[str, Any] = {"id": series_id}
-        if last_value_at is not None:
-            payload["last_value_at"] = last_value_at.isoformat()
+        payload: Dict[str, Any] = {}
+        if parsed_last_value_at is not None:
+            payload["last_value_at"] = parsed_last_value_at.isoformat()
         if last_value is not None:
             payload["last_value"] = last_value
-        self.client.table("timeseries").upsert(payload, on_conflict="id").execute()
+        if not payload:
+            return
+        self.client.table("timeseries").update(payload).eq("id", series_id).execute()
 
 
 class UkAirIngestor:
@@ -609,6 +934,7 @@ class UkAirIngestor:
         region: Optional[str],
         station_types: Optional[Sequence[str]],
         allow_missing_coords: bool,
+        station_like: Optional[str],
     ) -> List[Dict[str, Any]]:
         raw_stations = self.client.stations(service.ref, bbox=bbox, region=region)
         stations = []
@@ -616,6 +942,8 @@ class UkAirIngestor:
             if bbox or region:
                 if not _station_matches_area(stn, bbox, region, allow_missing_coords):
                     continue
+            if station_like and not _station_label_matches(stn, station_like):
+                continue
             if station_types:
                 stn_type = _station_type(stn)
                 if not stn_type or stn_type.lower() not in station_types:
@@ -730,7 +1058,8 @@ class UkAirIngestor:
             ts["_db_id"] = timeseries_id_map.get(str(ts_ref))
         return filtered
 
-    def backfill_year(self, series: Sequence[Dict[str, Any]], year: int, chunk_days: int = 31) -> None:
+    def backfill_year(self, series: Sequence[Dict[str, Any]], year: int, chunk_days: int = 31) -> int:
+        errors = 0
         start = datetime(year, 1, 1, tzinfo=timezone.utc)
         end = datetime(year + 1, 1, 1, tzinfo=timezone.utc)
         for ts in series:
@@ -738,10 +1067,37 @@ class UkAirIngestor:
             ts_db_id = ts.get("_db_id")
             if ts_ref is None or ts_db_id is None:
                 continue
-            LOG.info("Backfilling %s for %s", ts_ref, year)
-            for chunk_start in _range_chunks(start, end, timedelta(days=chunk_days)):
-                chunk_end = min(chunk_start + timedelta(days=chunk_days), end)
-                timespan = f"{chunk_start.isoformat()}/{chunk_end.isoformat()}"
+            try:
+                LOG.debug("Backfilling %s for %s", ts_ref, year)
+                for chunk_start in _range_chunks(start, end, timedelta(days=chunk_days)):
+                    chunk_end = min(chunk_start + timedelta(days=chunk_days), end)
+                    timespan = f"{chunk_start.isoformat()}/{chunk_end.isoformat()}"
+                    data = self.client.timeseries_data(str(ts_ref), timespan)
+                    points = _parse_datapoints(data.get("values", []))
+                    self.writer.upsert_observations(ts_db_id, points)
+                    last_val = data.get("lastValue") or (points[-1]["value"] if points else None)
+                    last_at = (
+                        _parse_timestamp(data.get("lastValueTimestamp"))
+                        or (points[-1]["observed_at"] if points else None)
+                    )
+                    self.writer.update_last_value(ts_db_id, last_at, _safe_number(last_val))
+            except Exception as exc:
+                errors += 1
+                LOG.debug("Backfill failed for %s: %s", ts_ref, exc)
+        return errors
+
+    def refresh_recent(self, series: Sequence[Dict[str, Any]], hours: int = 6) -> int:
+        errors = 0
+        window_start = utcnow() - timedelta(hours=hours)
+        window_end = utcnow()
+        timespan = f"{window_start.isoformat()}/{window_end.isoformat()}"
+        for ts in series:
+            ts_ref = ts.get("id")
+            ts_db_id = ts.get("_db_id")
+            if ts_ref is None or ts_db_id is None:
+                continue
+            try:
+                LOG.debug("Refreshing recent window for %s (%sh)", ts_ref, hours)
                 data = self.client.timeseries_data(str(ts_ref), timespan)
                 points = _parse_datapoints(data.get("values", []))
                 self.writer.upsert_observations(ts_db_id, points)
@@ -751,40 +1107,53 @@ class UkAirIngestor:
                     or (points[-1]["observed_at"] if points else None)
                 )
                 self.writer.update_last_value(ts_db_id, last_at, _safe_number(last_val))
-
-    def refresh_recent(self, series: Sequence[Dict[str, Any]], hours: int = 6) -> None:
-        window_start = utcnow() - timedelta(hours=hours)
-        window_end = utcnow()
-        timespan = f"{window_start.isoformat()}/{window_end.isoformat()}"
-        for ts in series:
-            ts_ref = ts.get("id")
-            ts_db_id = ts.get("_db_id")
-            if ts_ref is None or ts_db_id is None:
-                continue
-            LOG.info("Refreshing recent window for %s (%sh)", ts_ref, hours)
-            data = self.client.timeseries_data(str(ts_ref), timespan)
-            points = _parse_datapoints(data.get("values", []))
-            self.writer.upsert_observations(ts_db_id, points)
-            last_val = data.get("lastValue") or (points[-1]["value"] if points else None)
-            last_at = (
-                _parse_timestamp(data.get("lastValueTimestamp"))
-                or (points[-1]["observed_at"] if points else None)
-            )
-            self.writer.update_last_value(ts_db_id, last_at, _safe_number(last_val))
+            except Exception as exc:
+                errors += 1
+                LOG.debug("Refresh failed for %s: %s", ts_ref, exc)
+        return errors
 
 
-def _parse_datapoints(values: Iterable[Sequence[Any]]) -> List[Dict[str, Any]]:
+def _parse_datapoints(values: Any) -> List[Dict[str, Any]]:
     datapoints: List[Dict[str, Any]] = []
-    for row in values:
-        if len(row) < 2:
+    if isinstance(values, dict):
+        if isinstance(values.get("values"), list):
+            values_iter: Iterable[Any] = values["values"]
+        elif isinstance(values.get("data"), list):
+            values_iter = values["data"]
+        else:
+            values_iter = list(values.items())
+    else:
+        values_iter = values
+
+    for row in values_iter:
+        timestamp_ms = None
+        value = None
+        status = None
+        if isinstance(row, dict):
+            timestamp_ms = (
+                row.get("time")
+                or row.get("timestamp")
+                or row.get("t")
+                or row.get("dateTime")
+                or row.get("phenomenonTime")
+                or row.get("observed_at")
+            )
+            value = row.get("value") or row.get("v") or row.get("result")
+            status = row.get("status") or row.get("s")
+        elif isinstance(row, (list, tuple)):
+            if len(row) < 2:
+                continue
+            timestamp_ms = row[0]
+            value = row[1]
+            status = row[2] if len(row) > 2 else None
+        else:
             continue
-        timestamp_ms = row[0]
-        value = _safe_number(row[1])
-        status = row[2] if len(row) > 2 else None
         obs_time = _parse_timestamp(timestamp_ms)
         if obs_time is None:
             continue
-        datapoints.append({"observed_at": obs_time.isoformat(), "value": value, "status": status})
+        datapoints.append(
+            {"observed_at": obs_time.isoformat(), "value": _safe_number(value), "status": status}
+        )
     return datapoints
 
 
@@ -842,6 +1211,15 @@ def _station_region(station: Dict[str, Any]) -> Optional[str]:
 def _station_label(station: Dict[str, Any]) -> Optional[str]:
     props = station.get("properties", {}) if isinstance(station.get("properties"), dict) else {}
     return station.get("label") or props.get("label") or station.get("name")
+
+
+def _station_label_matches(station: Dict[str, Any], match: str) -> bool:
+    if not match:
+        return True
+    label = _station_label(station)
+    if not label:
+        return False
+    return match.strip().lower() in label.strip().lower()
 
 
 def _station_type(station: Dict[str, Any]) -> Optional[str]:
@@ -1223,6 +1601,7 @@ def parse_args() -> argparse.Namespace:
         help="Exclude stations with missing or invalid coordinates.",
     )
     parser.add_argument("--region", help="Region name to filter (optional).")
+    parser.add_argument("--station-like", help="Filter stations by label substring (optional).")
     parser.add_argument(
         "--station-type",
         help="Comma-separated station types to include (e.g., AURN).",
@@ -1246,81 +1625,126 @@ def parse_args() -> argparse.Namespace:
         default=0,
         help="Log a small summary of the first N timeseries objects (default: 0).",
     )
+    parser.add_argument(
+        "--raw-dropbox",
+        action="store_true",
+        help="Upload raw SOS payloads to Dropbox (testing only; gated by env allowlist).",
+    )
+    parser.add_argument(
+        "--raw-dropbox-folder",
+        help="Dropbox folder path for raw payloads (optional).",
+    )
+    parser.add_argument(
+        "--log-level",
+        default=DEFAULT_LOG_LEVEL,
+        help="Logging level (DEBUG, INFO, WARNING, ERROR).",
+    )
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
-    client = UkAirClient()
+    _configure_logging(args.log_level, DEFAULT_FILE_LOG_LEVEL)
+    raw_session = _prepare_raw_dropbox_session(args)
+    client = UkAirClient(raw_recorder=raw_session.recorder if raw_session else None)
     writer = SupabaseWriter()
     ingestor = UkAirIngestor(client, writer)
+    stations_count = 0
+    errors = 0
 
-    bbox = None if args.no_bbox else _parse_bbox_arg(args.bbox)
-    region = args.region
-    station_types = _parse_csv_arg(args.station_type)
-    if station_types:
-        station_types = [st_type.lower() for st_type in station_types]
-    allow_missing_coords = not args.strict_bbox
-    pollutants = None
-    if not args.all_pollutants:
-        pollutants = _parse_csv_arg(args.pollutants)
-        if pollutants and len(pollutants) == 1 and pollutants[0].lower() in {"all", "*"}:
-            pollutants = None
+    try:
+        bbox = None if args.no_bbox else _parse_bbox_arg(args.bbox)
+        region = args.region
+        station_like = args.station_like
+        station_types = _parse_csv_arg(args.station_type)
+        if station_types:
+            station_types = [st_type.lower() for st_type in station_types]
+        allow_missing_coords = not args.strict_bbox
+        pollutants = None
+        if not args.all_pollutants:
+            pollutants = _parse_csv_arg(args.pollutants)
+            if pollutants and len(pollutants) == 1 and pollutants[0].lower() in {"all", "*"}:
+                pollutants = None
 
-    service = ingestor.discover_service(args.service_ref, args.service_label)
-    settings = writer.get_service_settings(service.id)
-    batch_size = settings.get("poll_timeseries_batch_size")
-    bbox_supported = settings.get("stations_bbox_supported")
-    station_filter_supported = settings.get("timeseries_station_filter_supported")
-    if batch_size is not None:
-        LOG.info("Using timeseries batch size from services: %s", batch_size)
-    if bbox_supported is False:
-        bbox = None
-        LOG.info("Skipping bbox for service id %s (stations_bbox_supported=false)", service.id)
-    if station_filter_supported is False:
+        service = ingestor.discover_service(args.service_ref, args.service_label)
+        settings = writer.get_service_settings(service.id)
+        batch_size = settings.get("poll_timeseries_batch_size")
+        bbox_supported = settings.get("stations_bbox_supported")
+        station_filter_supported = settings.get("timeseries_station_filter_supported")
+        if batch_size is not None:
+            LOG.info("Using timeseries batch size from services: %s", batch_size)
+        if bbox_supported is False:
+            bbox = None
+            LOG.info("Skipping bbox for service id %s (stations_bbox_supported=false)", service.id)
+        if station_filter_supported is False:
+            LOG.info(
+                "Skipping station filter for service id %s (timeseries_station_filter_supported=false)",
+                service.id,
+            )
         LOG.info(
-            "Skipping station filter for service id %s (timeseries_station_filter_supported=false)",
+            "Using service id: %s ref=%s (bbox=%s region=%s station_like=%s station_types=%s pollutants=%s)",
             service.id,
+            service.ref,
+            bbox,
+            region,
+            station_like,
+            station_types,
+            pollutants or "all",
         )
-    LOG.info(
-        "Using service id: %s ref=%s (bbox=%s region=%s station_types=%s pollutants=%s)",
-        service.id,
-        service.ref,
-        bbox,
-        region,
-        station_types,
-        pollutants or "all",
-    )
 
-    stations = ingestor.discover_stations(
-        service,
-        bbox,
-        region,
-        station_types,
-        allow_missing_coords,
-    )
-    station_refs = [
-        stn.get("id") or (stn.get("properties", {}) or {}).get("id")
-        for stn in stations
-        if stn.get("id") or (stn.get("properties", {}) or {}).get("id")
-    ]
-    if not station_refs:
-        LOG.warning("No stations discovered for the given filters.")
-    series = ingestor.discover_timeseries(
-        service,
-        None if station_filter_supported is False else station_refs,
-        pollutants,
-        batch_size,
-        args.sample_timeseries,
-    )
+        if raw_session:
+            raw_session.recorder.record_event(
+                "context",
+                {
+                    "service_id": service.id,
+                    "service_ref": service.ref,
+                    "service_label": service.label,
+                    "bbox": bbox,
+                    "region": region,
+                    "station_like": station_like,
+                    "station_types": station_types,
+                    "pollutants": pollutants or "all",
+                    "refresh_recent": args.refresh_recent,
+                    "backfill_year": args.backfill_year or (2025 if args.backfill_2025 else None),
+                },
+            )
 
-    backfill_year = args.backfill_year or (2025 if args.backfill_2025 else None)
-    if backfill_year:
-        ingestor.backfill_year(series, backfill_year, chunk_days=args.chunk_days)
-    if args.refresh_recent:
-        ingestor.refresh_recent(series, hours=args.hours)
-    if not any([args.discover, backfill_year, args.refresh_recent]):
-        LOG.info("No action flags set; use --discover, --backfill-year, or --refresh-recent.")
+        stations = ingestor.discover_stations(
+            service,
+            bbox,
+            region,
+            station_types,
+            allow_missing_coords,
+            station_like,
+        )
+        stations_count = len(stations)
+        station_refs = [
+            stn.get("id") or (stn.get("properties", {}) or {}).get("id")
+            for stn in stations
+            if stn.get("id") or (stn.get("properties", {}) or {}).get("id")
+        ]
+        if not station_refs:
+            LOG.debug("No stations discovered for the given filters.")
+        series = ingestor.discover_timeseries(
+            service,
+            None if station_filter_supported is False else station_refs,
+            pollutants,
+            batch_size,
+            args.sample_timeseries,
+        )
+
+        backfill_year = args.backfill_year or (2025 if args.backfill_2025 else None)
+        if backfill_year:
+            errors += ingestor.backfill_year(series, backfill_year, chunk_days=args.chunk_days)
+        if args.refresh_recent:
+            errors += ingestor.refresh_recent(series, hours=args.hours)
+        if not any([args.discover, backfill_year, args.refresh_recent]):
+            LOG.debug("No action flags set; use --discover, --backfill-year, or --refresh-recent.")
+    finally:
+        if raw_session:
+            raw_session.finalize()
+        print(f"Stations collected: {stations_count}")
+        print(f"Errors: {errors}")
 
 
 if __name__ == "__main__":
