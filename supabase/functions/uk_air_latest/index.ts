@@ -64,10 +64,10 @@ type LoadOptions = {
 async function loadLatest({ region, stationLike, serviceId, limit }: LoadOptions) {
   const buildQuery = () => {
     let query = supabase
-      .from("timeseries")
-      .select(
-        "id,timeseries_ref,label,uom,last_value,last_value_at,station:stations(id,station_ref,label,region),phenomenon:phenomena(id,label,notation,eionet_uri)",
-      );
+    .from("timeseries")
+    .select(
+      "id,timeseries_ref,label,uom,last_value,last_value_at,station:stations(id,station_ref,label,region),phenomenon:phenomena(id,label,notation,eionet_uri,pollutant_label)",
+    );
 
     if (region) {
       query = query.ilike("region", `%${region}%`, { foreignTable: "stations" });
@@ -104,24 +104,24 @@ async function loadLatest({ region, stationLike, serviceId, limit }: LoadOptions
     for (const row of stationResult.data ?? []) {
       combined.set(String(row.id), row);
     }
-    rows = Array.from(combined.values());
+    rows = Array.from(combined.values()).slice(0, limit);
   }
 
-  return rows.map((row) => ({
-    ...row,
-    station_label: resolveStationLabel(row.station?.label, row.station?.station_ref, row.label),
-    phenomenon_label: resolvePhenomenonLabel(
+  return rows.map((row) => {
+    const pollutantLabel = resolvePhenomenonLabel(
+      row.phenomenon?.pollutant_label,
       row.phenomenon?.label,
       row.phenomenon?.notation,
       row.phenomenon?.eionet_uri,
-    ),
-    pollutant_label: resolvePhenomenonLabel(
-      row.phenomenon?.label,
-      row.phenomenon?.notation,
-      row.phenomenon?.eionet_uri,
-    ),
-    uom_display: formatUnit(row.uom),
-  })).sort((a, b) => {
+    );
+    return {
+      ...row,
+      station_label: resolveStationLabel(row.station?.label, row.station?.station_ref, row.label),
+      phenomenon_label: pollutantLabel,
+      pollutant_label: pollutantLabel,
+      uom_display: formatUnit(row.uom),
+    };
+  }).sort((a, b) => {
     const aPollutant = a.phenomenon?.label ?? a.phenomenon_label ?? "";
     const bPollutant = b.phenomenon?.label ?? b.phenomenon_label ?? "";
     const pollutantCompare = aPollutant.localeCompare(bPollutant);
@@ -193,10 +193,14 @@ function resolveStationLabel(
 }
 
 function resolvePhenomenonLabel(
+  pollutantLabel: string | null | undefined,
   label: string | null | undefined,
   notation: string | null | undefined,
   eionetUri: string | null | undefined,
 ): string | null {
+  if (pollutantLabel) {
+    return pollutantLabel;
+  }
   if (label) {
     return label;
   }

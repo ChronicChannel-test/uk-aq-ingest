@@ -63,6 +63,7 @@ create table if not exists phenomena (
   label text not null,
   eionet_uri text,
   notation text,
+  pollutant_label text,
   service_id bigint not null references services(id) on delete cascade
 );
 drop index if exists phenomena_service_eionet_uidx;

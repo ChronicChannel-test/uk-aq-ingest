@@ -7,6 +7,7 @@ Defines what is measured (pollutant/parameter) within a service.
 - label: Human-readable phenomenon name.
 - eionet_uri: Optional EIONET URI identifier for the phenomenon.
 - notation: Optional short code/notation from the source.
+- pollutant_label: Optional emissions-inventory pollutant label (from reference list).
 - service_id: FK to `services.id`.
 
 ## Notes

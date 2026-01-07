@@ -359,9 +359,35 @@
 
       function getPollutantLabel(row) {
         return row.pollutant_label
+          || row.phenomenon?.pollutant_label
           || row.phenomenon?.label
           || row.phenomenon_label
           || "Unknown";
+      }
+
+      function formatStationLabel(row) {
+        const raw = row.label || row.station?.label || row.station_label || "";
+        if (!raw) {
+          return "Unknown station";
+        }
+        const cleaned = raw.replace(/,?\s*GB_SamplingFeature_missingFOI\b/gi, "").trim();
+        if (!cleaned) {
+          return "Unknown station";
+        }
+        const parts = cleaned.split(",").map((part) => part.trim()).filter(Boolean);
+        if (parts.length <= 1) {
+          return cleaned;
+        }
+        const unique = [];
+        const seen = new Set();
+        parts.forEach((part) => {
+          const key = part.toLowerCase();
+          if (!seen.has(key)) {
+            seen.add(key);
+            unique.push(part);
+          }
+        });
+        return unique.join(", ");
       }
 
       function sortRows(rows) {
@@ -372,8 +398,8 @@
           if (pollutantCompare !== 0) {
             return pollutantCompare;
           }
-          const aStation = a.station?.label || a.station_label || "";
-          const bStation = b.station?.label || b.station_label || "";
+          const aStation = formatStationLabel(a);
+          const bStation = formatStationLabel(b);
           return aStation.localeCompare(bStation);
         });
       }
@@ -384,7 +410,7 @@
         }
         const current = pollutantSelect.value;
         const options = Array.from(new Set(rows.map((row) => getPollutantLabel(row))))
-          .filter(Boolean)
+          .filter((label) => label && label !== "Unknown")
           .sort((a, b) => a.localeCompare(b));
         pollutantSelect.innerHTML = "";
         const allOption = document.createElement("option");
@@ -412,7 +438,7 @@
 
         ordered.forEach((row) => {
           const tr = document.createElement("tr");
-          const station = row.station?.label || row.station_label || "Unknown station";
+          const station = formatStationLabel(row);
           const pollutant = getPollutantLabel(row);
           const value = formatValue(row.last_value);
           const unit = row.uom_display || row.uom || "";
