@@ -263,8 +263,9 @@
       const PROJECT_REF_PLACEHOLDER = "nmgierafoeuxfkkscrln";
       const ANON_KEY_PLACEHOLDER = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5tZ2llcmFmb2V1eGZra3NjcmxuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUzMjIzMDMsImV4cCI6MjA4MDg5ODMwM30.x6rKhvMTFRyJCZNlaFG-5tUiSuwehCLLu3qbulNTe7A";
       const params = new URLSearchParams(window.location.search);
-      const region = params.get("region") || "Bristol";
-      const stationLike = params.get("station_like");
+      const regionParam = params.get("region");
+      const region = regionParam || "Bristol";
+      const stationLike = params.get("station_like") || (regionParam ? null : region);
       const projectRefParam = params.get("project_ref");
       const anonKeyParam = params.get("anon_key");
       const inferredProjectRef = inferProjectRefFromHost();
@@ -329,7 +330,9 @@
           return "";
         }
         const url = new URL(EDGE_URL);
-        url.searchParams.set("region", region);
+        if (regionParam) {
+          url.searchParams.set("region", region);
+        }
         if (stationLike) {
           url.searchParams.set("station_like", stationLike);
         }

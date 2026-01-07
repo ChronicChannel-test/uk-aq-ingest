@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const DEFAULT_REGION = "Bristol";
+const DEFAULT_STATION_LIKE = "Bristol";
 const DEFAULT_LIMIT = 200;
 const MAX_LIMIT = 1000;
 
@@ -34,8 +34,9 @@ serve(async (req) => {
   }
 
   const url = new URL(req.url);
-  const region = normalizeText(url.searchParams.get("region")) ?? DEFAULT_REGION;
-  const stationLike = normalizeText(url.searchParams.get("station_like"));
+  const region = normalizeText(url.searchParams.get("region"));
+  const stationLike = normalizeText(url.searchParams.get("station_like"))
+    ?? (region ? null : DEFAULT_STATION_LIKE);
   const serviceId = normalizeText(url.searchParams.get("service_id"));
   const limit = parseLimit(url.searchParams.get("limit"), DEFAULT_LIMIT);
 
