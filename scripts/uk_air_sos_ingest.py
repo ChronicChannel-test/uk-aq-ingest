@@ -159,7 +159,7 @@ class RawDropboxSession:
                 LOG.debug("Raw payload capture produced no response entries; skipping raw Dropbox upload.")
             log_dropbox_path = _dropbox_log_target_path(self.config.folder, self.log_path.name)
             _dropbox_upload_file(access_token, self.log_path, log_dropbox_path)
-            _dropbox_cleanup_logs(access_token, _dropbox_log_folder_path(self.config.folder), days=31)
+            _dropbox_cleanup_logs(access_token, _dropbox_log_root_folder(self.config.folder), days=31)
         except Exception as exc:
             LOG.warning("Dropbox upload failed: %s", exc)
         finally:
@@ -279,11 +279,17 @@ def _dropbox_target_path(folder: str, filename: str) -> str:
     return f"{_dropbox_base_folder(folder)}/{date_folder}/{filename}"
 
 
-def _dropbox_log_folder_path(folder: str) -> str:
+def _dropbox_log_root_folder(folder: str) -> str:
     root = _dropbox_root_folder(folder)
     if root:
         return f"{root}/log"
     return "/log"
+
+
+def _dropbox_log_folder_path(folder: str, date_folder: Optional[str] = None) -> str:
+    root = _dropbox_log_root_folder(folder)
+    date_folder = date_folder or utcnow().strftime("%Y-%m-%d")
+    return f"{root}/{date_folder}"
 
 
 def _dropbox_log_target_path(folder: str, filename: str) -> str:
@@ -293,7 +299,7 @@ def _dropbox_log_target_path(folder: str, filename: str) -> str:
 def _dropbox_cleanup_logs(access_token: str, log_folder: str, days: int = 31) -> None:
     cutoff = utcnow() - timedelta(days=days)
     headers = {"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"}
-    payload: Dict[str, Any] = {"path": log_folder}
+    payload: Dict[str, Any] = {"path": log_folder, "recursive": True}
     while True:
         resp = requests.post(DROPBOX_LIST_FOLDER_URL, headers=headers, json=payload, timeout=30)
         if resp.status_code == 409:

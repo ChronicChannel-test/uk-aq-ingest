@@ -55,7 +55,7 @@ Raw payloads (testing only):
 - Dropbox credentials required: `DROPBOX_APP_KEY`, `DROPBOX_APP_SECRET`, `DROPBOX_REFRESH_TOKEN`.
 - The raw capture writes all SOS responses fetched during the run into a single gzipped JSONL file and uploads it to Dropbox.
 - Uploads are organized under `raw_data/YYYY-MM-DD` within the configured Dropbox folder (for scoped apps, do not include `/Apps/<app>` in the path).
-- Each run also uploads a log file to `/log/` (Dropbox app root) and deletes logs older than 31 days.
+- Each run also uploads a log file to `/log/YYYY-MM-DD/` (Dropbox app root) and deletes logs older than 31 days.
 - If `UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL` is unset in live environments, the upload never runs (even if `--raw-dropbox` is passed).
 
 ### `scripts/uk_air_list_stations.py`

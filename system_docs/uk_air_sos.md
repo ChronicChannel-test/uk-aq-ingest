@@ -88,6 +88,6 @@ Scheduling SQL lives in `supabase/uk_air_polling_cron.sql` and uses `net.http_po
 The default schedule runs 5 minutes past each quarter-hour (:05, :20, :35, :50) to align with on-the-hour measurements.
 
 Dropbox log output (optional):
-- When Dropbox credentials and the allowlist URL are set, each run uploads a log file to `/log` in the Dropbox app root.
+- When Dropbox credentials and the allowlist URL are set, each run uploads a log file to `/log/YYYY-MM-DD` in the Dropbox app root.
 - Logs older than 31 days are deleted on each run.
-- When the allowlist URL matches the test Supabase project, the Edge Function also uploads a gzipped raw payload capture to `/raw_data/YYYY-MM-DD`.
+- When the allowlist URL matches the test Supabase project, the Edge Function also uploads a zipped raw payload capture to `/raw_data/YYYY-MM-DD`.

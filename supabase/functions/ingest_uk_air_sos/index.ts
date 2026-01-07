@@ -410,15 +410,16 @@ function loadDropboxConfig(): DropboxConfig | null {
 
 function buildDropboxLogPath(serviceId: string | null, timestamp: Date): string {
   const stamp = formatCompactTimestamp(timestamp);
+  const dateFolder = formatDateYmd(timestamp);
   const suffix = serviceId ? `_service_${serviceId}` : "";
-  return `${DROPBOX_LOG_FOLDER}/uk_air_log_edge_${stamp}${suffix}.log`;
+  return `${DROPBOX_LOG_FOLDER}/${dateFolder}/uk_air_log_edge_${stamp}${suffix}.log`;
 }
 
 function buildDropboxRawPath(serviceId: string | null, timestamp: Date): string {
   const stamp = formatCompactTimestamp(timestamp);
   const dateFolder = formatDateYmd(timestamp);
   const suffix = serviceId ? `_service_${serviceId}` : "";
-  return `${DROPBOX_RAW_FOLDER}/${dateFolder}/uk_air_raw_edge_${stamp}${suffix}.jsonl.gz`;
+  return `${DROPBOX_RAW_FOLDER}/${dateFolder}/uk_air_raw_edge_${stamp}${suffix}.zip`;
 }
 
 function formatCompactTimestamp(timestamp: Date): string {
@@ -464,8 +465,10 @@ async function uploadDropboxRaw(
   }
   try {
     const rawPath = buildDropboxRawPath(serviceId, new Date());
-    const compressed = await gzipText(content);
-    await dropboxUploadFile(accessToken, rawPath, compressed);
+    const filename = rawPath.split("/").pop() ?? "uk_air_raw_edge.jsonl";
+    const jsonlName = filename.replace(/\.zip$/i, ".jsonl");
+    const zipped = await zipTextCompressed(jsonlName, content);
+    await dropboxUploadFile(accessToken, rawPath, zipped);
   } catch (err) {
     console.warn("Dropbox raw upload failed:", err);
   }
@@ -519,8 +522,119 @@ async function dropboxUploadFile(
   }
 }
 
-async function gzipText(value: string): Promise<Uint8Array> {
-  const stream = new Blob([value]).stream().pipeThrough(new CompressionStream("gzip"));
+const CRC_TABLE = (() => {
+  const table = new Uint32Array(256);
+  for (let i = 0; i < table.length; i += 1) {
+    let c = i;
+    for (let k = 0; k < 8; k += 1) {
+      c = (c & 1) ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    }
+    table[i] = c >>> 0;
+  }
+  return table;
+})();
+
+function crc32(data: Uint8Array): number {
+  let crc = 0xffffffff;
+  for (const byte of data) {
+    const idx = (crc ^ byte) & 0xff;
+    crc = CRC_TABLE[idx] ^ (crc >>> 8);
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+async function zipTextCompressed(filename: string, content: string): Promise<Uint8Array> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(content);
+  const nameBytes = encoder.encode(filename);
+  const crc = crc32(data);
+  const fileSize = data.length;
+  const compressed = await deflateRaw(data);
+  const compressedSize = compressed.length;
+
+  const header: number[] = [];
+  const push16 = (value: number) => {
+    header.push(value & 0xff, (value >>> 8) & 0xff);
+  };
+  const push32 = (value: number) => {
+    header.push(value & 0xff, (value >>> 8) & 0xff, (value >>> 16) & 0xff, (value >>> 24) & 0xff);
+  };
+
+  // Local file header.
+  push32(0x04034b50);
+  push16(20);
+  push16(0);
+  push16(8);
+  push16(0);
+  push16(0);
+  push32(crc);
+  push32(compressedSize);
+  push32(fileSize);
+  push16(nameBytes.length);
+  push16(0);
+
+  const localHeader = new Uint8Array([...header, ...nameBytes]);
+  const localOffset = 0;
+  const centralOffset = localHeader.length + compressedSize;
+
+  const central: number[] = [];
+  const c16 = (value: number) => {
+    central.push(value & 0xff, (value >>> 8) & 0xff);
+  };
+  const c32 = (value: number) => {
+    central.push(value & 0xff, (value >>> 8) & 0xff, (value >>> 16) & 0xff, (value >>> 24) & 0xff);
+  };
+
+  // Central directory header.
+  c32(0x02014b50);
+  c16(20);
+  c16(20);
+  c16(0);
+  c16(8);
+  c16(0);
+  c16(0);
+  c32(crc);
+  c32(compressedSize);
+  c32(fileSize);
+  c16(nameBytes.length);
+  c16(0);
+  c16(0);
+  c16(0);
+  c16(0);
+  c32(0);
+  c32(localOffset);
+
+  const centralHeader = new Uint8Array([...central, ...nameBytes]);
+
+  const end: number[] = [];
+  const e16 = (value: number) => {
+    end.push(value & 0xff, (value >>> 8) & 0xff);
+  };
+  const e32 = (value: number) => {
+    end.push(value & 0xff, (value >>> 8) & 0xff, (value >>> 16) & 0xff, (value >>> 24) & 0xff);
+  };
+  e32(0x06054b50);
+  e16(0);
+  e16(0);
+  e16(1);
+  e16(1);
+  e32(centralHeader.length);
+  e32(centralOffset);
+  e16(0);
+
+  const endHeader = new Uint8Array(end);
+  const output = new Uint8Array(
+    localHeader.length + compressedSize + centralHeader.length + endHeader.length,
+  );
+  output.set(localHeader, 0);
+  output.set(compressed, localHeader.length);
+  output.set(centralHeader, localHeader.length + compressedSize);
+  output.set(endHeader, localHeader.length + compressedSize + centralHeader.length);
+  return output;
+}
+
+async function deflateRaw(data: Uint8Array): Promise<Uint8Array> {
+  const stream = new Blob([data]).stream().pipeThrough(new CompressionStream("deflate-raw"));
   const buffer = await new Response(stream).arrayBuffer();
   return new Uint8Array(buffer);
 }
@@ -531,7 +645,7 @@ async function dropboxCleanupLogs(
   days: number,
 ): Promise<void> {
   const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
-  let payload: Record<string, unknown> = { path: folder };
+  let payload: Record<string, unknown> = { path: folder, recursive: true };
   while (true) {
     const resp = await fetch(DROPBOX_LIST_FOLDER_URL, {
       method: "POST",

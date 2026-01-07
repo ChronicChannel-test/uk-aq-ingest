@@ -366,17 +366,41 @@
       }
 
       function formatStationLabel(row) {
-        const raw = row.label || row.station?.label || row.station_label || "";
-        if (!raw) {
+        const pollutant = getPollutantLabel(row);
+        const stationBase = row.station?.label || row.station_label || "";
+        const fallback = extractSeriesStation(row.label || "");
+        let base = stationBase || fallback;
+        if (!base) {
           return "Unknown station";
         }
-        const cleaned = raw.replace(/,?\s*GB_SamplingFeature_missingFOI\b/gi, "").trim();
-        if (!cleaned) {
-          return "Unknown station";
+        base = stripMissingFolio(base);
+        base = dedupeSegments(base);
+        if (pollutant && pollutant !== "Unknown") {
+          const needle = pollutant.toLowerCase();
+          if (!base.toLowerCase().includes(needle)) {
+            return `${base} — ${pollutant}`;
+          }
         }
-        const parts = cleaned.split(",").map((part) => part.trim()).filter(Boolean);
+        return base;
+      }
+
+      function extractSeriesStation(label) {
+        if (!label) {
+          return "";
+        }
+        const withoutUrl = label.replace(/^https?:\/\/\S+\s*-\s*/i, "");
+        const firstChunk = withoutUrl.split(",").map((part) => part.trim()).filter(Boolean)[0] || "";
+        return stripMissingFolio(firstChunk);
+      }
+
+      function stripMissingFolio(value) {
+        return value.replace(/,?\s*GB_SamplingFeature_missingFOI\b/gi, "").trim();
+      }
+
+      function dedupeSegments(value) {
+        const parts = value.split(",").map((part) => part.trim()).filter(Boolean);
         if (parts.length <= 1) {
-          return cleaned;
+          return value;
         }
         const unique = [];
         const seen = new Set();
