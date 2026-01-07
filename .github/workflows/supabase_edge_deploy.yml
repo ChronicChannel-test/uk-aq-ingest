@@ -23,6 +23,7 @@ jobs:
       - name: Inject project ref into web page
         env:
           SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_PUBLISHABLE_DEFAULT_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_DEFAULT_KEY }}
         run: |
           node scripts/uk_air_inject_project_ref.mjs
 

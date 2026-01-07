@@ -80,7 +80,7 @@ Writes to (when `--to-supabase` is set):
 
 ### `scripts/uk_air_inject_project_ref.mjs`
 Purpose:
-- Inject `SUPABASE_PROJECT_REF` into `web/uk_air_bristol.html` for the live Edge Function URL.
+- Inject `SUPABASE_PROJECT_REF` and the anon key into `web/uk_air_bristol.html` for the live Edge Function URL.
 
 Common command:
 ```
@@ -88,7 +88,7 @@ node scripts/uk_air_inject_project_ref.mjs
 ```
 
 Notes:
-- Reads `SUPABASE_PROJECT_REF` from `.env` or the environment.
+- Reads `SUPABASE_PROJECT_REF` and `SUPABASE_PUBLISHABLE_DEFAULT_KEY` from `.env` or the environment.
 - A pre-commit hook in `.githooks/pre-commit` runs this automatically; enable it with:
 ```
 git config core.hooksPath .githooks

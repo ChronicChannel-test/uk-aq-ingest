@@ -14,25 +14,53 @@ if (envText) {
 }
 
 const projectRef = (process.env.SUPABASE_PROJECT_REF || "").trim();
+const anonKey = (
+  process.env.SUPABASE_PUBLISHABLE_DEFAULT_KEY
+  || process.env.SUPABASE_ANON_JWT
+  || process.env.SUPABASE_ANON_KEY
+  || ""
+).trim();
+
 if (!projectRef) {
   console.error("SUPABASE_PROJECT_REF is missing. Set it in .env or the environment.");
+  process.exit(1);
+}
+if (!anonKey) {
+  console.error("SUPABASE_PUBLISHABLE_DEFAULT_KEY is missing. Set it in .env or the environment.");
   process.exit(1);
 }
 
 const html = await fs.readFile(TARGET_PATH, "utf8");
 const refPattern = /const PROJECT_REF_PLACEHOLDER = "([^"]*)";/;
-const match = html.match(refPattern);
-if (!match) {
-  console.error("Could not find PROJECT_REF_PLACEHOLDER in web/uk_air_bristol.html");
-  process.exit(1);
-}
+const anonPattern = /const ANON_KEY_PLACEHOLDER = "([^"]*)";/;
 
-const updated = html.replace(refPattern, `const PROJECT_REF_PLACEHOLDER = "${projectRef}";`);
+let updated = html;
+updated = replacePlaceholder(
+  updated,
+  refPattern,
+  `const PROJECT_REF_PLACEHOLDER = "${projectRef}";`,
+  "PROJECT_REF_PLACEHOLDER",
+);
+updated = replacePlaceholder(
+  updated,
+  anonPattern,
+  `const ANON_KEY_PLACEHOLDER = "${anonKey}";`,
+  "ANON_KEY_PLACEHOLDER",
+);
+
 if (updated !== html) {
   await fs.writeFile(TARGET_PATH, updated);
-  console.log(`Injected SUPABASE_PROJECT_REF=${projectRef} into web/uk_air_bristol.html`);
+  console.log("Injected SUPABASE_PROJECT_REF and SUPABASE_PUBLISHABLE_DEFAULT_KEY into web/uk_air_bristol.html");
 } else {
-  console.log(`web/uk_air_bristol.html already uses SUPABASE_PROJECT_REF=${projectRef}`);
+  console.log("web/uk_air_bristol.html already uses the configured SUPABASE project ref and anon key.");
+}
+
+function replacePlaceholder(text, pattern, replacement, label) {
+  if (!pattern.test(text)) {
+    console.error(`Could not find ${label} in web/uk_air_bristol.html`);
+    process.exit(1);
+  }
+  return text.replace(pattern, replacement);
 }
 
 function loadEnvFromText(text) {

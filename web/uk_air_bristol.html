@@ -261,14 +261,19 @@
 
     <script>
       const PROJECT_REF_PLACEHOLDER = "nmgierafoeuxfkkscrln";
+      const ANON_KEY_PLACEHOLDER = "sb_publishable_a6RslXF8rRzJqNo3RjjSSg_mFwfSNMP";
       const params = new URLSearchParams(window.location.search);
       const region = params.get("region") || "Bristol";
       const stationLike = params.get("station_like");
       const projectRefParam = params.get("project_ref");
+      const anonKeyParam = params.get("anon_key");
       const inferredProjectRef = inferProjectRefFromHost();
       const projectRef = PROJECT_REF_PLACEHOLDER.includes("__SUPABASE_PROJECT_REF__")
         ? (projectRefParam || inferredProjectRef || "")
         : PROJECT_REF_PLACEHOLDER;
+      const anonKey = ANON_KEY_PLACEHOLDER.includes("__SUPABASE_ANON_KEY__")
+        ? (anonKeyParam || "")
+        : ANON_KEY_PLACEHOLDER;
       const EDGE_URL = projectRef
         ? `https://${projectRef}.supabase.co/functions/v1/uk_air_latest`
         : "";
@@ -340,8 +345,18 @@
           statusEl.textContent = "Error";
           return;
         }
+        if (!anonKey) {
+          errorEl.textContent = "Missing anon key. Provide ?anon_key=... or inject at deploy.";
+          statusEl.textContent = "Error";
+          return;
+        }
         try {
-          const response = await fetch(endpoint);
+          const response = await fetch(endpoint, {
+            headers: {
+              Authorization: `Bearer ${anonKey}`,
+              apikey: anonKey,
+            },
+          });
           if (!response.ok) {
             throw new Error(`Request failed: ${response.status}`);
           }
