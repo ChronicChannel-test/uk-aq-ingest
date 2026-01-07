@@ -78,6 +78,22 @@ Writes to (when `--to-supabase` is set):
   - `stations` lifecycle fields: `first_seen_at`, `last_seen_at`, `removed_at`
   - Stations not seen in the current run are marked with `removed_at`.
 
+### `scripts/uk_air_inject_project_ref.mjs`
+Purpose:
+- Inject `SUPABASE_PROJECT_REF` into `web/uk_air_bristol.html` for the live Edge Function URL.
+
+Common command:
+```
+node scripts/uk_air_inject_project_ref.mjs
+```
+
+Notes:
+- Reads `SUPABASE_PROJECT_REF` from `.env` or the environment.
+- A pre-commit hook in `.githooks/pre-commit` runs this automatically; enable it with:
+```
+git config core.hooksPath .githooks
+```
+
 ## SOS metadata glossary
 - `phenomenon`: The observed property (pollutant/parameter), e.g., NO2, O3, PM2.5.
 - `procedure`: The sensor or measurement method used to produce the observation.

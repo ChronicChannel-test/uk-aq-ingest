@@ -21,8 +21,10 @@ jobs:
           version: latest
 
       - name: Inject project ref into web page
+        env:
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
         run: |
-          sed -i "s/__SUPABASE_PROJECT_REF__/${{ secrets.SUPABASE_PROJECT_REF }}/g" web/uk_air_bristol.html
+          node scripts/uk_air_inject_project_ref.mjs
 
       - name: Set Supabase secrets
         env:
