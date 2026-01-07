@@ -20,6 +20,12 @@ type ServiceRow = {
   poll_timeseries_batch_size: number | null;
 };
 
+type DropboxConfig = {
+  appKey: string;
+  appSecret: string;
+  refreshToken: string;
+};
+
 const DEFAULT_BASE_URL = "https://uk-air.defra.gov.uk/sos-ukair/api/v1";
 const DEFAULT_SERVICE_LABEL = "UK-AIR-SOS";
 const DEFAULT_WINDOW_HOURS = 6;
@@ -39,6 +45,17 @@ const UK_AIR_SOS_BASE_URL = (Deno.env.get("UK_AIR_SOS_BASE_URL")
 const UK_AIR_SOS_SERVICE_LABEL = Deno.env.get("UK_AIR_SOS_SERVICE_LABEL")
   ?? Deno.env.get("UK_AIR_SERVICE_LABEL")
   ?? DEFAULT_SERVICE_LABEL;
+const DROPBOX_APP_KEY = Deno.env.get("DROPBOX_APP_KEY") ?? "";
+const DROPBOX_APP_SECRET = Deno.env.get("DROPBOX_APP_SECRET") ?? "";
+const DROPBOX_REFRESH_TOKEN = Deno.env.get("DROPBOX_REFRESH_TOKEN") ?? "";
+const DROPBOX_ALLOWED_SUPABASE_URL = Deno.env.get("UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL") ?? "";
+const DROPBOX_LOG_FOLDER = "/log";
+const DROPBOX_RAW_FOLDER = "/raw_data";
+const DROPBOX_LOG_RETENTION_DAYS = 31;
+const DROPBOX_TOKEN_URL = "https://api.dropbox.com/oauth2/token";
+const DROPBOX_UPLOAD_URL = "https://content.dropboxapi.com/2/files/upload";
+const DROPBOX_LIST_FOLDER_URL = "https://api.dropboxapi.com/2/files/list_folder";
+const DROPBOX_DELETE_URL = "https://api.dropboxapi.com/2/files/delete_v2";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false },
@@ -48,108 +65,188 @@ serve(async (req) => {
   if (req.method !== "POST") {
     return new Response("Method not allowed", { status: 405 });
   }
-  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-    return json({ error: "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY." }, 500);
-  }
-
-  const payload = await readJson(req);
-  const serviceId = asString(payload?.service_id);
-  const serviceLabel = asString(payload?.service_label) || UK_AIR_SOS_SERVICE_LABEL;
-  const windowHours = asNumber(payload?.window_hours, undefined);
-  const pollutants = parseList(payload?.pollutants);
-  const limit = asNumber(payload?.timeseries_limit, undefined);
-  const requestedSeries = parseList(payload?.timeseries_ids);
-
-  const service = await loadService(serviceId, serviceLabel);
-  if (!service) {
-    return json({ error: "Service not found and could not be discovered." }, 404);
-  }
-  if (service.poll_enabled === false) {
-    return json({ status: "poll_disabled", service_id: service.id }, 200);
-  }
-
-  const pollWindow = windowHours ?? service.poll_window_hours ?? DEFAULT_WINDOW_HOURS;
-  const effectiveLimit = limit ?? service.poll_timeseries_batch_size ?? undefined;
-  const baseUrl = (service.service_url || UK_AIR_SOS_BASE_URL).replace(/\/$/, "");
-
-  let series = await loadTimeseries(service.id);
-  if (requestedSeries?.length) {
-    const requestedSet = new Set(requestedSeries.map((value) => value.toLowerCase()));
-    series = series.filter((row) => {
-    const idMatch = row.id && requestedSet.has(String(row.id).toLowerCase());
-    const sourceMatch = row.timeseries_ref
-      && requestedSet.has(String(row.timeseries_ref).toLowerCase());
-    return idMatch || sourceMatch;
-  });
-  }
-
-  if (pollutants?.length) {
-    const allowedPhenomena = await loadPhenomena(service.id, pollutants);
-    if (allowedPhenomena.size === 0) {
-      return json({ status: "no_matching_pollutants", service_id: service.id }, 200);
-    }
-    series = series.filter((row) => row.phenomenon_id && allowedPhenomena.has(row.phenomenon_id));
-  }
-
-  if (typeof effectiveLimit === "number" && effectiveLimit > 0) {
-    series = series.slice(0, effectiveLimit);
-  }
-
-  const now = new Date();
-  const windowStart = new Date(now.getTime() - pollWindow * 60 * 60 * 1000);
-  const timespan = `${windowStart.toISOString()}/${now.toISOString()}`;
-
+  const log = createLogBuffer();
+  const dropboxConfig = loadDropboxConfig();
+  const rawRecorder = dropboxConfig ? createRawRecorder() : null;
+  const errors: string[] = [];
+  let status = 200;
   let polled = 0;
   let observationsUpserted = 0;
-  const errors: string[] = [];
+  let responsePayload: Record<string, unknown> = {};
+  let service: ServiceRow | null = null;
+  let requestedServiceId: string | undefined;
+  let requestedServiceLabel = UK_AIR_SOS_SERVICE_LABEL;
+  let requestedWindowHours: number | undefined;
+  let requestedPollutants: string[] | undefined;
+  let requestedLimit: number | undefined;
+  let requestedSeries: string[] | undefined;
 
-  await runPool(series, CONCURRENCY_LIMIT, async (row) => {
-    try {
-      const sourceId = row.timeseries_ref || String(row.id);
-      const data = await fetchJson(
-        baseUrl,
-        `/timeseries/${encodeURIComponent(sourceId)}/getData`,
-        { timespan, format: "tvp" },
-      );
-      const points = parseDatapoints(data?.values, row.id);
-      if (points.length) {
-        const { error } = await supabase
-          .from("observations")
-          .upsert(points.map((point) => ({
-            timeseries_id: row.id,
-            observed_at: point.observed_at,
-            value: point.value,
-            status: point.status,
-          })), { onConflict: "timeseries_id,observed_at" });
-        if (error) {
-          throw new Error(`observations upsert failed for ${row.id}: ${error.message}`);
+  try {
+    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+      status = 500;
+      responsePayload = { error: "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY." };
+      log.error("Missing Supabase configuration.");
+    } else {
+      const payload = await readJson(req);
+      requestedServiceId = asString(payload?.service_id);
+      requestedServiceLabel = asString(payload?.service_label) || UK_AIR_SOS_SERVICE_LABEL;
+      requestedWindowHours = asNumber(payload?.window_hours, undefined);
+      requestedPollutants = parseList(payload?.pollutants);
+      requestedLimit = asNumber(payload?.timeseries_limit, undefined);
+      requestedSeries = parseList(payload?.timeseries_ids);
+
+      log.info("Poll request", {
+        service_id: requestedServiceId ?? null,
+        service_label: requestedServiceLabel,
+        window_hours: requestedWindowHours ?? null,
+        pollutants: requestedPollutants?.length ?? null,
+        timeseries_ids: requestedSeries?.length ?? null,
+        timeseries_limit: requestedLimit ?? null,
+      });
+
+      service = await loadService(requestedServiceId, requestedServiceLabel);
+      if (!service) {
+        status = 404;
+        responsePayload = { error: "Service not found and could not be discovered." };
+        log.warn("Service not found.");
+      } else if (service.poll_enabled === false) {
+        status = 200;
+        responsePayload = { status: "poll_disabled", service_id: service.id };
+        log.info("Polling disabled for service.", { service_id: service.id });
+      } else {
+        let shouldPoll = true;
+        const pollWindow = requestedWindowHours ?? service.poll_window_hours ?? DEFAULT_WINDOW_HOURS;
+        const effectiveLimit = requestedLimit ?? service.poll_timeseries_batch_size ?? undefined;
+        const baseUrl = (service.service_url || UK_AIR_SOS_BASE_URL).replace(/\/$/, "");
+
+        let series = await loadTimeseries(service.id);
+        if (requestedSeries?.length) {
+          const requestedSet = new Set(requestedSeries.map((value) => value.toLowerCase()));
+          series = series.filter((row) => {
+            const idMatch = row.id && requestedSet.has(String(row.id).toLowerCase());
+            const sourceMatch = row.timeseries_ref
+              && requestedSet.has(String(row.timeseries_ref).toLowerCase());
+            return idMatch || sourceMatch;
+          });
         }
-        observationsUpserted += points.length;
-      }
-      await upsertLastValue(row.id, data, points);
-      polled += 1;
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      errors.push(`${row.id}: ${message}`);
-      console.warn(`Poll failed for ${row.id}: ${message}`);
-    }
-  });
 
-  const { error: pollUpdateError } = await supabase
-    .from("services")
-    .update({ last_polled_at: now.toISOString() })
-    .eq("id", service.id);
-  if (pollUpdateError) {
-    errors.push(`service last_polled_at update failed: ${pollUpdateError.message}`);
+        if (requestedPollutants?.length) {
+          const allowedPhenomena = await loadPhenomena(service.id, requestedPollutants);
+          if (allowedPhenomena.size === 0) {
+            status = 200;
+            responsePayload = { status: "no_matching_pollutants", service_id: service.id };
+            log.warn("No matching pollutants for service.", { service_id: service.id });
+            shouldPoll = false;
+          } else {
+            series = series.filter((row) =>
+              row.phenomenon_id && allowedPhenomena.has(row.phenomenon_id)
+            );
+          }
+        }
+
+        if (shouldPoll) {
+          if (typeof effectiveLimit === "number" && effectiveLimit > 0) {
+            series = series.slice(0, effectiveLimit);
+          }
+
+          const now = new Date();
+          const windowStart = new Date(now.getTime() - pollWindow * 60 * 60 * 1000);
+          const timespan = `${windowStart.toISOString()}/${now.toISOString()}`;
+          if (rawRecorder) {
+            rawRecorder.recordEvent("context", {
+              service_id: service.id,
+              service_ref: service.service_ref,
+              service_label: service.label,
+              timespan,
+              window_hours: pollWindow,
+              timeseries_limit: typeof effectiveLimit === "number" ? effectiveLimit : null,
+              pollutants: requestedPollutants?.length ? requestedPollutants : "all",
+            });
+          }
+
+          await runPool(series, CONCURRENCY_LIMIT, async (row) => {
+            try {
+              const sourceId = row.timeseries_ref || String(row.id);
+              const data = await fetchJson(
+                baseUrl,
+                `/timeseries/${encodeURIComponent(sourceId)}/getData`,
+                { timespan, format: "tvp" },
+                rawRecorder,
+              );
+              const points = parseDatapoints(data?.values, row.id);
+              if (points.length) {
+                const { error } = await supabase
+                  .from("observations")
+                  .upsert(points.map((point) => ({
+                    timeseries_id: row.id,
+                    observed_at: point.observed_at,
+                    value: point.value,
+                    status: point.status,
+                  })), { onConflict: "timeseries_id,observed_at" });
+                if (error) {
+                  throw new Error(`observations upsert failed for ${row.id}: ${error.message}`);
+                }
+                observationsUpserted += points.length;
+              }
+              await upsertLastValue(row.id, data, points);
+              polled += 1;
+            } catch (err) {
+              const message = err instanceof Error ? err.message : String(err);
+              errors.push(`${row.id}: ${message}`);
+              console.warn(`Poll failed for ${row.id}: ${message}`);
+            }
+          });
+
+          const { error: pollUpdateError } = await supabase
+            .from("services")
+            .update({ last_polled_at: now.toISOString() })
+            .eq("id", service.id);
+          if (pollUpdateError) {
+            errors.push(`service last_polled_at update failed: ${pollUpdateError.message}`);
+          }
+
+          status = errors.length ? 207 : 200;
+          responsePayload = {
+            status: "ok",
+            service_id: service.id,
+            series_polled: polled,
+            observations_upserted: observationsUpserted,
+            errors,
+          };
+        }
+      }
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    errors.push(message);
+    status = 500;
+    responsePayload = { error: "Unhandled error", message };
+    log.error("Unhandled error during poll.", { message });
+  } finally {
+    log.info("Poll summary", {
+      service_id: service?.id ?? requestedServiceId ?? null,
+      series_polled: polled,
+      observations_upserted: observationsUpserted,
+      errors: errors.length,
+    });
+    if (errors.length) {
+      log.warn("Poll errors", { sample: errors.slice(0, 25) });
+    }
+    let accessToken: string | null = null;
+    if (dropboxConfig) {
+      try {
+        accessToken = await dropboxRefreshAccessToken(dropboxConfig);
+      } catch (err) {
+        console.warn("Dropbox token request failed:", err);
+      }
+    }
+    if (accessToken) {
+      await uploadDropboxLog(accessToken, log, service?.id ?? requestedServiceId ?? null);
+      await uploadDropboxRaw(accessToken, rawRecorder, service?.id ?? requestedServiceId ?? null);
+    }
   }
 
-  return json({
-    status: "ok",
-    service_id: service.id,
-    series_polled: polled,
-    observations_upserted: observationsUpserted,
-    errors,
-  }, errors.length ? 207 : 200);
+  return json(responsePayload, status);
 });
 
 async function readJson(req: Request): Promise<PollRequest | null> {
@@ -165,6 +262,71 @@ function json(payload: unknown, status = 200): Response {
     status,
     headers: { "Content-Type": "application/json" },
   });
+}
+
+type LogBuffer = {
+  lines: string[];
+  info: (message: string, context?: Record<string, unknown>) => void;
+  warn: (message: string, context?: Record<string, unknown>) => void;
+  error: (message: string, context?: Record<string, unknown>) => void;
+};
+
+type RawRecorder = {
+  lines: string[];
+  responseCount: number;
+  recordEvent: (name: string, payload: Record<string, unknown>) => void;
+  recordResponse: (
+    path: string,
+    params: Record<string, string>,
+    statusCode: number,
+    payload: unknown,
+  ) => void;
+};
+
+function createLogBuffer(): LogBuffer {
+  const lines: string[] = [];
+  const push = (level: string, message: string, context?: Record<string, unknown>) => {
+    const timestamp = new Date().toISOString();
+    const base = `${timestamp} ${level} ${message}`;
+    lines.push(context ? `${base} ${JSON.stringify(context)}` : base);
+  };
+  return {
+    lines,
+    info: (message, context) => push("INFO", message, context),
+    warn: (message, context) => push("WARN", message, context),
+    error: (message, context) => push("ERROR", message, context),
+  };
+}
+
+function createRawRecorder(): RawRecorder {
+  const lines: string[] = [];
+  const write = (entry: Record<string, unknown>) => {
+    lines.push(JSON.stringify(entry));
+  };
+  const recorder: RawRecorder = {
+    lines,
+    responseCount: 0,
+    recordEvent: (name, payload) => {
+      write({
+        type: name,
+        recorded_at: new Date().toISOString(),
+        payload,
+      });
+    },
+    recordResponse: (path, params, statusCode, payload) => {
+      recorder.responseCount += 1;
+      write({
+        type: "response",
+        fetched_at: new Date().toISOString(),
+        path,
+        params,
+        status_code: statusCode,
+        payload,
+      });
+    },
+  };
+  write({ type: "meta", created_at: new Date().toISOString() });
+  return recorder;
 }
 
 function asString(value: unknown): string | undefined {
@@ -210,6 +372,193 @@ function normalizeServiceLabel(label: string | undefined): string {
     return UK_AIR_SOS_SERVICE_LABEL;
   }
   return trimmed;
+}
+
+function loadDropboxConfig(): DropboxConfig | null {
+  if (!DROPBOX_APP_KEY || !DROPBOX_APP_SECRET || !DROPBOX_REFRESH_TOKEN) {
+    return null;
+  }
+  if (!DROPBOX_ALLOWED_SUPABASE_URL || DROPBOX_ALLOWED_SUPABASE_URL !== SUPABASE_URL) {
+    return null;
+  }
+  return {
+    appKey: DROPBOX_APP_KEY,
+    appSecret: DROPBOX_APP_SECRET,
+    refreshToken: DROPBOX_REFRESH_TOKEN,
+  };
+}
+
+function buildDropboxLogPath(serviceId: string | null, timestamp: Date): string {
+  const stamp = formatCompactTimestamp(timestamp);
+  const suffix = serviceId ? `_service_${serviceId}` : "";
+  return `${DROPBOX_LOG_FOLDER}/uk_air_log_edge_${stamp}${suffix}.log`;
+}
+
+function buildDropboxRawPath(serviceId: string | null, timestamp: Date): string {
+  const stamp = formatCompactTimestamp(timestamp);
+  const dateFolder = formatDateYmd(timestamp);
+  const suffix = serviceId ? `_service_${serviceId}` : "";
+  return `${DROPBOX_RAW_FOLDER}/${dateFolder}/uk_air_raw_edge_${stamp}${suffix}.jsonl.gz`;
+}
+
+function formatCompactTimestamp(timestamp: Date): string {
+  return timestamp.toISOString().replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z");
+}
+
+function formatDateYmd(timestamp: Date): string {
+  return timestamp.toISOString().slice(0, 10);
+}
+
+async function uploadDropboxLog(
+  accessToken: string,
+  log: LogBuffer,
+  serviceId: string | null,
+): Promise<void> {
+  if (!accessToken) {
+    return;
+  }
+  const content = log.lines.join("\n") + "\n";
+  if (!content.trim()) {
+    return;
+  }
+  try {
+    const logPath = buildDropboxLogPath(serviceId, new Date());
+    await dropboxUploadFile(accessToken, logPath, content);
+    await dropboxCleanupLogs(accessToken, DROPBOX_LOG_FOLDER, DROPBOX_LOG_RETENTION_DAYS);
+  } catch (err) {
+    console.warn("Dropbox log upload failed:", err);
+  }
+}
+
+async function uploadDropboxRaw(
+  accessToken: string,
+  recorder: RawRecorder | null,
+  serviceId: string | null,
+): Promise<void> {
+  if (!accessToken || !recorder || recorder.responseCount === 0) {
+    return;
+  }
+  const content = recorder.lines.join("\n") + "\n";
+  if (!content.trim()) {
+    return;
+  }
+  try {
+    const rawPath = buildDropboxRawPath(serviceId, new Date());
+    const compressed = await gzipText(content);
+    await dropboxUploadFile(accessToken, rawPath, compressed);
+  } catch (err) {
+    console.warn("Dropbox raw upload failed:", err);
+  }
+}
+
+async function dropboxRefreshAccessToken(config: DropboxConfig): Promise<string> {
+  const payload = new URLSearchParams({
+    grant_type: "refresh_token",
+    refresh_token: config.refreshToken,
+    client_id: config.appKey,
+    client_secret: config.appSecret,
+  });
+  const resp = await fetch(DROPBOX_TOKEN_URL, {
+    method: "POST",
+    body: payload,
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+  });
+  if (!resp.ok) {
+    throw new Error(`Dropbox token request failed (${resp.status})`);
+  }
+  const data = await resp.json();
+  const token = data?.access_token;
+  if (!token) {
+    throw new Error("Dropbox token response missing access_token.");
+  }
+  return token;
+}
+
+async function dropboxUploadFile(
+  accessToken: string,
+  path: string,
+  contents: string | Uint8Array,
+): Promise<void> {
+  const body = typeof contents === "string" ? new TextEncoder().encode(contents) : contents;
+  const resp = await fetch(DROPBOX_UPLOAD_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Dropbox-API-Arg": JSON.stringify({
+        path,
+        mode: "add",
+        autorename: true,
+        mute: false,
+      }),
+      "Content-Type": "application/octet-stream",
+    },
+    body,
+  });
+  if (!resp.ok) {
+    throw new Error(`Dropbox upload failed (${resp.status})`);
+  }
+}
+
+async function gzipText(value: string): Promise<Uint8Array> {
+  const stream = new Blob([value]).stream().pipeThrough(new CompressionStream("gzip"));
+  const buffer = await new Response(stream).arrayBuffer();
+  return new Uint8Array(buffer);
+}
+
+async function dropboxCleanupLogs(
+  accessToken: string,
+  folder: string,
+  days: number,
+): Promise<void> {
+  const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+  let payload: Record<string, unknown> = { path: folder };
+  while (true) {
+    const resp = await fetch(DROPBOX_LIST_FOLDER_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+    if (resp.status === 409) {
+      return;
+    }
+    if (!resp.ok) {
+      throw new Error(`Dropbox list_folder failed (${resp.status})`);
+    }
+    const data = await resp.json();
+    const entries = Array.isArray(data?.entries) ? data.entries : [];
+    for (const entry of entries) {
+      if (entry?.[".tag"] !== "file") {
+        continue;
+      }
+      const modified = entry?.client_modified || entry?.server_modified;
+      if (!modified) {
+        continue;
+      }
+      const modifiedAt = Date.parse(modified);
+      if (!Number.isFinite(modifiedAt) || modifiedAt >= cutoff) {
+        continue;
+      }
+      const path = entry?.path_lower || entry?.path_display;
+      if (!path) {
+        continue;
+      }
+      await fetch(DROPBOX_DELETE_URL, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ path }),
+      });
+    }
+    if (!data?.has_more) {
+      return;
+    }
+    payload = { cursor: data.cursor };
+  }
 }
 
 async function loadService(
@@ -384,6 +733,7 @@ async function fetchJson(
   baseUrl: string,
   path: string,
   params: Record<string, string>,
+  recorder?: RawRecorder | null,
 ): Promise<any> {
   const url = new URL(`${baseUrl.replace(/\/$/, "")}/${path.replace(/^\//, "")}`);
   for (const [key, value] of Object.entries(params)) {
@@ -395,10 +745,17 @@ async function fetchJson(
   const timeout = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
   try {
     const resp = await fetch(url.toString(), { signal: controller.signal });
+    const contentType = resp.headers.get("content-type") || "";
+    const payload = contentType.includes("application/json")
+      ? await resp.json()
+      : await resp.text();
+    if (recorder) {
+      recorder.recordResponse(path, params, resp.status, payload);
+    }
     if (!resp.ok) {
       throw new Error(`HTTP ${resp.status} ${resp.statusText}`);
     }
-    return await resp.json();
+    return payload;
   } finally {
     clearTimeout(timeout);
   }

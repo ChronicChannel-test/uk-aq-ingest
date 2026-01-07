@@ -59,6 +59,8 @@ Environment variables (Supabase secrets):
 - `SB_SERVICE_ROLE_KEY`
 - `UK_AIR_SOS_BASE_URL` (optional override)
 - `UK_AIR_SOS_SERVICE_LABEL` (optional override)
+- `DROPBOX_APP_KEY`, `DROPBOX_APP_SECRET`, `DROPBOX_REFRESH_TOKEN` (optional; enables log upload)
+- `UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL` (optional; must match `SB_SUPABASE_URL` to enable log upload)
 
 For local runs, keep the `SUPABASE_*` values in `.env` (gitignored). For Edge Functions, use `SB_*` secrets instead. `SUPABASE_ACCESS_TOKEN` is only needed for deployment, not for runtime polling.
 
@@ -84,3 +86,8 @@ If `timeseries_limit` is not provided, the function uses `services.poll_timeseri
 
 Scheduling SQL lives in `supabase/uk_air_polling_cron.sql` and uses `net.http_post` to invoke the function.
 The default schedule runs 5 minutes past each quarter-hour (:05, :20, :35, :50) to align with on-the-hour measurements.
+
+Dropbox log output (optional):
+- When Dropbox credentials and the allowlist URL are set, each run uploads a log file to `/log` in the Dropbox app root.
+- Logs older than 31 days are deleted on each run.
+- When the allowlist URL matches the test Supabase project, the Edge Function also uploads a gzipped raw payload capture to `/raw_data/YYYY-MM-DD`.
