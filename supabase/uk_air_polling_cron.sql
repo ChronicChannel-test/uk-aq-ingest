@@ -1,11 +1,11 @@
 -- Schedule UK-AIR SOS polling via Supabase Edge Function.
 -- Replace placeholders before running.
 
--- Create a 15-minute poll schedule.
+-- Create a 15-minute poll schedule (5 minutes past the quarter-hour).
 -- SERVICE_ID should come from the `services` table (internal bigint id).
 select cron.schedule(
   'ingest-uk-air-sos-15m',
-  '*/15 * * * *',
+  '5,20,35,50 * * * *',
   $$
     select net.http_post(
       url := 'https://nmgierafoeuxfkkscrln.supabase.co/functions/v1/ingest_uk_air_sos',

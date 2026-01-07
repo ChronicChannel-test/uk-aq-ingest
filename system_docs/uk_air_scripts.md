@@ -70,6 +70,7 @@ Service refs:
 - By default, if the SOS reports a single service, that service ref is applied to stations in the JSON output.
 - The JSON output also includes a top-level `service_ref` when a single service is detected.
 - Use `--service-ref-from-timeseries` (alias `--service-id-from-timeseries`) to resolve `service_ref` from timeseries metadata.
+- The internal attribute is named `service_ref_from_timeseries` to match the `_ref` convention; the legacy flag name still works for compatibility.
 
 Writes to (when `--to-supabase` is set):
 - `services`, `stations`

@@ -38,6 +38,12 @@ source .venv/bin/activate
 pip install requests python-dotenv supabase
 ```
 
+## Testing
+- Install dev tools: `pip install -r requirements-dev.txt` (contains pytest + mocks).
+- Run mocked/unit tests (no network): `pytest`
+- Run live SOS integration tests: `UKAIR_LIVE=1 pytest -m live` (read-only; skips by default)
+- Optional DB writes (should stay off for tests): `UKAIR_WRITE_DB=1` (default is no writes)
+
 ## Run the UK-AIR SOS ingestion
 Discover stations and timeseries, then backfill 2025:
 

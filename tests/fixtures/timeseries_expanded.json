@@ -1,0 +1,22 @@
+{
+  "timeseries": [
+    {
+      "id": "ts-1",
+      "label": "NO2 at Station Alpha",
+      "uom": "ug.m-3",
+      "station": {"id": "100"},
+      "phenomenon": {
+        "eionet_uri": "http://dd.eionet.europa.eu/vocabulary/aq/pollutant/8",
+        "notation": "NO2",
+        "label": "Nitrogen dioxide"
+      },
+      "procedure": {"id": "proc-1", "label": "Method A"},
+      "offering": {"id": "off-1", "label": "Offering A"},
+      "feature": {"id": "feat-1", "label": "Feature A"},
+      "category": {"id": "cat-1", "label": "Category A"},
+      "firstValueTimestamp": "2025-01-01T00:00:00Z",
+      "lastValueTimestamp": "2025-01-01T01:00:00Z",
+      "lastValue": 12.3
+    }
+  ]
+}
