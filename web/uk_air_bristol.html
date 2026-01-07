@@ -1,0 +1,408 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>UK Air Bristol Snapshot</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:wght@400;600&family=Space+Grotesk:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --ink: #142225;
+        --ink-soft: #334449;
+        --mist: #f6f1e9;
+        --teal: #0f8b8d;
+        --teal-deep: #0a5d61;
+        --sun: #f4b942;
+        --clay: #e8dcc7;
+        --fog: rgba(20, 34, 37, 0.08);
+        --card: #ffffff;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: "Space Grotesk", system-ui, -apple-system, sans-serif;
+        color: var(--ink);
+        background:
+          radial-gradient(circle at 12% 20%, #ffe8c7 0%, transparent 55%),
+          radial-gradient(circle at 88% 18%, #d6f1ef 0%, transparent 50%),
+          linear-gradient(135deg, #f7f2e8, #f0f7f6);
+        min-height: 100vh;
+      }
+
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        background-image: linear-gradient(120deg, rgba(20, 34, 37, 0.05) 1px, transparent 1px);
+        background-size: 32px 32px;
+        opacity: 0.2;
+        pointer-events: none;
+      }
+
+      main {
+        position: relative;
+        max-width: 1100px;
+        margin: 0 auto;
+        padding: 48px 24px 64px;
+        display: grid;
+        gap: 24px;
+      }
+
+      header {
+        display: grid;
+        gap: 12px;
+        align-items: start;
+      }
+
+      .title {
+        font-family: "Fraunces", serif;
+        font-size: clamp(2rem, 2.6vw, 3.25rem);
+        letter-spacing: -0.02em;
+        margin: 0;
+      }
+
+      .subtitle {
+        margin: 0;
+        color: var(--ink-soft);
+        font-size: 1.05rem;
+        max-width: 640px;
+      }
+
+      .meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        font-size: 0.9rem;
+        color: var(--ink-soft);
+      }
+
+      .badge {
+        background: var(--clay);
+        color: var(--ink);
+        padding: 4px 10px;
+        border-radius: 999px;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        text-transform: uppercase;
+        font-size: 0.72rem;
+      }
+
+      .card {
+        background: var(--card);
+        border-radius: 18px;
+        box-shadow: 0 20px 50px rgba(20, 34, 37, 0.12);
+        padding: 24px;
+        display: grid;
+        gap: 16px;
+        animation: floatIn 0.6s ease-out;
+      }
+
+      .card-header {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .card-title {
+        font-family: "Fraunces", serif;
+        margin: 0;
+        font-size: 1.4rem;
+      }
+
+      .actions {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        font-size: 0.9rem;
+        color: var(--ink-soft);
+      }
+
+      button {
+        border: none;
+        background: var(--teal);
+        color: white;
+        padding: 8px 14px;
+        border-radius: 999px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+      }
+
+      button:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 8px 18px rgba(15, 139, 141, 0.25);
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.95rem;
+      }
+
+      th,
+      td {
+        padding: 12px 10px;
+        text-align: left;
+        border-bottom: 1px solid rgba(20, 34, 37, 0.08);
+      }
+
+      th {
+        font-size: 0.78rem;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--ink-soft);
+      }
+
+      tbody tr {
+        transition: background 0.2s ease;
+      }
+
+      tbody tr:hover {
+        background: rgba(15, 139, 141, 0.06);
+      }
+
+      .value {
+        font-weight: 600;
+      }
+
+      .stale {
+        color: #a65f2d;
+      }
+
+      .error {
+        color: #8b1e3f;
+        font-weight: 600;
+      }
+
+      .hint {
+        font-size: 0.85rem;
+        color: var(--ink-soft);
+      }
+
+      @keyframes floatIn {
+        from {
+          opacity: 0;
+          transform: translateY(16px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      @media (max-width: 720px) {
+        main {
+          padding: 36px 18px 48px;
+        }
+
+        .card {
+          padding: 18px;
+        }
+
+        th,
+        td {
+          padding: 10px 6px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <p class="badge" id="region-badge">Region</p>
+        <h1 class="title">UK Air latest readings</h1>
+        <p class="subtitle">
+          A lightweight view of the most recent measurements for stations in the selected region.
+          Update the region via the query string or keep it on Bristol for a quick snapshot.
+        </p>
+        <div class="meta">
+          <span id="row-count">Loading…</span>
+          <span id="last-updated">Waiting for data</span>
+        </div>
+      </header>
+
+      <section class="card">
+        <div class="card-header">
+          <h2 class="card-title">Latest values</h2>
+          <div class="actions">
+            <span class="hint" id="status">Fetching from Edge Function…</span>
+            <button id="refresh">Refresh</button>
+          </div>
+        </div>
+        <div class="hint" id="endpoint-hint"></div>
+        <div class="error" id="error"></div>
+        <div style="overflow-x: auto;">
+          <table>
+            <thead>
+              <tr>
+                <th>Station</th>
+                <th>Phenomenon</th>
+                <th>Value</th>
+                <th>Unit</th>
+                <th>Observed</th>
+              </tr>
+            </thead>
+            <tbody id="table-body"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      const PROJECT_REF_PLACEHOLDER = "__SUPABASE_PROJECT_REF__";
+      const params = new URLSearchParams(window.location.search);
+      const region = params.get("region") || "Bristol";
+      const stationLike = params.get("station_like");
+      const projectRefParam = params.get("project_ref");
+      const inferredProjectRef = inferProjectRefFromHost();
+      const projectRef = PROJECT_REF_PLACEHOLDER.includes("__SUPABASE_PROJECT_REF__")
+        ? (projectRefParam || inferredProjectRef || "")
+        : PROJECT_REF_PLACEHOLDER;
+      const EDGE_URL = projectRef
+        ? `https://${projectRef}.supabase.co/functions/v1/uk_air_latest`
+        : "";
+
+      const statusEl = document.getElementById("status");
+      const errorEl = document.getElementById("error");
+      const tableBody = document.getElementById("table-body");
+      const rowCount = document.getElementById("row-count");
+      const lastUpdated = document.getElementById("last-updated");
+      const regionBadge = document.getElementById("region-badge");
+      const endpointHint = document.getElementById("endpoint-hint");
+
+      regionBadge.textContent = region;
+      endpointHint.textContent = EDGE_URL
+        ? `Endpoint: ${EDGE_URL}`
+        : "Missing project ref. Add ?project_ref=... to the URL.";
+
+      function formatValue(value) {
+        if (value === null || value === undefined) {
+          return "—";
+        }
+        const number = Number(value);
+        if (Number.isNaN(number)) {
+          return String(value);
+        }
+        return number.toFixed(2);
+      }
+
+      function formatTime(value) {
+        if (!value) {
+          return "—";
+        }
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) {
+          return String(value);
+        }
+        return date.toLocaleString();
+      }
+
+      function isStale(timestamp) {
+        if (!timestamp) {
+          return false;
+        }
+        const value = new Date(timestamp).getTime();
+        if (Number.isNaN(value)) {
+          return false;
+        }
+        return Date.now() - value > 2 * 60 * 60 * 1000;
+      }
+
+      function buildEndpoint() {
+        if (!EDGE_URL) {
+          return "";
+        }
+        const url = new URL(EDGE_URL);
+        url.searchParams.set("region", region);
+        if (stationLike) {
+          url.searchParams.set("station_like", stationLike);
+        }
+        return url.toString();
+      }
+
+      async function loadData() {
+        statusEl.textContent = "Loading…";
+        errorEl.textContent = "";
+        const endpoint = buildEndpoint();
+        if (!endpoint) {
+          errorEl.textContent = "Missing project ref. Provide ?project_ref=... or inject at deploy.";
+          statusEl.textContent = "Error";
+          return;
+        }
+        try {
+          const response = await fetch(endpoint);
+          if (!response.ok) {
+            throw new Error(`Request failed: ${response.status}`);
+          }
+          const payload = await response.json();
+          const rows = payload.data || [];
+          tableBody.innerHTML = "";
+
+          rows.forEach((row) => {
+            const tr = document.createElement("tr");
+            const station = row.station?.label || "Unknown station";
+            const phenomenon = row.phenomenon?.label || "Unknown";
+            const value = formatValue(row.last_value);
+            const unit = row.uom || "";
+            const observed = formatTime(row.last_value_at);
+
+            const stationCell = document.createElement("td");
+            stationCell.textContent = station;
+
+            const phenomenonCell = document.createElement("td");
+            phenomenonCell.textContent = phenomenon;
+
+            const valueCell = document.createElement("td");
+            valueCell.className = `value ${isStale(row.last_value_at) ? "stale" : ""}`;
+            valueCell.textContent = value;
+
+            const unitCell = document.createElement("td");
+            unitCell.textContent = unit;
+
+            const observedCell = document.createElement("td");
+            observedCell.textContent = observed;
+
+            tr.appendChild(stationCell);
+            tr.appendChild(phenomenonCell);
+            tr.appendChild(valueCell);
+            tr.appendChild(unitCell);
+            tr.appendChild(observedCell);
+
+            tableBody.appendChild(tr);
+          });
+
+          rowCount.textContent = `${rows.length} series`;
+          lastUpdated.textContent = `Updated ${new Date().toLocaleTimeString()}`;
+          statusEl.textContent = "Live";
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          errorEl.textContent = message;
+          statusEl.textContent = "Error";
+        }
+      }
+
+      document.getElementById("refresh").addEventListener("click", loadData);
+      loadData();
+      setInterval(loadData, 5 * 60 * 1000);
+
+      function inferProjectRefFromHost() {
+        const host = window.location.hostname || "";
+        if (host.endsWith(".supabase.co")) {
+          return host.split(".")[0];
+        }
+        return null;
+      }
+    </script>
+  </body>
+</html>
