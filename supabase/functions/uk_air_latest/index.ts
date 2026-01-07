@@ -62,29 +62,50 @@ type LoadOptions = {
 };
 
 async function loadLatest({ region, stationLike, serviceId, limit }: LoadOptions) {
-  let query = supabase
-    .from("timeseries")
-    .select(
-      "id,timeseries_ref,label,uom,last_value,last_value_at,station:stations(id,station_ref,label,region),phenomenon:phenomena(id,label,notation,eionet_uri)",
-    );
+  const buildQuery = () => {
+    let query = supabase
+      .from("timeseries")
+      .select(
+        "id,timeseries_ref,label,uom,last_value,last_value_at,station:stations(id,station_ref,label,region),phenomenon:phenomena(id,label,notation,eionet_uri)",
+      );
 
-  if (region) {
-    query = query.ilike("stations.region", `%${region}%`);
-  }
-  if (stationLike) {
+    if (region) {
+      query = query.ilike("region", `%${region}%`, { foreignTable: "stations" });
+    }
+    if (serviceId) {
+      query = query.eq("service_id", serviceId);
+    }
+    return query;
+  };
+
+  let rows: any[] = [];
+  if (!stationLike) {
+    const { data, error } = await buildQuery().limit(limit);
+    if (error) {
+      throw new Error(error.message);
+    }
+    rows = data ?? [];
+  } else {
     const match = `%${stationLike}%`;
-    query = query.or(`label.ilike.${match},stations.label.ilike.${match}`);
+    const [seriesResult, stationResult] = await Promise.all([
+      buildQuery().ilike("label", match).limit(limit),
+      buildQuery().ilike("label", match, { foreignTable: "stations" }).limit(limit),
+    ]);
+    if (seriesResult.error) {
+      throw new Error(seriesResult.error.message);
+    }
+    if (stationResult.error) {
+      throw new Error(stationResult.error.message);
+    }
+    const combined = new Map<string, any>();
+    for (const row of seriesResult.data ?? []) {
+      combined.set(String(row.id), row);
+    }
+    for (const row of stationResult.data ?? []) {
+      combined.set(String(row.id), row);
+    }
+    rows = Array.from(combined.values());
   }
-  if (serviceId) {
-    query = query.eq("service_id", serviceId);
-  }
-
-  const { data, error } = await query.limit(limit);
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  const rows = data ?? [];
 
   return rows.map((row) => ({
     ...row,
