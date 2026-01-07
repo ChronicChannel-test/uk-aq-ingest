@@ -24,6 +24,7 @@ jobs:
         env:
           SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
           SUPABASE_PUBLISHABLE_DEFAULT_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_DEFAULT_KEY }}
+          SUPABASE_ANON_JWT: ${{ secrets.SUPABASE_ANON_JWT }}
         run: |
           node scripts/uk_air_inject_project_ref.mjs
 

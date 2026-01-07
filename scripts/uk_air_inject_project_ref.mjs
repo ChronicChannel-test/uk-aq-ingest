@@ -15,8 +15,8 @@ if (envText) {
 
 const projectRef = (process.env.SUPABASE_PROJECT_REF || "").trim();
 const anonKey = (
-  process.env.SUPABASE_PUBLISHABLE_DEFAULT_KEY
-  || process.env.SUPABASE_ANON_JWT
+  process.env.SUPABASE_ANON_JWT
+  || process.env.SUPABASE_PUBLISHABLE_DEFAULT_KEY
   || process.env.SUPABASE_ANON_KEY
   || ""
 ).trim();
@@ -26,7 +26,7 @@ if (!projectRef) {
   process.exit(1);
 }
 if (!anonKey) {
-  console.error("SUPABASE_PUBLISHABLE_DEFAULT_KEY is missing. Set it in .env or the environment.");
+  console.error("SUPABASE_ANON_JWT is missing. Set it in .env or the environment.");
   process.exit(1);
 }
 
@@ -50,7 +50,7 @@ updated = replacePlaceholder(
 
 if (updated !== html) {
   await fs.writeFile(TARGET_PATH, updated);
-  console.log("Injected SUPABASE_PROJECT_REF and SUPABASE_PUBLISHABLE_DEFAULT_KEY into web/uk_air_bristol.html");
+  console.log("Injected SUPABASE_PROJECT_REF and SUPABASE_ANON_JWT into web/uk_air_bristol.html");
 } else {
   console.log("web/uk_air_bristol.html already uses the configured SUPABASE project ref and anon key.");
 }
