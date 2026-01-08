@@ -36,6 +36,10 @@ Applied in `scripts/uk_air_sos_ingest.py`:
 ## Station pollutant coverage
 - Station-to-pollutant coverage is derived from `timeseries` (via `timeseries.phenomenon_id`).
 - `stations` does not store a single pollutant because stations often monitor multiple pollutants.
+- UK-AIR SOS exposes a separate station id per pollutant. The numeric value that appears between the
+  Eionet pollutant URI and the label (e.g., `.../pollutant/8 794 - Bristol St Paul's-Nitrogen dioxide`)
+  is the SOS `station_ref` for that pollutant-specific station.
+- Label format: `<eionet pollutant URI> <station_ref> - <station label>`
 
 ## IDs
 - `services`, `stations`, and `timeseries` use bigint `id` internally, with upstream identifiers stored in `service_ref`, `station_ref`, and `timeseries_ref`.
