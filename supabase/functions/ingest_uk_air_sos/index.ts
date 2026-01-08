@@ -399,6 +399,9 @@ serve(async (req) => {
       log.warn("Poll errors", { sample: errors.slice(0, 25) });
     }
     let accessToken: string | null = null;
+    const refreshDropbox = dropboxConfig
+      ? () => dropboxRefreshAccessToken(dropboxConfig)
+      : undefined;
     if (dropboxConfig) {
       try {
         accessToken = await dropboxRefreshAccessToken(dropboxConfig);
@@ -407,17 +410,19 @@ serve(async (req) => {
       }
     }
     if (accessToken) {
-      await uploadDropboxLog(
+      accessToken = await uploadDropboxLog(
         accessToken,
         log,
         service?.id ?? requestedServiceId ?? null,
         errorLogger,
+        refreshDropbox,
       );
-      await uploadDropboxRaw(
+      accessToken = await uploadDropboxRaw(
         accessToken,
         rawRecorder,
         service?.id ?? requestedServiceId ?? null,
         errorLogger,
+        refreshDropbox,
       );
     }
   }
@@ -650,17 +655,23 @@ async function uploadDropboxLog(
   log: LogBuffer,
   serviceId: string | null,
   errorLogger: { logError: (entry: ErrorLogEntry) => Promise<void> },
-): Promise<void> {
+  refreshToken?: () => Promise<string>,
+): Promise<string> {
   if (!accessToken) {
-    return;
+    return accessToken;
   }
   const content = log.lines.join("\n") + "\n";
   if (!content.trim()) {
-    return;
+    return accessToken;
   }
   try {
     const logPath = buildDropboxLogPath(serviceId, new Date());
-    await dropboxUploadFile(accessToken, logPath, content);
+    accessToken = await dropboxUploadFileWithRetry(
+      accessToken,
+      logPath,
+      content,
+      refreshToken,
+    );
     await dropboxArchiveLogs(accessToken, DROPBOX_LOG_FOLDER, DROPBOX_LOG_RETENTION_DAYS, 365);
   } catch (err) {
     console.warn("Dropbox log upload failed:", err);
@@ -676,6 +687,7 @@ async function uploadDropboxLog(
       service_id: serviceId ?? null,
     });
   }
+  return accessToken;
 }
 
 async function uploadDropboxRaw(
@@ -683,20 +695,26 @@ async function uploadDropboxRaw(
   recorder: RawRecorder | null,
   serviceId: string | null,
   errorLogger: { logError: (entry: ErrorLogEntry) => Promise<void> },
-): Promise<void> {
+  refreshToken?: () => Promise<string>,
+): Promise<string> {
   if (!accessToken || !recorder || recorder.responseCount === 0) {
-    return;
+    return accessToken;
   }
   const content = recorder.lines.join("\n") + "\n";
   if (!content.trim()) {
-    return;
+    return accessToken;
   }
   try {
     const rawPath = buildDropboxRawPath(serviceId, new Date());
     const filename = rawPath.split("/").pop() ?? "uk_air_raw_edge.jsonl";
     const jsonlName = filename.replace(/\.zip$/i, ".jsonl");
     const zipped = await zipTextCompressed(jsonlName, content);
-    await dropboxUploadFile(accessToken, rawPath, zipped);
+    accessToken = await dropboxUploadFileWithRetry(
+      accessToken,
+      rawPath,
+      zipped,
+      refreshToken,
+    );
   } catch (err) {
     console.warn("Dropbox raw upload failed:", err);
     await errorLogger.logError({
@@ -711,6 +729,7 @@ async function uploadDropboxRaw(
       service_id: serviceId ?? null,
     });
   }
+  return accessToken;
 }
 
 function createErrorLogger(config: DropboxConfig | null, enabled: boolean) {
@@ -757,7 +776,12 @@ function createErrorLogger(config: DropboxConfig | null, enabled: boolean) {
           created_at: createdAt,
           dropbox_path: dropboxPath,
         };
-        await dropboxUploadFile(accessToken, dropboxPath, JSON.stringify(payload, null, 2));
+        accessToken = await dropboxUploadFileWithRetry(
+          accessToken,
+          dropboxPath,
+          JSON.stringify(payload, null, 2),
+          () => dropboxRefreshAccessToken(config),
+        );
         await postgrestRequest(
           "PATCH",
           "error_logs",
@@ -770,6 +794,15 @@ function createErrorLogger(config: DropboxConfig | null, enabled: boolean) {
       }
     },
   };
+}
+
+class DropboxHttpError extends Error {
+  status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+  }
 }
 
 async function dropboxRefreshAccessToken(config: DropboxConfig): Promise<string> {
@@ -816,7 +849,26 @@ async function dropboxUploadFile(
     body,
   });
   if (!resp.ok) {
-    throw new Error(`Dropbox upload failed (${resp.status})`);
+    throw new DropboxHttpError(`Dropbox upload failed (${resp.status})`, resp.status);
+  }
+}
+
+async function dropboxUploadFileWithRetry(
+  accessToken: string,
+  path: string,
+  contents: string | Uint8Array,
+  refreshToken?: () => Promise<string>,
+): Promise<string> {
+  try {
+    await dropboxUploadFile(accessToken, path, contents);
+    return accessToken;
+  } catch (err) {
+    if (err instanceof DropboxHttpError && err.status === 401 && refreshToken) {
+      const refreshed = await refreshToken();
+      await dropboxUploadFile(refreshed, path, contents);
+      return refreshed;
+    }
+    throw err;
   }
 }
 
