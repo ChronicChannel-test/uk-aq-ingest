@@ -368,15 +368,30 @@ def _dropbox_base_folder(folder: str) -> str:
     return "/raw_data"
 
 
-def _dropbox_root_folder(folder: str) -> str:
-    cleaned = (folder or "").strip()
+def _normalize_dropbox_path(path: str) -> str:
+    cleaned = (path or "").strip()
     if not cleaned:
         return ""
     if not cleaned.startswith("/"):
         cleaned = f"/{cleaned}"
-    cleaned = cleaned.rstrip("/")
+    return cleaned.rstrip("/")
+
+
+def _dropbox_root_folder(folder: str) -> str:
+    env_root = _normalize_dropbox_path(os.getenv("UK_AIR_DROPBOX_ROOT", ""))
+    cleaned = _normalize_dropbox_path(folder)
     if cleaned.endswith("/raw_data"):
         cleaned = cleaned[: -len("/raw_data")]
+    elif cleaned.endswith("/log"):
+        cleaned = cleaned[: -len("/log")]
+    elif cleaned.endswith("/error_log"):
+        cleaned = cleaned[: -len("/error_log")]
+    if env_root:
+        if not cleaned:
+            return env_root
+        if cleaned == env_root or cleaned.startswith(f"{env_root}/"):
+            return cleaned
+        return f"{env_root}{cleaned}"
     return cleaned
 
 
@@ -568,8 +583,6 @@ def _load_dropbox_config(folder_override: Optional[str]) -> Optional[DropboxConf
 
 
 def _load_error_dropbox_config() -> Optional[DropboxConfig]:
-    if not _error_dropbox_allowed():
-        return None
     app_key = os.getenv("DROPBOX_APP_KEY", "").strip()
     app_secret = os.getenv("DROPBOX_APP_SECRET", "").strip()
     refresh_token = os.getenv("DROPBOX_REFRESH_TOKEN", "").strip()
@@ -593,18 +606,6 @@ def _raw_dropbox_allowed() -> bool:
         return False
     if supabase_url != allowed_url:
         LOG.warning("Raw Dropbox upload disabled (SUPABASE_URL does not match allowed URL).")
-        return False
-    return True
-
-
-def _error_dropbox_allowed() -> bool:
-    supabase_url = os.getenv("SUPABASE_URL", "").strip()
-    allowed_url = os.getenv("UK_AIR_ERROR_DROPBOX_ALLOWED_SUPABASE_URL", "").strip()
-    if not allowed_url:
-        LOG.warning("UK_AIR_ERROR_DROPBOX_ALLOWED_SUPABASE_URL not set; error Dropbox upload disabled.")
-        return False
-    if supabase_url != allowed_url:
-        LOG.warning("Error Dropbox upload disabled (SUPABASE_URL does not match allowed URL).")
         return False
     return True
 

@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2?target=deno";
+import { PostgrestClient } from "https://esm.sh/@supabase/postgrest-js@1?target=deno";
 
 type PollRequest = {
   service_id?: string;
@@ -63,21 +63,76 @@ const DROPBOX_REFRESH_TOKEN = Deno.env.get("DROPBOX_REFRESH_TOKEN") ?? "";
 const DROPBOX_ALLOWED_SUPABASE_URL = Deno.env.get("UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL") ?? "";
 const DROPBOX_ERROR_ALLOWED_SUPABASE_URL =
   Deno.env.get("UK_AIR_ERROR_DROPBOX_ALLOWED_SUPABASE_URL") ?? "";
-const DROPBOX_LOG_FOLDER = "/log";
-const DROPBOX_RAW_FOLDER = "/raw_data";
-const DROPBOX_ERROR_FOLDER = (() => {
-  const raw = Deno.env.get("UK_AIR_ERROR_DROPBOX_FOLDER") ?? "error_log";
-  const cleaned = raw.startsWith("/") ? raw : `/${raw}`;
-  return cleaned.replace(/\/$/, "");
+const DROPBOX_ROOT_FOLDER = (() => {
+  const raw = Deno.env.get("UK_AIR_DROPBOX_ROOT") ?? "";
+  return normalizeDropboxPath(raw);
 })();
+
+const DROPBOX_LOG_FOLDER = dropboxWithRoot("/log");
+const DROPBOX_RAW_FOLDER = dropboxWithRoot("/raw_data");
+const DROPBOX_ERROR_FOLDER = dropboxWithRoot(
+  Deno.env.get("UK_AIR_ERROR_DROPBOX_FOLDER") ?? "error_log",
+);
 const DROPBOX_LOG_RETENTION_DAYS = 31;
 const DROPBOX_TOKEN_URL = "https://api.dropbox.com/oauth2/token";
 const DROPBOX_UPLOAD_URL = "https://content.dropboxapi.com/2/files/upload";
 const DROPBOX_LIST_FOLDER_URL = "https://api.dropboxapi.com/2/files/list_folder";
 const DROPBOX_DELETE_URL = "https://api.dropboxapi.com/2/files/delete_v2";
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
-  auth: { persistSession: false },
+const supabase = new PostgrestClient(`${SUPABASE_URL}/rest/v1`, {
+  headers: {
+    apikey: SUPABASE_SERVICE_ROLE_KEY,
+    Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+  },
+});
+
+const ERROR_LOGGER = createErrorLogger(
+  loadErrorDropboxConfig(),
+  Boolean(SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY),
+);
+
+function logUnhandledError(
+  message: string,
+  err: unknown,
+  context: Record<string, unknown>,
+): void {
+  const error = err instanceof Error ? err : new Error(String(err));
+  void ERROR_LOGGER.logError({
+    source: "edge",
+    severity: "error",
+    message,
+    stack: error.stack,
+    context,
+  });
+}
+
+addEventListener("error", (event) => {
+  if (typeof event.preventDefault === "function") {
+    event.preventDefault();
+  }
+  logUnhandledError(
+    "Unhandled error event.",
+    event.error ?? event.message,
+    {
+      message: event.message,
+      filename: event.filename,
+      lineno: event.lineno,
+      colno: event.colno,
+    },
+  );
+});
+
+addEventListener("unhandledrejection", (event) => {
+  if (typeof event.preventDefault === "function") {
+    event.preventDefault();
+  }
+  logUnhandledError(
+    "Unhandled promise rejection.",
+    event.reason,
+    {
+      reason: event.reason instanceof Error ? event.reason.message : String(event.reason),
+    },
+  );
 });
 
 serve(async (req) => {
@@ -86,11 +141,7 @@ serve(async (req) => {
   }
   const log = createLogBuffer();
   const dropboxConfig = loadDropboxConfig();
-  const errorDropboxConfig = loadErrorDropboxConfig();
-  const errorLogger = createErrorLogger(
-    errorDropboxConfig,
-    Boolean(SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY),
-  );
+  const errorLogger = ERROR_LOGGER;
   const rawRecorder = dropboxConfig ? createRawRecorder() : null;
   const errors: string[] = [];
   let status = 200;
@@ -212,7 +263,13 @@ serve(async (req) => {
                 }
                 observationsUpserted += points.length;
               }
-              await upsertLastValue(row.id, data, points);
+              await upsertLastValue(
+                row.id,
+                data,
+                points,
+                errorLogger,
+                service?.id ?? requestedServiceId ?? null,
+              );
               polled += 1;
             } catch (err) {
               const message = err instanceof Error ? err.message : String(err);
@@ -299,8 +356,18 @@ serve(async (req) => {
       }
     }
     if (accessToken) {
-      await uploadDropboxLog(accessToken, log, service?.id ?? requestedServiceId ?? null);
-      await uploadDropboxRaw(accessToken, rawRecorder, service?.id ?? requestedServiceId ?? null);
+      await uploadDropboxLog(
+        accessToken,
+        log,
+        service?.id ?? requestedServiceId ?? null,
+        errorLogger,
+      );
+      await uploadDropboxRaw(
+        accessToken,
+        rawRecorder,
+        service?.id ?? requestedServiceId ?? null,
+        errorLogger,
+      );
     }
   }
 
@@ -469,14 +536,34 @@ function loadErrorDropboxConfig(): DropboxConfig | null {
   if (!DROPBOX_APP_KEY || !DROPBOX_APP_SECRET || !DROPBOX_REFRESH_TOKEN) {
     return null;
   }
-  if (!DROPBOX_ERROR_ALLOWED_SUPABASE_URL || DROPBOX_ERROR_ALLOWED_SUPABASE_URL !== SUPABASE_URL) {
-    return null;
-  }
   return {
     appKey: DROPBOX_APP_KEY,
     appSecret: DROPBOX_APP_SECRET,
     refreshToken: DROPBOX_REFRESH_TOKEN,
   };
+}
+
+function normalizeDropboxPath(raw: string): string {
+  const cleaned = raw.trim();
+  if (!cleaned) {
+    return "";
+  }
+  const rooted = cleaned.startsWith("/") ? cleaned : `/${cleaned}`;
+  return rooted.replace(/\/$/, "");
+}
+
+function dropboxWithRoot(path: string): string {
+  const cleaned = normalizeDropboxPath(path);
+  if (!DROPBOX_ROOT_FOLDER) {
+    return cleaned;
+  }
+  if (!cleaned) {
+    return DROPBOX_ROOT_FOLDER;
+  }
+  if (cleaned === DROPBOX_ROOT_FOLDER || cleaned.startsWith(`${DROPBOX_ROOT_FOLDER}/`)) {
+    return cleaned;
+  }
+  return `${DROPBOX_ROOT_FOLDER}${cleaned}`;
 }
 
 function buildDropboxLogPath(serviceId: string | null, timestamp: Date): string {
@@ -511,6 +598,7 @@ async function uploadDropboxLog(
   accessToken: string,
   log: LogBuffer,
   serviceId: string | null,
+  errorLogger: { logError: (entry: ErrorLogEntry) => Promise<void> },
 ): Promise<void> {
   if (!accessToken) {
     return;
@@ -525,6 +613,17 @@ async function uploadDropboxLog(
     await dropboxArchiveLogs(accessToken, DROPBOX_LOG_FOLDER, DROPBOX_LOG_RETENTION_DAYS, 365);
   } catch (err) {
     console.warn("Dropbox log upload failed:", err);
+    await errorLogger.logError({
+      source: "edge",
+      severity: "error",
+      message: "Dropbox log upload failed.",
+      stack: err instanceof Error ? err.stack : undefined,
+      context: {
+        service_id: serviceId,
+        error: err instanceof Error ? err.message : String(err),
+      },
+      service_id: serviceId ?? null,
+    });
   }
 }
 
@@ -532,6 +631,7 @@ async function uploadDropboxRaw(
   accessToken: string,
   recorder: RawRecorder | null,
   serviceId: string | null,
+  errorLogger: { logError: (entry: ErrorLogEntry) => Promise<void> },
 ): Promise<void> {
   if (!accessToken || !recorder || recorder.responseCount === 0) {
     return;
@@ -548,6 +648,17 @@ async function uploadDropboxRaw(
     await dropboxUploadFile(accessToken, rawPath, zipped);
   } catch (err) {
     console.warn("Dropbox raw upload failed:", err);
+    await errorLogger.logError({
+      source: "edge",
+      severity: "error",
+      message: "Dropbox raw upload failed.",
+      stack: err instanceof Error ? err.stack : undefined,
+      context: {
+        service_id: serviceId,
+        error: err instanceof Error ? err.message : String(err),
+      },
+      service_id: serviceId ?? null,
+    });
   }
 }
 
@@ -668,12 +779,12 @@ function crc32(data: Uint8Array): number {
 }
 
 function toDosDateTime(date: Date): { dosTime: number; dosDate: number } {
-  const year = Math.max(1980, date.getFullYear());
-  const month = date.getMonth() + 1;
-  const day = date.getDate();
-  const hour = date.getHours();
-  const minute = date.getMinutes();
-  const second = date.getSeconds();
+  const year = Math.max(1980, date.getUTCFullYear());
+  const month = date.getUTCMonth() + 1;
+  const day = date.getUTCDate();
+  const hour = date.getUTCHours();
+  const minute = date.getUTCMinutes();
+  const second = date.getUTCSeconds();
   const dosTime = (hour << 11) | (minute << 5) | Math.floor(second / 2);
   const dosDate = ((year - 1980) << 9) | (month << 5) | day;
   return { dosTime, dosDate };
@@ -1225,6 +1336,8 @@ async function upsertLastValue(
   seriesId: string,
   data: Record<string, unknown>,
   points: Array<{ observed_at: string; value: number | null }>,
+  errorLogger: { logError: (entry: ErrorLogEntry) => Promise<void> },
+  serviceId: string | null,
 ): Promise<void> {
   const lastValue = toNumber(data?.lastValue);
   const lastValueTimestamp = data?.lastValueTimestamp;
@@ -1243,16 +1356,28 @@ async function upsertLastValue(
   if (!lastValueAt && lastValue === null) {
     return;
   }
-  const payload: Record<string, unknown> = { id: seriesId };
+  const payload: Record<string, unknown> = {};
   if (lastValueAt) {
     payload.last_value_at = lastValueAt;
   }
   if (lastValue !== null) {
     payload.last_value = lastValue;
   }
-  const { error } = await supabase.from("timeseries").upsert(payload, { onConflict: "id" });
+  const { error } = await supabase.from("timeseries").update(payload).eq("id", seriesId);
   if (error) {
     console.warn(`timeseries update failed for ${seriesId}: ${error.message}`);
+    await errorLogger.logError({
+      source: "edge",
+      severity: "error",
+      message: "Failed to update timeseries last_value fields.",
+      context: {
+        timeseries_id: seriesId,
+        service_id: serviceId,
+        error: error.message,
+      },
+      service_id: serviceId ?? null,
+      timeseries_id: seriesId,
+    });
   }
 }
 
