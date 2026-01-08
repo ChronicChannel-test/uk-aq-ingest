@@ -1,5 +1,6 @@
 // @ts-nocheck
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
+import { PostgrestClient } from "https://esm.sh/@supabase/postgrest-js@1?target=deno";
 
 const DEFAULT_STATION_LIKE = "Bristol";
 const DEFAULT_LIMIT = 1000;
@@ -18,44 +19,12 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Methods": "GET, OPTIONS",
 };
 
-const REST_BASE_URL = SUPABASE_URL
-  ? `${SUPABASE_URL.replace(/\/$/, "")}/rest/v1`
-  : "";
-
-function postgrestHeaders(): Record<string, string> {
-  return {
+const supabase = new PostgrestClient(`${SUPABASE_URL}/rest/v1`, {
+  headers: {
     apikey: SUPABASE_SERVICE_ROLE_KEY,
     Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-    "Content-Type": "application/json",
-  };
-}
-
-async function postgrestRequest<T>(
-  method: string,
-  table: string,
-  params?: Record<string, string>,
-): Promise<{ data: T | null; error: { message: string } | null }> {
-  if (!REST_BASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-    return { data: null, error: { message: "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY." } };
-  }
-  const url = new URL(`${REST_BASE_URL}/${table}`);
-  for (const [key, value] of Object.entries(params ?? {})) {
-    if (value !== undefined && value !== null) {
-      url.searchParams.set(key, String(value));
-    }
-  }
-  const resp = await fetch(url.toString(), {
-    method,
-    headers: postgrestHeaders(),
-  });
-  const contentType = resp.headers.get("content-type") ?? "";
-  const payload = contentType.includes("application/json") ? await resp.json() : await resp.text();
-  if (!resp.ok) {
-    const message = payload?.message || payload?.error_description || payload?.error || resp.statusText;
-    return { data: null, error: { message: String(message) } };
-  }
-  return { data: payload as T, error: null };
-}
+  },
+});
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -96,44 +65,50 @@ type LoadOptions = {
 };
 
 async function loadLatest({ region, stationLike, serviceId, limit }: LoadOptions) {
-  const baseParams: Record<string, string> = {
-    select:
+  const buildQuery = () => {
+    let query = supabase
+    .from("timeseries")
+    .select(
       "id,timeseries_ref,label,uom,last_value,last_value_at,station:stations(id,station_ref,label,region),phenomenon:phenomena(id,label,notation,eionet_uri,pollutant_label)",
-    last_value: "not.is.null",
-    last_value_at: "not.is.null",
-  };
-  if (region) {
-    baseParams["stations.region"] = `ilike.%${region}%`;
-  }
-  if (serviceId) {
-    baseParams.service_id = `eq.${serviceId}`;
-  }
-  const fetchRows = async (extra: Record<string, string>) => {
-    const { data, error } = await postgrestRequest<any[]>("GET", "timeseries", {
-      ...baseParams,
-      ...extra,
-      limit: String(limit),
-    });
-    if (error) {
-      throw new Error(error.message);
+    );
+
+    query = query
+      .not("last_value", "is", null)
+      .not("last_value_at", "is", null);
+
+    if (region) {
+      query = query.ilike("region", `%${region}%`, { foreignTable: "stations" });
     }
-    return data ?? [];
+    if (serviceId) {
+      query = query.eq("service_id", serviceId);
+    }
+    return query;
   };
 
   let rows: any[] = [];
   if (!stationLike) {
-    rows = await fetchRows({});
+    const { data, error } = await buildQuery().limit(limit);
+    if (error) {
+      throw new Error(error.message);
+    }
+    rows = data ?? [];
   } else {
     const match = `%${stationLike}%`;
     const [seriesResult, stationResult] = await Promise.all([
-      fetchRows({ label: `ilike.${match}` }),
-      fetchRows({ "stations.label": `ilike.${match}` }),
+      buildQuery().ilike("label", match).limit(limit),
+      buildQuery().ilike("label", match, { foreignTable: "stations" }).limit(limit),
     ]);
+    if (seriesResult.error) {
+      throw new Error(seriesResult.error.message);
+    }
+    if (stationResult.error) {
+      throw new Error(stationResult.error.message);
+    }
     const combined = new Map<string, any>();
-    for (const row of seriesResult ?? []) {
+    for (const row of seriesResult.data ?? []) {
       combined.set(String(row.id), row);
     }
-    for (const row of stationResult ?? []) {
+    for (const row of stationResult.data ?? []) {
       combined.set(String(row.id), row);
     }
     rows = Array.from(combined.values()).slice(0, limit);

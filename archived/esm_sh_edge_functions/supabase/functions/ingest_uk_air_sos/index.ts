@@ -1,5 +1,6 @@
 // @ts-nocheck
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
+import { PostgrestClient } from "https://esm.sh/@supabase/postgrest-js@1?target=deno";
 
 type PollRequest = {
   service_id?: string;
@@ -78,57 +79,12 @@ const DROPBOX_UPLOAD_URL = "https://content.dropboxapi.com/2/files/upload";
 const DROPBOX_LIST_FOLDER_URL = "https://api.dropboxapi.com/2/files/list_folder";
 const DROPBOX_DELETE_URL = "https://api.dropboxapi.com/2/files/delete_v2";
 
-const REST_BASE_URL = SUPABASE_URL
-  ? `${SUPABASE_URL.replace(/\/$/, "")}/rest/v1`
-  : "";
-
-function postgrestHeaders(prefer?: string): Record<string, string> {
-  const headers: Record<string, string> = {
+const supabase = new PostgrestClient(`${SUPABASE_URL}/rest/v1`, {
+  headers: {
     apikey: SUPABASE_SERVICE_ROLE_KEY,
     Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-    "Content-Type": "application/json",
-  };
-  if (prefer) {
-    headers.Prefer = prefer;
-  }
-  return headers;
-}
-
-async function postgrestRequest<T>(
-  method: string,
-  table: string,
-  params?: Record<string, string>,
-  body?: unknown,
-  prefer?: string,
-): Promise<{ data: T | null; error: { message: string } | null }> {
-  if (!REST_BASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-    return { data: null, error: { message: "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY." } };
-  }
-  const url = new URL(`${REST_BASE_URL}/${table}`);
-  for (const [key, value] of Object.entries(params ?? {})) {
-    if (value !== undefined && value !== null) {
-      url.searchParams.set(key, String(value));
-    }
-  }
-  const resp = await fetch(url.toString(), {
-    method,
-    headers: postgrestHeaders(prefer),
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
-  let payload: unknown = null;
-  if (resp.status !== 204) {
-    const contentType = resp.headers.get("content-type") ?? "";
-    payload = contentType.includes("application/json") ? await resp.json() : await resp.text();
-  }
-  if (!resp.ok) {
-    const message = (payload as { message?: string; error_description?: string; error?: string })?.message
-      ?? (payload as { error_description?: string })?.error_description
-      ?? (payload as { error?: string })?.error
-      ?? resp.statusText;
-    return { data: null, error: { message: String(message) } };
-  }
-  return { data: payload as T, error: null };
-}
+  },
+});
 
 const ERROR_LOGGER = createErrorLogger(
   loadErrorDropboxConfig(),
@@ -294,18 +250,14 @@ serve(async (req) => {
               );
               const points = parseDatapoints(data?.values, row.id);
               if (points.length) {
-                const { error } = await postgrestRequest(
-                  "POST",
-                  "observations",
-                  { on_conflict: "timeseries_id,observed_at" },
-                  points.map((point) => ({
+                const { error } = await supabase
+                  .from("observations")
+                  .upsert(points.map((point) => ({
                     timeseries_id: row.id,
                     observed_at: point.observed_at,
                     value: point.value,
                     status: point.status,
-                  })),
-                  "resolution=merge-duplicates,return=minimal",
-                );
+                  })), { onConflict: "timeseries_id,observed_at" });
                 if (error) {
                   throw new Error(`observations upsert failed for ${row.id}: ${error.message}`);
                 }
@@ -339,13 +291,10 @@ serve(async (req) => {
             }
           });
 
-          const { error: pollUpdateError } = await postgrestRequest(
-            "PATCH",
-            "services",
-            { id: `eq.${service.id}` },
-            { last_polled_at: now.toISOString() },
-            "return=minimal",
-          );
+          const { error: pollUpdateError } = await supabase
+            .from("services")
+            .update({ last_polled_at: now.toISOString() })
+            .eq("id", service.id);
           if (pollUpdateError) {
             errors.push(`service last_polled_at update failed: ${pollUpdateError.message}`);
             await errorLogger.logError({
@@ -733,13 +682,7 @@ function createErrorLogger(config: DropboxConfig | null, enabled: boolean) {
         station_id: entry.station_id ?? null,
         timeseries_id: entry.timeseries_id ?? null,
       };
-      const { error } = await postgrestRequest(
-        "POST",
-        "error_logs",
-        undefined,
-        row,
-        "return=minimal",
-      );
+      const { error } = await supabase.from("error_logs").insert(row);
       if (error) {
         console.warn("error_logs insert failed:", error.message);
         return;
@@ -758,13 +701,7 @@ function createErrorLogger(config: DropboxConfig | null, enabled: boolean) {
           dropbox_path: dropboxPath,
         };
         await dropboxUploadFile(accessToken, dropboxPath, JSON.stringify(payload, null, 2));
-        await postgrestRequest(
-          "PATCH",
-          "error_logs",
-          { id: `eq.${errorId}` },
-          { dropbox_path: dropboxPath },
-          "return=minimal",
-        );
+        await supabase.from("error_logs").update({ dropbox_path: dropboxPath }).eq("id", errorId);
       } catch (err) {
         console.warn("Dropbox error log upload failed:", err);
       }
@@ -1087,35 +1024,34 @@ async function loadService(
   serviceId: string | undefined,
   serviceLabel: string,
 ): Promise<ServiceRow | null> {
-  const select =
-    "id,service_ref,label,service_url,poll_enabled,poll_window_hours,poll_timeseries_batch_size";
   if (serviceId) {
-    const { data } = await postgrestRequest<ServiceRow[]>("GET", "services", {
-      select,
-      id: `eq.${serviceId}`,
-      limit: "1",
-    });
-    if (data && data[0]) {
-      return data[0];
+    const { data } = await supabase
+      .from("services")
+      .select("id,service_ref,label,service_url,poll_enabled,poll_window_hours,poll_timeseries_batch_size")
+      .eq("id", serviceId)
+      .maybeSingle();
+    if (data) {
+      return data as ServiceRow;
     }
-    const { data: refData } = await postgrestRequest<ServiceRow[]>("GET", "services", {
-      select,
-      service_ref: `eq.${serviceId}`,
-      limit: "1",
-    });
-    if (refData && refData[0]) {
-      return refData[0];
+    const { data: refData } = await supabase
+      .from("services")
+      .select("id,service_ref,label,service_url,poll_enabled,poll_window_hours,poll_timeseries_batch_size")
+      .eq("service_ref", serviceId)
+      .maybeSingle();
+    if (refData) {
+      return refData as ServiceRow;
     }
   }
 
   if (serviceLabel) {
-    const { data } = await postgrestRequest<ServiceRow[]>("GET", "services", {
-      select,
-      label: `ilike.%${serviceLabel}%`,
-      limit: "1",
-    });
-    if (data && data[0]) {
-      return data[0];
+    const { data } = await supabase
+      .from("services")
+      .select("id,service_ref,label,service_url,poll_enabled,poll_window_hours,poll_timeseries_batch_size")
+      .ilike("label", `%${serviceLabel}%`)
+      .limit(1)
+      .maybeSingle();
+    if (data) {
+      return data as ServiceRow;
     }
   }
 
@@ -1123,19 +1059,13 @@ async function loadService(
   if (!discovered) {
     return null;
   }
-  await postgrestRequest(
-    "POST",
-    "services",
-    { on_conflict: "service_ref" },
-    [discovered],
-    "resolution=merge-duplicates,return=minimal",
-  );
-  const { data } = await postgrestRequest<ServiceRow[]>("GET", "services", {
-    select,
-    service_ref: `eq.${discovered.service_ref}`,
-    limit: "1",
-  });
-  return data && data[0] ? data[0] : null;
+  await supabase.from("services").upsert([discovered], { onConflict: "service_ref" });
+  const { data } = await supabase
+    .from("services")
+    .select("id,service_ref,label,service_url,poll_enabled,poll_window_hours,poll_timeseries_batch_size")
+    .eq("service_ref", discovered.service_ref)
+    .maybeSingle();
+  return data as ServiceRow | null;
 }
 
 async function discoverService(
@@ -1190,14 +1120,11 @@ async function loadTimeseries(
   const rows: Array<{ id: number; timeseries_ref: string | null; phenomenon_id: string | null }> = [];
   let offset = 0;
   while (true) {
-    const { data, error } = await postgrestRequest<
-      Array<{ id: number; timeseries_ref: string | null; phenomenon_id: string | null }>
-    >("GET", "timeseries", {
-      select: "id,timeseries_ref,phenomenon_id",
-      service_id: `eq.${serviceId}`,
-      limit: String(PAGE_SIZE),
-      offset: String(offset),
-    });
+    const { data, error } = await supabase
+      .from("timeseries")
+      .select("id,timeseries_ref,phenomenon_id")
+      .eq("service_id", serviceId)
+      .range(offset, offset + PAGE_SIZE - 1);
     if (error) {
       throw new Error(`Failed to load timeseries: ${error.message}`);
     }
@@ -1219,12 +1146,10 @@ async function loadTimeseries(
 
 async function loadPhenomena(serviceId: string, filters: string[]): Promise<Set<string>> {
   const needle = new Set(filters.map((value) => value.toLowerCase()));
-  const { data, error } = await postgrestRequest<
-    Array<{ id: string; label: string | null; notation: string | null; eionet_uri: string | null }>
-  >("GET", "phenomena", {
-    select: "id,label,notation,eionet_uri",
-    service_id: `eq.${serviceId}`,
-  });
+  const { data, error } = await supabase
+    .from("phenomena")
+    .select("id,label,notation,eionet_uri")
+    .eq("service_id", serviceId);
   if (error) {
     throw new Error(`Failed to load phenomena: ${error.message}`);
   }
@@ -1438,13 +1363,7 @@ async function upsertLastValue(
   if (lastValue !== null) {
     payload.last_value = lastValue;
   }
-  const { error } = await postgrestRequest(
-    "PATCH",
-    "timeseries",
-    { id: `eq.${seriesId}` },
-    payload,
-    "return=minimal",
-  );
+  const { error } = await supabase.from("timeseries").update(payload).eq("id", seriesId);
   if (error) {
     console.warn(`timeseries update failed for ${seriesId}: ${error.message}`);
     await errorLogger.logError({
