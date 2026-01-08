@@ -96,22 +96,26 @@ type LoadOptions = {
 };
 
 async function loadLatest({ region, stationLike, serviceId, limit }: LoadOptions) {
+  const selectBase =
+    "id,timeseries_ref,label,uom,last_value,last_value_at,station:stations(id,station_ref,label,region),phenomenon:phenomena(id,label,notation,eionet_uri,pollutant_label)";
+  const selectStationInner =
+    "id,timeseries_ref,label,uom,last_value,last_value_at,station:stations!inner(id,station_ref,label,region),phenomenon:phenomena(id,label,notation,eionet_uri,pollutant_label)";
   const baseParams: Record<string, string> = {
-    select:
-      "id,timeseries_ref,label,uom,last_value,last_value_at,station:stations(id,station_ref,label,region),phenomenon:phenomena(id,label,notation,eionet_uri,pollutant_label)",
+    select: region ? selectStationInner : selectBase,
     last_value: "not.is.null",
     last_value_at: "not.is.null",
   };
   if (region) {
-    baseParams["stations.region"] = `ilike.%${region}%`;
+    baseParams["stations.region"] = `ilike.*${region}*`;
   }
   if (serviceId) {
     baseParams.service_id = `eq.${serviceId}`;
   }
-  const fetchRows = async (extra: Record<string, string>) => {
+  const fetchRows = async (extra: Record<string, string>, useStationInner = false) => {
     const { data, error } = await postgrestRequest<any[]>("GET", "timeseries", {
       ...baseParams,
       ...extra,
+      select: useStationInner ? selectStationInner : baseParams.select,
       limit: String(limit),
     });
     if (error) {
@@ -124,10 +128,10 @@ async function loadLatest({ region, stationLike, serviceId, limit }: LoadOptions
   if (!stationLike) {
     rows = await fetchRows({});
   } else {
-    const match = `%${stationLike}%`;
+    const match = `*${stationLike}*`;
     const [seriesResult, stationResult] = await Promise.all([
-      fetchRows({ label: `ilike.${match}` }),
-      fetchRows({ "stations.label": `ilike.${match}` }),
+      fetchRows({ label: `ilike.${match}` }, Boolean(region)),
+      fetchRows({ "stations.label": `ilike.${match}` }, true),
     ]);
     const combined = new Map<string, any>();
     for (const row of seriesResult ?? []) {
