@@ -4,7 +4,7 @@
 - Prefer `uk_air` in filenames, scripts, and docs (avoid `ukair`).
 
 ## Archive
-- Files in `archive/` can be referenced for context but must never be modified.
+- Files in `archive/` can be referenced for context but must never be modified once created. Adding new files/directories under `archive/` is allowed.
 
 ## Code removal
 - Remove any legacy code if it is definitely redundant.
