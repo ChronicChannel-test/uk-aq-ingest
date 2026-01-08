@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2?target=deno";
+import { PostgrestClient } from "https://esm.sh/@supabase/postgrest-js@1?target=deno";
 
 const DEFAULT_STATION_LIKE = "Bristol";
 const DEFAULT_LIMIT = 1000;
@@ -19,8 +19,11 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Methods": "GET, OPTIONS",
 };
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
-  auth: { persistSession: false },
+const supabase = new PostgrestClient(`${SUPABASE_URL}/rest/v1`, {
+  headers: {
+    apikey: SUPABASE_SERVICE_ROLE_KEY,
+    Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+  },
 });
 
 serve(async (req) => {
@@ -68,6 +71,10 @@ async function loadLatest({ region, stationLike, serviceId, limit }: LoadOptions
     .select(
       "id,timeseries_ref,label,uom,last_value,last_value_at,station:stations(id,station_ref,label,region),phenomenon:phenomena(id,label,notation,eionet_uri,pollutant_label)",
     );
+
+    query = query
+      .not("last_value", "is", null)
+      .not("last_value_at", "is", null);
 
     if (region) {
       query = query.ilike("region", `%${region}%`, { foreignTable: "stations" });
