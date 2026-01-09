@@ -14,7 +14,13 @@ This document summarizes the schema defined in `supabase/uk_air_quality_schema.s
 - `offerings`: logical groupings, per service.
 - `features`: features of interest with geometry (Point, 4326), per service.
 - `procedures`: sensors/methods; optional raw_formats list, per service.
-- `stations`: monitoring sites; bigint `id` (internal) with `station_ref` (external), unique `(service_id, station_ref)`, plus lifecycle fields `first_seen_at`, `last_seen_at`, `removed_at`.
+- `stations`: monitoring sites; bigint `id` (internal) with `station_ref` (external), unique `(service_id, station_ref)`, plus lifecycle fields `first_seen_at`, `last_seen_at`, `removed_at`. Also stores `la_code`/`la_version` and `pcon_code`/`pcon_version` for geography lookups.
+
+## Geography mapping tables
+- `la_boundaries`: Local Authority polygons (MultiPolygon, 4326) with `la_code` + `la_version` for assigning stations to LAs.
+- `pcon_boundaries`: Parliamentary Constituency polygons (MultiPolygon, 4326) with `pcon_code` + `pcon_version` for assigning stations to constituencies.
+- `uk_aq_refresh_station_la_codes(target_version)`: updates `stations.la_code` + `stations.la_version` using `la_boundaries`.
+- `uk_aq_refresh_station_pcon_codes(target_version)`: updates `stations.pcon_code` + `stations.pcon_version` using `pcon_boundaries`.
 
 ## Timeseries and metadata
 - `timeseries`: SOS timeseries metadata; bigint `id` (internal) with `timeseries_ref` (external) and `station_id` bigint FK.
@@ -26,6 +32,14 @@ This document summarizes the schema defined in `supabase/uk_air_quality_schema.s
 ## PM2.5 target tracking (optional)
 - `pm25_population_exposure`: yearly Population Exposure Indicator (PEI) series with deltas and % change vs 2018 baseline.
 - `pm25_amct_sites`: annual mean concentration per site/year to track AMCT and interim exceedances.
+
+## Constituency reference tables
+- `pcon_current`: current constituency electorate data (`gss_code`, `name`, `electorate`, `region`, `country`).
+- `pcon_legacy`: legacy constituency electorate data for historical backfill (same columns as `pcon_current`).
+- `gss_codes`: canonical registry of GSS codes across geographies (`gss_code`, `name`, `geography_type`, `valid_from`, `valid_to`).
+
+## Views
+- `pcon_latest_pm25` (in `supabase/uk_air_quality_views.sql`): constituency-level PM2.5 summaries keyed by `pcon_code` + `pcon_version` with median/mean, station_count, and last update timestamp.
 
 ## RLS (Row Level Security)
 - RLS enabled on all domain tables (not on system tables like spatial_ref_sys).

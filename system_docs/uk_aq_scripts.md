@@ -83,6 +83,30 @@ Environment:
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
 
+### `scripts/uk_aq_load_pcon_boundaries.py`
+Purpose:
+- Load Parliamentary Constituency boundary GeoJSON into `pcon_boundaries`.
+- Optional: update `stations.pcon_code` + `stations.pcon_version` using the stored boundaries.
+
+Common commands:
+```
+python3 scripts/uk_aq_load_pcon_boundaries.py --geojson data/pcon.geojson --pcon-version 2024
+python3 scripts/uk_aq_load_pcon_boundaries.py --geojson data/pcon.geojson --pcon-version 2024 --update-stations
+```
+
+Inputs:
+- GeoJSON FeatureCollection with Polygon/MultiPolygon geometries.
+
+Key flags:
+- `--code-field` (default: `pcon_code`)
+- `--name-field` (default: `pcon_name`)
+- `--batch-size` (default: 200)
+- `--update-stations` to run `uk_aq_refresh_station_pcon_codes`.
+
+Environment:
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+
 ### `scripts/uk_aq_list_stations.py`
 Purpose:
 - Fetch all current stations from UK-AIR SOS.

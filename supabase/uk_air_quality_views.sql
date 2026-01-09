@@ -145,12 +145,73 @@ left join pm25_agg
   on pm25_agg.la_code = lb.la_code
   and pm25_agg.la_version = lb.la_version;
 
+-- Parliamentary constituency latest PM2.5 (median + mean)
+create or replace view pcon_latest_pm25 as
+with pm25_candidates as (
+  select
+    ts.station_id,
+    ts.last_value,
+    ts.last_value_at,
+    row_number() over (
+      partition by ts.station_id
+      order by ts.last_value_at desc nulls last
+    ) as rn
+  from timeseries ts
+  join phenomena phen on phen.id = ts.phenomenon_id
+  where ts.station_id is not null
+    and ts.last_value is not null
+    and ts.last_value_at is not null
+    and (
+      lower(coalesce(phen.pollutant_label, '')) = 'pm2.5'
+      or lower(coalesce(phen.notation, '')) = 'pm2.5'
+      or lower(coalesce(phen.label, '')) like '%pm2.5%'
+    )
+),
+pm25_latest as (
+  select
+    stn.pcon_code,
+    stn.pcon_version,
+    pm.last_value,
+    pm.last_value_at
+  from pm25_candidates pm
+  join stations stn on stn.id = pm.station_id
+  where pm.rn = 1
+    and stn.pcon_code is not null
+),
+pm25_agg as (
+  select
+    pcon_code,
+    pcon_version,
+    count(*)::int as station_count,
+    percentile_cont(0.5) within group (order by last_value) as median_value,
+    avg(last_value) as mean_value,
+    max(last_value_at) as latest_value_at
+  from pm25_latest
+  group by pcon_code, pcon_version
+)
+select
+  pb.pcon_code,
+  pb.pcon_name,
+  pb.pcon_version,
+  pm25_agg.station_count,
+  (pm25_agg.station_count = 1) as single_site,
+  pm25_agg.median_value,
+  pm25_agg.mean_value,
+  pm25_agg.latest_value_at
+from pcon_boundaries pb
+left join pm25_agg
+  on pm25_agg.pcon_code = pb.pcon_code
+  and pm25_agg.pcon_version = pb.pcon_version;
+
 -- Enforce RLS on base tables for view readers.
 alter view if exists bristol_latest_pollutants set (security_invoker = true);
 alter view if exists la_latest_pm25 set (security_invoker = true);
+alter view if exists pcon_latest_pm25 set (security_invoker = true);
 
 revoke all on bristol_latest_pollutants from anon, authenticated;
 revoke all on la_latest_pm25 from anon, authenticated;
+revoke all on pcon_latest_pm25 from anon, authenticated;
 
 grant select on bristol_latest_pollutants to authenticated, service_role;
 grant select on la_latest_pm25 to authenticated, service_role;
+grant select on pcon_latest_pm25 to authenticated, service_role;

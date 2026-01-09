@@ -301,8 +301,8 @@
         <p class="badge">Hex Cartogram</p>
         <h1 class="title">UK AQ hex map</h1>
         <p class="subtitle">
-          A population-equal hex cartogram showing the latest PM2.5 by local authority. Each
-          hex represents the same number of people; values are aggregated per LA.
+          A population-equal hex cartogram showing the latest PM2.5 by constituency. Each
+          hex represents roughly the same number of people; values are aggregated per constituency.
         </p>
         <div class="meta">
           <span id="row-count">Loading…</span>
@@ -312,7 +312,7 @@
 
       <section class="card">
         <div class="card-header">
-          <h2 class="card-title">Latest PM2.5 by local authority</h2>
+          <h2 class="card-title">Latest PM2.5 by constituency</h2>
           <div class="actions">
             <span class="hint" id="status">Fetching from Supabase…</span>
             <button id="refresh">Refresh</button>
@@ -324,12 +324,12 @@
             <button type="button" class="active" data-metric="median">Typical (median)</button>
             <button type="button" data-metric="mean">Average (mean)</button>
           </div>
-          <span class="hint">Local authority hex cartogram (equal-pop)</span>
+          <span class="hint">Parliamentary constituency hex cartogram (equal-pop)</span>
         </div>
         <div class="hint" id="endpoint-hint"></div>
         <div class="error" id="error"></div>
         <div class="map-wrap">
-          <svg id="hex-map" role="img" aria-label="Hex cartogram of PM2.5 by local authority"></svg>
+          <svg id="hex-map" role="img" aria-label="Hex cartogram of PM2.5 by constituency"></svg>
         </div>
         <div class="legend">
           <span>PM2.5 (ug/m3)</span>
@@ -355,7 +355,8 @@
       const projectRefParam = params.get("project_ref");
       const anonKeyParam = params.get("anon_key");
       const metricParam = params.get("metric");
-      const laVersionParam = params.get("la_version");
+      const mapDateParam = params.get("map_date");
+      const pconVersionParam = params.get("pcon_version");
       const inferredProjectRef = inferProjectRefFromHost();
       const projectRef = PROJECT_REF_PLACEHOLDER.includes("__SUPABASE_PROJECT_REF__")
         ? (projectRefParam || inferredProjectRef || "")
@@ -364,9 +365,29 @@
         ? (anonKeyParam || "")
         : ANON_KEY_PLACEHOLDER;
       const REST_URL = projectRef
-        ? `https://${projectRef}.supabase.co/functions/v1/uk_aq_la_hex`
+        ? `https://${projectRef}.supabase.co/functions/v1/uk_aq_pcon_hex`
         : "";
-      const HEX_DATA_URL = "data/uk_aq_la_hex_2023.json";
+      const MAP_CUTOVER = "2023-11-29";
+      const MAP_CONFIGS = [
+        {
+          id: "pcon24",
+          label: "2024 constituencies",
+          hexUrl: "data/uk-constituencies-2024.hexjson",
+          version: "2024",
+          effectiveFrom: MAP_CUTOVER,
+        },
+        {
+          id: "pcon23",
+          label: "Pre-2024 constituencies",
+          hexUrl: "data/constituencies.hexjson",
+          version: "2023",
+          effectiveUntil: MAP_CUTOVER,
+        },
+      ];
+      const mapDateKey = normalizeDateKey(mapDateParam);
+      const activeMap = pickMapConfig(mapDateKey);
+      const HEX_DATA_URL = activeMap.hexUrl;
+      const activePconVersion = pconVersionParam || activeMap.version;
       const METRIC_LABELS = {
         median: "Typical (median)",
         mean: "Average (mean)",
@@ -384,12 +405,16 @@
 
       let currentMetric = metricParam === "mean" ? "mean" : "median";
       let hexData = null;
-      let laRows = [];
-      let laLookup = new Map();
-      let laCodes = new Set();
+      let hexCells = [];
+      let hexBounds = null;
+      let hexSide = null;
+      let hexLayout = "odd-r";
+      let pconRows = [];
+      let pconLookup = new Map();
+      let pconCodes = new Set();
 
       endpointHint.textContent = REST_URL
-        ? `Endpoint: ${REST_URL}`
+        ? `Endpoint: ${REST_URL} (${activeMap.label})`
         : "Missing project ref. Add ?project_ref=... to the URL.";
 
       function inferProjectRefFromHost() {
@@ -398,6 +423,24 @@
           return host.split(".")[0];
         }
         return null;
+      }
+
+      function normalizeDateKey(value) {
+        if (!value) {
+          return null;
+        }
+        const trimmed = value.trim();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+          return null;
+        }
+        return trimmed;
+      }
+
+      function pickMapConfig(dateKey) {
+        if (!dateKey) {
+          return MAP_CONFIGS[0];
+        }
+        return dateKey < MAP_CUTOVER ? MAP_CONFIGS[1] : MAP_CONFIGS[0];
       }
 
       function normalizeNumber(value) {
@@ -446,6 +489,123 @@
         svg.selectAll("*").remove();
       }
 
+      function offsetToPixel(layout, q, r, size) {
+        if (layout === "odd-r") {
+          return {
+            x: size * Math.sqrt(3) * (q + 0.5 * (r & 1)),
+            y: size * 1.5 * r,
+          };
+        }
+        if (layout === "even-r") {
+          return {
+            x: size * Math.sqrt(3) * (q + 0.5 * ((r + 1) & 1)),
+            y: size * 1.5 * r,
+          };
+        }
+        if (layout === "odd-q") {
+          return {
+            x: size * 1.5 * q,
+            y: size * Math.sqrt(3) * (r + 0.5 * (q & 1)),
+          };
+        }
+        if (layout === "even-q") {
+          return {
+            x: size * 1.5 * q,
+            y: size * Math.sqrt(3) * (r + 0.5 * ((q + 1) & 1)),
+          };
+        }
+        return {
+          x: size * Math.sqrt(3) * (q + r / 2),
+          y: size * 1.5 * r,
+        };
+      }
+
+      function computeHexBounds(cells, side) {
+        const dx = (Math.sqrt(3) / 2) * side;
+        const dy = side;
+        let minX = Infinity;
+        let minY = Infinity;
+        let maxX = -Infinity;
+        let maxY = -Infinity;
+        cells.forEach((cell) => {
+          const left = cell.cx - dx;
+          const right = cell.cx + dx;
+          const bottom = cell.cy - dy;
+          const top = cell.cy + dy;
+          if (left < minX) {
+            minX = left;
+          }
+          if (bottom < minY) {
+            minY = bottom;
+          }
+          if (right > maxX) {
+            maxX = right;
+          }
+          if (top > maxY) {
+            maxY = top;
+          }
+        });
+        return { minX, minY, maxX, maxY };
+      }
+
+      function buildHexCellsFromHexjson(hexjson) {
+        const layout = typeof hexjson?.layout === "string" ? hexjson.layout : "odd-r";
+        const entries = Object.entries(hexjson?.hexes || {});
+        const size = 1;
+        const cells = entries.map(([key, value]) => {
+          const q = Number(value?.q ?? value?.col ?? 0);
+          const r = Number(value?.r ?? value?.row ?? 0);
+          const { x, y } = offsetToPixel(layout, q, r, size);
+          return {
+            id: key,
+            cx: x,
+            cy: y,
+            pcon_code: key,
+            pcon_name: value?.n || null,
+          };
+        });
+        return { cells, bounds: computeHexBounds(cells, size), side: size, layout };
+      }
+
+      function prepareHexGrid() {
+        if (!hexData || hexCells.length) {
+          return;
+        }
+        const { cells, bounds, side, layout } = buildHexCellsFromHexjson(hexData);
+        hexCells = cells;
+        hexBounds = bounds;
+        hexSide = side;
+        hexLayout = layout;
+      }
+
+      function createProjection(bounds, width, height, padding) {
+        const dataWidth = bounds.maxX - bounds.minX;
+        const dataHeight = bounds.maxY - bounds.minY;
+        const scale = Math.min(
+          (width - padding * 2) / dataWidth,
+          (height - padding * 2) / dataHeight,
+        );
+        const extraX = width - padding * 2 - dataWidth * scale;
+        const extraY = height - padding * 2 - dataHeight * scale;
+        return (point) => ([
+          (point[0] - bounds.minX) * scale + padding + extraX / 2,
+          (bounds.maxY - point[1]) * scale + padding + extraY / 2,
+        ]);
+      }
+
+      function hexPoints(cx, cy, side) {
+        const dx = Math.sqrt(3) / 2 * side;
+        const dy = side / 2;
+        return [
+          [cx, cy + side],
+          [cx + dx, cy + dy],
+          [cx + dx, cy - dy],
+          [cx, cy - side],
+          [cx - dx, cy - dy],
+          [cx - dx, cy + dy],
+        ];
+      }
+
       function applyMetricState() {
         metricButtons.forEach((button) => {
           const isActive = button.dataset.metric === currentMetric;
@@ -471,17 +631,14 @@
       }
 
       function renderMap() {
-        if (!hexData) {
+        if (!hexData || !hexCells.length || !hexBounds || !hexSide) {
           return;
         }
         clearMap();
         const width = svg.node().clientWidth || 960;
         const height = svg.node().clientHeight || 560;
-        const projection = d3.geoIdentity()
-          .reflectY(true)
-          .fitExtent([[24, 24], [width - 24, height - 24]], hexData);
-        const path = d3.geoPath(projection);
-        const values = laRows
+        const projection = createProjection(hexBounds, width, height, 24);
+        const values = pconRows
           .map((row) => getMetricValue(row))
           .filter((value) => Number.isFinite(value));
         const minValue = values.length ? d3.min(values) : null;
@@ -497,24 +654,26 @@
         updateLegend(minValue, maxValue);
 
         const hexGroup = svg.append("g");
-        hexGroup.selectAll("path")
-          .data(hexData.features || [])
-          .join("path")
+        hexGroup.selectAll("polygon")
+          .data(hexCells)
+          .join("polygon")
           .attr("class", "hex")
-          .attr("d", path)
-          .attr("fill", (feature) => {
-            const row = laLookup.get(feature?.properties?.la_code);
+          .attr("points", (cell) => hexPoints(cell.cx, cell.cy, hexSide)
+            .map((point) => projection(point))
+            .map((point) => `${point[0]},${point[1]}`)
+            .join(" "))
+          .attr("fill", (cell) => {
+            const row = pconLookup.get(cell.pcon_code);
             const value = getMetricValue(row);
             if (!colorScale || !Number.isFinite(value)) {
               return "var(--clay)";
             }
             return colorScale(value);
           })
-          .on("mouseenter", (event, feature) => {
-            const props = feature?.properties || {};
-            const row = laLookup.get(props.la_code);
+          .on("mouseenter", (event, cell) => {
+            const row = pconLookup.get(cell.pcon_code);
             const metricValue = getMetricValue(row);
-            const laName = props.la_name || row?.la_name || props.la_code || "Unknown LA";
+            const areaName = cell.pcon_name || row?.pcon_name || cell.pcon_code || "Unknown constituency";
             const stationCount = getStationCount(row);
             const stationLabel = stationCount === 1
               ? "single site"
@@ -528,7 +687,7 @@
               ? `Updated ${formatTimestamp(row.latest_value_at)}`
               : "Updated unknown";
             tooltip.innerHTML = `
-              <strong>${laName}</strong><br />
+              <strong>${areaName}</strong><br />
               ${METRIC_LABELS[currentMetric]}: ${valueLabel}<br />
               ${stationLabel}<br />
               ${updatedLabel}
@@ -560,13 +719,13 @@
           return;
         }
         try {
-          const laUrl = new URL(REST_URL);
-          if (laVersionParam) {
-            laUrl.searchParams.set("la_version", laVersionParam);
+          const pconUrl = new URL(REST_URL);
+          if (activePconVersion) {
+            pconUrl.searchParams.set("pcon_version", activePconVersion);
           }
-          const [hexResponse, laResponse] = await Promise.all([
+          const [hexResponse, pconResponse] = await Promise.all([
             fetch(HEX_DATA_URL),
-            fetch(laUrl.toString(), {
+            fetch(pconUrl.toString(), {
               headers: {
                 Authorization: `Bearer ${anonKey}`,
                 apikey: anonKey,
@@ -576,20 +735,17 @@
           if (!hexResponse.ok) {
             throw new Error(`Hex data request failed: ${hexResponse.status}`);
           }
-          if (!laResponse.ok) {
-            throw new Error(`LA request failed: ${laResponse.status}`);
+          if (!pconResponse.ok) {
+            throw new Error(`Constituency request failed: ${pconResponse.status}`);
           }
           hexData = await hexResponse.json();
-          const payload = await laResponse.json();
-          laRows = payload?.data || [];
-          laLookup = new Map(laRows.map((row) => [row.la_code, row]));
-          laCodes = new Set(
-            (hexData.features || [])
-              .map((feature) => feature?.properties?.la_code)
-              .filter(Boolean),
-          );
-          const laWithData = laRows.filter((row) => getStationCount(row) > 0);
-          rowCount.textContent = `${formatNumber(laWithData.length)} of ${formatNumber(laCodes.size)} LAs with PM2.5 data`;
+          prepareHexGrid();
+          const payload = await pconResponse.json();
+          pconRows = payload?.data || [];
+          pconLookup = new Map(pconRows.map((row) => [row.pcon_code, row]));
+          pconCodes = new Set(hexCells.map((cell) => cell.pcon_code).filter(Boolean));
+          const withData = pconRows.filter((row) => getStationCount(row) > 0);
+          rowCount.textContent = `${formatNumber(withData.length)} of ${formatNumber(pconCodes.size)} constituencies with PM2.5 data`;
           if (payload?.last_updated) {
             lastUpdated.textContent = `Latest data ${formatTimestamp(payload.last_updated)}`;
           } else {

@@ -32,6 +32,11 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
 - Triggered by: Web requests (read-only, no writes).
 - Returns: rows keyed by `la_code` with `station_count`, `single_site`, `median_value`, `mean_value`, `latest_value_at`.
 
+### uk_aq_pcon_hex
+- Purpose: Serve constituency-level latest PM2.5 summaries (median + mean) for the hex cartogram.
+- Triggered by: Web requests (read-only, no writes).
+- Returns: rows keyed by `pcon_code` with `station_count`, `single_site`, `median_value`, `mean_value`, `latest_value_at`.
+
 ## Environment variables (Supabase Edge)
 
 Required:
