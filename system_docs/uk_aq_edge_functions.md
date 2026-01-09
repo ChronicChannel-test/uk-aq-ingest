@@ -1,4 +1,4 @@
-# UK Air Edge Functions
+# UK AQ Edge Functions
 
 This project uses Supabase Edge Functions for polling and serving data. The Edge
 functions run inside Supabase and need their own environment variables (Project
@@ -21,6 +21,11 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
 - Purpose: Serve the latest values for a region/station filter.
 - Triggered by: Web requests (read-only, no writes).
 - Returns: timeseries rows with station + phenomenon metadata and latest values.
+
+### uk_aq_stations
+- Purpose: Serve station geometry for the hex map (bypasses RLS via service role).
+- Triggered by: Web requests (read-only, no writes).
+- Returns: stations with geometry (id, station_ref, label, geometry).
 
 ## Environment variables (Supabase Edge)
 

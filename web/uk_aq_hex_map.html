@@ -337,7 +337,7 @@
         ? (anonKeyParam || "")
         : ANON_KEY_PLACEHOLDER;
       const REST_URL = projectRef
-        ? `https://${projectRef}.supabase.co/rest/v1/stations`
+        ? `https://${projectRef}.supabase.co/functions/v1/uk_aq_stations`
         : "";
 
       const statusEl = document.getElementById("status");
@@ -499,8 +499,6 @@
         }
         try {
           const url = new URL(REST_URL);
-          url.searchParams.set("select", "id,station_ref,label,geometry");
-          url.searchParams.set("geometry", "not.is.null");
           const response = await fetch(url.toString(), {
             headers: {
               Authorization: `Bearer ${anonKey}`,
