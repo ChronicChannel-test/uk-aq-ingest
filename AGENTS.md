@@ -2,6 +2,7 @@
 
 ## Naming
 - Prefer `uk_aq` in filenames, scripts, and docs (avoid `ukair`).
+- `UK-AIR SOS` is a service name and must never be changed to `UK-AQ SOS`.
 
 ## Archive
 - Files in `archive/` can be referenced for context but must never be modified once created. Adding new files/directories under `archive/` is allowed.
