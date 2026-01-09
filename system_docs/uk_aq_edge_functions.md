@@ -27,7 +27,7 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
 - Triggered by: Web requests (read-only, no writes).
 - Returns: stations with geometry (id, station_ref, label, geometry).
 
-### uk_aq_la_latest
+### uk_aq_la_hex
 - Purpose: Serve LA-level latest PM2.5 summaries (median + mean) for the hex cartogram.
 - Triggered by: Web requests (read-only, no writes).
 - Returns: rows keyed by `la_code` with `station_count`, `single_site`, `median_value`, `mean_value`, `latest_value_at`.
