@@ -82,7 +82,7 @@ def get_account(access_token: str) -> dict:
 
 
 def upload_test_file(access_token: str, folder: str) -> None:
-    filename = f"uk_air_dropbox_test_{utcnow().replace(':', '').replace('+', '')}.json"
+    filename = f"uk_aq_dropbox_test_{utcnow().replace(':', '').replace('+', '')}.json"
     path = build_path(folder, filename)
     payload = json.dumps({"tested_at": utcnow()}, ensure_ascii=True).encode("utf-8")
     headers = {

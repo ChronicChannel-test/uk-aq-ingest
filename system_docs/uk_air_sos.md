@@ -88,7 +88,7 @@ Environment variables are only a fallback for discovery or missing service rows.
 
 If `timeseries_limit` is not provided, the function uses `services.poll_timeseries_batch_size` when set.
 
-Scheduling SQL lives in `supabase/uk_air_polling_cron.sql` and uses `net.http_post` to invoke the function.
+Scheduling SQL lives in `supabase/uk_aq_polling_cron.sql` and uses `net.http_post` to invoke the function.
 The default schedule runs 5 minutes past each quarter-hour (:05, :20, :35, :50) to align with on-the-hour measurements.
 
 Dropbox log output (optional):

@@ -1,4 +1,4 @@
-# UK-AIR Supabase Schema Overview
+# UK-AQ Supabase Schema Overview
 
 This document summarizes the schema defined in `supabase/uk_air_quality_schema.sql` for ingesting UK-AIR SOS / 52°North timeseries data and PM2.5 target tracking.
 

@@ -24,7 +24,7 @@ This project uses **two different ingestion paths** that serve different purpose
   - `observations`
   - `timeseries.last_value` + `timeseries.last_value_at` (update by id)
 - Logs to Dropbox and `error_logs` when configured.
-- Triggered by Supabase cron (`supabase/uk_air_polling_cron.sql`).
+- Triggered by Supabase cron (`supabase/uk_aq_polling_cron.sql`).
 
 ## Why both exist
 

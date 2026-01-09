@@ -1,4 +1,4 @@
-name: UK-AIR Raw Dropbox Snapshot
+name: UK-AQ Raw Dropbox Snapshot
 
 on:
   workflow_dispatch:

@@ -540,7 +540,7 @@ def _slugify(value: str) -> str:
 
 def _build_raw_label(args: argparse.Namespace) -> str:
     stamp = utcnow().strftime("%Y%m%dT%H%M%SZ")
-    parts = ["uk_air_raw", stamp]
+    parts = ["uk_aq_raw", stamp]
     if args.station_like:
         parts.append(_slugify(args.station_like))
     if args.region:
@@ -550,7 +550,7 @@ def _build_raw_label(args: argparse.Namespace) -> str:
 
 def _build_log_filename(args: argparse.Namespace) -> str:
     stamp = utcnow().strftime("%Y%m%dT%H%M%SZ")
-    parts = ["uk_air_log", stamp]
+    parts = ["uk_aq_log", stamp]
     if args.station_like:
         parts.append(_slugify(args.station_like))
     if args.region:
@@ -563,7 +563,7 @@ def _build_error_filename(created_at: str, error_id: str) -> str:
         stamp = datetime.fromisoformat(created_at.replace("Z", "+00:00")).strftime("%Y%m%dT%H%M%SZ")
     except ValueError:
         stamp = utcnow().strftime("%Y%m%dT%H%M%SZ")
-    return f"uk_air_error_{stamp}_{error_id}.json"
+    return f"uk_aq_error_{stamp}_{error_id}.json"
 
 
 def _load_dropbox_config(folder_override: Optional[str]) -> Optional[DropboxConfig]:
@@ -618,7 +618,7 @@ def _prepare_raw_dropbox_session(args: argparse.Namespace) -> Optional[RawDropbo
     config = _load_dropbox_config(args.raw_dropbox_folder)
     if not config:
         return None
-    temp_dir = tempfile.TemporaryDirectory(prefix="uk_air_raw_")
+    temp_dir = tempfile.TemporaryDirectory(prefix="uk_aq_raw_")
     filename = f"{_build_raw_label(args)}.jsonl.gz"
     output_path = Path(temp_dir.name) / filename
     recorder = RawPayloadRecorder(output_path)

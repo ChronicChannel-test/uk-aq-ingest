@@ -78,7 +78,7 @@ UK_AIR_SOS_BASE_URL=https://uk-air.defra.gov.uk/sos-ukair/api/v1
 UK_AIR_SOS_SERVICE_LABEL=UK-AIR-SOS
 ```
 
-Example cron SQL to schedule the poller lives in `supabase/uk_air_polling_cron.sql`.
+Example cron SQL to schedule the poller lives in `supabase/uk_aq_polling_cron.sql`.
 
 GitHub Actions deployment secrets (used by `.github/workflows/supabase_edge_deploy.yml`):
 - `SUPABASE_ACCESS_TOKEN`

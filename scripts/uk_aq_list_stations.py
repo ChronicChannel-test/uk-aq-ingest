@@ -3,9 +3,9 @@
 Fetch UK-AIR SOS stations and filter to the UK bounding box.
 
 Examples:
-  python scripts/uk_air_list_stations.py
-  python scripts/uk_air_list_stations.py --format csv --output uk_stations.csv
-  python scripts/uk_air_list_stations.py --no-filter
+  python scripts/uk_aq_list_stations.py
+  python scripts/uk_aq_list_stations.py --format csv --output uk_stations.csv
+  python scripts/uk_aq_list_stations.py --no-filter
 """
 
 import argparse
@@ -24,7 +24,7 @@ from supabase import Client, create_client
 from ingest_helpers import station_coords, station_in_bbox_or_missing_coords
 load_dotenv()
 
-LOG = logging.getLogger("uk_air_stations")
+LOG = logging.getLogger("uk_aq_stations")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
 UK_AIR_SOS_BASE_URL = (
@@ -445,8 +445,8 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Fetch UK-AIR SOS stations for the UK.")
     parser.add_argument(
         "--output",
-        default="uk_air_stations.json",
-        help="Output file path (default: uk_air_stations.json).",
+        default="uk_aq_stations.json",
+        help="Output file path (default: uk_aq_stations.json).",
     )
     parser.add_argument(
         "--format",

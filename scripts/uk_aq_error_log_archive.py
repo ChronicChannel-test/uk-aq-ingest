@@ -3,8 +3,8 @@
 Archive per-error Dropbox logs into daily ZIPs.
 
 Usage:
-  python3 scripts/uk_air_error_log_archive.py
-  python3 scripts/uk_air_error_log_archive.py --date 2026-01-07
+  python3 scripts/uk_aq_error_log_archive.py
+  python3 scripts/uk_aq_error_log_archive.py --date 2026-01-07
 """
 
 import argparse
@@ -27,7 +27,7 @@ DEFAULT_ERROR_DROPBOX_FOLDER = "/error_log"
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Archive UK-AIR error logs in Dropbox.")
+    parser = argparse.ArgumentParser(description="Archive UK-AQ error logs in Dropbox.")
     parser.add_argument(
         "--date",
         help="Date to archive (YYYY-MM-DD). Defaults to yesterday (UTC).",

@@ -1,4 +1,4 @@
-name: UK-AIR Stations Daily Sync
+name: UK-AQ Stations Daily Sync
 
 permissions:
   contents: write
@@ -32,15 +32,15 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           UK_AIR_SOS_BASE_URL: ${{ secrets.UK_AIR_SOS_BASE_URL }}
         run: |
-          python3 scripts/uk_air_list_stations.py --to-supabase
+          python3 scripts/uk_aq_list_stations.py --to-supabase
 
       - name: Commit stations JSON
         run: |
-          if git status --porcelain | grep -q " uk_air_stations.json"; then
+          if git status --porcelain | grep -q " uk_aq_stations.json"; then
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
-            git add uk_air_stations.json
-            git commit -m "chore: update uk_air_stations.json"
+            git add uk_aq_stations.json
+            git commit -m "chore: update uk_aq_stations.json"
             git push
           else
             echo "No changes to commit."

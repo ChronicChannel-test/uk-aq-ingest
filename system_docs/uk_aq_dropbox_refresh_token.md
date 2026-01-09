@@ -1,6 +1,6 @@
-# Dropbox refresh token setup (UK-AIR raw payload uploads)
+# Dropbox refresh token setup (UK-AQ raw payload uploads)
 
-Use these steps to generate a Dropbox OAuth refresh token for the UK-AIR raw payload upload scripts.
+Use these steps to generate a Dropbox OAuth refresh token for the UK-AQ raw payload upload scripts.
 
 ## 1) Configure the Dropbox app
 - Go to the Dropbox App Console and open your app.
@@ -41,11 +41,11 @@ Update the repo `.env` and GitHub secrets with:
 
 Then verify:
 ```
-python3 scripts/uk_air_dropbox_test.py
+python3 scripts/uk_aq_dropbox_test.py
 ```
 Optional upload test:
 ```
-python3 scripts/uk_air_dropbox_test.py --upload
+python3 scripts/uk_aq_dropbox_test.py --upload
 ```
 
 ## Notes

@@ -626,20 +626,20 @@ function buildDropboxLogPath(serviceId: string | null, timestamp: Date): string 
   const stamp = formatCompactTimestamp(timestamp);
   const dateFolder = formatDateYmd(timestamp);
   const suffix = serviceId ? `_service_${serviceId}` : "";
-  return `${DROPBOX_LOG_FOLDER}/${dateFolder}/uk_air_log_edge_${stamp}${suffix}.log`;
+  return `${DROPBOX_LOG_FOLDER}/${dateFolder}/uk_aq_log_edge_${stamp}${suffix}.log`;
 }
 
 function buildDropboxRawPath(serviceId: string | null, timestamp: Date): string {
   const stamp = formatCompactTimestamp(timestamp);
   const dateFolder = formatDateYmd(timestamp);
   const suffix = serviceId ? `_service_${serviceId}` : "";
-  return `${DROPBOX_RAW_FOLDER}/${dateFolder}/uk_air_raw_edge_${stamp}${suffix}.zip`;
+  return `${DROPBOX_RAW_FOLDER}/${dateFolder}/uk_aq_raw_edge_${stamp}${suffix}.zip`;
 }
 
 function buildDropboxErrorPath(errorId: string, createdAt: string): string {
   const dateFolder = createdAt.slice(0, 10);
   const stamp = formatCompactTimestamp(new Date(createdAt));
-  return `${DROPBOX_ERROR_FOLDER}/${dateFolder}/uk_air_error_${stamp}_${errorId}.json`;
+  return `${DROPBOX_ERROR_FOLDER}/${dateFolder}/uk_aq_error_${stamp}_${errorId}.json`;
 }
 
 function formatCompactTimestamp(timestamp: Date): string {
@@ -706,7 +706,7 @@ async function uploadDropboxRaw(
   }
   try {
     const rawPath = buildDropboxRawPath(serviceId, new Date());
-    const filename = rawPath.split("/").pop() ?? "uk_air_raw_edge.jsonl";
+    const filename = rawPath.split("/").pop() ?? "uk_aq_raw_edge.jsonl";
     const jsonlName = filename.replace(/\.zip$/i, ".jsonl");
     const zipped = await zipTextCompressed(jsonlName, content);
     accessToken = await dropboxUploadFileWithRetry(

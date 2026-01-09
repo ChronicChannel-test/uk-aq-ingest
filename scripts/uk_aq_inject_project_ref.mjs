@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(SCRIPT_DIR, "..");
 const ENV_PATH = path.join(REPO_ROOT, ".env");
-const TARGET_PATH = path.join(REPO_ROOT, "web", "uk_air_bristol.html");
+const TARGET_PATH = path.join(REPO_ROOT, "web", "uk_aq_bristol.html");
 
 const envText = await readFileIfExists(ENV_PATH);
 if (envText) {
@@ -50,14 +50,14 @@ updated = replacePlaceholder(
 
 if (updated !== html) {
   await fs.writeFile(TARGET_PATH, updated);
-  console.log("Injected SUPABASE_PROJECT_REF and SUPABASE_ANON_JWT into web/uk_air_bristol.html");
+  console.log("Injected SUPABASE_PROJECT_REF and SUPABASE_ANON_JWT into web/uk_aq_bristol.html");
 } else {
-  console.log("web/uk_air_bristol.html already uses the configured SUPABASE project ref and anon key.");
+  console.log("web/uk_aq_bristol.html already uses the configured SUPABASE project ref and anon key.");
 }
 
 function replacePlaceholder(text, pattern, replacement, label) {
   if (!pattern.test(text)) {
-    console.error(`Could not find ${label} in web/uk_air_bristol.html`);
+    console.error(`Could not find ${label} in web/uk_aq_bristol.html`);
     process.exit(1);
   }
   return text.replace(pattern, replacement);

@@ -8,7 +8,7 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
 
 ### ingest_uk_air_sos
 - Purpose: Poll UK-AIR SOS timeseries and write observations + last_value fields.
-- Triggered by: Supabase cron (see `supabase/uk_air_polling_cron.sql`).
+- Triggered by: Supabase cron (see `supabase/uk_aq_polling_cron.sql`).
 - Writes:
   - `observations` (upsert by timeseries_id + observed_at)
   - `timeseries.last_value` and `timeseries.last_value_at` (update by id)
@@ -17,7 +17,7 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
   - Writes raw payloads to Dropbox `/raw_data/YYYY-MM-DD/` as ZIP
   - Writes errors to `error_logs` and `/error_log/YYYY-MM-DD/`
 
-### uk_air_latest
+### uk_aq_latest
 - Purpose: Serve the latest values for a region/station filter.
 - Triggered by: Web requests (read-only, no writes).
 - Returns: timeseries rows with station + phenomenon metadata and latest values.

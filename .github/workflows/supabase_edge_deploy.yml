@@ -26,7 +26,7 @@ jobs:
           SUPABASE_PUBLISHABLE_DEFAULT_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_DEFAULT_KEY }}
           SUPABASE_ANON_JWT: ${{ secrets.SUPABASE_ANON_JWT }}
         run: |
-          node scripts/uk_air_inject_project_ref.mjs
+          node scripts/uk_aq_inject_project_ref.mjs
 
       - name: Set Supabase secrets
         env:
@@ -43,5 +43,5 @@ jobs:
         run: |
           supabase functions deploy ingest_uk_air_sos \
             --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"
-          supabase functions deploy uk_air_latest \
+          supabase functions deploy uk_aq_latest \
             --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"

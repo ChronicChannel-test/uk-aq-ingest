@@ -1,6 +1,6 @@
-# UK-AIR Scripts
+# UK-AQ Scripts
 
-This document summarizes the UK-AIR helper scripts and their inputs/outputs.
+This document summarizes the UK-AQ helper scripts and their inputs/outputs.
 
 ## Environment
 - `SUPABASE_URL`
@@ -59,7 +59,7 @@ Raw payloads (testing only):
 - Logs older than 31 days are zipped into `/log/archive/YYYY-MM-DD.zip`; archive files older than 1 year are removed.
 - If `UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL` is unset in live environments, the upload never runs (even if `--raw-dropbox` is passed).
 
-### `scripts/uk_air_list_stations.py`
+### `scripts/uk_aq_list_stations.py`
 Purpose:
 - Fetch all current stations from UK-AIR SOS.
 - Filter to UK bounding box (keeps stations with missing coordinates; `geometry` will be null in Supabase).
@@ -67,17 +67,17 @@ Purpose:
 
 Common commands:
 ```
-python3 scripts/uk_air_list_stations.py
-python3 scripts/uk_air_list_stations.py --format csv --output uk_stations.csv
-python3 scripts/uk_air_list_stations.py --to-supabase
-python3 scripts/uk_air_list_stations.py --no-filter --output uk_air_stations_all.json
-python3 scripts/uk_air_list_stations.py --raw-output uk_air_stations_raw.json
-python3 scripts/uk_air_list_stations.py --service-id-from-timeseries
+python3 scripts/uk_aq_list_stations.py
+python3 scripts/uk_aq_list_stations.py --format csv --output uk_stations.csv
+python3 scripts/uk_aq_list_stations.py --to-supabase
+python3 scripts/uk_aq_list_stations.py --no-filter --output uk_aq_stations_all.json
+python3 scripts/uk_aq_list_stations.py --raw-output uk_aq_stations_raw.json
+python3 scripts/uk_aq_list_stations.py --service-id-from-timeseries
 ```
 
 Default outputs:
-- `uk_air_stations.json`
-- `uk_air_stations_all.json` (when using `--no-filter`)
+- `uk_aq_stations.json`
+- `uk_aq_stations_all.json` (when using `--no-filter`)
 Optional raw output:
 - `--raw-output` writes raw station payloads to a separate JSON file.
 Service refs:
@@ -92,21 +92,21 @@ Writes to (when `--to-supabase` is set):
   - `stations` lifecycle fields: `first_seen_at`, `last_seen_at`, `removed_at`
   - Stations not seen in the current run are marked with `removed_at`.
 
-### `scripts/uk_air_dropbox_test.py`
+### `scripts/uk_aq_dropbox_test.py`
 Purpose:
 - Validate Dropbox OAuth refresh token and optionally upload a small test file.
 
 Common commands:
 ```
-python3 scripts/uk_air_dropbox_test.py
-python3 scripts/uk_air_dropbox_test.py --upload
+python3 scripts/uk_aq_dropbox_test.py
+python3 scripts/uk_aq_dropbox_test.py --upload
 ```
 
 Environment:
 - `DROPBOX_APP_KEY`, `DROPBOX_APP_SECRET`, `DROPBOX_REFRESH_TOKEN`
 - Optional `UK_AIR_RAW_DROPBOX_FOLDER` (defaults to `/raw_data`)
 
-### `scripts/uk_air_error_log_archive.py`
+### `scripts/uk_aq_error_log_archive.py`
 Purpose:
 - Zip each day of per-error Dropbox logs into `/error_log/YYYY-MM-DD.zip`.
 - Delete the original per-error folder after archiving.
@@ -114,8 +114,8 @@ Purpose:
 
 Common commands:
 ```
-python3 scripts/uk_air_error_log_archive.py
-python3 scripts/uk_air_error_log_archive.py --date 2026-01-07
+python3 scripts/uk_aq_error_log_archive.py
+python3 scripts/uk_aq_error_log_archive.py --date 2026-01-07
 ```
 
 Environment:
@@ -123,13 +123,13 @@ Environment:
 - `SUPABASE_URL` + `UK_AIR_ERROR_DROPBOX_ALLOWED_SUPABASE_URL` (must match to run)
 - Optional `UK_AIR_ERROR_DROPBOX_FOLDER` (defaults to `/error_log`)
 
-### `scripts/uk_air_inject_project_ref.mjs`
+### `scripts/uk_aq_inject_project_ref.mjs`
 Purpose:
-- Inject `SUPABASE_PROJECT_REF` and the anon JWT into `web/uk_air_bristol.html` for the live Edge Function URL.
+- Inject `SUPABASE_PROJECT_REF` and the anon JWT into `web/uk_aq_bristol.html` for the live Edge Function URL.
 
 Common command:
 ```
-node scripts/uk_air_inject_project_ref.mjs
+node scripts/uk_aq_inject_project_ref.mjs
 ```
 
 Notes:
