@@ -1,0 +1,546 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>UK AQ Hex Map</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:wght@400;600&family=Space+Grotesk:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --ink: #142225;
+        --ink-soft: #334449;
+        --mist: #f6f1e9;
+        --teal: #0f8b8d;
+        --teal-deep: #0a5d61;
+        --sun: #f4b942;
+        --clay: #e8dcc7;
+        --fog: rgba(20, 34, 37, 0.08);
+        --card: #ffffff;
+        --heat-0: #fef9e7;
+        --heat-1: #ffd89e;
+        --heat-2: #f9b159;
+        --heat-3: #eb7a3b;
+        --heat-4: #cf3f2f;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: "Space Grotesk", system-ui, -apple-system, sans-serif;
+        color: var(--ink);
+        background:
+          radial-gradient(circle at 12% 20%, #ffe8c7 0%, transparent 55%),
+          radial-gradient(circle at 88% 18%, #d6f1ef 0%, transparent 50%),
+          linear-gradient(135deg, #f7f2e8, #f0f7f6);
+        min-height: 100vh;
+      }
+
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        background-image: linear-gradient(120deg, rgba(20, 34, 37, 0.05) 1px, transparent 1px);
+        background-size: 32px 32px;
+        opacity: 0.2;
+        pointer-events: none;
+      }
+
+      main {
+        position: relative;
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 48px 24px 64px;
+        display: grid;
+        gap: 24px;
+      }
+
+      header {
+        display: grid;
+        gap: 12px;
+        align-items: start;
+      }
+
+      .title {
+        font-family: "Fraunces", serif;
+        font-size: clamp(2rem, 2.6vw, 3.25rem);
+        letter-spacing: -0.02em;
+        margin: 0;
+      }
+
+      .subtitle {
+        margin: 0;
+        color: var(--ink-soft);
+        font-size: 1.05rem;
+        max-width: 720px;
+      }
+
+      .meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        font-size: 0.9rem;
+        color: var(--ink-soft);
+      }
+
+      .badge {
+        background: var(--clay);
+        color: var(--ink);
+        padding: 4px 10px;
+        border-radius: 999px;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        text-transform: uppercase;
+        font-size: 0.72rem;
+      }
+
+      .card {
+        background: var(--card);
+        border-radius: 18px;
+        box-shadow: 0 20px 50px rgba(20, 34, 37, 0.12);
+        padding: 24px;
+        display: grid;
+        gap: 16px;
+        animation: floatIn 0.6s ease-out;
+      }
+
+      .card-header {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .card-title {
+        font-family: "Fraunces", serif;
+        margin: 0;
+        font-size: 1.4rem;
+      }
+
+      .actions {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        font-size: 0.9rem;
+        color: var(--ink-soft);
+      }
+
+      .actions button {
+        border: none;
+        background: var(--teal);
+        color: white;
+        padding: 8px 14px;
+        border-radius: 999px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+      }
+
+      .actions button:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 8px 18px rgba(15, 139, 141, 0.25);
+      }
+
+      .filters {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        align-items: center;
+        font-size: 0.9rem;
+        color: var(--ink-soft);
+      }
+
+      .filters label {
+        font-weight: 600;
+        color: var(--ink);
+      }
+
+      .filters input {
+        background: #fff;
+        border: 1px solid rgba(20, 34, 37, 0.15);
+        border-radius: 999px;
+        padding: 6px 12px;
+        font-size: 0.9rem;
+        color: var(--ink);
+      }
+
+      .map-wrap {
+        border-radius: 16px;
+        background: #fdfaf4;
+        padding: 16px;
+        border: 1px solid rgba(20, 34, 37, 0.08);
+      }
+
+      svg {
+        width: 100%;
+        height: 560px;
+        display: block;
+      }
+
+      .hex {
+        stroke: rgba(20, 34, 37, 0.08);
+        stroke-width: 1;
+        transition: fill 0.2s ease;
+      }
+
+      .hex:hover {
+        stroke: rgba(20, 34, 37, 0.4);
+        stroke-width: 1.5;
+      }
+
+      .legend {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+        font-size: 0.85rem;
+        color: var(--ink-soft);
+      }
+
+      .legend-bar {
+        display: flex;
+        border-radius: 999px;
+        overflow: hidden;
+        border: 1px solid rgba(20, 34, 37, 0.12);
+      }
+
+      .legend-swatch {
+        width: 42px;
+        height: 12px;
+      }
+
+      .tooltip {
+        position: absolute;
+        pointer-events: none;
+        background: white;
+        border-radius: 10px;
+        padding: 8px 12px;
+        box-shadow: 0 10px 20px rgba(20, 34, 37, 0.18);
+        font-size: 0.85rem;
+        opacity: 0;
+        transform: translateY(8px);
+        transition: opacity 0.2s ease, transform 0.2s ease;
+      }
+
+      .tooltip.visible {
+        opacity: 1;
+        transform: translateY(0);
+      }
+
+      .hint {
+        font-size: 0.85rem;
+        color: var(--ink-soft);
+      }
+
+      .error {
+        color: #8b1e3f;
+        font-weight: 600;
+      }
+
+      @keyframes floatIn {
+        from {
+          opacity: 0;
+          transform: translateY(16px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      @media (max-width: 720px) {
+        main {
+          padding: 36px 18px 48px;
+        }
+
+        .card {
+          padding: 18px;
+        }
+
+        svg {
+          height: 420px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <p class="badge">Hex Cartogram</p>
+        <h1 class="title">UK AQ hex map</h1>
+        <p class="subtitle">
+          A hex-binned overview of UK air-quality stations. Hexes are sized in screen space; each
+          hex is assigned the number of stations within it.
+        </p>
+        <div class="meta">
+          <span id="row-count">Loading…</span>
+          <span id="last-updated">Waiting for data</span>
+        </div>
+      </header>
+
+      <section class="card">
+        <div class="card-header">
+          <h2 class="card-title">Stations per hex</h2>
+          <div class="actions">
+            <span class="hint" id="status">Fetching from Supabase…</span>
+            <button id="refresh">Refresh</button>
+          </div>
+        </div>
+        <div class="filters">
+          <label for="hex-size">Hex radius (px)</label>
+          <input id="hex-size" type="number" min="8" max="48" value="18" />
+          <span class="hint">Set via ?hex_radius=18</span>
+        </div>
+        <div class="hint" id="endpoint-hint"></div>
+        <div class="error" id="error"></div>
+        <div class="map-wrap">
+          <svg id="hex-map" role="img" aria-label="Hex map of station density"></svg>
+        </div>
+        <div class="legend">
+          <span>Station density</span>
+          <div class="legend-bar">
+            <span class="legend-swatch" style="background: var(--heat-0);"></span>
+            <span class="legend-swatch" style="background: var(--heat-1);"></span>
+            <span class="legend-swatch" style="background: var(--heat-2);"></span>
+            <span class="legend-swatch" style="background: var(--heat-3);"></span>
+            <span class="legend-swatch" style="background: var(--heat-4);"></span>
+          </div>
+          <span id="legend-label"></span>
+        </div>
+      </section>
+    </main>
+
+    <div class="tooltip" id="tooltip"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/d3-hexbin@0.2.2/build/d3-hexbin.min.js" crossorigin="anonymous"></script>
+    <script>
+      const PROJECT_REF_PLACEHOLDER = "nmgierafoeuxfkkscrln";
+      const ANON_KEY_PLACEHOLDER = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5tZ2llcmFmb2V1eGZra3NjcmxuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUzMjIzMDMsImV4cCI6MjA4MDg5ODMwM30.x6rKhvMTFRyJCZNlaFG-5tUiSuwehCLLu3qbulNTe7A";
+      const params = new URLSearchParams(window.location.search);
+      const hexRadiusParam = Number(params.get("hex_radius"));
+      const projectRefParam = params.get("project_ref");
+      const anonKeyParam = params.get("anon_key");
+      const inferredProjectRef = inferProjectRefFromHost();
+      const projectRef = PROJECT_REF_PLACEHOLDER.includes("__SUPABASE_PROJECT_REF__")
+        ? (projectRefParam || inferredProjectRef || "")
+        : PROJECT_REF_PLACEHOLDER;
+      const anonKey = ANON_KEY_PLACEHOLDER.includes("__SUPABASE_ANON_KEY__")
+        ? (anonKeyParam || "")
+        : ANON_KEY_PLACEHOLDER;
+      const REST_URL = projectRef
+        ? `https://${projectRef}.supabase.co/rest/v1/stations`
+        : "";
+
+      const statusEl = document.getElementById("status");
+      const errorEl = document.getElementById("error");
+      const rowCount = document.getElementById("row-count");
+      const lastUpdated = document.getElementById("last-updated");
+      const endpointHint = document.getElementById("endpoint-hint");
+      const hexSizeInput = document.getElementById("hex-size");
+      const legendLabel = document.getElementById("legend-label");
+      const tooltip = document.getElementById("tooltip");
+      const svg = d3.select("#hex-map");
+
+      if (hexRadiusParam && !Number.isNaN(hexRadiusParam)) {
+        hexSizeInput.value = String(hexRadiusParam);
+      }
+
+      endpointHint.textContent = REST_URL
+        ? `Endpoint: ${REST_URL}`
+        : "Missing project ref. Add ?project_ref=... to the URL.";
+
+      function inferProjectRefFromHost() {
+        const host = window.location.hostname || "";
+        if (host.endsWith(".supabase.co")) {
+          return host.split(".")[0];
+        }
+        return null;
+      }
+
+      function parseEwkbPoint(hex) {
+        if (!hex || typeof hex !== "string") {
+          return null;
+        }
+        const trimmed = hex.startsWith("0x") ? hex.slice(2) : hex;
+        if (trimmed.length < 42) {
+          return null;
+        }
+        const bytes = new Uint8Array(trimmed.match(/.{1,2}/g).map((pair) => Number.parseInt(pair, 16)));
+        const view = new DataView(bytes.buffer);
+        const littleEndian = view.getUint8(0) === 1;
+        const type = view.getUint32(1, littleEndian);
+        const hasSrid = (type & 0x20000000) !== 0;
+        let offset = 5;
+        if (hasSrid) {
+          offset += 4;
+        }
+        const x = view.getFloat64(offset, littleEndian);
+        const y = view.getFloat64(offset + 8, littleEndian);
+        if (Number.isNaN(x) || Number.isNaN(y)) {
+          return null;
+        }
+        return { lon: x, lat: y };
+      }
+
+      function formatNumber(value) {
+        if (value === null || value === undefined || Number.isNaN(value)) {
+          return "—";
+        }
+        return value.toLocaleString();
+      }
+
+      function updateLegend(maxCount) {
+        legendLabel.textContent = maxCount
+          ? `0 → ${formatNumber(maxCount)} stations`
+          : "No stations mapped";
+      }
+
+      function clearMap() {
+        svg.selectAll("*").remove();
+      }
+
+      function renderMap(points, radius) {
+        clearMap();
+        const width = svg.node().clientWidth || 960;
+        const height = svg.node().clientHeight || 560;
+        const projection = d3.geoMercator().fitExtent(
+          [[24, 24], [width - 24, height - 24]],
+          {
+            type: "Feature",
+            geometry: {
+              type: "Polygon",
+              coordinates: [[
+                [-8.7, 49.8],
+                [1.8, 49.8],
+                [1.8, 60.9],
+                [-8.7, 60.9],
+                [-8.7, 49.8],
+              ]],
+            },
+          }
+        );
+
+        const projected = points
+          .map((point) => {
+            const projectedPoint = projection([point.lon, point.lat]);
+            if (!projectedPoint) {
+              return null;
+            }
+            return { ...point, x: projectedPoint[0], y: projectedPoint[1] };
+          })
+          .filter(Boolean);
+
+        if (!projected.length) {
+          updateLegend(0);
+          return;
+        }
+
+        const hexbin = d3.hexbin().radius(radius).extent([[0, 0], [width, height]]);
+        const bins = hexbin(projected.map((point) => [point.x, point.y, point]));
+        const maxCount = d3.max(bins, (bin) => bin.length);
+        updateLegend(maxCount);
+
+        const colorScale = d3.scaleLinear()
+          .domain([0, maxCount || 1])
+          .range(["var(--heat-0)", "var(--heat-4)"]);
+
+        const hexGroup = svg.append("g");
+        hexGroup.selectAll("path")
+          .data(bins)
+          .join("path")
+          .attr("class", "hex")
+          .attr("d", hexbin.hexagon())
+          .attr("transform", (bin) => `translate(${bin.x},${bin.y})`)
+          .attr("fill", (bin) => colorScale(bin.length))
+          .on("mouseenter", (event, bin) => {
+            const stationNames = bin
+              .map((point) => point[2].label)
+              .filter(Boolean)
+              .slice(0, 6)
+              .join(", ");
+            tooltip.innerHTML = `
+              <strong>${formatNumber(bin.length)} stations</strong><br />
+              ${stationNames || "No station names"}
+            `;
+            tooltip.classList.add("visible");
+            tooltip.style.left = `${event.pageX + 12}px`;
+            tooltip.style.top = `${event.pageY - 12}px`;
+          })
+          .on("mousemove", (event) => {
+            tooltip.style.left = `${event.pageX + 12}px`;
+            tooltip.style.top = `${event.pageY - 12}px`;
+          })
+          .on("mouseleave", () => {
+            tooltip.classList.remove("visible");
+          });
+      }
+
+      async function loadStations() {
+        statusEl.textContent = "Loading…";
+        errorEl.textContent = "";
+        if (!REST_URL) {
+          errorEl.textContent = "Missing project ref. Provide ?project_ref=... or inject at deploy.";
+          statusEl.textContent = "Error";
+          return;
+        }
+        if (!anonKey) {
+          errorEl.textContent = "Missing anon key. Provide ?anon_key=... or inject at deploy.";
+          statusEl.textContent = "Error";
+          return;
+        }
+        try {
+          const url = new URL(REST_URL);
+          url.searchParams.set("select", "id,station_ref,label,geometry");
+          url.searchParams.set("geometry", "not.is.null");
+          const response = await fetch(url.toString(), {
+            headers: {
+              Authorization: `Bearer ${anonKey}`,
+              apikey: anonKey,
+            },
+          });
+          if (!response.ok) {
+            throw new Error(`Request failed: ${response.status}`);
+          }
+          const payload = await response.json();
+          const points = payload
+            .map((row) => {
+              const coords = parseEwkbPoint(row.geometry);
+              if (!coords) {
+                return null;
+              }
+              return { id: row.id, label: row.label, ...coords };
+            })
+            .filter(Boolean);
+          rowCount.textContent = `${formatNumber(points.length)} stations mapped`;
+          const radius = Math.max(8, Math.min(48, Number(hexSizeInput.value) || 18));
+          renderMap(points, radius);
+          lastUpdated.textContent = `Updated ${new Date().toLocaleTimeString()}`;
+          statusEl.textContent = "Live";
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          errorEl.textContent = message;
+          statusEl.textContent = "Error";
+        }
+      }
+
+      document.getElementById("refresh").addEventListener("click", loadStations);
+      hexSizeInput.addEventListener("change", loadStations);
+      window.addEventListener("resize", () => {
+        if (statusEl.textContent === "Live") {
+          loadStations();
+        }
+      });
+      loadStations();
+      setInterval(loadStations, 10 * 60 * 1000);
+    </script>
+  </body>
+</html>
