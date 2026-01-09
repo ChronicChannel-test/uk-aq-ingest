@@ -5,6 +5,7 @@ drop table if exists observations cascade;
 drop table if exists reference_values cascade;
 drop table if exists timeseries cascade;
 drop table if exists stations cascade;
+drop table if exists la_boundaries cascade;
 drop table if exists procedures cascade;
 drop table if exists features cascade;
 drop table if exists offerings cascade;
@@ -16,4 +17,5 @@ drop table if exists services cascade;
 
 -- Views + helper tables from supabase/uk_air_quality_views.sql
 drop view if exists bristol_latest_pollutants cascade;
+drop view if exists la_latest_pm25 cascade;
 drop table if exists pollutant_thresholds cascade;

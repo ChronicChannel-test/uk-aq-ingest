@@ -59,6 +59,30 @@ Raw payloads (testing only):
 - Logs older than 31 days are zipped into `/log/archive/YYYY-MM-DD.zip`; archive files older than 1 year are removed.
 - If `UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL` is unset in live environments, the upload never runs (even if `--raw-dropbox` is passed).
 
+### `scripts/uk_aq_load_la_boundaries.py`
+Purpose:
+- Load Local Authority boundary GeoJSON into `la_boundaries`.
+- Optional: update `stations.la_code` + `stations.la_version` using the stored boundaries.
+
+Common commands:
+```
+python3 scripts/uk_aq_load_la_boundaries.py --geojson data/lad.geojson --la-version 2023
+python3 scripts/uk_aq_load_la_boundaries.py --geojson data/lad.geojson --la-version 2023 --update-stations
+```
+
+Inputs:
+- GeoJSON FeatureCollection with Polygon/MultiPolygon geometries.
+
+Key flags:
+- `--code-field` (default: `la_code`)
+- `--name-field` (default: `la_name`)
+- `--batch-size` (default: 200)
+- `--update-stations` to run `uk_aq_refresh_station_la_codes`.
+
+Environment:
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+
 ### `scripts/uk_aq_list_stations.py`
 Purpose:
 - Fetch all current stations from UK-AIR SOS.
@@ -91,6 +115,31 @@ Writes to (when `--to-supabase` is set):
 - `phenomena`, `procedures`, `offerings` (unless `--skip-metadata` is used)
   - `stations` lifecycle fields: `first_seen_at`, `last_seen_at`, `removed_at`
   - Stations not seen in the current run are marked with `removed_at`.
+
+### `scripts/uk_aq_defra_compare.py`
+Purpose:
+- Fetch DEFRA last-hour readings for a station.
+- Compare DEFRA values to the latest Supabase observations for the same station.
+- Exit non-zero when mismatches exceed the configured tolerance.
+
+Common commands:
+```
+python3 scripts/uk_aq_defra_compare.py
+python3 scripts/uk_aq_defra_compare.py --station-id BR11 --tolerance 1.5
+python3 scripts/uk_aq_defra_compare.py --defra-url "https://uk-air.defra.gov.uk/data/site-data?f_site_id=BR11&view=last_hour"
+```
+
+Inputs:
+- DEFRA last-hour page (HTML)
+- `stations`, `timeseries`, `observations`, `phenomena`
+
+Environment:
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+
+Output:
+- Console report per pollutant (PASS/FAIL) with timestamps/units.
+- Exit code 0 on success, 1 on mismatch, 2 on fetch/query errors.
 
 ### `scripts/uk_aq_dropbox_test.py`
 Purpose:

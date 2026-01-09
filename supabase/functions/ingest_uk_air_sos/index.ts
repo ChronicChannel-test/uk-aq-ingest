@@ -1466,29 +1466,32 @@ async function upsertLastValue(
   errorLogger: { logError: (entry: ErrorLogEntry) => Promise<void> },
   serviceId: string | null,
 ): Promise<void> {
-  const lastValue = toNumber(data?.lastValue);
+  const lastValueFromPayload = toNumber(data?.lastValue);
   const lastValueTimestamp = data?.lastValueTimestamp;
+  const lastPoint = points.length ? points[points.length - 1] : null;
   let lastValueAt: string | null = null;
-  if (typeof lastValueTimestamp === "string") {
+  if (lastPoint?.observed_at) {
+    lastValueAt = lastPoint.observed_at;
+  } else if (typeof lastValueTimestamp === "string") {
     const parsed = new Date(lastValueTimestamp);
     if (!Number.isNaN(parsed.getTime())) {
       lastValueAt = parsed.toISOString();
     }
   } else if (typeof lastValueTimestamp === "number") {
     lastValueAt = new Date(lastValueTimestamp).toISOString();
-  } else if (points.length) {
-    lastValueAt = points[points.length - 1].observed_at;
   }
 
-  if (!lastValueAt && lastValue === null) {
+  const resolvedLastValue = lastPoint ? lastPoint.value ?? null : lastValueFromPayload;
+
+  if (!lastValueAt && resolvedLastValue === null) {
     return;
   }
   const payload: Record<string, unknown> = {};
   if (lastValueAt) {
     payload.last_value_at = lastValueAt;
   }
-  if (lastValue !== null) {
-    payload.last_value = lastValue;
+  if (resolvedLastValue !== null) {
+    payload.last_value = resolvedLastValue;
   }
   const { error } = await postgrestRequest(
     "PATCH",

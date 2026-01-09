@@ -1353,11 +1353,12 @@ class UkAirIngestor:
                     data = self.client.timeseries_data(str(ts_ref), timespan)
                     points = _parse_datapoints(data.get("values", []))
                     self.writer.upsert_observations(ts_db_id, points)
-                    last_val = data.get("lastValue") or (points[-1]["value"] if points else None)
-                    last_at = (
-                        _parse_timestamp(data.get("lastValueTimestamp"))
-                        or (points[-1]["observed_at"] if points else None)
-                    )
+                    if points:
+                        last_val = points[-1]["value"]
+                        last_at = points[-1]["observed_at"]
+                    else:
+                        last_val = data.get("lastValue")
+                        last_at = _parse_timestamp(data.get("lastValueTimestamp"))
                     self.writer.update_last_value(ts_db_id, last_at, _safe_number(last_val))
             except Exception as exc:
                 errors += 1
@@ -1394,11 +1395,12 @@ class UkAirIngestor:
                 data = self.client.timeseries_data(str(ts_ref), timespan)
                 points = _parse_datapoints(data.get("values", []))
                 self.writer.upsert_observations(ts_db_id, points)
-                last_val = data.get("lastValue") or (points[-1]["value"] if points else None)
-                last_at = (
-                    _parse_timestamp(data.get("lastValueTimestamp"))
-                    or (points[-1]["observed_at"] if points else None)
-                )
+                if points:
+                    last_val = points[-1]["value"]
+                    last_at = points[-1]["observed_at"]
+                else:
+                    last_val = data.get("lastValue")
+                    last_at = _parse_timestamp(data.get("lastValueTimestamp"))
                 self.writer.update_last_value(ts_db_id, last_at, _safe_number(last_val))
             except Exception as exc:
                 errors += 1

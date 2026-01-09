@@ -186,9 +186,9 @@
       }
 
       .hex {
-        stroke: rgba(20, 34, 37, 0.08);
+        stroke: rgba(20, 34, 37, 0.12);
         stroke-width: 1;
-        transition: fill 0.2s ease;
+        transition: fill 0.2s ease, stroke 0.2s ease;
       }
 
       .hex:hover {
@@ -240,6 +240,30 @@
         color: var(--ink-soft);
       }
 
+      .toggle {
+        display: inline-flex;
+        gap: 4px;
+        padding: 4px;
+        border-radius: 999px;
+        border: 1px solid rgba(20, 34, 37, 0.12);
+        background: #fff;
+      }
+
+      .toggle button {
+        border: none;
+        background: transparent;
+        color: var(--ink-soft);
+        padding: 6px 12px;
+        border-radius: 999px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+
+      .toggle button.active {
+        background: var(--ink);
+        color: #fff;
+      }
+
       .error {
         color: #8b1e3f;
         font-weight: 600;
@@ -277,8 +301,8 @@
         <p class="badge">Hex Cartogram</p>
         <h1 class="title">UK AQ hex map</h1>
         <p class="subtitle">
-          A hex-binned overview of UK air-quality stations. Hexes are sized in screen space; each
-          hex is assigned the number of stations within it.
+          A population-equal hex cartogram showing the latest PM2.5 by local authority. Each
+          hex represents the same number of people; values are aggregated per LA.
         </p>
         <div class="meta">
           <span id="row-count">Loading…</span>
@@ -288,24 +312,27 @@
 
       <section class="card">
         <div class="card-header">
-          <h2 class="card-title">Stations per hex</h2>
+          <h2 class="card-title">Latest PM2.5 by local authority</h2>
           <div class="actions">
             <span class="hint" id="status">Fetching from Supabase…</span>
             <button id="refresh">Refresh</button>
           </div>
         </div>
         <div class="filters">
-          <label for="hex-size">Hex radius (px)</label>
-          <input id="hex-size" type="number" min="8" max="48" value="18" />
-          <span class="hint">Set via ?hex_radius=18</span>
+          <span class="hint">Metric: Latest PM2.5</span>
+          <div class="toggle" role="group" aria-label="Aggregation">
+            <button type="button" class="active" data-metric="median">Typical (median)</button>
+            <button type="button" data-metric="mean">Average (mean)</button>
+          </div>
+          <span class="hint">Local authority hex cartogram (equal-pop)</span>
         </div>
         <div class="hint" id="endpoint-hint"></div>
         <div class="error" id="error"></div>
         <div class="map-wrap">
-          <svg id="hex-map" role="img" aria-label="Hex map of station density"></svg>
+          <svg id="hex-map" role="img" aria-label="Hex cartogram of PM2.5 by local authority"></svg>
         </div>
         <div class="legend">
-          <span>Station density</span>
+          <span>PM2.5 (ug/m3)</span>
           <div class="legend-bar">
             <span class="legend-swatch" style="background: var(--heat-0);"></span>
             <span class="legend-swatch" style="background: var(--heat-1);"></span>
@@ -321,14 +348,14 @@
     <div class="tooltip" id="tooltip"></div>
 
     <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/d3-hexbin@0.2.2/build/d3-hexbin.min.js" crossorigin="anonymous"></script>
     <script>
       const PROJECT_REF_PLACEHOLDER = "nmgierafoeuxfkkscrln";
       const ANON_KEY_PLACEHOLDER = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5tZ2llcmFmb2V1eGZra3NjcmxuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUzMjIzMDMsImV4cCI6MjA4MDg5ODMwM30.x6rKhvMTFRyJCZNlaFG-5tUiSuwehCLLu3qbulNTe7A";
       const params = new URLSearchParams(window.location.search);
-      const hexRadiusParam = Number(params.get("hex_radius"));
       const projectRefParam = params.get("project_ref");
       const anonKeyParam = params.get("anon_key");
+      const metricParam = params.get("metric");
+      const laVersionParam = params.get("la_version");
       const inferredProjectRef = inferProjectRefFromHost();
       const projectRef = PROJECT_REF_PLACEHOLDER.includes("__SUPABASE_PROJECT_REF__")
         ? (projectRefParam || inferredProjectRef || "")
@@ -337,22 +364,29 @@
         ? (anonKeyParam || "")
         : ANON_KEY_PLACEHOLDER;
       const REST_URL = projectRef
-        ? `https://${projectRef}.supabase.co/functions/v1/uk_aq_stations`
+        ? `https://${projectRef}.supabase.co/functions/v1/uk_aq_la_latest`
         : "";
+      const HEX_DATA_URL = "data/uk_aq_la_hex_2023.json";
+      const METRIC_LABELS = {
+        median: "Typical (median)",
+        mean: "Average (mean)",
+      };
 
       const statusEl = document.getElementById("status");
       const errorEl = document.getElementById("error");
       const rowCount = document.getElementById("row-count");
       const lastUpdated = document.getElementById("last-updated");
       const endpointHint = document.getElementById("endpoint-hint");
-      const hexSizeInput = document.getElementById("hex-size");
       const legendLabel = document.getElementById("legend-label");
       const tooltip = document.getElementById("tooltip");
       const svg = d3.select("#hex-map");
+      const metricButtons = Array.from(document.querySelectorAll("[data-metric]"));
 
-      if (hexRadiusParam && !Number.isNaN(hexRadiusParam)) {
-        hexSizeInput.value = String(hexRadiusParam);
-      }
+      let currentMetric = metricParam === "mean" ? "mean" : "median";
+      let hexData = null;
+      let laRows = [];
+      let laLookup = new Map();
+      let laCodes = new Set();
 
       endpointHint.textContent = REST_URL
         ? `Endpoint: ${REST_URL}`
@@ -366,110 +400,138 @@
         return null;
       }
 
-      function parseEwkbPoint(hex) {
-        if (!hex || typeof hex !== "string") {
+      function normalizeNumber(value) {
+        if (value === null || value === undefined) {
           return null;
         }
-        const trimmed = hex.startsWith("0x") ? hex.slice(2) : hex;
-        if (trimmed.length < 42) {
-          return null;
-        }
-        const bytes = new Uint8Array(trimmed.match(/.{1,2}/g).map((pair) => Number.parseInt(pair, 16)));
-        const view = new DataView(bytes.buffer);
-        const littleEndian = view.getUint8(0) === 1;
-        const type = view.getUint32(1, littleEndian);
-        const hasSrid = (type & 0x20000000) !== 0;
-        let offset = 5;
-        if (hasSrid) {
-          offset += 4;
-        }
-        const x = view.getFloat64(offset, littleEndian);
-        const y = view.getFloat64(offset + 8, littleEndian);
-        if (Number.isNaN(x) || Number.isNaN(y)) {
-          return null;
-        }
-        return { lon: x, lat: y };
+        const numeric = Number(value);
+        return Number.isFinite(numeric) ? numeric : null;
       }
 
       function formatNumber(value) {
         if (value === null || value === undefined || Number.isNaN(value)) {
-          return "—";
+          return "-";
         }
         return value.toLocaleString();
       }
 
-      function updateLegend(maxCount) {
-        legendLabel.textContent = maxCount
-          ? `0 → ${formatNumber(maxCount)} stations`
-          : "No stations mapped";
+      function formatValue(value) {
+        const numeric = normalizeNumber(value);
+        if (numeric === null) {
+          return "-";
+        }
+        return numeric.toFixed(1);
+      }
+
+      function formatTimestamp(value) {
+        if (!value) {
+          return "unknown";
+        }
+        const parsed = new Date(value);
+        if (Number.isNaN(parsed.getTime())) {
+          return "unknown";
+        }
+        return parsed.toLocaleString();
+      }
+
+      function updateLegend(minValue, maxValue) {
+        if (minValue === null || maxValue === null) {
+          legendLabel.textContent = "No PM2.5 values";
+          return;
+        }
+        legendLabel.textContent = `${METRIC_LABELS[currentMetric]}: ${formatValue(minValue)} to ${formatValue(maxValue)} ug/m3`;
       }
 
       function clearMap() {
         svg.selectAll("*").remove();
       }
 
-      function renderMap(points, radius) {
+      function applyMetricState() {
+        metricButtons.forEach((button) => {
+          const isActive = button.dataset.metric === currentMetric;
+          button.classList.toggle("active", isActive);
+        });
+      }
+
+      function getMetricValue(row) {
+        if (!row) {
+          return null;
+        }
+        return currentMetric === "mean"
+          ? normalizeNumber(row.mean_value)
+          : normalizeNumber(row.median_value);
+      }
+
+      function getStationCount(row) {
+        if (!row) {
+          return 0;
+        }
+        const count = normalizeNumber(row.station_count);
+        return count === null ? 0 : count;
+      }
+
+      function renderMap() {
+        if (!hexData) {
+          return;
+        }
         clearMap();
         const width = svg.node().clientWidth || 960;
         const height = svg.node().clientHeight || 560;
-        const projection = d3.geoMercator().fitExtent(
-          [[24, 24], [width - 24, height - 24]],
-          {
-            type: "Feature",
-            geometry: {
-              type: "Polygon",
-              coordinates: [[
-                [-8.7, 49.8],
-                [1.8, 49.8],
-                [1.8, 60.9],
-                [-8.7, 60.9],
-                [-8.7, 49.8],
-              ]],
-            },
-          }
-        );
-
-        const projected = points
-          .map((point) => {
-            const projectedPoint = projection([point.lon, point.lat]);
-            if (!projectedPoint) {
-              return null;
-            }
-            return { ...point, x: projectedPoint[0], y: projectedPoint[1] };
-          })
-          .filter(Boolean);
-
-        if (!projected.length) {
-          updateLegend(0);
-          return;
+        const projection = d3.geoIdentity()
+          .reflectY(true)
+          .fitExtent([[24, 24], [width - 24, height - 24]], hexData);
+        const path = d3.geoPath(projection);
+        const values = laRows
+          .map((row) => getMetricValue(row))
+          .filter((value) => Number.isFinite(value));
+        const minValue = values.length ? d3.min(values) : null;
+        const maxValue = values.length ? d3.max(values) : null;
+        const palette = ["var(--heat-0)", "var(--heat-1)", "var(--heat-2)", "var(--heat-3)", "var(--heat-4)"];
+        let colorScale = null;
+        if (minValue !== null && maxValue !== null) {
+          const domainMax = minValue === maxValue ? minValue + 1 : maxValue;
+          colorScale = d3.scaleQuantize()
+            .domain([minValue, domainMax])
+            .range(palette);
         }
-
-        const hexbin = d3.hexbin().radius(radius).extent([[0, 0], [width, height]]);
-        const bins = hexbin(projected.map((point) => [point.x, point.y, point]));
-        const maxCount = d3.max(bins, (bin) => bin.length);
-        updateLegend(maxCount);
-
-        const colorScale = d3.scaleLinear()
-          .domain([0, maxCount || 1])
-          .range(["var(--heat-0)", "var(--heat-4)"]);
+        updateLegend(minValue, maxValue);
 
         const hexGroup = svg.append("g");
         hexGroup.selectAll("path")
-          .data(bins)
+          .data(hexData.features || [])
           .join("path")
           .attr("class", "hex")
-          .attr("d", hexbin.hexagon())
-          .attr("transform", (bin) => `translate(${bin.x},${bin.y})`)
-          .attr("fill", (bin) => colorScale(bin.length))
-          .on("mouseenter", (event, bin) => {
-            const stationNames = bin
-              .map((point) => point[2].label)
-              .filter(Boolean)
-              .slice(0, 6)
-              .join(", ");
+          .attr("d", path)
+          .attr("fill", (feature) => {
+            const row = laLookup.get(feature?.properties?.la_code);
+            const value = getMetricValue(row);
+            if (!colorScale || !Number.isFinite(value)) {
+              return "var(--clay)";
+            }
+            return colorScale(value);
+          })
+          .on("mouseenter", (event, feature) => {
+            const props = feature?.properties || {};
+            const row = laLookup.get(props.la_code);
+            const metricValue = getMetricValue(row);
+            const laName = props.la_name || row?.la_name || props.la_code || "Unknown LA";
+            const stationCount = getStationCount(row);
+            const stationLabel = stationCount === 1
+              ? "single site"
+              : stationCount > 1
+                ? `${formatNumber(stationCount)} stations`
+                : "No stations";
+            const valueLabel = Number.isFinite(metricValue)
+              ? `${formatValue(metricValue)} ug/m3`
+              : "No PM2.5 data";
+            const updatedLabel = row?.latest_value_at
+              ? `Updated ${formatTimestamp(row.latest_value_at)}`
+              : "Updated unknown";
             tooltip.innerHTML = `
-              <strong>${formatNumber(bin.length)} stations</strong><br />
-              ${stationNames || "No station names"}
+              <strong>${laName}</strong><br />
+              ${METRIC_LABELS[currentMetric]}: ${valueLabel}<br />
+              ${stationLabel}<br />
+              ${updatedLabel}
             `;
             tooltip.classList.add("visible");
             tooltip.style.left = `${event.pageX + 12}px`;
@@ -484,7 +546,7 @@
           });
       }
 
-      async function loadStations() {
+      async function loadMapData() {
         statusEl.textContent = "Loading…";
         errorEl.textContent = "";
         if (!REST_URL) {
@@ -498,30 +560,42 @@
           return;
         }
         try {
-          const url = new URL(REST_URL);
-          const response = await fetch(url.toString(), {
-            headers: {
-              Authorization: `Bearer ${anonKey}`,
-              apikey: anonKey,
-            },
-          });
-          if (!response.ok) {
-            throw new Error(`Request failed: ${response.status}`);
+          const laUrl = new URL(REST_URL);
+          if (laVersionParam) {
+            laUrl.searchParams.set("la_version", laVersionParam);
           }
-          const payload = await response.json();
-          const points = payload
-            .map((row) => {
-              const coords = parseEwkbPoint(row.geometry);
-              if (!coords) {
-                return null;
-              }
-              return { id: row.id, label: row.label, ...coords };
-            })
-            .filter(Boolean);
-          rowCount.textContent = `${formatNumber(points.length)} stations mapped`;
-          const radius = Math.max(8, Math.min(48, Number(hexSizeInput.value) || 18));
-          renderMap(points, radius);
-          lastUpdated.textContent = `Updated ${new Date().toLocaleTimeString()}`;
+          const [hexResponse, laResponse] = await Promise.all([
+            fetch(HEX_DATA_URL),
+            fetch(laUrl.toString(), {
+              headers: {
+                Authorization: `Bearer ${anonKey}`,
+                apikey: anonKey,
+              },
+            }),
+          ]);
+          if (!hexResponse.ok) {
+            throw new Error(`Hex data request failed: ${hexResponse.status}`);
+          }
+          if (!laResponse.ok) {
+            throw new Error(`LA request failed: ${laResponse.status}`);
+          }
+          hexData = await hexResponse.json();
+          const payload = await laResponse.json();
+          laRows = payload?.data || [];
+          laLookup = new Map(laRows.map((row) => [row.la_code, row]));
+          laCodes = new Set(
+            (hexData.features || [])
+              .map((feature) => feature?.properties?.la_code)
+              .filter(Boolean),
+          );
+          const laWithData = laRows.filter((row) => getStationCount(row) > 0);
+          rowCount.textContent = `${formatNumber(laWithData.length)} of ${formatNumber(laCodes.size)} LAs with PM2.5 data`;
+          if (payload?.last_updated) {
+            lastUpdated.textContent = `Latest data ${formatTimestamp(payload.last_updated)}`;
+          } else {
+            lastUpdated.textContent = "Latest data unavailable";
+          }
+          renderMap();
           statusEl.textContent = "Live";
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
@@ -530,15 +604,27 @@
         }
       }
 
-      document.getElementById("refresh").addEventListener("click", loadStations);
-      hexSizeInput.addEventListener("change", loadStations);
+      metricButtons.forEach((button) => {
+        button.addEventListener("click", () => {
+          const metric = button.dataset.metric;
+          if (!metric || metric === currentMetric) {
+            return;
+          }
+          currentMetric = metric;
+          applyMetricState();
+          renderMap();
+        });
+      });
+
+      document.getElementById("refresh").addEventListener("click", loadMapData);
       window.addEventListener("resize", () => {
         if (statusEl.textContent === "Live") {
-          loadStations();
+          renderMap();
         }
       });
-      loadStations();
-      setInterval(loadStations, 10 * 60 * 1000);
+      applyMetricState();
+      loadMapData();
+      setInterval(loadMapData, 10 * 60 * 1000);
     </script>
   </body>
 </html>
