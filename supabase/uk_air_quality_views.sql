@@ -144,3 +144,13 @@ from la_boundaries lb
 left join pm25_agg
   on pm25_agg.la_code = lb.la_code
   and pm25_agg.la_version = lb.la_version;
+
+-- Enforce RLS on base tables for view readers.
+alter view if exists bristol_latest_pollutants set (security_invoker = true);
+alter view if exists la_latest_pm25 set (security_invoker = true);
+
+revoke all on bristol_latest_pollutants from anon, authenticated;
+revoke all on la_latest_pm25 from anon, authenticated;
+
+grant select on bristol_latest_pollutants to authenticated, service_role;
+grant select on la_latest_pm25 to authenticated, service_role;

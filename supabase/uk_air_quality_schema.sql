@@ -4,6 +4,7 @@
 -- Safe to rerun; uses IF NOT EXISTS where appropriate.
 
 -- Ensure needed extensions
+-- PostGIS remains in public on Supabase hosted Postgres.
 create extension if not exists postgis;
 create extension if not exists pgcrypto;
 
@@ -26,7 +27,9 @@ create unique index if not exists services_service_ref_uidx on services(service_
 
 -- Default flags for known services (applies on insert; update existing rows if present).
 create or replace function services_apply_known_defaults()
-returns trigger as $$
+returns trigger
+set search_path = public, pg_catalog
+as $$
 begin
   if new.service_url = 'https://uk-air.defra.gov.uk/sos-ukair/api/v1'
      or new.label = 'UK-AIR-SOS' then
@@ -141,6 +144,7 @@ create index if not exists la_boundaries_geom_idx on la_boundaries using gist (g
 create or replace function uk_aq_refresh_station_la_codes(target_version text)
 returns integer
 language plpgsql
+set search_path = public, pg_catalog
 as $$
 declare
   updated_count integer;
@@ -331,6 +335,38 @@ begin
   ) then
     execute
       'create policy error_logs_write_service_role on error_logs for all using (auth.role() = ''service_role'') with check (auth.role() = ''service_role'');';
+  end if;
+end $$;
+
+-- pollutant_thresholds policies (table is created in uk_air_quality_views.sql)
+alter table if exists pollutant_thresholds enable row level security;
+
+do $$
+begin
+  if to_regclass('public.pollutant_thresholds') is null then
+    return;
+  end if;
+
+  if not exists (
+    select 1 from pg_policies p
+    where p.schemaname = current_schema()
+      and p.tablename = 'pollutant_thresholds'
+      and p.policyname = 'pollutant_thresholds_select_authenticated'
+  ) then
+    execute
+      'create policy pollutant_thresholds_select_authenticated on pollutant_thresholds '
+      'for select using (auth.role() in (''authenticated'',''service_role''));';
+  end if;
+
+  if not exists (
+    select 1 from pg_policies p
+    where p.schemaname = current_schema()
+      and p.tablename = 'pollutant_thresholds'
+      and p.policyname = 'pollutant_thresholds_write_service_role'
+  ) then
+    execute
+      'create policy pollutant_thresholds_write_service_role on pollutant_thresholds '
+      'for all using (auth.role() = ''service_role'') with check (auth.role() = ''service_role'');';
   end if;
 end $$;
 
