@@ -41,7 +41,7 @@ def parse_averaging_time(value: str) -> Tuple[str, Optional[str]]:
     match = re.match(r"(\\d+)\\s*-?\\s*hour", normalized)
     if match:
         hours = int(match.group(1))
-        return (f"{hours}h", f"{hours} hours")
+        return (f"{hours}-hour", f"{hours} hours")
     return (normalized.replace(" ", ""), None)
 
 

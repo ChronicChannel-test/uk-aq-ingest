@@ -4,7 +4,7 @@ import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 const DEFAULT_WINDOW = "24h";
 const DEFAULT_LIMIT = 20000;
 const MAX_LIMIT = 60000;
-const GUIDELINE_PERIOD = "24h";
+const GUIDELINE_PERIOD = "24-hour";
 
 const WINDOW_HOURS: Record<string, number> = {
   "12h": 12,
@@ -97,7 +97,7 @@ serve(async (req) => {
         "uk_aq_guidelines",
         {
           select: "pollutant,averaging_period_label,level_label,limit_value,uom,source,notes",
-          pollutant: `ilike.${pollutantKey}`,
+          pollutant: `eq.${pollutantKey}`,
           averaging_period_label: `eq.${GUIDELINE_PERIOD}`,
           level_label: "eq.AQG_2021",
           limit: "1",
@@ -196,19 +196,19 @@ function normalizePollutant(value: string | null): string | null {
   }
   const lower = value.toLowerCase();
   if (lower.includes("pm2.5") || lower.includes("pm2_5") || lower.includes("pm25")) {
-    return "pm2.5";
+    return "PM2.5";
   }
   if (lower.includes("pm10")) {
-    return "pm10";
+    return "PM10";
   }
   if (lower.includes("no2") || lower.includes("nitrogen dioxide")) {
-    return "no2";
+    return "NO2";
   }
   if (lower.includes("o3") || lower.includes("ozone")) {
-    return "o3";
+    return "O3";
   }
   if (lower.includes("so2") || lower.includes("sulphur dioxide") || lower.includes("sulfur dioxide")) {
-    return "so2";
+    return "SO2";
   }
-  return lower.replace(/\s+/g, "");
+  return value.trim().toUpperCase().replace(/\s+/g, "");
 }
