@@ -213,6 +213,62 @@
         color: var(--ink-soft);
       }
 
+      .chart-wrap {
+        position: relative;
+        background: #fbf7ef;
+        border-radius: 16px;
+        padding: 12px;
+        border: 1px solid rgba(20, 34, 37, 0.08);
+      }
+
+      #line-chart {
+        width: 100%;
+        height: 360px;
+        display: block;
+      }
+
+      .chart-axis path,
+      .chart-axis line {
+        stroke: rgba(20, 34, 37, 0.2);
+      }
+
+      .chart-axis text {
+        fill: var(--ink-soft);
+        font-size: 0.75rem;
+      }
+
+      .chart-line {
+        fill: none;
+        stroke: var(--teal);
+        stroke-width: 2.5px;
+      }
+
+      .chart-dot {
+        fill: var(--sun);
+        stroke: var(--teal-deep);
+        stroke-width: 1.5px;
+      }
+
+      .chart-tooltip {
+        position: absolute;
+        pointer-events: none;
+        background: rgba(20, 34, 37, 0.9);
+        color: #fff;
+        padding: 8px 10px;
+        border-radius: 10px;
+        font-size: 0.78rem;
+        line-height: 1.3;
+        opacity: 0;
+        transform: translateY(-4px);
+        transition: opacity 0.15s ease, transform 0.15s ease;
+        z-index: 2;
+      }
+
+      .chart-tooltip.visible {
+        opacity: 1;
+        transform: translateY(0);
+      }
+
       @keyframes floatIn {
         from {
           opacity: 0;
@@ -236,6 +292,10 @@
         th,
         td {
           padding: 10px 6px;
+        }
+
+        #line-chart {
+          height: 300px;
         }
       }
     </style>
@@ -286,8 +346,36 @@
           </table>
         </div>
       </section>
+
+      <section class="card">
+        <div class="card-header">
+          <h2 class="card-title">Station trend</h2>
+          <div class="actions">
+            <span class="hint" id="chart-status">Waiting for series…</span>
+            <button id="chart-refresh">Refresh</button>
+          </div>
+        </div>
+        <div class="filters">
+          <label for="station-select">Station</label>
+          <select id="station-select"></select>
+          <label for="window-select">Window</label>
+          <select id="window-select">
+            <option value="6h">Last 6 hours</option>
+            <option value="24h" selected>Last 24 hours</option>
+            <option value="7d">Last 7 days</option>
+            <option value="30d">Last 30 days</option>
+          </select>
+        </div>
+        <div class="hint" id="chart-hint">Line chart of raw observations for the selected station.</div>
+        <div class="error" id="chart-error"></div>
+        <div class="chart-wrap">
+          <svg id="line-chart" role="img" aria-label="PM2.5 trend for the selected station"></svg>
+          <div class="chart-tooltip" id="chart-tooltip"></div>
+        </div>
+      </section>
     </main>
 
+    <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js" crossorigin="anonymous"></script>
     <script>
       const PROJECT_REF_PLACEHOLDER = "nmgierafoeuxfkkscrln";
       const ANON_KEY_PLACEHOLDER = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5tZ2llcmFmb2V1eGZra3NjcmxuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUzMjIzMDMsImV4cCI6MjA4MDg5ODMwM30.x6rKhvMTFRyJCZNlaFG-5tUiSuwehCLLu3qbulNTe7A";
@@ -317,12 +405,29 @@
       const regionBadge = document.getElementById("region-badge");
       const endpointHint = document.getElementById("endpoint-hint");
       const pollutantSelect = document.getElementById("pollutant-filter");
+      const SERIES_EDGE_URL = projectRef
+        ? `https://${projectRef}.supabase.co/functions/v1/uk_aq_timeseries`
+        : "";
+      const stationSelect = document.getElementById("station-select");
+      const windowSelect = document.getElementById("window-select");
+      const chartStatusEl = document.getElementById("chart-status");
+      const chartErrorEl = document.getElementById("chart-error");
+      const chartHintEl = document.getElementById("chart-hint");
+      const chartTooltip = document.getElementById("chart-tooltip");
+      const chartSvg = d3.select("#line-chart");
       let cachedRows = [];
+      let selectedSeriesId = null;
+      let seriesLookup = new Map();
 
       regionBadge.textContent = region;
       endpointHint.textContent = EDGE_URL
         ? `Endpoint: ${EDGE_URL}`
         : "Missing project ref. Add ?project_ref=... to the URL.";
+      if (chartHintEl) {
+        chartHintEl.textContent = SERIES_EDGE_URL
+          ? `Endpoint: ${SERIES_EDGE_URL}`
+          : "Missing project ref. Add ?project_ref=... to the URL.";
+      }
 
       function formatValue(value) {
         if (value === null || value === undefined) {
@@ -496,6 +601,233 @@
         rowCount.textContent = `${ordered.length} series`;
       }
 
+      function buildSeriesOptions(rows) {
+        if (!stationSelect) {
+          return;
+        }
+        const unique = new Map();
+        rows.forEach((row) => {
+          if (row.id === null || row.id === undefined) {
+            return;
+          }
+          const id = String(row.id);
+          if (unique.has(id)) {
+            return;
+          }
+          unique.set(id, {
+            id,
+            label: formatStationLabel(row),
+            pollutant: getPollutantLabel(row),
+            uom: row.uom_display || row.uom || "",
+          });
+        });
+        const options = Array.from(unique.values())
+          .sort((a, b) => a.label.localeCompare(b.label));
+        stationSelect.innerHTML = "";
+        options.forEach((option) => {
+          const el = document.createElement("option");
+          el.value = option.id;
+          el.textContent = option.label;
+          stationSelect.appendChild(el);
+        });
+        seriesLookup = new Map(options.map((option) => [option.id, option]));
+        if (options.length === 0) {
+          selectedSeriesId = null;
+          return;
+        }
+        if (!selectedSeriesId || !seriesLookup.has(selectedSeriesId)) {
+          selectedSeriesId = options[0].id;
+        }
+        stationSelect.value = selectedSeriesId;
+      }
+
+      function clearSeriesChart(message) {
+        chartSvg.selectAll("*").remove();
+        if (!message) {
+          return;
+        }
+        const width = chartSvg.node()?.clientWidth || 640;
+        const height = chartSvg.node()?.clientHeight || 360;
+        chartSvg
+          .attr("viewBox", `0 0 ${width} ${height}`)
+          .append("text")
+          .attr("x", width / 2)
+          .attr("y", height / 2)
+          .attr("text-anchor", "middle")
+          .attr("fill", "rgba(20, 34, 37, 0.5)")
+          .style("font-size", "0.9rem")
+          .text(message);
+      }
+
+      function renderSeriesChart(points, meta, windowLabel) {
+        chartSvg.selectAll("*").remove();
+        const width = chartSvg.node()?.clientWidth || 960;
+        const height = chartSvg.node()?.clientHeight || 360;
+        const margin = { top: 24, right: 24, bottom: 40, left: 56 };
+        chartSvg.attr("viewBox", `0 0 ${width} ${height}`);
+
+        if (!points.length) {
+          clearSeriesChart("No observations in this window.");
+          return;
+        }
+
+        const xExtent = d3.extent(points, (d) => d.date);
+        const yExtent = d3.extent(points, (d) => d.value);
+        const minValue = Number.isFinite(yExtent[0]) ? yExtent[0] : 0;
+        const maxValue = Number.isFinite(yExtent[1]) ? yExtent[1] : 1;
+        const yMin = Math.min(0, minValue);
+        const yMax = minValue === maxValue ? minValue + 1 : maxValue;
+
+        const xScale = d3.scaleTime()
+          .domain(xExtent)
+          .range([margin.left, width - margin.right]);
+        const yScale = d3.scaleLinear()
+          .domain([yMin, yMax])
+          .nice()
+          .range([height - margin.bottom, margin.top]);
+
+        const tickCount = windowLabel === "6h" ? 6 : windowLabel === "24h" ? 8 : 7;
+        const xAxis = d3.axisBottom(xScale).ticks(tickCount).tickSizeOuter(0);
+        const yAxis = d3.axisLeft(yScale).ticks(5).tickSizeOuter(0);
+
+        chartSvg.append("g")
+          .attr("class", "chart-axis")
+          .attr("transform", `translate(0, ${height - margin.bottom})`)
+          .call(xAxis);
+
+        chartSvg.append("g")
+          .attr("class", "chart-axis")
+          .attr("transform", `translate(${margin.left}, 0)`)
+          .call(yAxis);
+
+        const line = d3.line()
+          .defined((d) => Number.isFinite(d.value))
+          .x((d) => xScale(d.date))
+          .y((d) => yScale(d.value));
+
+        chartSvg.append("path")
+          .datum(points)
+          .attr("class", "chart-line")
+          .attr("d", line);
+
+        const dot = chartSvg.append("circle")
+          .attr("class", "chart-dot")
+          .attr("r", 5)
+          .style("opacity", 0);
+
+        const overlay = chartSvg.append("rect")
+          .attr("x", margin.left)
+          .attr("y", margin.top)
+          .attr("width", width - margin.left - margin.right)
+          .attr("height", height - margin.top - margin.bottom)
+          .attr("fill", "transparent");
+
+        const bisect = d3.bisector((d) => d.date).left;
+
+        overlay
+          .on("mousemove", (event) => {
+            const [mx] = d3.pointer(event);
+            const targetDate = xScale.invert(mx);
+            const index = bisect(points, targetDate, 1);
+            const prev = points[index - 1];
+            const next = points[index];
+            const closest = !next || targetDate - prev.date < next.date - targetDate ? prev : next;
+            if (!closest) {
+              return;
+            }
+            dot
+              .attr("cx", xScale(closest.date))
+              .attr("cy", yScale(closest.value))
+              .style("opacity", 1);
+
+            if (chartTooltip) {
+              const chartRect = chartSvg.node()?.getBoundingClientRect();
+              const label = meta?.label || "Selected station";
+              const unit = meta?.uom ? ` ${meta.uom}` : "";
+              chartTooltip.innerHTML = `
+                <strong>${label}</strong><br />
+                ${formatTime(closest.date.toISOString())}<br />
+                ${formatValue(closest.value)}${unit}
+              `;
+              if (chartRect) {
+                chartTooltip.style.left = `${event.clientX - chartRect.left + 12}px`;
+                chartTooltip.style.top = `${event.clientY - chartRect.top - 12}px`;
+              }
+              chartTooltip.classList.add("visible");
+            }
+          })
+          .on("mouseleave", () => {
+            dot.style("opacity", 0);
+            if (chartTooltip) {
+              chartTooltip.classList.remove("visible");
+            }
+          });
+      }
+
+      async function loadSeriesData() {
+        if (!chartStatusEl) {
+          return;
+        }
+        chartStatusEl.textContent = "Loading…";
+        if (chartErrorEl) {
+          chartErrorEl.textContent = "";
+        }
+        if (!SERIES_EDGE_URL) {
+          if (chartErrorEl) {
+            chartErrorEl.textContent = "Missing project ref for series endpoint.";
+          }
+          chartStatusEl.textContent = "Error";
+          clearSeriesChart("Series endpoint missing.");
+          return;
+        }
+        if (!anonKey) {
+          if (chartErrorEl) {
+            chartErrorEl.textContent = "Missing anon key.";
+          }
+          chartStatusEl.textContent = "Error";
+          clearSeriesChart("Missing anon key.");
+          return;
+        }
+        if (!selectedSeriesId) {
+          chartStatusEl.textContent = "No station selected";
+          clearSeriesChart("Select a station to view a trend.");
+          return;
+        }
+        try {
+          const windowValue = windowSelect?.value || "24h";
+          const url = new URL(SERIES_EDGE_URL);
+          url.searchParams.set("timeseries_id", selectedSeriesId);
+          url.searchParams.set("window", windowValue);
+          const response = await fetch(url.toString(), {
+            headers: {
+              Authorization: `Bearer ${anonKey}`,
+              apikey: anonKey,
+            },
+          });
+          if (!response.ok) {
+            throw new Error(`Series request failed: ${response.status}`);
+          }
+          const payload = await response.json();
+          const raw = Array.isArray(payload?.data) ? payload.data : [];
+          const points = raw
+            .map((row) => ({
+              date: new Date(row.observed_at),
+              value: Number(row.value),
+            }))
+            .filter((row) => Number.isFinite(row.date?.getTime()) && Number.isFinite(row.value));
+          const meta = seriesLookup.get(selectedSeriesId) || null;
+          renderSeriesChart(points, meta, windowValue);
+          chartStatusEl.textContent = "Live";
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          if (chartErrorEl) {
+            chartErrorEl.textContent = message;
+          }
+          chartStatusEl.textContent = "Error";
+          clearSeriesChart("Unable to load series.");
+        }
+      }
+
       function buildEndpoint() {
         if (!EDGE_URL) {
           return "";
@@ -543,6 +875,8 @@
           cachedRows = payload.data || [];
           updatePollutantOptions(cachedRows);
           renderRows(cachedRows);
+          buildSeriesOptions(cachedRows);
+          await loadSeriesData();
           lastUpdated.textContent = `Updated ${new Date().toLocaleTimeString()}`;
           statusEl.textContent = "Live";
         } catch (error) {
@@ -553,8 +887,23 @@
       }
 
       document.getElementById("refresh").addEventListener("click", loadData);
+      const chartRefreshBtn = document.getElementById("chart-refresh");
+      if (chartRefreshBtn) {
+        chartRefreshBtn.addEventListener("click", loadSeriesData);
+      }
       if (pollutantSelect) {
         pollutantSelect.addEventListener("change", () => renderRows(cachedRows));
+      }
+      if (stationSelect) {
+        stationSelect.addEventListener("change", () => {
+          selectedSeriesId = stationSelect.value || null;
+          loadSeriesData();
+        });
+      }
+      if (windowSelect) {
+        windowSelect.addEventListener("change", () => {
+          loadSeriesData();
+        });
       }
       loadData();
       setInterval(loadData, 5 * 60 * 1000);

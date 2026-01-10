@@ -51,3 +51,5 @@ jobs:
             --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"
           supabase functions deploy uk_aq_stations \
             --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"
+          supabase functions deploy uk_aq_timeseries \
+            --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"

@@ -37,6 +37,12 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
 - Triggered by: Web requests (read-only, no writes).
 - Returns: rows keyed by `pcon_code` with `station_count`, `single_site`, `median_value`, `mean_value`, `latest_value_at`.
 
+### uk_aq_timeseries
+- Purpose: Serve raw observation points for a single timeseries.
+- Triggered by: Web requests (read-only, no writes).
+- Params: `timeseries_id` (required), `window` (`6h|24h|7d|30d`, default `24h`), optional `limit`.
+- Returns: `observed_at`, `value`, `status` rows ordered oldest → newest.
+
 ## Environment variables (Supabase Edge)
 
 Required:
