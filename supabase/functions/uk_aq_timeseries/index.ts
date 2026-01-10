@@ -97,7 +97,7 @@ serve(async (req) => {
         "uk_aq_guidelines",
         {
           select: "pollutant,averaging_period_label,level_label,limit_value,uom,source,notes",
-          pollutant: `eq.${pollutantKey}`,
+          pollutant: `ilike.${pollutantKey}`,
           averaging_period_label: `eq.${GUIDELINE_PERIOD}`,
           level_label: "eq.AQG_2021",
           limit: "1",
@@ -184,7 +184,8 @@ async function getPollutantKey(timeseriesId: number): Promise<string | null> {
     return null;
   }
   const record = data[0];
-  const phen = Array.isArray(record?.phenomena) ? record.phenomena[0] : record?.phenomena;
+  const phenSource = record?.phenomena ?? record?.phenomenon ?? null;
+  const phen = Array.isArray(phenSource) ? phenSource[0] : phenSource;
   const candidate = phen?.pollutant_label || phen?.notation || phen?.label;
   return normalizePollutant(candidate);
 }

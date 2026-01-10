@@ -29,7 +29,7 @@ LEVEL_COLUMNS = ("AQG_2021", "IT1", "IT2", "IT3", "IT4")
 
 
 def normalize_pollutant(value: str) -> str:
-    return value.strip().lower().replace(" ", "")
+    return value.strip().upper()
 
 
 def parse_averaging_time(value: str) -> Tuple[str, Optional[str]]:
