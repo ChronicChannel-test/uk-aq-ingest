@@ -38,6 +38,9 @@ This document summarizes the schema defined in `supabase/uk_air_quality_schema.s
 - `pcon_legacy`: legacy constituency electorate data for historical backfill (same columns as `pcon_current`).
 - `gss_codes`: canonical registry of GSS codes across geographies (`gss_code`, `name`, `geography_type`, `valid_from`, `valid_to`).
 
+## Guideline limits
+- `uk_aq_guidelines`: pollutant guideline limits (WHO/UK/EU, etc.) with `pollutant`, `averaging_period_label`, `averaging_period_interval`, `level_label`, `limit_value`, `uom`, and optional `source`/`notes`/validity dates.
+
 ## Views
 - `pcon_latest_pm25` (in `supabase/uk_air_quality_views.sql`): constituency-level PM2.5 summaries keyed by `pcon_code` + `pcon_version` with median/mean, station_count, and last update timestamp.
 

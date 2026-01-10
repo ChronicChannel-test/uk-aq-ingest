@@ -4,9 +4,10 @@ import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 const DEFAULT_WINDOW = "24h";
 const DEFAULT_LIMIT = 20000;
 const MAX_LIMIT = 60000;
+const GUIDELINE_PERIOD = "24h";
 
 const WINDOW_HOURS: Record<string, number> = {
-  "6h": 6,
+  "12h": 12,
   "24h": 24,
   "7d": 24 * 7,
   "30d": 24 * 30,
@@ -86,8 +87,27 @@ serve(async (req) => {
 
   const end = new Date();
   const start = new Date(end.getTime() - hours * 60 * 60 * 1000);
+  let guideline: Record<string, unknown> | null = null;
 
   try {
+    const pollutantKey = await getPollutantKey(timeseriesId);
+    if (pollutantKey) {
+      const { data: guidelineRows, error: guidelineError } = await postgrestRequest<any[]>(
+        "GET",
+        "uk_aq_guidelines",
+        {
+          select: "pollutant,averaging_period_label,level_label,limit_value,uom,source,notes",
+          pollutant: `eq.${pollutantKey}`,
+          averaging_period_label: `eq.${GUIDELINE_PERIOD}`,
+          level_label: "eq.AQG_2021",
+          limit: "1",
+        },
+      );
+      if (!guidelineError && guidelineRows && guidelineRows.length > 0) {
+        guideline = guidelineRows[0];
+      }
+    }
+
     const { data, error } = await postgrestRequest<any[]>("GET", "observations", {
       select: "observed_at,value,status",
       timeseries_id: `eq.${timeseriesId}`,
@@ -105,6 +125,7 @@ serve(async (req) => {
       start: start.toISOString(),
       end: end.toISOString(),
       count: rows.length,
+      guideline,
       data: rows,
     });
   } catch (err) {
@@ -151,4 +172,42 @@ function json(payload: unknown, status = 200): Response {
       ...CORS_HEADERS,
     },
   });
+}
+
+async function getPollutantKey(timeseriesId: number): Promise<string | null> {
+  const { data, error } = await postgrestRequest<any[]>("GET", "timeseries", {
+    select: "id,phenomena(pollutant_label,notation,label)",
+    id: `eq.${timeseriesId}`,
+    limit: "1",
+  });
+  if (error || !data || data.length === 0) {
+    return null;
+  }
+  const record = data[0];
+  const phen = Array.isArray(record?.phenomena) ? record.phenomena[0] : record?.phenomena;
+  const candidate = phen?.pollutant_label || phen?.notation || phen?.label;
+  return normalizePollutant(candidate);
+}
+
+function normalizePollutant(value: string | null): string | null {
+  if (!value) {
+    return null;
+  }
+  const lower = value.toLowerCase();
+  if (lower.includes("pm2.5") || lower.includes("pm2_5") || lower.includes("pm25")) {
+    return "pm2.5";
+  }
+  if (lower.includes("pm10")) {
+    return "pm10";
+  }
+  if (lower.includes("no2") || lower.includes("nitrogen dioxide")) {
+    return "no2";
+  }
+  if (lower.includes("o3") || lower.includes("ozone")) {
+    return "o3";
+  }
+  if (lower.includes("so2") || lower.includes("sulphur dioxide") || lower.includes("sulfur dioxide")) {
+    return "so2";
+  }
+  return lower.replace(/\s+/g, "");
 }

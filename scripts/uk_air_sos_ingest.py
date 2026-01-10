@@ -1092,15 +1092,32 @@ class SupabaseWriter:
     def upsert_observations(
         self, series_id: int, datapoints: Iterable[Dict[str, Any]]
     ) -> None:
-        rows = [
-            {
+        deduped: Dict[str, Dict[str, Any]] = {}
+        observed_points = 0
+        for point in datapoints:
+            observed_at = point.get("observed_at")
+            if not observed_at:
+                continue
+            observed_points += 1
+            if isinstance(observed_at, datetime):
+                observed_key = observed_at.isoformat()
+                observed_value = observed_key
+            else:
+                observed_key = str(observed_at)
+                observed_value = observed_at
+            deduped[observed_key] = {
                 "timeseries_id": series_id,
-                "observed_at": point["observed_at"],
+                "observed_at": observed_value,
                 "value": point.get("value"),
                 "status": point.get("status"),
             }
-            for point in datapoints
-        ]
+        rows = list(deduped.values())
+        if observed_points and len(rows) < observed_points:
+            LOG.warning(
+                "Dropping %d duplicate observation(s) for timeseries_id=%s during upsert.",
+                observed_points - len(rows),
+                series_id,
+            )
         if rows:
             self.client.table("observations").upsert(rows, on_conflict="timeseries_id,observed_at").execute()
 

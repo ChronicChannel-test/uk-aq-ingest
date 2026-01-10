@@ -107,6 +107,27 @@ Environment:
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
 
+### `scripts/uk_aq_load_guidelines.py`
+Purpose:
+- Load WHO GAQG 2021 guideline limits into `uk_aq_guidelines`.
+
+Common commands:
+```
+python3 scripts/uk_aq_load_guidelines.py
+python3 scripts/uk_aq_load_guidelines.py --csv web/data/WHO-guidelines/WHO_GAQG_2021_pollutant_limits.csv
+```
+
+Inputs:
+- CSV with columns: pollutant, averaging_time, unit, AQG_2021, IT1, IT2, IT3, IT4, notes, source.
+
+Key flags:
+- `--source` to override the CSV source column value for all rows.
+- `--batch-size` (default: 200)
+
+Environment:
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+
 ### `scripts/uk_aq_list_stations.py`
 Purpose:
 - Fetch all current stations from UK-AIR SOS.
