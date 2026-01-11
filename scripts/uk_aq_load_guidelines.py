@@ -54,7 +54,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Load WHO guideline limits into Supabase.")
     parser.add_argument(
         "--csv",
-        default="web/data/WHO-guidelines/WHO_GAQG_2021_pollutant_limits.csv",
+        default="data/WHO-guidelines/WHO_GAQG_2021_pollutant_limits.csv",
         help="Path to the WHO guideline CSV file.",
     )
     parser.add_argument(

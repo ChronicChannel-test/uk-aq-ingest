@@ -114,7 +114,7 @@ Purpose:
 Common commands:
 ```
 python3 scripts/uk_aq_load_guidelines.py
-python3 scripts/uk_aq_load_guidelines.py --csv web/data/WHO-guidelines/WHO_GAQG_2021_pollutant_limits.csv
+python3 scripts/uk_aq_load_guidelines.py --csv data/WHO-guidelines/WHO_GAQG_2021_pollutant_limits.csv
 ```
 
 Inputs:
@@ -216,22 +216,6 @@ Environment:
 - `DROPBOX_APP_KEY`, `DROPBOX_APP_SECRET`, `DROPBOX_REFRESH_TOKEN`
 - `SUPABASE_URL` + `UK_AIR_ERROR_DROPBOX_ALLOWED_SUPABASE_URL` (must match to run)
 - Optional `UK_AIR_ERROR_DROPBOX_FOLDER` (defaults to `/error_log`)
-
-### `scripts/uk_aq_inject_project_ref.mjs`
-Purpose:
-- Inject `SUPABASE_PROJECT_REF` and the anon JWT into `web/uk_aq_bristol.html` for the live Edge Function URL.
-
-Common command:
-```
-node scripts/uk_aq_inject_project_ref.mjs
-```
-
-Notes:
-- Reads `SUPABASE_PROJECT_REF` and `SUPABASE_ANON_JWT` from `.env` or the environment (falls back to `SUPABASE_PUBLISHABLE_DEFAULT_KEY`).
-- A pre-commit hook in `.githooks/pre-commit` runs this automatically; enable it with:
-```
-git config core.hooksPath .githooks
-```
 
 ## SOS metadata glossary
 - `phenomenon`: The observed property (pollutant/parameter), e.g., NO2, O3, PM2.5.

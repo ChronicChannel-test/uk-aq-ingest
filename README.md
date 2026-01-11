@@ -2,6 +2,10 @@
 
 Tools for ingesting UK-AIR SOS data into Supabase.
 
+## Website
+The static web UI now lives in the `uk-aq` repo (under `CIC Website/uk-aq`).
+This repo focuses on ingest, data management, and Supabase Edge Functions.
+
 ## Prerequisites
 - Python 3.10+
 - Supabase project with the schema applied from `supabase/uk_air_quality_schema.sql`
