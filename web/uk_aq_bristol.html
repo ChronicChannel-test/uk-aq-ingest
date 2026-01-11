@@ -250,6 +250,12 @@
         opacity: 0.85;
       }
 
+      .chart-guideline-label {
+        fill: #d24b3e;
+        font-size: 0.75rem;
+        font-weight: 600;
+      }
+
       .chart-dot {
         fill: var(--sun);
         stroke: var(--teal-deep);
@@ -445,6 +451,24 @@
           return String(value);
         }
         return number.toFixed(2);
+      }
+
+      function formatGuidelineValue(value) {
+        if (value === null || value === undefined) {
+          return "—";
+        }
+        const number = Number(value);
+        if (!Number.isFinite(number)) {
+          return String(value);
+        }
+        if (Number.isInteger(number)) {
+          return String(number);
+        }
+        const text = number.toString();
+        if (text.includes("e")) {
+          return number.toFixed(2).replace(/\.?0+$/, "");
+        }
+        return text.replace(/\.?0+$/, "");
       }
 
       function formatTime(value) {
@@ -723,6 +747,23 @@
             .attr("x2", width - margin.right)
             .attr("y1", yScale(guidelineValue))
             .attr("y2", yScale(guidelineValue));
+
+          const guidelineLabel = guideline?.level_label
+            ? `WHO ${guideline.level_label.replace("_", " ")}`
+            : "WHO AQG 2021";
+          const guidelinePeriod = guideline?.averaging_period_label || "24-hour";
+          const guidelineUnit = guideline?.uom ? ` ${guideline.uom}` : "";
+          const guidelineText = `${guidelineLabel} ${guidelinePeriod} — ${formatGuidelineValue(guidelineValue)}${guidelineUnit}`;
+          const labelY = Math.min(
+            Math.max(yScale(guidelineValue) - 6, margin.top + 12),
+            height - margin.bottom - 6
+          );
+          chartSvg.append("text")
+            .attr("class", "chart-guideline-label")
+            .attr("x", width - margin.right - 4)
+            .attr("y", labelY)
+            .attr("text-anchor", "end")
+            .text(guidelineText);
         }
 
         const line = d3.line()
