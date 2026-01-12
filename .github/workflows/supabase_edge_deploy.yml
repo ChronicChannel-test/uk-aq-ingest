@@ -45,6 +45,8 @@ jobs:
             --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"
           supabase functions deploy uk_aq_latest \
             --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"
+          supabase functions deploy uk_aq_bristol_latest \
+            --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"
           supabase functions deploy uk_aq_la_hex \
             --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"
           supabase functions deploy uk_aq_pcon_hex \
