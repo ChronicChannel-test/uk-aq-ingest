@@ -4,12 +4,14 @@
 drop table if exists observations cascade;
 drop table if exists reference_values cascade;
 drop table if exists timeseries cascade;
+drop table if exists station_pcon_history cascade;
 drop table if exists stations cascade;
 drop table if exists la_boundaries cascade;
 drop table if exists pcon_boundaries cascade;
 drop table if exists pcon_current cascade;
 drop table if exists pcon_legacy cascade;
 drop table if exists gss_codes cascade;
+drop table if exists uk_aq_region_names cascade;
 drop table if exists procedures cascade;
 drop table if exists features cascade;
 drop table if exists offerings cascade;

@@ -76,7 +76,7 @@ Inputs:
 Key flags:
 - `--code-field` (default: `la_code`)
 - `--name-field` (default: `la_name`)
-- `--batch-size` (default: 200)
+- `--batch-size` (default: 10)
 - `--update-stations` to run `uk_aq_refresh_station_la_codes`.
 
 Environment:
@@ -92,16 +92,24 @@ Common commands:
 ```
 python3 scripts/uk_aq_load_pcon_boundaries.py --geojson data/pcon.geojson --pcon-version 2024
 python3 scripts/uk_aq_load_pcon_boundaries.py --geojson data/pcon.geojson --pcon-version 2024 --update-stations
+python3 scripts/uk_aq_load_pcon_boundaries.py --geojson data/pcon.geojson --pcon-version 2024 --update-history
 ```
 
 Inputs:
 - GeoJSON FeatureCollection with Polygon/MultiPolygon geometries.
 
 Key flags:
-- `--code-field` (default: `pcon_code`)
-- `--name-field` (default: `pcon_name`)
-- `--batch-size` (default: 200)
+- `--code-field` (default: `PCON24CD`, use `pcon_code` for legacy datasets)
+- `--name-field` (default: `PCON24NM`, use `pcon_name` for legacy datasets)
+- `--batch-size` (default: 10)
+- `--sleep-seconds` (default: 0.2) pause between batches.
+- `--max-retries` (default: 3) retries per batch.
+- `--retry-backoff-seconds` (default: 2.0) base backoff between retries.
+- `--history-partitions` (default: 1) split history updates into partitions.
+- `--history-partition-index` run a single history partition (0-based).
+- `--skip-boundaries` to skip uploads and only run update flags.
 - `--update-stations` to run `uk_aq_refresh_station_pcon_codes`.
+- `--update-history` to run `uk_aq_refresh_station_pcon_history`.
 
 Environment:
 - `SUPABASE_URL`
@@ -123,6 +131,39 @@ Inputs:
 Key flags:
 - `--source` to override the CSV source column value for all rows.
 - `--batch-size` (default: 200)
+
+Environment:
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+
+### `scripts/uk_aq_fix_station_geometry.py`
+Purpose:
+- Fix swapped station geometry coordinates (lat/lon reversed).
+
+Common commands:
+```
+python3 scripts/uk_aq_fix_station_geometry.py
+```
+
+Environment:
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+
+### `scripts/uk_aq_backfill_timeseries_stations.py`
+Purpose:
+- Backfill timeseries rows missing station/feature mappings by re-querying SOS metadata.
+
+Common commands:
+```
+python3 scripts/uk_aq_backfill_timeseries_stations.py
+python3 scripts/uk_aq_backfill_timeseries_stations.py --service-ref EEA_AQ_SOS
+```
+
+Key flags:
+- `--service-id` or `--service-ref` to scope the backfill.
+- `--batch-size` (default: 200)
+- `--limit` to cap total rows processed.
+- `--sleep-seconds` (default: 0.2) between API calls.
 
 Environment:
 - `SUPABASE_URL`

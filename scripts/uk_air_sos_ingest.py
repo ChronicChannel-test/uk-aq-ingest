@@ -35,13 +35,13 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Set
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
 import requests
 from dotenv import load_dotenv
 from supabase import Client, create_client
 
-from ingest_helpers import station_in_bbox, station_in_bbox_or_missing_coords
+from ingest_helpers import station_coords, station_in_bbox, station_in_bbox_or_missing_coords
 load_dotenv()
 
 DEFAULT_LOG_LEVEL = os.getenv("UK_AIR_LOG_LEVEL", "WARNING").upper()
@@ -663,6 +663,15 @@ class UkAirClient:
                 return data
             except requests.HTTPError as exc:
                 status = exc.response.status_code if exc.response is not None else "unknown"
+                if status == 404:
+                    LOG.info(
+                        "Request failed (attempt %s/%s): HTTP %s %s",
+                        attempt,
+                        self.retries,
+                        status,
+                        self._request_label(path, params),
+                    )
+                    return {}
                 level = logging.INFO if status == 400 else logging.WARNING
                 LOG.log(
                     level,
@@ -789,6 +798,43 @@ class UkAirClient:
     ) -> Dict[str, Any]:
         params = {"timespan": timespan, "format": format_}
         return self.get(f"/timeseries/{series_id}/getData", params=params)
+
+    def timeseries_detail(self, series_id: str) -> Optional[Dict[str, Any]]:
+        params = {"expanded": "true"}
+        data = self.get(f"/timeseries/{series_id}", params=params)
+        if isinstance(data, dict):
+            for key in ("timeseries", "data"):
+                item = data.get(key)
+                if isinstance(item, dict):
+                    return item
+                if isinstance(item, list) and item:
+                    return item[0]
+        if isinstance(data, dict) and data.get("id"):
+            return data
+        return None
+
+    def station_detail(self, station_id: str) -> Optional[Dict[str, Any]]:
+        params = {"expanded": "true"}
+        try:
+            data = self.get(f"/stations/{station_id}", params=params)
+        except requests.HTTPError as exc:
+            status = exc.response.status_code if exc.response is not None else None
+            if status == 404:
+                LOG.warning("Station not found: %s", station_id)
+                return None
+            raise
+        if isinstance(data, dict):
+            for key in ("station", "stations", "data"):
+                item = data.get(key)
+                if isinstance(item, dict):
+                    return item
+                if isinstance(item, list) and item:
+                    return item[0]
+        if isinstance(data, list) and data:
+            return data[0]
+        if isinstance(data, dict) and data.get("id"):
+            return data
+        return None
 
 
 class SupabaseWriter:
@@ -1002,15 +1048,12 @@ class SupabaseWriter:
         stations: Iterable[Dict[str, Any]],
         service_id: int,
         category_id_map: Optional[Dict[str, int]] = None,
+        bbox: Optional[Dict[str, float]] = None,
     ) -> None:
         rows = []
+        effective_bbox = bbox or UK_BBOX
         for station in stations:
-            coords = (
-                station.get("geometry", {}).get("coordinates")
-                if isinstance(station.get("geometry"), dict)
-                else None
-            )
-            lon, lat = (coords or [None, None])[:2]
+            lon, lat = station_coords(station, bbox=effective_bbox)
             props = station.get("properties", {})
             station_ref = station.get("id") or props.get("id")
             if not station_ref:
@@ -1027,7 +1070,11 @@ class SupabaseWriter:
                     "label": station.get("label") or props.get("label"),
                     "station_type": props.get("stationType") or station.get("stationType"),
                     "region": props.get("region") or station.get("region"),
-                    "geometry": f"SRID=4326;POINT({lon} {lat})" if lon is not None and lat is not None else None,
+                    "geometry": (
+                        f"SRID=4326;POINT({lon} {lat})"
+                        if lon is not None and lat is not None
+                        else None
+                    ),
                     "service_id": service_id,
                     "category_id": category_id,
                 }
@@ -1045,17 +1092,37 @@ class SupabaseWriter:
         procedure_id_map: Dict[str, int],
         offering_id_map: Dict[str, int],
         phenomenon_id_map: Dict[str, int],
-    ) -> None:
+        station_label_map: Optional[Dict[str, List[int]]] = None,
+        station_geometry_by_id: Optional[Dict[int, Tuple[float, float]]] = None,
+    ) -> int:
         rows = []
+        label_match_count = 0
         for ts in series:
-            station_ref = (
-                ts.get("station", {}).get("id")
-                if isinstance(ts.get("station"), dict)
-                else ts.get("station")
-            )
+            station_ref = _extract_station_ref(ts)
+            if station_ref is None:
+                station_ref = _extract_station_ref_from_label(ts.get("label"))
+            feature_payload = _extract_feature_payload(ts)
+            feature_ref = _extract_ref_id(feature_payload) if feature_payload else None
             station_db_id = station_id_map.get(str(station_ref)) if station_ref is not None else None
+            if station_db_id is None and station_label_map:
+                descriptor = _extract_station_descriptor_from_label(ts.get("label"))
+                if descriptor:
+                    descriptor_key = _normalize_station_label(descriptor)
+                    matches = station_label_map.get(descriptor_key) or []
+                    chosen = _choose_station_id_by_geometry(matches, station_geometry_by_id)
+                    if chosen is not None:
+                        station_db_id = chosen
+                        label_match_count += 1
+                if station_db_id is None:
+                    station_name = _extract_station_name_from_label(ts.get("label"))
+                    if station_name:
+                        label_key = _normalize_station_label(station_name)
+                        matches = station_label_map.get(label_key) or []
+                        chosen = _choose_station_id_by_geometry(matches, station_geometry_by_id)
+                        if chosen is not None:
+                            station_db_id = chosen
+                            label_match_count += 1
             category_ref = ts.get("category", {}).get("id") if isinstance(ts.get("category"), dict) else None
-            feature_ref = ts.get("feature", {}).get("id") if isinstance(ts.get("feature"), dict) else None
             procedure_ref = ts.get("procedure", {}).get("id") if isinstance(ts.get("procedure"), dict) else None
             offering_ref = ts.get("offering", {}).get("id") if isinstance(ts.get("offering"), dict) else None
             phen_uri = ts.get("phenomenon", {}).get("eionet_uri") if isinstance(ts.get("phenomenon"), dict) else None
@@ -1082,12 +1149,113 @@ class SupabaseWriter:
         rows = [row for row in rows if row.get("timeseries_ref")]
         if rows:
             self.client.table("timeseries").upsert(rows, on_conflict="service_id,timeseries_ref").execute()
+        return label_match_count
 
     def get_station_id_map(self, service_id: int, station_refs: Sequence[str]) -> Dict[str, int]:
         return self.get_ref_id_map("stations", "station_ref", station_refs, service_id)
 
     def get_timeseries_id_map(self, service_id: int, timeseries_refs: Sequence[str]) -> Dict[str, int]:
         return self.get_ref_id_map("timeseries", "timeseries_ref", timeseries_refs, service_id)
+
+    def get_station_label_map(self, service_id: int) -> Dict[str, List[int]]:
+        label_map: Dict[str, List[int]] = {}
+        offset = 0
+        batch_size = 1000
+        while True:
+            resp = (
+                self.client.table("stations")
+                .select("id,label")
+                .eq("service_id", service_id)
+                .order("id", desc=False)
+                .range(offset, offset + batch_size - 1)
+                .execute()
+            )
+            rows = resp.data if hasattr(resp, "data") else resp.get("data")
+            if not rows:
+                break
+            for row in rows:
+                label = row.get("label")
+                if not label:
+                    continue
+                label_text = str(label)
+                key_full = _normalize_station_label(label_text)
+                if key_full:
+                    label_map.setdefault(key_full, []).append(int(row["id"]))
+                base_name = _extract_station_name_from_label(label_text)
+                if base_name:
+                    key_base = _normalize_station_label(base_name)
+                    if key_base and key_base != key_full:
+                        label_map.setdefault(key_base, []).append(int(row["id"]))
+            offset += batch_size
+        return label_map
+
+    def get_station_label_geometry_map(
+        self, service_id: int
+    ) -> Tuple[Dict[str, List[int]], Dict[int, str]]:
+        label_map: Dict[str, List[int]] = {}
+        geometry_by_id: Dict[int, str] = {}
+        offset = 0
+        batch_size = 1000
+        while True:
+            resp = (
+                self.client.table("stations")
+                .select("id,label,geometry")
+                .eq("service_id", service_id)
+                .order("id", desc=False)
+                .range(offset, offset + batch_size - 1)
+                .execute()
+            )
+            rows = resp.data if hasattr(resp, "data") else resp.get("data")
+            if not rows:
+                break
+            for row in rows:
+                label = row.get("label")
+                if not label:
+                    continue
+                label_text = str(label)
+                key_full = _normalize_station_label(label_text)
+                if key_full:
+                    label_map.setdefault(key_full, []).append(int(row["id"]))
+                base_name = _extract_station_name_from_label(label_text)
+                if base_name:
+                    key_base = _normalize_station_label(base_name)
+                    if key_base and key_base != key_full:
+                        label_map.setdefault(key_base, []).append(int(row["id"]))
+                key = _geometry_key(row.get("geometry"))
+                if key is not None:
+                    geometry_by_id[int(row["id"])] = key
+            offset += batch_size
+        return label_map, geometry_by_id
+
+    def get_station_geometry_index(
+        self, service_id: int
+    ) -> Dict[str, List[Dict[str, Any]]]:
+        index: Dict[str, List[Dict[str, Any]]] = {}
+        offset = 0
+        batch_size = 1000
+        while True:
+            resp = (
+                self.client.table("stations")
+                .select("id,label,geometry,station_type,region")
+                .eq("service_id", service_id)
+                .order("id", desc=False)
+                .range(offset, offset + batch_size - 1)
+                .execute()
+            )
+            rows = resp.data if hasattr(resp, "data") else resp.get("data")
+            if not rows:
+                break
+            for row in rows:
+                label = row.get("label")
+                if not label:
+                    continue
+                base_name = _extract_station_name_from_label(str(label)) or str(label)
+                key = _normalize_station_label(base_name)
+                if not key:
+                    continue
+                index.setdefault(key, []).append(row)
+            offset += batch_size
+        return index
 
     def upsert_observations(
         self, series_id: int, datapoints: Iterable[Dict[str, Any]]
@@ -1257,7 +1425,7 @@ class UkAirIngestor:
             category_items,
             service.id,
         )
-        self.writer.upsert_stations(stations, service.id, category_map)
+        self.writer.upsert_stations(stations, service.id, category_map, bbox=bbox)
         return stations
 
     def discover_timeseries(
@@ -1308,7 +1476,7 @@ class UkAirIngestor:
         feature_map = self.writer.upsert_reference_table(
             "features",
             "feature_ref",
-            (ts.get("feature") or {} for ts in filtered),
+            _timeseries_feature_items(filtered),
             service.id,
         )
         category_map = self.writer.upsert_reference_table(
@@ -1317,16 +1485,153 @@ class UkAirIngestor:
             (ts.get("category") or {} for ts in filtered),
             service.id,
         )
-        station_refs_to_map = []
+        station_refs_to_map: List[str] = []
         if station_refs is not None:
-            station_refs_to_map = [str(station_ref) for station_ref in station_refs]
+            station_refs_to_map = [
+                str(station_ref) for station_ref in station_refs if station_ref is not None
+            ]
         else:
             for ts in filtered:
-                station_value = ts.get("station", {}).get("id") if isinstance(ts.get("station"), dict) else ts.get("station")
+                station_value = _extract_station_ref(ts)
+                if station_value is None:
+                    station_value = _extract_station_ref_from_label(ts.get("label"))
                 if station_value is not None:
                     station_refs_to_map.append(str(station_value))
+        station_refs_to_map = list(dict.fromkeys(station_refs_to_map))
         station_id_map = self.writer.get_station_id_map(service.id, station_refs_to_map)
-        self.writer.upsert_timeseries(
+        missing_refs: List[str] = [
+            ref for ref in station_refs_to_map if ref not in station_id_map
+        ]
+        if missing_refs:
+            LOG.warning(
+                "Timeseries references %s station(s) not in DB; fetching stations without filters.",
+                len(missing_refs),
+            )
+            extra_stations: List[Dict[str, Any]] = self.client.stations(
+                service.ref,
+                bbox=None,
+                region=None,
+            )
+            if extra_stations:
+                extra_categories: List[Dict[str, Any]] = []
+                for stn in extra_stations:
+                    props = stn.get("properties") if isinstance(stn.get("properties"), dict) else {}
+                    category = props.get("category") if isinstance(props.get("category"), dict) else None
+                    if category:
+                        extra_categories.append(category)
+                extra_category_map = self.writer.upsert_reference_table(
+                    "categories",
+                    "category_ref",
+                    extra_categories,
+                    service.id,
+                )
+                self.writer.upsert_stations(
+                    extra_stations,
+                    service.id,
+                    extra_category_map,
+                    bbox=UK_BBOX,
+                )
+                station_id_map = self.writer.get_station_id_map(service.id, station_refs_to_map)
+                still_missing = [ref for ref in station_refs_to_map if ref not in station_id_map]
+                if still_missing:
+                    LOG.warning(
+                        "Still missing %s station id(s) after station refresh.",
+                        len(still_missing),
+                    )
+                    fetched = []
+                    for ref in still_missing:
+                        detail = self.client.station_detail(str(ref))
+                        if detail:
+                            fetched.append(detail)
+                    if fetched:
+                        fetched_categories: List[Dict[str, Any]] = []
+                        for stn in fetched:
+                            props = stn.get("properties") if isinstance(stn.get("properties"), dict) else {}
+                            category = props.get("category") if isinstance(props.get("category"), dict) else None
+                            if category:
+                                fetched_categories.append(category)
+                        fetched_category_map = self.writer.upsert_reference_table(
+                            "categories",
+                            "category_ref",
+                            fetched_categories,
+                            service.id,
+                        )
+                        self.writer.upsert_stations(
+                            fetched,
+                            service.id,
+                            fetched_category_map,
+                            bbox=UK_BBOX,
+                        )
+                        station_id_map = self.writer.get_station_id_map(
+                            service.id, station_refs_to_map
+                        )
+                        still_missing = [ref for ref in station_refs_to_map if ref not in station_id_map]
+                    if still_missing:
+                        LOG.warning(
+                            "Still missing %s station id(s) after station detail fetch.",
+                            len(still_missing),
+                        )
+            else:
+                LOG.warning("Station refresh returned no rows; missing station IDs may remain.")
+        station_index = self.writer.get_station_geometry_index(service.id)
+        created_rows = []
+        for ref in station_refs_to_map:
+            if ref in station_id_map:
+                continue
+            label = None
+            for ts in filtered:
+                station_value = _extract_station_ref(ts) or _extract_station_ref_from_label(
+                    ts.get("label")
+                )
+                if station_value is None or str(station_value) != ref:
+                    continue
+                label = ts.get("label")
+                if label:
+                    break
+            station_name = _extract_station_name_from_label(label)
+            if not station_name:
+                continue
+            station_label = _extract_station_descriptor_from_label(label) or station_name
+            seed = _infer_station_seed_from_index(station_index, station_name)
+            if not seed:
+                continue
+            row = {
+                "service_id": service.id,
+                "station_ref": ref,
+                "label": station_label,
+                "geometry": seed["geometry"],
+            }
+            if seed.get("station_type"):
+                row["station_type"] = seed["station_type"]
+            if seed.get("region"):
+                row["region"] = seed["region"]
+            created_rows.append(row)
+        if created_rows:
+            self.writer.client.table("stations").upsert(
+                created_rows,
+                on_conflict="service_id,station_ref",
+                returning="minimal",
+            ).execute()
+            LOG.info(
+                "Created %s station row(s) from timeseries labels (service_id=%s ref=%s).",
+                len(created_rows),
+                service.id,
+                service.ref,
+            )
+            for row in created_rows:
+                LOG.info(
+                    "Created station row (service_id=%s ref=%s station_ref=%s label=%s geometry=%s).",
+                    service.id,
+                    service.ref,
+                    row.get("station_ref"),
+                    row.get("label"),
+                    row.get("geometry"),
+                )
+            station_id_map = self.writer.get_station_id_map(service.id, station_refs_to_map)
+        station_label_map, station_geometry_by_id = self.writer.get_station_label_geometry_map(
+            service.id
+        )
+        label_matches = self.writer.upsert_timeseries(
             filtered,
             service.id,
             station_id_map,
@@ -1335,7 +1640,17 @@ class UkAirIngestor:
             procedure_map,
             offering_map,
             phenomenon_map,
+            station_label_map=station_label_map,
+            station_geometry_by_id=station_geometry_by_id,
         )
+        if label_matches:
+            LOG.info(
+                "Assigned station_id via label fallback for %s timeseries rows (service_id=%s ref=%s label=%s).",
+                label_matches,
+                service.id,
+                service.ref,
+                service.label,
+            )
         timeseries_id_map = self.writer.get_timeseries_id_map(
             service.id, [str(ts.get("id")) for ts in filtered if ts.get("id")]
         )
@@ -1627,6 +1942,166 @@ def _normalize_pollutant_text(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", "", value.lower())
 
 
+_STATION_LABEL_POLLUTANT_HINTS = (
+    "sulphur",
+    "sulfur",
+    "nitrogen",
+    "ozone",
+    "particulate",
+    "pm10",
+    "pm25",
+    "pm2",
+    "carbon",
+    "benzene",
+    "toluene",
+    "monoxide",
+    "dioxide",
+    "oxide",
+    "lead",
+    "so2",
+    "no2",
+    "no",
+    "co",
+)
+
+
+def _normalize_station_label(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", value.lower())
+
+
+def _geometry_key(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        if re.fullmatch(r"[0-9A-Fa-f]+", text):
+            return text.lower()
+        match = re.search(r"POINT\\s*\\(\\s*(-?\\d+(?:\\.\\d+)?)\\s+(-?\\d+(?:\\.\\d+)?)\\s*\\)", text)
+        if match:
+            lon = _safe_number(match.group(1))
+            lat = _safe_number(match.group(2))
+            if lon is not None and lat is not None:
+                return f"point:{lon:.6f},{lat:.6f}"
+        return None
+    if isinstance(value, dict):
+        coords = value.get("coordinates")
+        if isinstance(coords, (list, tuple)) and len(coords) >= 2:
+            lon = _safe_number(coords[0])
+            lat = _safe_number(coords[1])
+            if lon is not None and lat is not None:
+                return f"point:{lon:.6f},{lat:.6f}"
+    if isinstance(value, (list, tuple)) and len(value) >= 2:
+        lon = _safe_number(value[0])
+        lat = _safe_number(value[1])
+        if lon is not None and lat is not None:
+            return f"point:{lon:.6f},{lat:.6f}"
+    return None
+
+
+def _choose_station_id_by_geometry(
+    matches: List[int],
+    geometry_by_id: Optional[Dict[int, str]],
+) -> Optional[int]:
+    if not matches:
+        return None
+    if len(matches) == 1:
+        return matches[0]
+    if not geometry_by_id:
+        return None
+    keys = [geometry_by_id.get(match) for match in matches]
+    if any(key is None for key in keys):
+        return None
+    first = keys[0]
+    if all(first == key for key in keys[1:]):
+        return min(matches)
+    return None
+
+
+def _infer_station_seed_from_index(
+    station_index: Dict[str, List[Dict[str, Any]]],
+    station_name: str,
+) -> Optional[Dict[str, Any]]:
+    key = _normalize_station_label(station_name)
+    if not key:
+        return None
+    rows = station_index.get(key)
+    if not rows:
+        return None
+    geom_values = [row.get("geometry") for row in rows if row.get("geometry") is not None]
+    geom_keys = [_geometry_key(value) for value in geom_values]
+    geom_keys = [geom_key for geom_key in geom_keys if geom_key is not None]
+    if not geom_keys:
+        return None
+    first_key = geom_keys[0]
+    if not all(first_key == geom_key for geom_key in geom_keys[1:]):
+        return None
+    station_type = _resolve_uniform_value(row.get("station_type") for row in rows)
+    region = _resolve_uniform_value(row.get("region") for row in rows)
+    return {
+        "geometry": geom_values[0],
+        "station_type": station_type,
+        "region": region,
+    }
+
+
+def _extract_station_ref_from_label(label: Optional[str]) -> Optional[str]:
+    if not label:
+        return None
+    match = re.search(r"pollutant/\d+\s+(\d+)\s+-", label)
+    if match:
+        return match.group(1)
+    match = re.search(r"\s(\d+)\s+-", label)
+    if match:
+        return match.group(1)
+    return None
+
+
+def _extract_station_descriptor_from_label(label: Optional[str]) -> Optional[str]:
+    if not label:
+        return None
+    text = label.strip()
+    if not text:
+        return None
+    match = re.match(r"^https?://\S+\s+\d+\s+-\s+(.*)$", text)
+    if not match:
+        match = re.match(r"^\S+\s+\d+\s+-\s+(.*)$", text)
+    if not match:
+        match = re.match(r"^\d+\s+-\s+(.*)$", text)
+    if match:
+        text = match.group(1)
+    if "," in text:
+        text = text.split(",", 1)[0]
+    text = text.strip()
+    return text or None
+
+
+def _looks_like_pollutant_suffix(value: str) -> bool:
+    normalized = _normalize_station_label(value)
+    if any(hint in normalized for hint in _STATION_LABEL_POLLUTANT_HINTS):
+        return True
+    lowered = value.lower()
+    return any(token in lowered for token in ("(air)", "micro", "aerosol"))
+
+
+def _extract_station_name_from_label(label: Optional[str]) -> Optional[str]:
+    text = _extract_station_descriptor_from_label(label)
+    if not text:
+        return None
+    if " - " in text:
+        candidate = text.split(" - ", 1)[0].strip()
+        if candidate:
+            return candidate
+    if "-" in text:
+        left, right = text.rsplit("-", 1)
+        if _looks_like_pollutant_suffix(right):
+            candidate = left.strip()
+            if candidate:
+                return candidate
+    return text
+
+
 def _expand_pollutant_terms(pollutant_set: Set[str]) -> Set[str]:
     aliases = {
         "no2": {"no2", "nitrogendioxide"},
@@ -1642,6 +2117,93 @@ def _expand_pollutant_terms(pollutant_set: Set[str]) -> Set[str]:
         else:
             expanded.add(normalized)
     return expanded
+
+
+def _normalize_ref(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return str(value)
+    if isinstance(value, str):
+        trimmed = value.strip()
+        if not trimmed:
+            return None
+        if "://" in trimmed:
+            trimmed = trimmed.rstrip("/")
+            return trimmed.rsplit("/", 1)[-1] or trimmed
+        return trimmed
+    return None
+
+
+def _extract_ref_id(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    if isinstance(value, dict):
+        for key in ("id", "identifier", "href", "@id", "value"):
+            ref = _normalize_ref(value.get(key))
+            if ref:
+                return ref
+        return None
+    return _normalize_ref(value)
+
+
+def _coerce_feature_payload(value: Any) -> Optional[Dict[str, Any]]:
+    if not value:
+        return None
+    if isinstance(value, list):
+        for item in value:
+            payload = _coerce_feature_payload(item)
+            if payload:
+                return payload
+        return None
+    if isinstance(value, dict):
+        return value
+    return {"id": value}
+
+
+def _extract_feature_payload(ts: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    containers: List[Dict[str, Any]] = [ts]
+    for key in ("properties", "extensions", "metadata", "info"):
+        nested = ts.get(key)
+        if isinstance(nested, dict):
+            containers.append(nested)
+    for container in containers:
+        for key in (
+            "feature",
+            "featureOfInterest",
+            "feature_of_interest",
+            "featuresOfInterest",
+            "features_of_interest",
+            "foi",
+            "samplingFeature",
+            "samplingFeatures",
+        ):
+            payload = _coerce_feature_payload(container.get(key))
+            if payload:
+                return payload
+    return None
+
+
+def _extract_station_ref(ts: Dict[str, Any]) -> Optional[str]:
+    for key in ("station", "station_id", "stationId", "station_ref", "stationRef"):
+        ref = _extract_ref_id(ts.get(key))
+        if ref:
+            return ref
+    feature_payload = _extract_feature_payload(ts)
+    if feature_payload:
+        ref = _extract_ref_id(feature_payload)
+        if ref:
+            return ref
+    return None
+
+
+def _timeseries_feature_items(series: Sequence[Dict[str, Any]]) -> Iterable[Dict[str, Any]]:
+    for ts in series:
+        payload = _extract_feature_payload(ts)
+        if payload:
+            yield payload
 
 
 def _matches_pollutant(ts: Dict[str, Any], pollutant_set: Set[str]) -> bool:

@@ -19,8 +19,14 @@ This document summarizes the schema defined in `supabase/uk_air_quality_schema.s
 ## Geography mapping tables
 - `la_boundaries`: Local Authority polygons (MultiPolygon, 4326) with `la_code` + `la_version` for assigning stations to LAs.
 - `pcon_boundaries`: Parliamentary Constituency polygons (MultiPolygon, 4326) with `pcon_code` + `pcon_version` for assigning stations to constituencies.
+- `station_pcon_history`: Station-to-constituency snapshot per `pcon_version` for fast historical queries.
+- `uk_aq_region_names`: Region code/name lookup (e.g., `E12000001` → `North East`) used for hex metadata.
 - `uk_aq_refresh_station_la_codes(target_version)`: updates `stations.la_code` + `stations.la_version` using `la_boundaries`.
 - `uk_aq_refresh_station_pcon_codes(target_version)`: updates `stations.pcon_code` + `stations.pcon_version` using `pcon_boundaries`.
+- `uk_aq_refresh_station_pcon_history(target_version)`: populates `station_pcon_history` for a boundary version.
+- `uk_aq_refresh_station_pcon_history_partition(target_version, partition_mod, partition_idx)`: partitioned history refresh for large datasets.
+- `uk_aq_stations_with_pcon(target_version)`: returns stations joined to `station_pcon_history` for the requested version.
+- `uk_aq_fix_station_geometry_swapped()`: fixes stations with swapped lat/lon coordinates.
 
 ## Timeseries and metadata
 - `timeseries`: SOS timeseries metadata; bigint `id` (internal) with `timeseries_ref` (external) and `station_id` bigint FK.
@@ -50,6 +56,21 @@ This document summarizes the schema defined in `supabase/uk_air_quality_schema.s
   - `select`: allowed for roles `authenticated` and `service_role`.
   - `all` (insert/update/delete): allowed for `service_role` only.
 - Adjust policies if you need anon read or user-owned row scoping.
+
+## Sample queries
+
+Top constituencies by station count (history snapshot):
+```sql
+select
+  pcon_code,
+  pcon_name,
+  count(*) as station_count
+from station_pcon_history
+where pcon_version = '2024'
+group by pcon_code, pcon_name
+order by station_count desc
+limit 10;
+```
 
 ## Notes on multi-pollutant support
 - Schema is pollutant-agnostic: add new phenomena, stations, timeseries, and observations for NO2, O3, PM10, etc. No structural changes needed.

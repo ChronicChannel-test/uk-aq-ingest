@@ -9,6 +9,7 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
 ### ingest_uk_air_sos
 - Purpose: Poll UK-AIR SOS timeseries and write observations + last_value fields.
 - Triggered by: Supabase cron (see `supabase/uk_aq_polling_cron.sql`).
+- Note: Deploying the Edge Function does not create a schedule; the cron timing lives in `supabase/uk_aq_polling_cron.sql` and must be applied separately.
 - Writes:
   - `observations` (upsert by timeseries_id + observed_at)
   - `timeseries.last_value` and `timeseries.last_value_at` (update by id)

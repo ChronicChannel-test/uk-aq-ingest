@@ -14,3 +14,5 @@
 ## Documentation
 - Add a script note to `system_docs/uk_aq_scripts.md` when new scripts are added.
 - Add a per-network doc in `system_docs/` (e.g., `uk_air_sos.md`) when a new network is introduced.
+- When `supabase/uk_air_quality_schema.sql` changes, update `system_docs/schema-overview.md` to match.
+- When new tables are added, add a matching doc in `system_docs/table_info/`.
