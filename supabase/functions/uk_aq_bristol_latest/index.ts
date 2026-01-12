@@ -115,7 +115,7 @@ async function loadLatest({ region, stationLike, serviceId, pollutant, limit }: 
     `id,timeseries_ref,label,uom,last_value,last_value_at,station:stations!inner(id,station_ref,label,station_name,region),${phenomenonSelect}`;
   const baseParams: Record<string, string> = {
     select: region ? selectStationInner : selectBase,
-    last_value: "not.is.null",
+    last_value: "gte.0",
     last_value_at: "not.is.null",
   };
   const pollutantFilter = buildPollutantFilter(pollutantKey);

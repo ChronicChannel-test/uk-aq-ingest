@@ -103,7 +103,7 @@ with pm25_candidates as (
   where ts.station_id is not null
     and ts.last_value is not null
     and ts.last_value_at is not null
-    and ts.last_value <> -99
+    and ts.last_value >= 0
     and (
       lower(coalesce(phen.pollutant_label, '')) = 'pm2.5'
       or lower(coalesce(phen.notation, '')) = 'pm2.5'
@@ -162,7 +162,7 @@ with pm25_candidates as (
   where ts.station_id is not null
     and ts.last_value is not null
     and ts.last_value_at is not null
-    and ts.last_value <> -99
+    and ts.last_value >= 0
     and (
       lower(coalesce(phen.pollutant_label, '')) = 'pm2.5'
       or lower(coalesce(phen.notation, '')) = 'pm2.5'
