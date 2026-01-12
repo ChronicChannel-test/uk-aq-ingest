@@ -187,7 +187,7 @@ Environment:
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
 
-### `scripts/uk_aq_list_stations.py`
+### `scripts/uk_air_sos_list_stations.py`
 Purpose:
 - Fetch all current stations from UK-AIR SOS.
 - Filter to UK bounding box (keeps stations with missing coordinates; `geometry` will be null in Supabase).
@@ -195,12 +195,12 @@ Purpose:
 
 Common commands:
 ```
-python3 scripts/uk_aq_list_stations.py
-python3 scripts/uk_aq_list_stations.py --format csv --output uk_stations.csv
-python3 scripts/uk_aq_list_stations.py --to-supabase
-python3 scripts/uk_aq_list_stations.py --no-filter --output uk_aq_stations_all.json
-python3 scripts/uk_aq_list_stations.py --raw-output uk_aq_stations_raw.json
-python3 scripts/uk_aq_list_stations.py --service-id-from-timeseries
+python3 scripts/uk_air_sos_list_stations.py
+python3 scripts/uk_air_sos_list_stations.py --format csv --output uk_stations.csv
+python3 scripts/uk_air_sos_list_stations.py --to-supabase
+python3 scripts/uk_air_sos_list_stations.py --no-filter --output uk_aq_stations_all.json
+python3 scripts/uk_air_sos_list_stations.py --raw-output uk_aq_stations_raw.json
+python3 scripts/uk_air_sos_list_stations.py --service-id-from-timeseries
 ```
 
 Default outputs:
@@ -213,6 +213,9 @@ Service refs:
 - The JSON output also includes a top-level `service_ref` when a single service is detected.
 - Use `--service-ref-from-timeseries` (alias `--service-id-from-timeseries`) to resolve `service_ref` from timeseries metadata.
 - The internal attribute is named `service_ref_from_timeseries` to match the `_ref` convention; the legacy flag name still works for compatibility.
+
+Notes:
+- When `--to-supabase` is enabled, station-name backfills include the existing station metadata needed to satisfy NOT NULL constraints.
 
 Writes to (when `--to-supabase` is set):
 - `services`, `stations`
