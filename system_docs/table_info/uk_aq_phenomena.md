@@ -1,6 +1,6 @@
 # phenomena
 
-Defines what is measured (pollutant/parameter) within a service.
+Defines what is measured (pollutant/parameter) within a connector.
 
 ## Fields
 - id: Internal bigint primary key (generated identity).
@@ -8,7 +8,7 @@ Defines what is measured (pollutant/parameter) within a service.
 - eionet_uri: Optional EIONET URI identifier for the phenomenon.
 - notation: Optional short code/notation from the source.
 - pollutant_label: Optional emissions-inventory pollutant label (from reference list).
-- service_id: FK to `services.id`.
+- connector_id: FK to `connectors.id`.
 
 ## Notes
-- Uniqueness is enforced on (service_id, eionet_uri).
+- Uniqueness is enforced on (connector_id, eionet_uri).

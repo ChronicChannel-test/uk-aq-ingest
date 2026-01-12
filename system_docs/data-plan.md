@@ -8,7 +8,7 @@
 ## Ingestion (initial backfill)
 1) Discover metadata
 - Call `/api/v1/services`, `/stations`, `/timeseries?expanded=true`.
-- Persist into `services`, `stations`, `timeseries`, plus related reference tables.
+- Persist into `connectors`, `stations`, `timeseries`, plus related reference tables.
 2) Select timeseries
 - Filter to UK stations and pollutants of interest (NO2, O3, PM10, PM2.5, etc.).
 3) Backfill 2025 data

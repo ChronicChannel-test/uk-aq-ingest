@@ -2,17 +2,18 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 
 type PollRequest = {
-  service_id?: string;
-  service_label?: string;
+  connector_id?: string;
+  connector_code?: string;
+  connector_label?: string;
   window_hours?: number;
   pollutants?: string[] | string;
   timeseries_ids?: string[] | string;
   timeseries_limit?: number;
 };
 
-type ServiceRow = {
+type ConnectorRow = {
   id: string;
-  service_ref: string;
+  connector_code: string;
   label: string;
   service_url: string | null;
   poll_enabled: boolean | null;
@@ -32,13 +33,14 @@ type ErrorLogEntry = {
   message: string;
   stack?: string | null;
   context?: Record<string, unknown> | null;
-  service_id?: string | number | null;
+  connector_id?: string | number | null;
   station_id?: string | number | null;
   timeseries_id?: string | number | null;
 };
 
 const DEFAULT_BASE_URL = "https://uk-air.defra.gov.uk/sos-ukair/api/v1";
 const DEFAULT_SERVICE_LABEL = "UK-AIR-SOS";
+const DEFAULT_CONNECTOR_CODE = "uk_air_sos";
 const DEFAULT_WINDOW_HOURS = 6;
 const DEFAULT_TIMEOUT_MS = 30_000;
 const PAGE_SIZE = 1000;
@@ -56,6 +58,8 @@ const UK_AIR_SOS_BASE_URL = (Deno.env.get("UK_AIR_SOS_BASE_URL")
 const UK_AIR_SOS_SERVICE_LABEL = Deno.env.get("UK_AIR_SOS_SERVICE_LABEL")
   ?? Deno.env.get("UK_AIR_SERVICE_LABEL")
   ?? DEFAULT_SERVICE_LABEL;
+const UK_AIR_SOS_CONNECTOR_CODE = Deno.env.get("UK_AIR_SOS_CONNECTOR_CODE")
+  ?? DEFAULT_CONNECTOR_CODE;
 const DROPBOX_APP_KEY = Deno.env.get("DROPBOX_APP_KEY") ?? "";
 const DROPBOX_APP_SECRET = Deno.env.get("DROPBOX_APP_SECRET") ?? "";
 const DROPBOX_REFRESH_TOKEN = Deno.env.get("DROPBOX_REFRESH_TOKEN") ?? "";
@@ -192,9 +196,10 @@ serve(async (req) => {
   let polled = 0;
   let observationsUpserted = 0;
   let responsePayload: Record<string, unknown> = {};
-  let service: ServiceRow | null = null;
-  let requestedServiceId: string | undefined;
-  let requestedServiceLabel = UK_AIR_SOS_SERVICE_LABEL;
+  let connector: ConnectorRow | null = null;
+  let requestedConnectorId: string | undefined;
+  let requestedConnectorCode = UK_AIR_SOS_CONNECTOR_CODE;
+  let requestedConnectorLabel = UK_AIR_SOS_SERVICE_LABEL;
   let requestedWindowHours: number | undefined;
   let requestedPollutants: string[] | undefined;
   let requestedLimit: number | undefined;
@@ -207,38 +212,44 @@ serve(async (req) => {
       log.error("Missing Supabase configuration.");
     } else {
       const payload = await readJson(req);
-      requestedServiceId = asString(payload?.service_id);
-      requestedServiceLabel = asString(payload?.service_label) || UK_AIR_SOS_SERVICE_LABEL;
+      requestedConnectorId = asString(payload?.connector_id);
+      requestedConnectorCode = asString(payload?.connector_code) || UK_AIR_SOS_CONNECTOR_CODE;
+      requestedConnectorLabel = asString(payload?.connector_label) || UK_AIR_SOS_SERVICE_LABEL;
       requestedWindowHours = asNumber(payload?.window_hours, undefined);
       requestedPollutants = parseList(payload?.pollutants);
       requestedLimit = asNumber(payload?.timeseries_limit, undefined);
       requestedSeries = parseList(payload?.timeseries_ids);
 
       log.info("Poll request", {
-        service_id: requestedServiceId ?? null,
-        service_label: requestedServiceLabel,
+        connector_id: requestedConnectorId ?? null,
+        connector_code: requestedConnectorCode,
+        connector_label: requestedConnectorLabel,
         window_hours: requestedWindowHours ?? null,
         pollutants: requestedPollutants?.length ?? null,
         timeseries_ids: requestedSeries?.length ?? null,
         timeseries_limit: requestedLimit ?? null,
       });
 
-      service = await loadService(requestedServiceId, requestedServiceLabel);
-      if (!service) {
+      connector = await loadConnector(
+        requestedConnectorId,
+        requestedConnectorCode,
+        requestedConnectorLabel,
+      );
+      if (!connector) {
         status = 404;
-        responsePayload = { error: "Service not found and could not be discovered." };
-        log.warn("Service not found.");
-      } else if (service.poll_enabled === false) {
+        responsePayload = { error: "Connector not found." };
+        log.warn("Connector not found.");
+      } else if (connector.poll_enabled === false) {
         status = 200;
-        responsePayload = { status: "poll_disabled", service_id: service.id };
-        log.info("Polling disabled for service.", { service_id: service.id });
+        responsePayload = { status: "poll_disabled", connector_id: connector.id };
+        log.info("Polling disabled for connector.", { connector_id: connector.id });
       } else {
         let shouldPoll = true;
-        const pollWindow = requestedWindowHours ?? service.poll_window_hours ?? DEFAULT_WINDOW_HOURS;
-        const effectiveLimit = requestedLimit ?? service.poll_timeseries_batch_size ?? undefined;
-        const baseUrl = (service.service_url || UK_AIR_SOS_BASE_URL).replace(/\/$/, "");
+        const pollWindow = requestedWindowHours ?? connector.poll_window_hours ?? DEFAULT_WINDOW_HOURS;
+        const effectiveLimit = requestedLimit ?? connector.poll_timeseries_batch_size ?? undefined;
+        const baseUrl = (connector.service_url || UK_AIR_SOS_BASE_URL).replace(/\/$/, "");
 
-        let series = await loadTimeseries(service.id);
+        let series = await loadTimeseries(connector.id);
         if (requestedSeries?.length) {
           const requestedSet = new Set(requestedSeries.map((value) => value.toLowerCase()));
           series = series.filter((row) => {
@@ -250,11 +261,11 @@ serve(async (req) => {
         }
 
         if (requestedPollutants?.length) {
-          const allowedPhenomena = await loadPhenomena(service.id, requestedPollutants);
+          const allowedPhenomena = await loadPhenomena(connector.id, requestedPollutants);
           if (allowedPhenomena.size === 0) {
             status = 200;
-            responsePayload = { status: "no_matching_pollutants", service_id: service.id };
-            log.warn("No matching pollutants for service.", { service_id: service.id });
+            responsePayload = { status: "no_matching_pollutants", connector_id: connector.id };
+            log.warn("No matching pollutants for connector.", { connector_id: connector.id });
             shouldPoll = false;
           } else {
             series = series.filter((row) =>
@@ -273,9 +284,9 @@ serve(async (req) => {
           const timespan = `${windowStart.toISOString()}/${now.toISOString()}`;
           if (rawRecorder) {
             rawRecorder.recordEvent("context", {
-              service_id: service.id,
-              service_ref: service.service_ref,
-              service_label: service.label,
+              connector_id: connector.id,
+              connector_code: connector.connector_code,
+              connector_label: connector.label,
               timespan,
               window_hours: pollWindow,
               timeseries_limit: typeof effectiveLimit === "number" ? effectiveLimit : null,
@@ -316,7 +327,7 @@ serve(async (req) => {
                 data,
                 points,
                 errorLogger,
-                service?.id ?? requestedServiceId ?? null,
+                connector?.id ?? requestedConnectorId ?? null,
               );
               polled += 1;
             } catch (err) {
@@ -331,9 +342,9 @@ serve(async (req) => {
                 context: {
                   timeseries_ref: row.timeseries_ref,
                   timespan,
-                  service_id: service?.id ?? requestedServiceId ?? null,
+                  connector_id: connector?.id ?? requestedConnectorId ?? null,
                 },
-                service_id: service?.id ?? requestedServiceId ?? null,
+                connector_id: connector?.id ?? requestedConnectorId ?? null,
                 timeseries_id: row.id,
               });
             }
@@ -341,29 +352,29 @@ serve(async (req) => {
 
           const { error: pollUpdateError } = await postgrestRequest(
             "PATCH",
-            "services",
-            { id: `eq.${service.id}` },
+            "connectors",
+            { id: `eq.${connector.id}` },
             { last_polled_at: now.toISOString() },
             "return=minimal",
           );
           if (pollUpdateError) {
-            errors.push(`service last_polled_at update failed: ${pollUpdateError.message}`);
+            errors.push(`connector last_polled_at update failed: ${pollUpdateError.message}`);
             await errorLogger.logError({
               source: "edge",
               severity: "error",
-              message: "Failed to update services.last_polled_at.",
+              message: "Failed to update connectors.last_polled_at.",
               context: {
-                service_id: service.id,
+                connector_id: connector.id,
                 error: pollUpdateError.message,
               },
-              service_id: service.id,
+              connector_id: connector.id,
             });
           }
 
           status = errors.length ? 207 : 200;
           responsePayload = {
             status: "ok",
-            service_id: service.id,
+            connector_id: connector.id,
             series_polled: polled,
             observations_upserted: observationsUpserted,
             errors,
@@ -383,14 +394,15 @@ serve(async (req) => {
       message: "Unhandled error during poll.",
       stack: err instanceof Error ? err.stack : undefined,
       context: {
-        service_id: requestedServiceId ?? null,
-        service_label: requestedServiceLabel,
+        connector_id: requestedConnectorId ?? null,
+        connector_code: requestedConnectorCode,
+        connector_label: requestedConnectorLabel,
       },
-      service_id: requestedServiceId ?? null,
+      connector_id: requestedConnectorId ?? null,
     });
   } finally {
     log.info("Poll summary", {
-      service_id: service?.id ?? requestedServiceId ?? null,
+      connector_id: connector?.id ?? requestedConnectorId ?? null,
       series_polled: polled,
       observations_upserted: observationsUpserted,
       errors: errors.length,
@@ -413,14 +425,14 @@ serve(async (req) => {
       accessToken = await uploadDropboxLog(
         accessToken,
         log,
-        service?.id ?? requestedServiceId ?? null,
+        connector?.id ?? requestedConnectorId ?? null,
         errorLogger,
         refreshDropbox,
       );
       accessToken = await uploadDropboxRaw(
         accessToken,
         rawRecorder,
-        service?.id ?? requestedServiceId ?? null,
+        connector?.id ?? requestedConnectorId ?? null,
         errorLogger,
         refreshDropbox,
       );
@@ -622,17 +634,17 @@ function dropboxWithRoot(path: string): string {
   return `${DROPBOX_ROOT_FOLDER}${cleaned}`;
 }
 
-function buildDropboxLogPath(serviceId: string | null, timestamp: Date): string {
+function buildDropboxLogPath(connectorId: string | null, timestamp: Date): string {
   const stamp = formatCompactTimestamp(timestamp);
   const dateFolder = formatDateYmd(timestamp);
-  const suffix = serviceId ? `_service_${serviceId}` : "";
+  const suffix = connectorId ? `_connector_${connectorId}` : "";
   return `${DROPBOX_LOG_FOLDER}/${dateFolder}/uk_aq_log_edge_${stamp}${suffix}.log`;
 }
 
-function buildDropboxRawPath(serviceId: string | null, timestamp: Date): string {
+function buildDropboxRawPath(connectorId: string | null, timestamp: Date): string {
   const stamp = formatCompactTimestamp(timestamp);
   const dateFolder = formatDateYmd(timestamp);
-  const suffix = serviceId ? `_service_${serviceId}` : "";
+  const suffix = connectorId ? `_connector_${connectorId}` : "";
   return `${DROPBOX_RAW_FOLDER}/${dateFolder}/uk_aq_raw_edge_${stamp}${suffix}.zip`;
 }
 
@@ -653,7 +665,7 @@ function formatDateYmd(timestamp: Date): string {
 async function uploadDropboxLog(
   accessToken: string,
   log: LogBuffer,
-  serviceId: string | null,
+  connectorId: string | null,
   errorLogger: { logError: (entry: ErrorLogEntry) => Promise<void> },
   refreshToken?: () => Promise<string>,
 ): Promise<string> {
@@ -665,7 +677,7 @@ async function uploadDropboxLog(
     return accessToken;
   }
   try {
-    const logPath = buildDropboxLogPath(serviceId, new Date());
+    const logPath = buildDropboxLogPath(connectorId, new Date());
     accessToken = await dropboxUploadFileWithRetry(
       accessToken,
       logPath,
@@ -681,10 +693,10 @@ async function uploadDropboxLog(
       message: "Dropbox log upload failed.",
       stack: err instanceof Error ? err.stack : undefined,
       context: {
-        service_id: serviceId,
+        connector_id: connectorId,
         error: err instanceof Error ? err.message : String(err),
       },
-      service_id: serviceId ?? null,
+      connector_id: connectorId ?? null,
     });
   }
   return accessToken;
@@ -693,7 +705,7 @@ async function uploadDropboxLog(
 async function uploadDropboxRaw(
   accessToken: string,
   recorder: RawRecorder | null,
-  serviceId: string | null,
+  connectorId: string | null,
   errorLogger: { logError: (entry: ErrorLogEntry) => Promise<void> },
   refreshToken?: () => Promise<string>,
 ): Promise<string> {
@@ -705,7 +717,7 @@ async function uploadDropboxRaw(
     return accessToken;
   }
   try {
-    const rawPath = buildDropboxRawPath(serviceId, new Date());
+    const rawPath = buildDropboxRawPath(connectorId, new Date());
     const filename = rawPath.split("/").pop() ?? "uk_aq_raw_edge.jsonl";
     const jsonlName = filename.replace(/\.zip$/i, ".jsonl");
     const zipped = await zipTextCompressed(jsonlName, content);
@@ -723,10 +735,10 @@ async function uploadDropboxRaw(
       message: "Dropbox raw upload failed.",
       stack: err instanceof Error ? err.stack : undefined,
       context: {
-        service_id: serviceId,
+        connector_id: connectorId,
         error: err instanceof Error ? err.message : String(err),
       },
-      service_id: serviceId ?? null,
+      connector_id: connectorId ?? null,
     });
   }
   return accessToken;
@@ -748,7 +760,7 @@ function createErrorLogger(config: DropboxConfig | null, enabled: boolean) {
         message: entry.message,
         stack: entry.stack ?? null,
         context: entry.context ?? null,
-        service_id: entry.service_id ?? null,
+        connector_id: entry.connector_id ?? null,
         station_id: entry.station_id ?? null,
         timeseries_id: entry.timeseries_id ?? null,
       };
@@ -1135,35 +1147,17 @@ function parseYmd(value: string): Date | null {
   return new Date(Date.UTC(year, month - 1, day));
 }
 
-async function loadService(
-  serviceId: string | undefined,
-  serviceLabel: string,
-): Promise<ServiceRow | null> {
+async function loadConnector(
+  connectorId: string | undefined,
+  connectorCode: string,
+  connectorLabel: string,
+): Promise<ConnectorRow | null> {
   const select =
-    "id,service_ref,label,service_url,poll_enabled,poll_window_hours,poll_timeseries_batch_size";
-  if (serviceId) {
-    const { data } = await postgrestRequest<ServiceRow[]>("GET", "services", {
+    "id,connector_code,label,service_url,poll_enabled,poll_window_hours,poll_timeseries_batch_size";
+  if (connectorId) {
+    const { data } = await postgrestRequest<ConnectorRow[]>("GET", "connectors", {
       select,
-      id: `eq.${serviceId}`,
-      limit: "1",
-    });
-    if (data && data[0]) {
-      return data[0];
-    }
-    const { data: refData } = await postgrestRequest<ServiceRow[]>("GET", "services", {
-      select,
-      service_ref: `eq.${serviceId}`,
-      limit: "1",
-    });
-    if (refData && refData[0]) {
-      return refData[0];
-    }
-  }
-
-  if (serviceLabel) {
-    const { data } = await postgrestRequest<ServiceRow[]>("GET", "services", {
-      select,
-      label: `ilike.%${serviceLabel}%`,
+      id: `eq.${connectorId}`,
       limit: "1",
     });
     if (data && data[0]) {
@@ -1171,73 +1165,45 @@ async function loadService(
     }
   }
 
-  const discovered = await discoverService(serviceId, serviceLabel);
-  if (!discovered) {
+  if (connectorCode) {
+    const { data } = await postgrestRequest<ConnectorRow[]>("GET", "connectors", {
+      select,
+      connector_code: `eq.${connectorCode}`,
+      limit: "1",
+    });
+    if (data && data[0]) {
+      return data[0];
+    }
+  }
+
+  if (!connectorCode) {
     return null;
   }
+
   await postgrestRequest(
     "POST",
-    "services",
-    { on_conflict: "service_ref" },
-    [discovered],
+    "connectors",
+    { on_conflict: "connector_code" },
+    [
+      {
+        connector_code: connectorCode,
+        label: connectorLabel,
+        service_url: UK_AIR_SOS_BASE_URL,
+      },
+    ],
     "resolution=merge-duplicates,return=minimal",
   );
-  const { data } = await postgrestRequest<ServiceRow[]>("GET", "services", {
+
+  const { data } = await postgrestRequest<ConnectorRow[]>("GET", "connectors", {
     select,
-    service_ref: `eq.${discovered.service_ref}`,
+    connector_code: `eq.${connectorCode}`,
     limit: "1",
   });
   return data && data[0] ? data[0] : null;
 }
 
-async function discoverService(
-  preferredId: string | undefined,
-  preferredLabel: string,
-): Promise<{ service_ref: string; label: string; service_url: string } | null> {
-  try {
-    const data = await fetchJson(UK_AIR_SOS_BASE_URL, "/services", {});
-    const services = extractList(data, ["services", "data"]);
-    if (!services.length) {
-      return null;
-    }
-    if (preferredId) {
-      const match = services.find((svc) => String(svc?.id) === preferredId);
-      if (match) {
-        return {
-          service_ref: String(match.id),
-          label: normalizeServiceLabel(match.label || match.name),
-          service_url: match.serviceUrl || match.url || UK_AIR_SOS_BASE_URL,
-        };
-      }
-    }
-    const needle = preferredLabel.toLowerCase();
-    const labelMatch = services.find((svc) =>
-      String(svc?.label || "").toLowerCase().includes(needle)
-    );
-    if (labelMatch) {
-      return {
-        service_ref: String(labelMatch.id),
-        label: normalizeServiceLabel(labelMatch.label || labelMatch.name),
-        service_url: labelMatch.serviceUrl || labelMatch.url || UK_AIR_SOS_BASE_URL,
-      };
-    }
-    const fallback = services.find((svc) =>
-      String(svc?.label || "").toLowerCase().includes("uk")
-        && String(svc?.label || "").toLowerCase().includes("air")
-    ) || services[0];
-    return {
-      service_ref: String(fallback.id),
-      label: normalizeServiceLabel(fallback.label || fallback.name),
-      service_url: fallback.serviceUrl || fallback.url || UK_AIR_SOS_BASE_URL,
-    };
-  } catch (err) {
-    console.warn("Service discovery failed:", err);
-    return null;
-  }
-}
-
 async function loadTimeseries(
-  serviceId: string,
+  connectorId: string,
 ): Promise<Array<{ id: number; timeseries_ref: string | null; phenomenon_id: string | null }>> {
   const rows: Array<{ id: number; timeseries_ref: string | null; phenomenon_id: string | null }> = [];
   let offset = 0;
@@ -1246,7 +1212,7 @@ async function loadTimeseries(
       Array<{ id: number; timeseries_ref: string | null; phenomenon_id: string | null }>
     >("GET", "timeseries", {
       select: "id,timeseries_ref,phenomenon_id",
-      service_id: `eq.${serviceId}`,
+      connector_id: `eq.${connectorId}`,
       limit: String(PAGE_SIZE),
       offset: String(offset),
     });
@@ -1269,13 +1235,13 @@ async function loadTimeseries(
   return rows;
 }
 
-async function loadPhenomena(serviceId: string, filters: string[]): Promise<Set<string>> {
+async function loadPhenomena(connectorId: string, filters: string[]): Promise<Set<string>> {
   const needle = new Set(filters.map((value) => value.toLowerCase()));
   const { data, error } = await postgrestRequest<
     Array<{ id: string; label: string | null; notation: string | null; eionet_uri: string | null }>
   >("GET", "phenomena", {
     select: "id,label,notation,eionet_uri",
-    service_id: `eq.${serviceId}`,
+    connector_id: `eq.${connectorId}`,
   });
   if (error) {
     throw new Error(`Failed to load phenomena: ${error.message}`);
@@ -1464,7 +1430,7 @@ async function upsertLastValue(
   data: Record<string, unknown>,
   points: Array<{ observed_at: string; value: number | null }>,
   errorLogger: { logError: (entry: ErrorLogEntry) => Promise<void> },
-  serviceId: string | null,
+  connectorId: string | null,
 ): Promise<void> {
   const lastValueFromPayload = toNumber(data?.lastValue);
   const lastValueTimestamp = data?.lastValueTimestamp;
@@ -1508,10 +1474,10 @@ async function upsertLastValue(
       message: "Failed to update timeseries last_value fields.",
       context: {
         timeseries_id: seriesId,
-        service_id: serviceId,
+        connector_id: connectorId,
         error: error.message,
       },
-      service_id: serviceId ?? null,
+      connector_id: connectorId ?? null,
       timeseries_id: seriesId,
     });
   }

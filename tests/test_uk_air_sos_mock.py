@@ -60,16 +60,16 @@ class FakeWriter(SupabaseWriter):
     def __init__(self, client: FakeClient):  # type: ignore[super-init-not-called]
         self.client = client
 
-    def get_service_id_map(self, service_refs):
-        return {ref: idx + 1 for idx, ref in enumerate(service_refs)}
+    def get_connector_id(self):
+        return 1
 
-    def get_station_id_map(self, service_id, station_refs):  # noqa: ARG002
+    def get_station_id_map(self, connector_id, service_ref, station_refs):  # noqa: ARG002
         return {ref: idx + 10 for idx, ref in enumerate(station_refs)}
 
-    def get_timeseries_id_map(self, service_id, timeseries_refs):  # noqa: ARG002
+    def get_timeseries_id_map(self, connector_id, service_ref, timeseries_refs):  # noqa: ARG002
         return {ref: idx + 100 for idx, ref in enumerate(timeseries_refs)}
 
-    def get_phenomena_id_map(self, eionet_uris, service_id):  # noqa: ARG002
+    def get_phenomena_id_map(self, eionet_uris, connector_id):  # noqa: ARG002
         return {uri: idx + 1000 for idx, uri in enumerate(eionet_uris)}
 
 
@@ -88,24 +88,26 @@ def test_upserts_use_ref_fields_and_ids():
     writer = FakeWriter(fake)
 
     services = load_fixture("services.json")["services"]
-    writer.upsert_services(services)
-    service_rows = fake.tables["services"].last_upsert
-    assert service_rows[0]["service_ref"] == "1"
+    connector_id = writer.upsert_connectors(services)
+    connector_rows = fake.tables["connectors"].last_upsert
+    assert connector_rows[0]["connector_code"] == "uk_air_sos"
+    assert connector_id == 1
 
     stations = load_fixture("stations_expanded.json")["stations"]
-    writer.upsert_stations(stations, service_id=1)
+    writer.upsert_stations(stations, connector_id=1, service_ref="1")
     station_rows = fake.tables["stations"].last_upsert
     assert station_rows[0]["station_ref"] == "100"
-    assert station_rows[0]["service_id"] == 1
+    assert station_rows[0]["connector_id"] == 1
+    assert station_rows[0]["service_ref"] == "1"
 
     series = load_fixture("timeseries_expanded.json")["timeseries"]
     phenomena = [ts.get("phenomenon", {}) for ts in series]
-    writer.upsert_phenomena(phenomena, service_id=1)
+    writer.upsert_phenomena(phenomena, connector_id=1)
     phen_rows = fake.tables["phenomena"].last_upsert
     assert phen_rows[0]["eionet_uri"].startswith("http://dd.eionet.europa.eu")
     assert phen_rows[0]["notation"] == "NO2"
 
-    phenomenon_map = writer.get_phenomena_id_map([phen_rows[0]["eionet_uri"]], service_id=1)
+    phenomenon_map = writer.get_phenomena_id_map([phen_rows[0]["eionet_uri"]], connector_id=1)
     category_map = {"cat-1": 201}
     feature_map = {"feat-1": 301}
     procedure_map = {"proc-1": 401}
@@ -114,7 +116,8 @@ def test_upserts_use_ref_fields_and_ids():
 
     writer.upsert_timeseries(
         series,
-        service_id=1,
+        connector_id=1,
+        service_ref="1",
         station_id_map=station_map,
         category_id_map=category_map,
         feature_id_map=feature_map,
@@ -124,6 +127,8 @@ def test_upserts_use_ref_fields_and_ids():
     )
     ts_rows = fake.tables["timeseries"].last_upsert
     assert ts_rows[0]["timeseries_ref"] == "ts-1"
+    assert ts_rows[0]["connector_id"] == 1
+    assert ts_rows[0]["service_ref"] == "1"
     assert ts_rows[0]["phenomenon_id"] == list(phenomenon_map.values())[0]
     assert ts_rows[0]["station_id"] == 11
     assert ts_rows[0]["offering_id"] == 501

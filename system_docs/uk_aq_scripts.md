@@ -42,7 +42,7 @@ python3 scripts/uk_air_sos_ingest.py --refresh-recent --hours 6
 ```
 
 Writes to:
-- `services`, `stations`, `timeseries`, `observations`
+- `connectors`, `stations`, `timeseries`, `observations`
 
 Key flags:
 - `--bbox west,south,east,north` (default: UK bbox)
@@ -60,11 +60,11 @@ Key flags:
 - `--log-level WARNING` to reduce logging output
   - Default output prints only station count, error count, and Dropbox upload info.
 Batching:
-- If `services.poll_timeseries_batch_size` is set for the chosen service, it overrides the default batch size for timeseries discovery.
+- If `connectors.poll_timeseries_batch_size` is set for the chosen connector, it overrides the default batch size for timeseries discovery.
 Stations bbox:
-- If `services.stations_bbox_supported` is false, the script skips bbox when calling `/stations`.
+- If `connectors.stations_bbox_supported` is false, the script skips bbox when calling `/stations`.
 Timeseries station filter:
-- If `services.timeseries_station_filter_supported` is false, the script skips station filtering for `/timeseries`.
+- If `connectors.timeseries_station_filter_supported` is false, the script skips station filtering for `/timeseries`.
 Phenomenon lookup:
 - If a timeseries label contains a `dd.eionet.europa.eu/vocabulary/aq/pollutant/` URL and `phenomenon` is missing, the script resolves Eionet metadata and stores `phenomena.eionet_uri` + `phenomena.notation` (shortname), with `label` falling back to `prefLabel`.
 
@@ -174,11 +174,12 @@ Purpose:
 Common commands:
 ```
 python3 scripts/uk_aq_backfill_timeseries_stations.py
-python3 scripts/uk_aq_backfill_timeseries_stations.py --service-ref EEA_AQ_SOS
+python3 scripts/uk_aq_backfill_timeseries_stations.py --connector-code uk_air_sos --service-ref 1
 ```
 
 Key flags:
-- `--service-id` or `--service-ref` to scope the backfill.
+- `--connector-id` or `--connector-code` to scope the backfill.
+- `--service-ref` to scope to a specific SOS service within the connector.
 - `--batch-size` (default: 200)
 - `--limit` to cap total rows processed.
 - `--sleep-seconds` (default: 0.2) between API calls.
@@ -218,7 +219,7 @@ Notes:
 - When `--to-supabase` is enabled, station-name backfills include the existing station metadata needed to satisfy NOT NULL constraints.
 
 Writes to (when `--to-supabase` is set):
-- `services`, `stations`
+- `connectors`, `stations`
 - `phenomena`, `procedures`, `offerings` (unless `--skip-metadata` is used)
   - `stations` lifecycle fields: `first_seen_at`, `last_seen_at`, `removed_at`
   - Stations not seen in the current run are marked with `removed_at`.
@@ -285,7 +286,7 @@ Environment:
 - `offering`: A logical grouping of observations, often representing a dataset or station-level collection.
 
 ## Keys
-- `stations` uses bigint `id` with `station_ref` for upstream identifiers (unique by `service_id, station_ref`).
-- `timeseries` uses bigint `id` with `timeseries_ref` for upstream identifiers (unique by `service_id, timeseries_ref`).
+- `stations` uses bigint `id` with `station_ref` for upstream identifiers (unique by `connector_id, service_ref, station_ref`).
+- `timeseries` uses bigint `id` with `timeseries_ref` for upstream identifiers (unique by `connector_id, service_ref, timeseries_ref`).
 - `observations` references `timeseries.id` (bigint) and uses `(timeseries_id, observed_at)` as the primary key.
 - External identifiers that arrive as text (even if numeric) use `*_ref`; internal joins always use bigint `*_id`.

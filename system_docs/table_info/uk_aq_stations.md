@@ -1,6 +1,6 @@
 # stations
 
-Monitoring sites within a service, with optional spatial metadata.
+Monitoring sites within a connector/service_ref, with optional spatial metadata.
 
 ## Fields
 - id: Internal bigint primary key (generated identity).
@@ -10,7 +10,8 @@ Monitoring sites within a service, with optional spatial metadata.
 - station_type: Optional station type/classification from the service.
 - region: Optional region name from the service.
 - geometry: Optional Point geometry (WGS84, SRID 4326).
-- service_id: FK to `services.id`.
+- connector_id: FK to `connectors.id`.
+- service_ref: External SOS service identifier (string).
 - category_id: Optional FK to `categories.id`.
 - first_seen_at: When the station first appeared in ingest (default now()).
 - last_seen_at: Last time the station was confirmed present.
@@ -18,5 +19,5 @@ Monitoring sites within a service, with optional spatial metadata.
 - created_at: Row creation timestamp (default now()).
 
 ## Notes
-- Uniqueness is enforced on (service_id, station_ref).
+- Uniqueness is enforced on (connector_id, service_ref, station_ref).
 - Geometry has a GIST index to support spatial queries.

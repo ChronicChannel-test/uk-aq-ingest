@@ -47,7 +47,7 @@ UK_AIR_SOS_SERVICE_LABEL = (
     or os.getenv("UK_AIR_SERVICE_LABEL")
     or "UK-AIR-SOS"
 )
-UK_AIR_SOS_SERVICE_CODE = "uk_air_sos"
+UK_AIR_SOS_CONNECTOR_CODE = "uk_air_sos"
 
 UK_BBOX = {
     "west": -11.0,
@@ -201,18 +201,18 @@ class UkAirClient:
         return _extract_list(data, ("services", "data"))
 
     def timeseries(
-        self, station_ids: Sequence[str], service_id: Optional[str] = None
+        self, station_ids: Sequence[str], service_ref: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         if not station_ids:
             return []
         params: Dict[str, Any] = {"expanded": "true", "station": list(station_ids)}
-        if service_id:
-            params["service"] = service_id
+        if service_ref:
+            params["service"] = service_ref
         try:
             data = self.get("/timeseries", params=params)
             return _extract_list(data, ("timeseries", "data"))
         except requests.HTTPError as exc:
-            if exc.response is not None and exc.response.status_code == 400 and service_id:
+            if exc.response is not None and exc.response.status_code == 400 and service_ref:
                 params.pop("service", None)
                 data = self.get("/timeseries", params=params)
                 return _extract_list(data, ("timeseries", "data"))
@@ -227,40 +227,26 @@ class SupabaseWriter:
             raise RuntimeError("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required.")
         self.client: Client = create_client(supabase_url, supabase_key)
 
-    def upsert_services(self, services: Iterable[Dict[str, Any]]) -> Dict[str, int]:
+    def upsert_connectors(self, services: Iterable[Dict[str, Any]]) -> Optional[int]:
         services_list = [svc for svc in services if isinstance(svc, dict)]
         primary = _select_primary_service(services_list)
         if primary is None or primary.get("id") is None:
-            return {}
-        service_ref = str(primary.get("id"))
+            return None
         payload = [
             {
-                "service_ref": service_ref,
-                "service_code": UK_AIR_SOS_SERVICE_CODE,
+                "connector_code": UK_AIR_SOS_CONNECTOR_CODE,
                 "label": _normalize_service_label(primary.get("label") or primary.get("name")),
                 "service_url": primary.get("serviceUrl") or primary.get("url") or UK_AIR_SOS_BASE_URL,
             }
         ]
-        self.client.table("services").upsert(payload, on_conflict="service_code").execute()
-        service_refs = [svc.get("id") for svc in services_list if svc.get("id") is not None]
-        return self.get_service_id_map(service_refs)
+        self.client.table("connectors").upsert(payload, on_conflict="connector_code").execute()
+        return self.get_connector_id()
 
-    def get_service_id_map(self, service_refs: Sequence[str]) -> Dict[str, int]:
-        mapping: Dict[str, int] = {}
-        if not service_refs:
-            return mapping
-        service_id = self.get_service_id()
-        if service_id is None:
-            return mapping
-        for service_ref in service_refs:
-            mapping[str(service_ref)] = service_id
-        return mapping
-
-    def get_service_id(self) -> Optional[int]:
+    def get_connector_id(self) -> Optional[int]:
         resp = (
-            self.client.table("services")
+            self.client.table("connectors")
             .select("id")
-            .eq("service_code", UK_AIR_SOS_SERVICE_CODE)
+            .eq("connector_code", UK_AIR_SOS_CONNECTOR_CODE)
             .limit(1)
             .execute()
         )
@@ -280,26 +266,34 @@ class SupabaseWriter:
         table: str,
         ref_key: str,
         items: Iterable[Dict[str, Any]],
-        service_id: int,
+        connector_id: int,
+        default_service_ref: Optional[str] = None,
     ) -> int:
         rows = []
         for item in items:
             ref = item.get("id") or item.get(ref_key)
             label = _item_label(item)
+            service_ref = _item_service_id(item) or default_service_ref
             if not ref or not label:
+                continue
+            if not service_ref:
                 continue
             rows.append(
                 {
                     ref_key: str(ref),
                     "label": label,
-                    "service_id": service_id,
+                    "service_ref": str(service_ref),
+                    "connector_id": connector_id,
                 }
             )
         if rows:
-            self.client.table(table).upsert(rows, on_conflict=f"service_id,{ref_key}").execute()
+            self.client.table(table).upsert(
+                rows,
+                on_conflict=f"connector_id,service_ref,{ref_key}",
+            ).execute()
         return len(rows)
 
-    def upsert_phenomena(self, items: Iterable[Dict[str, Any]], service_id: int) -> int:
+    def upsert_phenomena(self, items: Iterable[Dict[str, Any]], connector_id: int) -> int:
         payload_by_uri: Dict[str, Dict[str, Any]] = {}
         for item in items:
             uri = item.get("eionet_uri") or item.get("id")
@@ -314,7 +308,7 @@ class SupabaseWriter:
                     "eionet_uri": uri_value,
                     "label": label,
                     "notation": notation,
-                    "service_id": service_id,
+                    "connector_id": connector_id,
                 }
                 continue
             if label and (not row.get("label") or row.get("label") == uri_value):
@@ -323,13 +317,16 @@ class SupabaseWriter:
                 row["notation"] = notation
         rows = list(payload_by_uri.values())
         if rows:
-            self.client.table("phenomena").upsert(rows, on_conflict="service_id,eionet_uri").execute()
+            self.client.table("phenomena").upsert(
+                rows,
+                on_conflict="connector_id,eionet_uri",
+            ).execute()
         return len(rows)
 
     def upsert_stations(
         self,
         stations: Iterable[Dict[str, Any]],
-        service_ref_map: Dict[str, int],
+        connector_id: int,
         seen_at: datetime,
         station_service_ref_map: Optional[Dict[str, str]] = None,
         default_service_ref: Optional[str] = None,
@@ -356,35 +353,36 @@ class SupabaseWriter:
                 service_ref = default_service_ref
             if not service_ref:
                 continue
-            service_id = service_ref_map.get(str(service_ref))
-            if not service_id:
-                continue
             label = station.get("label") or props.get("label") or station.get("name")
             station_name = _derive_station_name(label)
             rows.append(
                 {
                     "station_ref": str(station_ref),
+                    "service_ref": str(service_ref),
                     "label": label,
                     "station_name": station_name,
                     "station_type": props.get("stationType") or station.get("stationType"),
                     "region": props.get("region") or station.get("region"),
                     "geometry": f"SRID=4326;POINT({lon} {lat})" if lon is not None and lat is not None else None,
-                    "service_id": service_id,
+                    "connector_id": connector_id,
                     "last_seen_at": seen_at_value,
                     "removed_at": None,
                 }
             )
         if rows:
-            self.client.table("stations").upsert(rows, on_conflict="service_id,station_ref").execute()
+            self.client.table("stations").upsert(
+                rows,
+                on_conflict="connector_id,service_ref,station_ref",
+            ).execute()
         return len(rows)
 
-    def backfill_station_names(self, service_ids: Sequence[int]) -> int:
-        if not service_ids:
+    def backfill_station_names(self, connector_ids: Sequence[int]) -> int:
+        if not connector_ids:
             return 0
         resp = (
             self.client.table("stations")
-            .select("id,station_ref,label,service_id")
-            .in_("service_id", list(service_ids))
+            .select("id,station_ref,label,service_ref,connector_id")
+            .in_("connector_id", list(connector_ids))
             .is_("station_name", "null")
             .execute()
         )
@@ -398,8 +396,9 @@ class SupabaseWriter:
                     {
                         "id": row.get("id"),
                         "station_ref": row.get("station_ref"),
+                        "service_ref": row.get("service_ref"),
                         "label": label,
-                        "service_id": row.get("service_id"),
+                        "connector_id": row.get("connector_id"),
                         "station_name": station_name,
                     }
                 )
@@ -407,12 +406,12 @@ class SupabaseWriter:
             self.client.table("stations").upsert(updates, on_conflict="id").execute()
         return len(updates)
 
-    def mark_removed(self, seen_at: datetime, service_ids: Sequence[int]) -> None:
-        if not service_ids:
+    def mark_removed(self, seen_at: datetime, connector_ids: Sequence[int]) -> None:
+        if not connector_ids:
             return
         seen_at_value = seen_at.isoformat()
         self.client.table("stations").update({"removed_at": seen_at_value}).in_(
-            "service_id", list(service_ids)
+            "connector_id", list(connector_ids)
         ).is_("removed_at", "null").lt("last_seen_at", seen_at_value).execute()
 
 
@@ -488,16 +487,16 @@ def _chunked(values: Sequence[str], size: int) -> Iterable[Sequence[str]]:
 def _station_service_map_from_timeseries(
     client: UkAirClient,
     station_ids: Sequence[str],
-    service_ids: Sequence[str],
+    service_refs: Sequence[str],
     batch_size: int,
 ) -> Dict[str, str]:
     mapping: Dict[str, str] = {}
     if not station_ids:
         return mapping
-    service_list = list(service_ids) if service_ids else [None]
+    service_list = list(service_refs) if service_refs else [None]
     for chunk in _chunked(list(station_ids), batch_size):
-        for service_id in service_list:
-            series = client.timeseries(chunk, service_id=service_id)
+        for service_ref in service_list:
+            series = client.timeseries(chunk, service_ref=service_ref)
             for ts in series:
                 station = ts.get("station")
                 if isinstance(station, dict):
@@ -689,22 +688,23 @@ def main() -> None:
 
     if args.to_supabase:
         writer = SupabaseWriter()
-        service_ref_map = writer.upsert_services(services)
-        service_ids = list(service_ref_map.values())
+        connector_id = writer.upsert_connectors(services)
+        if connector_id is None:
+            raise RuntimeError("Failed to resolve connector id for UK-AIR SOS.")
         inserted = writer.upsert_stations(
             filtered,
-            service_ref_map,
+            connector_id,
             run_at,
             station_service_ref_map=station_service_ref_map,
             default_service_ref=default_service_ref,
         )
         LOG.info("Upserted %s stations into Supabase.", inserted)
-        backfilled = writer.backfill_station_names(service_ids)
+        backfilled = writer.backfill_station_names([connector_id])
         if backfilled:
             LOG.info("Backfilled station_name for %s stations.", backfilled)
         else:
             LOG.info("No station_name backfill needed.")
-        writer.mark_removed(run_at, service_ids)
+        writer.mark_removed(run_at, [connector_id])
 
         if not args.skip_metadata:
             station_ids = [
@@ -712,28 +712,36 @@ def main() -> None:
                 for s in filtered
                 if s.get("id") or (s.get("properties") or {}).get("id")
             ]
-            service_id = service_ids[0] if service_ids else None
             phenomena: Dict[str, Dict[str, Any]] = {}
             procedures: Dict[str, Dict[str, Any]] = {}
             offerings: Dict[str, Dict[str, Any]] = {}
             for chunk in _chunked(station_ids, args.metadata_batch_size):
-                series = client.timeseries(chunk, service_id=default_service_ref)
+                series = client.timeseries(chunk, service_ref=default_service_ref)
                 for ts in series:
                     _collect_reference(phenomena, ts.get("phenomenon"))
                     _collect_reference(procedures, ts.get("procedure"))
                     _collect_reference(offerings, ts.get("offering"))
             if phenomena:
                 LOG.info("Upserting phenomena: %s", len(phenomena))
-                if service_id is not None:
-                    writer.upsert_phenomena(phenomena.values(), service_id)
+                writer.upsert_phenomena(phenomena.values(), connector_id)
             if procedures:
                 LOG.info("Upserting procedures: %s", len(procedures))
-                if service_id is not None:
-                    writer.upsert_reference_table("procedures", "procedure_ref", procedures.values(), service_id)
+                writer.upsert_reference_table(
+                    "procedures",
+                    "procedure_ref",
+                    procedures.values(),
+                    connector_id,
+                    default_service_ref,
+                )
             if offerings:
                 LOG.info("Upserting offerings: %s", len(offerings))
-                if service_id is not None:
-                    writer.upsert_reference_table("offerings", "offering_ref", offerings.values(), service_id)
+                writer.upsert_reference_table(
+                    "offerings",
+                    "offering_ref",
+                    offerings.values(),
+                    connector_id,
+                    default_service_ref,
+                )
 
     if args.format == "csv":
         _write_csv(

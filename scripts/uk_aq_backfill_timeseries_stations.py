@@ -92,7 +92,8 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Backfill timeseries station/feature mappings from SOS.",
     )
-    parser.add_argument("--service-id", type=int, help="Filter to a service id.")
+    parser.add_argument("--connector-id", type=int, help="Filter to a connector id.")
+    parser.add_argument("--connector-code", help="Filter to a connector code.")
     parser.add_argument("--service-ref", help="Filter to a service ref.")
     parser.add_argument("--batch-size", type=int, default=200, help="Rows per fetch batch.")
     parser.add_argument("--limit", type=int, help="Maximum timeseries to process.")
@@ -100,15 +101,16 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def fetch_services(writer: SupabaseWriter) -> Dict[int, Dict[str, Any]]:
-    resp = writer.client.table("services").select("id,service_ref,service_url,label").execute()
+def fetch_connectors(writer: SupabaseWriter) -> Dict[int, Dict[str, Any]]:
+    resp = writer.client.table("connectors").select("id,connector_code,service_url,label").execute()
     rows = resp.data if hasattr(resp, "data") else resp.get("data")
     return {int(row["id"]): row for row in (rows or [])}
 
 
 def fetch_missing_timeseries(
     writer: SupabaseWriter,
-    service_id: Optional[int],
+    connector_id: Optional[int],
+    service_ref: Optional[str],
     batch_size: int,
     limit: Optional[int],
 ) -> List[Dict[str, Any]]:
@@ -117,13 +119,15 @@ def fetch_missing_timeseries(
     while True:
         query = (
             writer.client.table("timeseries")
-            .select("timeseries_ref,service_id,label")
+            .select("timeseries_ref,connector_id,service_ref,label")
             .is_("station_id", None)
             .order("id", desc=False)
             .range(offset, offset + batch_size - 1)
         )
-        if service_id is not None:
-            query = query.eq("service_id", service_id)
+        if connector_id is not None:
+            query = query.eq("connector_id", connector_id)
+        if service_ref is not None:
+            query = query.eq("service_ref", str(service_ref))
         resp = query.execute()
         batch = resp.data if hasattr(resp, "data") else resp.get("data")
         if not batch:
@@ -135,7 +139,9 @@ def fetch_missing_timeseries(
     return rows
 
 
-def fetch_station_label_map(writer: SupabaseWriter, service_id: int) -> Dict[str, List[int]]:
+def fetch_station_label_map(
+    writer: SupabaseWriter, connector_id: int, service_ref: str
+) -> Dict[str, List[int]]:
     label_map: Dict[str, List[int]] = {}
     offset = 0
     batch_size = 1000
@@ -143,7 +149,8 @@ def fetch_station_label_map(writer: SupabaseWriter, service_id: int) -> Dict[str
         resp = (
             writer.client.table("stations")
             .select("id,label")
-            .eq("service_id", service_id)
+            .eq("connector_id", connector_id)
+            .eq("service_ref", str(service_ref))
             .order("id", desc=False)
             .range(offset, offset + batch_size - 1)
             .execute()
@@ -249,7 +256,7 @@ def _resolve_uniform_value(values: Iterable[Optional[str]]) -> Optional[str]:
 
 
 def fetch_station_geometry_index(
-    writer: SupabaseWriter, service_id: int
+    writer: SupabaseWriter, connector_id: int, service_ref: str
 ) -> Tuple[Dict[str, List[Dict[str, Any]]], Dict[int, str]]:
     index: Dict[str, List[Dict[str, Any]]] = {}
     geometry_by_id: Dict[int, str] = {}
@@ -259,7 +266,8 @@ def fetch_station_geometry_index(
         resp = (
             writer.client.table("stations")
             .select("id,label,geometry,station_type,region")
-            .eq("service_id", service_id)
+            .eq("connector_id", connector_id)
+            .eq("service_ref", str(service_ref))
             .order("id", desc=False)
             .range(offset, offset + batch_size - 1)
             .execute()
@@ -340,51 +348,59 @@ def collect_categories(stations: Iterable[Dict[str, Any]]) -> List[Dict[str, Any
 def main() -> int:
     args = parse_args()
     created_log = CreatedStationsLog(_load_dropbox_config(None))
-    if args.service_id is not None and args.service_ref:
-        print("Use either --service-id or --service-ref, not both.", file=sys.stderr)
+    if args.connector_id is not None and args.connector_code:
+        print("Use either --connector-id or --connector-code, not both.", file=sys.stderr)
         return 1
 
     writer = SupabaseWriter()
-    services = fetch_services(writer)
-    if not services:
-        print("No services found in database.", file=sys.stderr)
+    connectors = fetch_connectors(writer)
+    if not connectors:
+        print("No connectors found in database.", file=sys.stderr)
         return 1
 
-    target_service_id = args.service_id
-    if args.service_ref:
-        matches = [sid for sid, row in services.items() if row.get("service_ref") == args.service_ref]
+    target_connector_id = args.connector_id
+    if args.connector_code:
+        matches = [
+            cid
+            for cid, row in connectors.items()
+            if row.get("connector_code") == args.connector_code
+        ]
         if not matches:
-            print(f"Service ref not found: {args.service_ref}", file=sys.stderr)
+            print(f"Connector code not found: {args.connector_code}", file=sys.stderr)
             return 1
-        target_service_id = matches[0]
+        target_connector_id = matches[0]
 
-    missing = fetch_missing_timeseries(writer, target_service_id, args.batch_size, args.limit)
+    missing = fetch_missing_timeseries(
+        writer, target_connector_id, args.service_ref, args.batch_size, args.limit
+    )
     if not missing:
         print("No timeseries rows missing station_id.")
         return 0
 
-    by_service: Dict[int, List[str]] = {}
-    label_by_ref: Dict[str, str] = {}
+    by_service: Dict[Tuple[int, str], List[str]] = {}
+    label_by_ref: Dict[Tuple[int, str, str], str] = {}
     for row in missing:
         ts_ref = row.get("timeseries_ref")
-        service_id = row.get("service_id")
-        if ts_ref is None or service_id is None:
+        connector_id = row.get("connector_id")
+        service_ref = row.get("service_ref")
+        if ts_ref is None or connector_id is None or not service_ref:
             continue
-        by_service.setdefault(int(service_id), []).append(str(ts_ref))
+        connector_id_int = int(connector_id)
+        service_ref_str = str(service_ref)
+        by_service.setdefault((connector_id_int, service_ref_str), []).append(str(ts_ref))
         label = row.get("label")
         if label:
-            label_by_ref[str(ts_ref)] = str(label)
+            label_by_ref[(connector_id_int, service_ref_str, str(ts_ref))] = str(label)
 
-    for service_id, ts_refs in by_service.items():
-        service = services.get(service_id) or {}
-        service_ref = service.get("service_ref")
-        base_url = (service.get("service_url") or UK_AIR_SOS_BASE_URL).rstrip("/")
-        if not service_ref:
-            print(f"Skipping service id {service_id}: missing service_ref.", file=sys.stderr)
-            continue
+    for (connector_id, service_ref), ts_refs in by_service.items():
+        connector = connectors.get(connector_id) or {}
+        base_url = (connector.get("service_url") or UK_AIR_SOS_BASE_URL).rstrip("/")
 
         client = UkAirClient(base_url=base_url)
-        print(f"Fetching timeseries details for service {service_ref} ({len(ts_refs)} rows).")
+        print(
+            "Fetching timeseries details for connector %s service_ref %s (%s rows)."
+            % (connector_id, service_ref, len(ts_refs))
+        )
 
         details_by_ref: Dict[str, Dict[str, Any]] = {}
         feature_payloads: List[Dict[str, Any]] = []
@@ -397,7 +413,7 @@ def main() -> int:
             feature_ref = _extract_ref_id(feature_payload) if feature_payload else None
             label = detail.get("label") if isinstance(detail, dict) else None
             if not label:
-                label = label_by_ref.get(ts_ref)
+                label = label_by_ref.get((connector_id, service_ref, ts_ref))
             if station_ref is None and label:
                 station_ref = _extract_station_ref_from_label(label)
             details_by_ref[ts_ref] = {
@@ -419,20 +435,28 @@ def main() -> int:
             for detail in details_by_ref.values()
             if detail.get("station_ref")
         }
-        station_id_map = writer.get_station_id_map(service_id, list(station_refs))
+        station_id_map = writer.get_station_id_map(connector_id, service_ref, list(station_refs))
         missing_station_refs = [ref for ref in station_refs if ref not in station_id_map]
         if missing_station_refs:
-            print(f"Refreshing stations for service {service_ref}.")
+            print(f"Refreshing stations for service_ref {service_ref}.")
             stations = client.stations(service_ref, bbox=None, region=None)
             if stations:
                 category_map = writer.upsert_reference_table(
                     "categories",
                     "category_ref",
                     collect_categories(stations),
-                    service_id,
+                    connector_id,
                 )
-                writer.upsert_stations(stations, service_id, category_map, bbox=UK_BBOX)
-                station_id_map = writer.get_station_id_map(service_id, list(station_refs))
+                writer.upsert_stations(
+                    stations,
+                    connector_id,
+                    service_ref,
+                    category_map,
+                    bbox=UK_BBOX,
+                )
+                station_id_map = writer.get_station_id_map(
+                    connector_id, service_ref, list(station_refs)
+                )
                 missing_station_refs = [ref for ref in station_refs if ref not in station_id_map]
         if missing_station_refs:
             print(f"Fetching {len(missing_station_refs)} stations by id for service {service_ref}.")
@@ -452,11 +476,23 @@ def main() -> int:
                     "categories",
                     "category_ref",
                     collect_categories(fetched),
-                    service_id,
+                    connector_id,
                 )
-                writer.upsert_stations(fetched, service_id, category_map, bbox=UK_BBOX)
-                station_id_map = writer.get_station_id_map(service_id, list(station_refs))
-        station_index, station_geometry_by_id = fetch_station_geometry_index(writer, service_id)
+                writer.upsert_stations(
+                    fetched,
+                    connector_id,
+                    service_ref,
+                    category_map,
+                    bbox=UK_BBOX,
+                )
+                station_id_map = writer.get_station_id_map(
+                    connector_id, service_ref, list(station_refs)
+                )
+        station_index, station_geometry_by_id = fetch_station_geometry_index(
+            writer,
+            connector_id,
+            service_ref,
+        )
         created_refs: Set[str] = set()
         created_rows: List[Dict[str, Any]] = []
         for detail in details_by_ref.values():
@@ -475,7 +511,8 @@ def main() -> int:
             if not seed:
                 continue
             row: Dict[str, Any] = {
-                "service_id": service_id,
+                "connector_id": connector_id,
+                "service_ref": service_ref,
                 "station_ref": station_ref_str,
                 "label": station_label,
                 "station_name": station_name,
@@ -490,16 +527,17 @@ def main() -> int:
         if created_rows:
             writer.client.table("stations").upsert(
                 created_rows,
-                on_conflict="service_id,station_ref",
+                on_conflict="connector_id,service_ref,station_ref",
                 returning="minimal",
             ).execute()
             print(
-                f"Created {len(created_rows)} station row(s) from timeseries labels (service {service_ref})."
+                "Created %s station row(s) from timeseries labels (service_ref %s)."
+                % (len(created_rows), service_ref)
             )
             for row in created_rows:
                 created_log.record(
                     {
-                        "service_id": service_id,
+                        "connector_id": connector_id,
                         "service_ref": service_ref,
                         "station_ref": row["station_ref"],
                         "label": row["label"],
@@ -512,7 +550,9 @@ def main() -> int:
                     }
                 )
                 print(f"Created station {row['station_ref']} ({row['label']}).")
-            station_id_map = writer.get_station_id_map(service_id, list(station_refs))
+            station_id_map = writer.get_station_id_map(
+                connector_id, service_ref, list(station_refs)
+            )
 
         feature_id_map: Dict[str, int] = {}
         if feature_payloads:
@@ -520,10 +560,11 @@ def main() -> int:
                 "features",
                 "feature_ref",
                 feature_payloads,
-                service_id,
+                connector_id,
+                service_ref,
             )
 
-        station_label_map = fetch_station_label_map(writer, service_id)
+        station_label_map = fetch_station_label_map(writer, connector_id, service_ref)
         updates: List[Dict[str, Any]] = []
         skipped = 0
         matched_by_label = 0
@@ -576,7 +617,8 @@ def main() -> int:
                     )
                 continue
             row: Dict[str, Any] = {
-                "service_id": service_id,
+                "connector_id": connector_id,
+                "service_ref": service_ref,
                 "timeseries_ref": ts_ref,
                 "label": label,
                 "station_id": station_id,
@@ -589,15 +631,15 @@ def main() -> int:
         if updates:
             writer.client.table("timeseries").upsert(
                 updates,
-                on_conflict="service_id,timeseries_ref",
+                on_conflict="connector_id,service_ref,timeseries_ref",
                 returning="minimal",
             ).execute()
             print(
-                "Updated %s timeseries rows for service %s (label matches %s, skipped %s)."
+                "Updated %s timeseries rows for service_ref %s (label matches %s, skipped %s)."
                 % (len(updates), service_ref, matched_by_label, skipped)
             )
         else:
-            print(f"No updates applied for service {service_ref} (skipped {skipped}).")
+            print(f"No updates applied for service_ref {service_ref} (skipped {skipped}).")
         if missing_samples:
             print("First 10 timeseries still missing station mapping:")
             for sample in missing_samples:

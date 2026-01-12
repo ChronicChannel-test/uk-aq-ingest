@@ -19,7 +19,7 @@ drop table if exists phenomena cascade;
 drop table if exists categories cascade;
 drop table if exists pm25_amct_sites cascade;
 drop table if exists pm25_population_exposure cascade;
-drop table if exists services cascade;
+drop table if exists connectors cascade;
 
 -- Views + helper tables from supabase/uk_air_quality_views.sql
 drop view if exists bristol_latest_pollutants cascade;

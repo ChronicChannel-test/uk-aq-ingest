@@ -1,46 +1,66 @@
 -- PurpleAir Schema for Supabase (PostgreSQL)
 -- Integrates with existing UK-AIR SOS structure
 
--- PurpleAir Service entry
-insert into services (id, label, service_url)
+-- PurpleAir connector entry
+insert into connectors (connector_code, label, service_url)
 values (
   'purpleair',
   'PurpleAir Community Sensor Network',
   'https://api.purpleair.com/v1'
-) on conflict (id) do nothing;
+) on conflict (connector_code) do nothing;
 
 -- PurpleAir Categories
-insert into categories (id, label, service_id)
-values 
-  ('purpleair_outdoor', 'Outdoor Sensor', 'purpleair'),
-  ('purpleair_indoor', 'Indoor Sensor', 'purpleair')
-on conflict (id) do nothing;
+insert into categories (category_ref, label, connector_id)
+select v.category_ref, v.label, c.id
+from (
+  values
+    ('purpleair_outdoor', 'Outdoor Sensor'),
+    ('purpleair_indoor', 'Indoor Sensor')
+) as v(category_ref, label)
+join connectors c
+  on c.connector_code = 'purpleair'
+on conflict (connector_id, category_ref) do nothing;
 
 -- PurpleAir Phenomena
-insert into phenomena (id, label, service_id)
-values 
-  ('pm25', 'PM2.5 Concentration', 'purpleair'),
-  ('pm10', 'PM10 Concentration', 'purpleair'),
-  ('temperature', 'Temperature', 'purpleair'),
-  ('humidity', 'Humidity', 'purpleair'),
-  ('pressure', 'Atmospheric Pressure', 'purpleair')
-on conflict (id) do nothing;
+insert into phenomena (label, connector_id)
+select v.label, c.id
+from (
+  values
+    ('PM2.5 Concentration'),
+    ('PM10 Concentration'),
+    ('Temperature'),
+    ('Humidity'),
+    ('Atmospheric Pressure')
+) as v(label)
+join connectors c
+  on c.connector_code = 'purpleair'
+on conflict do nothing;
 
 -- PurpleAir Offerings
-insert into offerings (id, label, service_id)
-values 
-  ('realtime', 'Real-time Data', 'purpleair'),
-  ('historical', 'Historical Data', 'purpleair')
-on conflict (id) do nothing;
+insert into offerings (offering_ref, label, service_ref, connector_id)
+select v.offering_ref, v.label, c.connector_code, c.id
+from (
+  values
+    ('realtime', 'Real-time Data'),
+    ('historical', 'Historical Data')
+) as v(offering_ref, label)
+join connectors c
+  on c.connector_code = 'purpleair'
+on conflict (connector_id, service_ref, offering_ref) do nothing;
 
 -- PurpleAir Procedures (sensor types)
-insert into procedures (id, label, raw_formats, service_id)
-values 
-  ('purpleair_pa2', 'PurpleAir PA-II', '{"json"}', 'purpleair'),
-  ('purpleair_flex', 'PurpleAir Flex', '{"json"}', 'purpleair'),
-  ('purpleair_zen', 'PurpleAir Zen', '{"json"}', 'purpleair'),
-  ('purpleair_touch', 'PurpleAir Touch', '{"json"}', 'purpleair')
-on conflict (id) do nothing;
+insert into procedures (procedure_ref, label, raw_formats, service_ref, connector_id)
+select v.procedure_ref, v.label, v.raw_formats, c.connector_code, c.id
+from (
+  values
+    ('purpleair_pa2', 'PurpleAir PA-II', '{"json"}'),
+    ('purpleair_flex', 'PurpleAir Flex', '{"json"}'),
+    ('purpleair_zen', 'PurpleAir Zen', '{"json"}'),
+    ('purpleair_touch', 'PurpleAir Touch', '{"json"}')
+) as v(procedure_ref, label, raw_formats)
+join connectors c
+  on c.connector_code = 'purpleair'
+on conflict (connector_id, service_ref, procedure_ref) do nothing;
 
 -- PurpleAir-specific sensor metadata table
 create table if not exists purpleair_sensors (
@@ -70,7 +90,7 @@ create table if not exists purpleair_sensors (
   date_created timestamptz,
   modified_at timestamptz default now(),
   geometry geography(Point, 4326) generated always as (st_point(longitude, latitude, 4326)) stored,
-  service_id text default 'purpleair' references services(id),
+  connector_id bigint references connectors(id),
   created_at timestamptz default now()
 );
 
@@ -160,7 +180,7 @@ select
   s.sensor_index::text as station_id,
   s.name as label,
   case when s.location_type = 0 then 'outdoor' when s.location_type = 1 then 'indoor' else 'unknown' end as station_type,
-  'purpleair' as service_id,
+  coalesce(s.connector_id, c.id) as connector_id,
   'pm25' as phenomenon_id,
   'μg/m³' as uom,
   o.observed_at,
@@ -180,6 +200,8 @@ join lateral (
   order by o1.observed_at desc 
   limit 1
 ) o on true
+left join connectors c
+  on c.connector_code = 'purpleair'
 where s.location_type = 0; -- Only outdoor sensors
 
 -- Note: Views cannot have RLS policies applied directly

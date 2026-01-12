@@ -39,7 +39,7 @@ set label = excluded.label,
 create or replace view bristol_latest_pollutants as
 with target_service as (
   select id
-  from services
+  from connectors
   where lower(label) like '%uk%' and lower(label) like '%air%'
   order by created_at asc
   limit 1
@@ -47,7 +47,7 @@ with target_service as (
 bristol_stations as (
   select stn.*
   from stations stn, target_service ts
-  where stn.service_id = ts.id
+  where stn.connector_id = ts.id
     and stn.geometry && ST_MakeEnvelope(-2.75, 51.30, -2.45, 51.55, 4326)
 ),
 latest as (

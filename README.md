@@ -19,7 +19,7 @@ SUPABASE_URL=your_supabase_url
 SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
 # Optional override (default shown)
 UK_AIR_SOS_BASE_URL=https://uk-air.defra.gov.uk/sos-ukair/api/v1
-# Optional override for the services label
+# Optional override for the service label
 UK_AIR_SOS_SERVICE_LABEL=UK-AIR-SOS
 # Legacy support: UK_AIR_BASE_URL, UK_AIR_SERVICE_LABEL, and UKAIR_BASE_URL also work
 ```
@@ -69,7 +69,7 @@ python3 scripts/uk_air_sos_ingest.py --backfill-2025 --chunk-days 14
 
 ## Notes
 - Filters are configurable in `scripts/uk_air_sos_ingest.py` (bbox, region, station type, pollutants).
-- The script upserts into `services`, `stations`, `timeseries`, `observations`, and reference tables.
+- The script upserts into `connectors`, `stations`, `timeseries`, `observations`, and reference tables.
 
 ## Edge function polling (optional)
 For continuous updates, deploy the Edge Function in `supabase/functions/ingest_uk_air_sos`.

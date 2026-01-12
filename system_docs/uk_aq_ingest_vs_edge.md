@@ -6,11 +6,11 @@ This project uses **two different ingestion paths** that serve different purpose
 
 **Purpose:** full discovery + data refresh.
 
-- Discovers services, stations, timeseries, phenomena, procedures, offerings.
+- Discovers SOS services, stations, timeseries, phenomena, procedures, offerings.
 - Creates/updates `timeseries` rows (including `timeseries_ref`, `station_id`, `phenomenon_id`).
 - Can backfill historical data and refresh recent data.
 - Writes:
-  - `stations`, `timeseries`, `observations`, `phenomena`, `procedures`, `offerings`, `categories`, `features`.
+  - `connectors`, `stations`, `timeseries`, `observations`, `phenomena`, `procedures`, `offerings`, `categories`, `features`.
 - Can upload raw payloads + logs to Dropbox (optional).
 - Runs locally or via GitHub Actions.
 
@@ -36,4 +36,3 @@ This project uses **two different ingestion paths** that serve different purpose
 - If `timeseries.station_id` is null, **run the ingest script** (`--discover`) to fix it.
 - If the web page shows `—` values, check that the edge function is running and that
   `timeseries.last_value` is being updated.
-

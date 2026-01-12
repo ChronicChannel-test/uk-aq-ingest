@@ -8,13 +8,13 @@ This document summarizes the schema defined in `supabase/uk_air_quality_schema.s
 
 ## Core reference tables
 - External identifiers that arrive as text (even if numeric) are stored as `*_ref`; all `*_id` columns are internal bigint keys.
-- `services`: SOS instances with bigint `id` (internal), `service_ref` (external), and `service_code` for filename prefixes, plus URL and polling fields (`poll_enabled`, `poll_interval_minutes`, `poll_window_hours`, `poll_timeseries_batch_size`, `stations_bbox_supported`, `timeseries_station_filter_supported`, `last_polled_at`).
-- `categories`: high-level grouping, per service.
-- `phenomena`: what is measured (pollutant/parameter), per service; includes optional `eionet_uri` + `notation`.
-- `offerings`: logical groupings, per service.
-- `features`: features of interest with geometry (Point, 4326), per service.
-- `procedures`: sensors/methods; optional raw_formats list, per service.
-- `stations`: monitoring sites; bigint `id` (internal) with `station_ref` (external), unique `(service_id, station_ref)`, plus lifecycle fields `first_seen_at`, `last_seen_at`, `removed_at`. Includes `station_name` as a cleaned display name and stores `la_code`/`la_version` and `pcon_code`/`pcon_version` for geography lookups.
+- `connectors`: network connectors with bigint `id` (internal) and `connector_code` for filename prefixes, plus URL and polling fields (`poll_enabled`, `poll_interval_minutes`, `poll_window_hours`, `poll_timeseries_batch_size`, `stations_bbox_supported`, `timeseries_station_filter_supported`, `last_polled_at`).
+- `categories`: high-level grouping, per connector.
+- `phenomena`: what is measured (pollutant/parameter), per connector; includes optional `eionet_uri` + `notation`.
+- `offerings`: logical groupings, per connector + `service_ref`.
+- `features`: features of interest with geometry (Point, 4326), per connector + `service_ref`.
+- `procedures`: sensors/methods; optional raw_formats list, per connector + `service_ref`.
+- `stations`: monitoring sites; bigint `id` (internal) with `station_ref` (external) and `service_ref` (remote SOS service id), unique `(connector_id, service_ref, station_ref)`, plus lifecycle fields `first_seen_at`, `last_seen_at`, `removed_at`. Includes `station_name` as a cleaned display name and stores `la_code`/`la_version` and `pcon_code`/`pcon_version` for geography lookups.
 
 ## Geography mapping tables
 - `la_boundaries`: Local Authority polygons (MultiPolygon, 4326) with `la_code` + `la_version` for assigning stations to LAs.
@@ -30,7 +30,7 @@ This document summarizes the schema defined in `supabase/uk_air_quality_schema.s
 - `uk_aq_fix_station_geometry_swapped()`: fixes stations with swapped lat/lon coordinates.
 
 ## Timeseries and metadata
-- `timeseries`: SOS timeseries metadata; bigint `id` (internal) with `timeseries_ref` (external) and `station_id` bigint FK.
+- `timeseries`: SOS timeseries metadata; bigint `id` (internal) with `timeseries_ref` (external), `service_ref`, and `station_id` bigint FK.
 - `reference_values`: optional reference lines attached to a timeseries (name, color, value).
 
 ## Observations
@@ -78,6 +78,6 @@ limit 10;
 
 ## Minimal ingestion flow
 1) Discover metadata from the SOS REST API: services, stations, timeseries (use `expanded=true` for richer fields).
-2) Upsert metadata into `services`, `stations`, `timeseries`, and related reference tables.
+2) Upsert metadata into `connectors`, `stations`, `timeseries`, and related reference tables.
 3) Fetch data via `/timeseries/{id}/getData` (format=tvp) and insert into `observations` (convert epoch ms to timestamptz).
 4) Store optional `referenceValues`, `status_intervals`, `rendering_hints`, and `extras` when present.

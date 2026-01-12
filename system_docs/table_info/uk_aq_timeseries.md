@@ -1,14 +1,15 @@
 # timeseries
 
-Metadata for each SOS timeseries. One row per unique series in a service.
+Metadata for each SOS timeseries. One row per unique series in a connector/service_ref.
 
 ## Fields
 - id: Internal bigint primary key (generated identity).
-- timeseries_ref: External SOS timeseries identifier (string), unique per service.
+- timeseries_ref: External SOS timeseries identifier (string), unique per service_ref.
 - label: Human-readable name for the series.
 - uom: Unit of measure for values (as provided by the service).
 - station_id: FK to `stations.id` for the monitoring site.
-- service_id: FK to `services.id` for the SOS instance.
+- connector_id: FK to `connectors.id` for the SOS connector.
+- service_ref: External SOS service identifier (string).
 - offering_id: FK to `offerings.id` (logical grouping) when provided.
 - feature_id: FK to `features.id` (feature of interest) when provided.
 - procedure_id: FK to `procedures.id` (sensor/method) when provided.
@@ -23,5 +24,5 @@ Metadata for each SOS timeseries. One row per unique series in a service.
 - created_at: Row creation timestamp (default now()).
 
 ## Notes
-- Uniqueness is enforced on (service_id, timeseries_ref).
+- Uniqueness is enforced on (connector_id, service_ref, timeseries_ref).
 - `last_value_at` and `last_value` are updated by the ingest process to track freshness.

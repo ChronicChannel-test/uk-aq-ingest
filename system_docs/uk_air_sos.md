@@ -23,7 +23,7 @@ Applied in `scripts/uk_air_sos_ingest.py`:
 5) Refresh recent observations for the last N hours (default 6h).
 
 ## Destination tables
-- `services`
+- `connectors`
 - `stations`
 - `timeseries`
 - `observations`
@@ -42,7 +42,7 @@ Applied in `scripts/uk_air_sos_ingest.py`:
 - Label format: `<eionet pollutant URI> <station_ref> - <station label>`
 
 ## IDs
-- `services`, `stations`, and `timeseries` use bigint `id` internally, with upstream identifiers stored in `service_ref`, `station_ref`, and `timeseries_ref`.
+- `connectors`, `stations`, and `timeseries` use bigint `id` internally, with upstream identifiers stored in `service_ref`, `station_ref`, and `timeseries_ref`.
 - Any upstream identifier that arrives as text (even if numeric) uses a `*_ref` column; internal joins always use bigint `*_id`.
 - `observations` references `timeseries.id`.
 
@@ -77,16 +77,16 @@ Env quick reference (Supabase blocks secrets prefixed with `SUPABASE_`):
 | GitHub Actions deploy | `SUPABASE_ACCESS_TOKEN`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_PROJECT_REF` (Secrets) | `UK_AIR_SOS_BASE_URL`, `UK_AIR_SOS_SERVICE_LABEL` (Secrets) |
 
 Request body options (JSON):
-- `service_id` or `service_label` (optional; defaults to `UK-AIR-SOS`)
-- `window_hours` (optional; defaults to `services.poll_window_hours` or 6)
+- `connector_id` (optional; defaults to the `uk_air_sos` connector)
+- `window_hours` (optional; defaults to `connectors.poll_window_hours` or 6)
 - `pollutants` (optional; array or comma-separated list)
 - `timeseries_ids` (optional; array or comma-separated list of timeseries_ref or internal id)
 - `timeseries_limit` (optional; integer)
 
-When `service_id` is provided, the function treats it as either a bigint internal id or `service_ref`, then uses `services.service_url` from the database.
-Environment variables are only a fallback for discovery or missing service rows.
+When `connector_id` is provided, the function uses `connectors.service_url` from the database.
+Environment variables are only a fallback for discovery or missing connector rows.
 
-If `timeseries_limit` is not provided, the function uses `services.poll_timeseries_batch_size` when set.
+If `timeseries_limit` is not provided, the function uses `connectors.poll_timeseries_batch_size` when set.
 
 Scheduling SQL lives in `supabase/uk_aq_polling_cron.sql` and uses `net.http_post` to invoke the function.
 The default schedule runs 5 minutes past each quarter-hour (:05, :20, :35, :50) to align with on-the-hour measurements.

@@ -12,9 +12,9 @@ Environment:
 - SUPABASE_SERVICE_ROLE_KEY
 - UK_AIR_SOS_BASE_URL (optional; defaults to https://uk-air.defra.gov.uk/sos-ukair/api/v1)
 - UK_AIR_SOS_SERVICE_LABEL (optional; defaults to UK-AIR-SOS)
-- services.poll_timeseries_batch_size (optional; overrides default batch size)
-- services.stations_bbox_supported (optional; when false, skip bbox for station discovery)
-- services.timeseries_station_filter_supported (optional; when false, skip station filtering for timeseries)
+- connectors.poll_timeseries_batch_size (optional; overrides default batch size)
+- connectors.stations_bbox_supported (optional; when false, skip bbox for station discovery)
+- connectors.timeseries_station_filter_supported (optional; when false, skip station filtering for timeseries)
 
 Examples:
   python scripts/uk_air_sos_ingest.py --discover --backfill-2025
@@ -64,7 +64,7 @@ UK_AIR_SOS_SERVICE_LABEL = (
     or os.getenv("UK_AIR_SERVICE_LABEL")
     or "UK-AIR-SOS"
 )
-UK_AIR_SOS_SERVICE_CODE = "uk_air_sos"
+UK_AIR_SOS_CONNECTOR_CODE = "uk_air_sos"
 
 UK_BBOX = {
     "west": -11.0,
@@ -85,9 +85,9 @@ DROPBOX_DELETE_URL = "https://api.dropboxapi.com/2/files/delete_v2"
 
 
 @dataclass(frozen=True)
-class ServiceContext:
+class ConnectorContext:
     id: int
-    ref: str
+    service_ref: str
     label: str
     service_url: str
 
@@ -184,7 +184,7 @@ class ErrorLogger:
         severity: str,
         message: str,
         context: Optional[Dict[str, Any]] = None,
-        service_id: Optional[int] = None,
+        connector_id: Optional[int] = None,
         station_id: Optional[int] = None,
         timeseries_id: Optional[int] = None,
         exc: Optional[BaseException] = None,
@@ -201,7 +201,7 @@ class ErrorLogger:
             "message": message,
             "stack": stack,
             "context": context,
-            "service_id": service_id,
+            "connector_id": connector_id,
             "station_id": station_id,
             "timeseries_id": timeseries_id,
         }
@@ -226,7 +226,7 @@ class ErrorLogger:
             "message": message,
             "stack": stack,
             "context": context,
-            "service_id": service_id,
+            "connector_id": connector_id,
             "station_id": station_id,
             "timeseries_id": timeseries_id,
         }
@@ -715,7 +715,7 @@ class UkAirClient:
 
     def stations(
         self,
-        service_id: str,
+        service_ref: str,
         bbox: Optional[Dict[str, float]] = None,
         region: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
@@ -725,7 +725,7 @@ class UkAirClient:
         params_options: List[Dict[str, Any]] = []
 
         def add_param_sets(expanded: Optional[str]) -> None:
-            base = {"service": service_id}
+            base = {"service": service_ref}
             if expanded:
                 base["expanded"] = expanded
             if bbox_param and region:
@@ -770,14 +770,14 @@ class UkAirClient:
 
     def timeseries(
         self,
-        service_id: str,
+        service_ref: str,
         station_ids: Optional[Sequence[str]],
         batch_size: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
         series: List[Dict[str, Any]] = []
         if station_ids is None:
             LOG.info("Fetching timeseries without station filter")
-            data = self.get("/timeseries", params={"service": service_id, "expanded": "true"})
+            data = self.get("/timeseries", params={"service": service_ref, "expanded": "true"})
             series.extend(_extract_list(data, ("timeseries", "data")))
         else:
             if not station_ids:
@@ -787,7 +787,7 @@ class UkAirClient:
                 size = DEFAULT_TIMESERIES_STATION_BATCH_SIZE
             LOG.info("Fetching timeseries for %s stations in batches of %s", len(station_ids), size)
             for chunk in _chunked(station_ids, size):
-                params: Dict[str, Any] = {"service": service_id, "expanded": "true"}
+                params: Dict[str, Any] = {"service": service_ref, "expanded": "true"}
                 for station_id in chunk:
                     params.setdefault("station", []).append(station_id)
                 data = self.get("/timeseries", params=params)
@@ -846,42 +846,26 @@ class SupabaseWriter:
             raise RuntimeError("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required.")
         self.client: Client = create_client(supabase_url, supabase_key)
 
-    def upsert_services(self, services: Iterable[Dict[str, Any]]) -> Dict[str, int]:
+    def upsert_connectors(self, services: Iterable[Dict[str, Any]]) -> Optional[int]:
         services_list = [svc for svc in services if isinstance(svc, dict)]
         if not services_list:
-            return {}
+            return None
         primary = services_list[0]
-        if primary.get("id") is None:
-            return {}
-        service_ref = str(primary.get("id"))
         payload = [
             {
-                "service_ref": service_ref,
-                "service_code": UK_AIR_SOS_SERVICE_CODE,
+                "connector_code": UK_AIR_SOS_CONNECTOR_CODE,
                 "label": _normalize_service_label(primary.get("label") or primary.get("name")),
                 "service_url": primary.get("serviceUrl") or primary.get("url") or UK_AIR_SOS_BASE_URL,
             }
         ]
-        self.client.table("services").upsert(payload, on_conflict="service_code").execute()
-        service_refs = [svc.get("id") for svc in services_list if svc.get("id") is not None]
-        return self.get_service_id_map(service_refs)
+        self.client.table("connectors").upsert(payload, on_conflict="connector_code").execute()
+        return self.get_connector_id()
 
-    def get_service_id_map(self, service_refs: Sequence[str]) -> Dict[str, int]:
-        mapping: Dict[str, int] = {}
-        if not service_refs:
-            return mapping
-        service_id = self.get_service_id()
-        if service_id is None:
-            return mapping
-        for service_ref in service_refs:
-            mapping[str(service_ref)] = service_id
-        return mapping
-
-    def get_service_id(self) -> Optional[int]:
+    def get_connector_id(self) -> Optional[int]:
         resp = (
-            self.client.table("services")
+            self.client.table("connectors")
             .select("id")
-            .eq("service_code", UK_AIR_SOS_SERVICE_CODE)
+            .eq("connector_code", UK_AIR_SOS_CONNECTOR_CODE)
             .limit(1)
             .execute()
         )
@@ -896,16 +880,16 @@ class SupabaseWriter:
         except (TypeError, ValueError):
             return None
 
-    def get_service_settings(self, service_id: int) -> Dict[str, Optional[object]]:
+    def get_connector_settings(self, connector_id: int) -> Dict[str, Optional[object]]:
         try:
             resp = (
-                self.client.table("services")
+                self.client.table("connectors")
                 .select("poll_timeseries_batch_size,stations_bbox_supported,timeseries_station_filter_supported")
-                .eq("id", service_id)
+                .eq("id", connector_id)
                 .execute()
             )
         except Exception as exc:
-            LOG.warning("Failed to read services settings: %s", exc)
+            LOG.warning("Failed to read connectors settings: %s", exc)
             return {
                 "poll_timeseries_batch_size": None,
                 "stations_bbox_supported": None,
@@ -953,7 +937,8 @@ class SupabaseWriter:
         table: str,
         ref_key: str,
         items: Iterable[Dict[str, Any]],
-        service_id: int,
+        connector_id: int,
+        service_ref: Optional[str] = None,
     ) -> Dict[str, int]:
         payload_by_ref: Dict[str, Dict[str, Any]] = {}
         for item in items:
@@ -972,18 +957,26 @@ class SupabaseWriter:
             row: Dict[str, Any] = {
                 ref_key: ref_value,
                 "label": label,
-                "service_id": service_id,
+                "connector_id": connector_id,
             }
+            if service_ref is not None:
+                row["service_ref"] = str(service_ref)
             payload_by_ref.setdefault(ref_value, row)
         payload = list(payload_by_ref.values())
         if payload:
-            self.client.table(table).upsert(payload, on_conflict=f"service_id,{ref_key}").execute()
-        return self.get_ref_id_map(table, ref_key, list(payload_by_ref.keys()), service_id)
+            conflict_keys = ["connector_id"]
+            if service_ref is not None:
+                conflict_keys.append("service_ref")
+            conflict_keys.append(ref_key)
+            self.client.table(table).upsert(payload, on_conflict=",".join(conflict_keys)).execute()
+        return self.get_ref_id_map(
+            table, ref_key, list(payload_by_ref.keys()), connector_id, service_ref
+        )
 
     def upsert_phenomena(
         self,
         items: Iterable[Dict[str, Any]],
-        service_id: int,
+        connector_id: int,
     ) -> Dict[str, int]:
         payload_by_uri: Dict[str, Dict[str, Any]] = {}
         for item in items:
@@ -1001,7 +994,7 @@ class SupabaseWriter:
                     "eionet_uri": uri_value,
                     "label": label,
                     "notation": notation,
-                    "service_id": service_id,
+                    "connector_id": connector_id,
                 }
                 payload_by_uri[uri_value] = row
                 continue
@@ -1011,27 +1004,30 @@ class SupabaseWriter:
                 row["notation"] = notation
         payload = list(payload_by_uri.values())
         if payload:
-            self.client.table("phenomena").upsert(payload, on_conflict="service_id,eionet_uri").execute()
-        return self.get_phenomena_id_map(list(payload_by_uri.keys()), service_id)
+            self.client.table("phenomena").upsert(payload, on_conflict="connector_id,eionet_uri").execute()
+        return self.get_phenomena_id_map(list(payload_by_uri.keys()), connector_id)
 
     def get_ref_id_map(
         self,
         table: str,
         ref_key: str,
         refs: Sequence[str],
-        service_id: int,
+        connector_id: int,
+        service_ref: Optional[str] = None,
     ) -> Dict[str, int]:
         mapping: Dict[str, int] = {}
         if not refs:
             return mapping
         for chunk in _chunked(list(refs), 500):
-            resp = (
+            query = (
                 self.client.table(table)
                 .select(f"id,{ref_key}")
-                .eq("service_id", service_id)
+                .eq("connector_id", connector_id)
                 .in_(ref_key, chunk)
-                .execute()
             )
+            if service_ref is not None:
+                query = query.eq("service_ref", str(service_ref))
+            resp = query.execute()
             rows = resp.data if hasattr(resp, "data") else resp.get("data")
             if not rows:
                 continue
@@ -1039,7 +1035,7 @@ class SupabaseWriter:
                 mapping[str(row[ref_key])] = int(row["id"])
         return mapping
 
-    def get_phenomena_id_map(self, eionet_uris: Sequence[str], service_id: int) -> Dict[str, int]:
+    def get_phenomena_id_map(self, eionet_uris: Sequence[str], connector_id: int) -> Dict[str, int]:
         mapping: Dict[str, int] = {}
         if not eionet_uris:
             return mapping
@@ -1047,7 +1043,7 @@ class SupabaseWriter:
             resp = (
                 self.client.table("phenomena")
                 .select("id,eionet_uri")
-                .eq("service_id", service_id)
+                .eq("connector_id", connector_id)
                 .in_("eionet_uri", chunk)
                 .execute()
             )
@@ -1062,7 +1058,8 @@ class SupabaseWriter:
     def upsert_stations(
         self,
         stations: Iterable[Dict[str, Any]],
-        service_id: int,
+        connector_id: int,
+        service_ref: str,
         category_id_map: Optional[Dict[str, int]] = None,
         bbox: Optional[Dict[str, float]] = None,
     ) -> None:
@@ -1094,17 +1091,21 @@ class SupabaseWriter:
                         if lon is not None and lat is not None
                         else None
                     ),
-                    "service_id": service_id,
+                    "connector_id": connector_id,
+                    "service_ref": str(service_ref),
                     "category_id": category_id,
                 }
             )
         if rows:
-            self.client.table("stations").upsert(rows, on_conflict="service_id,station_ref").execute()
+            self.client.table("stations").upsert(
+                rows, on_conflict="connector_id,service_ref,station_ref"
+            ).execute()
 
     def upsert_timeseries(
         self,
         series: Iterable[Dict[str, Any]],
-        service_id: int,
+        connector_id: int,
+        service_ref: str,
         station_id_map: Dict[str, int],
         category_id_map: Dict[str, int],
         feature_id_map: Dict[str, int],
@@ -1151,7 +1152,8 @@ class SupabaseWriter:
                     "label": ts.get("label"),
                     "uom": ts.get("uom"),
                     "station_id": station_db_id,
-                    "service_id": service_id,
+                    "connector_id": connector_id,
+                    "service_ref": str(service_ref),
                     "offering_id": offering_id_map.get(str(offering_ref)) if offering_ref is not None else None,
                     "feature_id": feature_id_map.get(str(feature_ref)) if feature_ref is not None else None,
                     "procedure_id": procedure_id_map.get(str(procedure_ref)) if procedure_ref is not None else None,
@@ -1167,16 +1169,22 @@ class SupabaseWriter:
             )
         rows = [row for row in rows if row.get("timeseries_ref")]
         if rows:
-            self.client.table("timeseries").upsert(rows, on_conflict="service_id,timeseries_ref").execute()
+            self.client.table("timeseries").upsert(
+                rows, on_conflict="connector_id,service_ref,timeseries_ref"
+            ).execute()
         return label_match_count
 
-    def get_station_id_map(self, service_id: int, station_refs: Sequence[str]) -> Dict[str, int]:
-        return self.get_ref_id_map("stations", "station_ref", station_refs, service_id)
+    def get_station_id_map(
+        self, connector_id: int, service_ref: str, station_refs: Sequence[str]
+    ) -> Dict[str, int]:
+        return self.get_ref_id_map("stations", "station_ref", station_refs, connector_id, service_ref)
 
-    def get_timeseries_id_map(self, service_id: int, timeseries_refs: Sequence[str]) -> Dict[str, int]:
-        return self.get_ref_id_map("timeseries", "timeseries_ref", timeseries_refs, service_id)
+    def get_timeseries_id_map(
+        self, connector_id: int, service_ref: str, timeseries_refs: Sequence[str]
+    ) -> Dict[str, int]:
+        return self.get_ref_id_map("timeseries", "timeseries_ref", timeseries_refs, connector_id, service_ref)
 
-    def get_station_label_map(self, service_id: int) -> Dict[str, List[int]]:
+    def get_station_label_map(self, connector_id: int, service_ref: str) -> Dict[str, List[int]]:
         label_map: Dict[str, List[int]] = {}
         offset = 0
         batch_size = 1000
@@ -1184,7 +1192,8 @@ class SupabaseWriter:
             resp = (
                 self.client.table("stations")
                 .select("id,label")
-                .eq("service_id", service_id)
+                .eq("connector_id", connector_id)
+                .eq("service_ref", str(service_ref))
                 .order("id", desc=False)
                 .range(offset, offset + batch_size - 1)
                 .execute()
@@ -1209,7 +1218,7 @@ class SupabaseWriter:
         return label_map
 
     def get_station_label_geometry_map(
-        self, service_id: int
+        self, connector_id: int, service_ref: str
     ) -> Tuple[Dict[str, List[int]], Dict[int, str]]:
         label_map: Dict[str, List[int]] = {}
         geometry_by_id: Dict[int, str] = {}
@@ -1219,7 +1228,8 @@ class SupabaseWriter:
             resp = (
                 self.client.table("stations")
                 .select("id,label,geometry")
-                .eq("service_id", service_id)
+                .eq("connector_id", connector_id)
+                .eq("service_ref", str(service_ref))
                 .order("id", desc=False)
                 .range(offset, offset + batch_size - 1)
                 .execute()
@@ -1247,7 +1257,7 @@ class SupabaseWriter:
         return label_map, geometry_by_id
 
     def get_station_geometry_index(
-        self, service_id: int
+        self, connector_id: int, service_ref: str
     ) -> Dict[str, List[Dict[str, Any]]]:
         index: Dict[str, List[Dict[str, Any]]] = {}
         offset = 0
@@ -1256,7 +1266,8 @@ class SupabaseWriter:
             resp = (
                 self.client.table("stations")
                 .select("id,label,geometry,station_type,region")
-                .eq("service_id", service_id)
+                .eq("connector_id", connector_id)
+                .eq("service_ref", str(service_ref))
                 .order("id", desc=False)
                 .range(offset, offset + batch_size - 1)
                 .execute()
@@ -1358,7 +1369,7 @@ class UkAirIngestor:
         exc: BaseException,
         *,
         context: Optional[Dict[str, Any]] = None,
-        service_id: Optional[int] = None,
+        connector_id: Optional[int] = None,
         station_id: Optional[int] = None,
         timeseries_id: Optional[int] = None,
     ) -> None:
@@ -1369,7 +1380,7 @@ class UkAirIngestor:
             severity="error",
             message=message,
             context=context,
-            service_id=service_id,
+            connector_id=connector_id,
             station_id=station_id,
             timeseries_id=timeseries_id,
             exc=exc,
@@ -1379,7 +1390,7 @@ class UkAirIngestor:
         self,
         preferred_ref: Optional[str],
         preferred_label: Optional[str],
-    ) -> ServiceContext:
+    ) -> ConnectorContext:
         services = self.client.services()
         if not services:
             raise RuntimeError("No services returned from UK-AIR SOS.")
@@ -1406,27 +1417,34 @@ class UkAirIngestor:
                     break
         if not chosen:
             chosen = services[0]
-        service_map = self.writer.upsert_services([chosen])
-        service_ref = str(chosen.get("id"))
-        service_id = service_map.get(service_ref)
-        if not service_id:
-            service_id = self.writer.get_service_id_map([service_ref]).get(service_ref)
-        if not service_id:
-            raise RuntimeError(f"Failed to resolve service id for ref {service_ref}.")
+        connector_id = self.writer.upsert_connectors([chosen])
+        if connector_id is None:
+            connector_id = self.writer.get_connector_id()
+        if connector_id is None:
+            raise RuntimeError("Failed to resolve connector id for uk_air_sos.")
+        raw_service_ref = chosen.get("id")
+        if raw_service_ref is None:
+            raise RuntimeError("Selected SOS service is missing an id.")
+        service_ref = str(raw_service_ref)
         label = _normalize_service_label(chosen.get("label") or chosen.get("name")) or UK_AIR_SOS_SERVICE_LABEL
         service_url = chosen.get("serviceUrl") or chosen.get("url") or UK_AIR_SOS_BASE_URL
-        return ServiceContext(id=service_id, ref=service_ref, label=label, service_url=service_url)
+        return ConnectorContext(
+            id=connector_id,
+            service_ref=service_ref,
+            label=label,
+            service_url=service_url,
+        )
 
     def discover_stations(
         self,
-        service: ServiceContext,
+        connector: ConnectorContext,
         bbox: Optional[Dict[str, float]],
         region: Optional[str],
         station_types: Optional[Sequence[str]],
         allow_missing_coords: bool,
         station_like: Optional[str],
     ) -> List[Dict[str, Any]]:
-        raw_stations = self.client.stations(service.ref, bbox=bbox, region=region)
+        raw_stations = self.client.stations(connector.service_ref, bbox=bbox, region=region)
         stations = []
         for stn in raw_stations:
             if bbox or region:
@@ -1457,20 +1475,26 @@ class UkAirIngestor:
             "categories",
             "category_ref",
             category_items,
-            service.id,
+            connector.id,
         )
-        self.writer.upsert_stations(stations, service.id, category_map, bbox=bbox)
+        self.writer.upsert_stations(
+            stations,
+            connector.id,
+            connector.service_ref,
+            category_map,
+            bbox=bbox,
+        )
         return stations
 
     def discover_timeseries(
         self,
-        service: ServiceContext,
+        connector: ConnectorContext,
         station_refs: Optional[Sequence[str]],
         pollutants: Optional[Sequence[str]],
         batch_size: Optional[int],
         sample_count: int,
     ) -> List[Dict[str, Any]]:
-        series = self.client.timeseries(service.ref, station_refs, batch_size=batch_size)
+        series = self.client.timeseries(connector.service_ref, station_refs, batch_size=batch_size)
         LOG.info("Timeseries fetched: %s", len(series))
         resolver = EionetPollutantResolver()
         for ts in series:
@@ -1493,31 +1517,34 @@ class UkAirIngestor:
             filtered = series
         phenomenon_map = self.writer.upsert_phenomena(
             (ts.get("phenomenon") or {} for ts in filtered),
-            service.id,
+            connector.id,
         )
         procedure_map = self.writer.upsert_reference_table(
             "procedures",
             "procedure_ref",
             (ts.get("procedure") or {} for ts in filtered),
-            service.id,
+            connector.id,
+            connector.service_ref,
         )
         offering_map = self.writer.upsert_reference_table(
             "offerings",
             "offering_ref",
             (ts.get("offering") or {} for ts in filtered),
-            service.id,
+            connector.id,
+            connector.service_ref,
         )
         feature_map = self.writer.upsert_reference_table(
             "features",
             "feature_ref",
             _timeseries_feature_items(filtered),
-            service.id,
+            connector.id,
+            connector.service_ref,
         )
         category_map = self.writer.upsert_reference_table(
             "categories",
             "category_ref",
             (ts.get("category") or {} for ts in filtered),
-            service.id,
+            connector.id,
         )
         station_refs_to_map: List[str] = []
         if station_refs is not None:
@@ -1532,7 +1559,9 @@ class UkAirIngestor:
                 if station_value is not None:
                     station_refs_to_map.append(str(station_value))
         station_refs_to_map = list(dict.fromkeys(station_refs_to_map))
-        station_id_map = self.writer.get_station_id_map(service.id, station_refs_to_map)
+        station_id_map = self.writer.get_station_id_map(
+            connector.id, connector.service_ref, station_refs_to_map
+        )
         missing_refs: List[str] = [
             ref for ref in station_refs_to_map if ref not in station_id_map
         ]
@@ -1542,7 +1571,7 @@ class UkAirIngestor:
                 len(missing_refs),
             )
             extra_stations: List[Dict[str, Any]] = self.client.stations(
-                service.ref,
+                connector.service_ref,
                 bbox=None,
                 region=None,
             )
@@ -1557,15 +1586,18 @@ class UkAirIngestor:
                     "categories",
                     "category_ref",
                     extra_categories,
-                    service.id,
+                    connector.id,
                 )
                 self.writer.upsert_stations(
                     extra_stations,
-                    service.id,
+                    connector.id,
+                    connector.service_ref,
                     extra_category_map,
                     bbox=UK_BBOX,
                 )
-                station_id_map = self.writer.get_station_id_map(service.id, station_refs_to_map)
+                station_id_map = self.writer.get_station_id_map(
+                    connector.id, connector.service_ref, station_refs_to_map
+                )
                 still_missing = [ref for ref in station_refs_to_map if ref not in station_id_map]
                 if still_missing:
                     LOG.warning(
@@ -1588,16 +1620,17 @@ class UkAirIngestor:
                             "categories",
                             "category_ref",
                             fetched_categories,
-                            service.id,
+                            connector.id,
                         )
                         self.writer.upsert_stations(
                             fetched,
-                            service.id,
+                            connector.id,
+                            connector.service_ref,
                             fetched_category_map,
                             bbox=UK_BBOX,
                         )
                         station_id_map = self.writer.get_station_id_map(
-                            service.id, station_refs_to_map
+                            connector.id, connector.service_ref, station_refs_to_map
                         )
                         still_missing = [ref for ref in station_refs_to_map if ref not in station_id_map]
                     if still_missing:
@@ -1607,7 +1640,10 @@ class UkAirIngestor:
                         )
             else:
                 LOG.warning("Station refresh returned no rows; missing station IDs may remain.")
-        station_index = self.writer.get_station_geometry_index(service.id)
+        station_index = self.writer.get_station_geometry_index(
+            connector.id,
+            connector.service_ref,
+        )
         created_rows = []
         for ref in station_refs_to_map:
             if ref in station_id_map:
@@ -1630,7 +1666,8 @@ class UkAirIngestor:
             if not seed:
                 continue
             row = {
-                "service_id": service.id,
+                "connector_id": connector.id,
+                "service_ref": connector.service_ref,
                 "station_ref": ref,
                 "label": station_label,
                 "station_name": station_name,
@@ -1644,31 +1681,34 @@ class UkAirIngestor:
         if created_rows:
             self.writer.client.table("stations").upsert(
                 created_rows,
-                on_conflict="service_id,station_ref",
+                on_conflict="connector_id,service_ref,station_ref",
                 returning="minimal",
             ).execute()
             LOG.info(
-                "Created %s station row(s) from timeseries labels (service_id=%s ref=%s).",
+                "Created %s station row(s) from timeseries labels (connector_id=%s service_ref=%s).",
                 len(created_rows),
-                service.id,
-                service.ref,
+                connector.id,
+                connector.service_ref,
             )
             for row in created_rows:
                 LOG.info(
-                    "Created station row (service_id=%s ref=%s station_ref=%s label=%s geometry=%s).",
-                    service.id,
-                    service.ref,
+                    "Created station row (connector_id=%s service_ref=%s station_ref=%s label=%s geometry=%s).",
+                    connector.id,
+                    connector.service_ref,
                     row.get("station_ref"),
                     row.get("label"),
                     row.get("geometry"),
                 )
-            station_id_map = self.writer.get_station_id_map(service.id, station_refs_to_map)
+            station_id_map = self.writer.get_station_id_map(
+                connector.id, connector.service_ref, station_refs_to_map
+            )
         station_label_map, station_geometry_by_id = self.writer.get_station_label_geometry_map(
-            service.id
+            connector.id, connector.service_ref
         )
         label_matches = self.writer.upsert_timeseries(
             filtered,
-            service.id,
+            connector.id,
+            connector.service_ref,
             station_id_map,
             category_map,
             feature_map,
@@ -1680,14 +1720,16 @@ class UkAirIngestor:
         )
         if label_matches:
             LOG.info(
-                "Assigned station_id via label fallback for %s timeseries rows (service_id=%s ref=%s label=%s).",
+                "Assigned station_id via label fallback for %s timeseries rows (connector_id=%s service_ref=%s label=%s).",
                 label_matches,
-                service.id,
-                service.ref,
-                service.label,
+                connector.id,
+                connector.service_ref,
+                connector.label,
             )
         timeseries_id_map = self.writer.get_timeseries_id_map(
-            service.id, [str(ts.get("id")) for ts in filtered if ts.get("id")]
+            connector.id,
+            connector.service_ref,
+            [str(ts.get("id")) for ts in filtered if ts.get("id")],
         )
         for ts in filtered:
             ts_ref = ts.get("id")
@@ -1701,7 +1743,7 @@ class UkAirIngestor:
         series: Sequence[Dict[str, Any]],
         year: int,
         chunk_days: int = 31,
-        service_id: Optional[int] = None,
+        connector_id: Optional[int] = None,
     ) -> int:
         errors = 0
         start = datetime(year, 1, 1, tzinfo=timezone.utc)
@@ -1734,7 +1776,7 @@ class UkAirIngestor:
                     "Backfill failed for timeseries.",
                     exc,
                     context={"timeseries_ref": ts_ref, "year": year},
-                    service_id=service_id,
+                    connector_id=connector_id,
                     timeseries_id=ts_db_id,
                 )
             _progress_tick(idx, total)
@@ -1745,7 +1787,7 @@ class UkAirIngestor:
         self,
         series: Sequence[Dict[str, Any]],
         hours: int = 6,
-        service_id: Optional[int] = None,
+        connector_id: Optional[int] = None,
     ) -> int:
         errors = 0
         window_start = utcnow() - timedelta(hours=hours)
@@ -1776,7 +1818,7 @@ class UkAirIngestor:
                     "Refresh failed for timeseries.",
                     exc,
                     context={"timeseries_ref": ts_ref, "window_hours": hours},
-                    service_id=service_id,
+                    connector_id=connector_id,
                     timeseries_id=ts_db_id,
                 )
             _progress_tick(idx, total)
@@ -2619,25 +2661,28 @@ def main() -> None:
             if pollutants and len(pollutants) == 1 and pollutants[0].lower() in {"all", "*"}:
                 pollutants = None
 
-        service = ingestor.discover_service(args.service_ref, args.service_label)
-        settings = writer.get_service_settings(service.id)
+        connector = ingestor.discover_service(args.service_ref, args.service_label)
+        settings = writer.get_connector_settings(connector.id)
         batch_size = settings.get("poll_timeseries_batch_size")
         bbox_supported = settings.get("stations_bbox_supported")
         station_filter_supported = settings.get("timeseries_station_filter_supported")
         if batch_size is not None:
-            LOG.info("Using timeseries batch size from services: %s", batch_size)
+            LOG.info("Using timeseries batch size from connectors: %s", batch_size)
         if bbox_supported is False:
             bbox = None
-            LOG.info("Skipping bbox for service id %s (stations_bbox_supported=false)", service.id)
+            LOG.info(
+                "Skipping bbox for connector id %s (stations_bbox_supported=false)",
+                connector.id,
+            )
         if station_filter_supported is False:
             LOG.info(
-                "Skipping station filter for service id %s (timeseries_station_filter_supported=false)",
-                service.id,
+                "Skipping station filter for connector id %s (timeseries_station_filter_supported=false)",
+                connector.id,
             )
         LOG.info(
-            "Using service id: %s ref=%s (bbox=%s region=%s station_like=%s station_types=%s pollutants=%s)",
-            service.id,
-            service.ref,
+            "Using connector id: %s service_ref=%s (bbox=%s region=%s station_like=%s station_types=%s pollutants=%s)",
+            connector.id,
+            connector.service_ref,
             bbox,
             region,
             station_like,
@@ -2649,9 +2694,9 @@ def main() -> None:
             raw_session.recorder.record_event(
                 "context",
                 {
-                    "service_id": service.id,
-                    "service_ref": service.ref,
-                    "service_label": service.label,
+                    "connector_id": connector.id,
+                    "service_ref": connector.service_ref,
+                    "service_label": connector.label,
                     "bbox": bbox,
                     "region": region,
                     "station_like": station_like,
@@ -2663,7 +2708,7 @@ def main() -> None:
             )
 
         stations = ingestor.discover_stations(
-            service,
+            connector,
             bbox,
             region,
             station_types,
@@ -2679,7 +2724,7 @@ def main() -> None:
         if not station_refs:
             LOG.debug("No stations discovered for the given filters.")
         series = ingestor.discover_timeseries(
-            service,
+            connector,
             None if station_filter_supported is False else station_refs,
             pollutants,
             batch_size,
@@ -2692,10 +2737,10 @@ def main() -> None:
                 series,
                 backfill_year,
                 chunk_days=args.chunk_days,
-                service_id=service.id,
+                connector_id=connector.id,
             )
         if args.refresh_recent:
-            errors += ingestor.refresh_recent(series, hours=args.hours, service_id=service.id)
+            errors += ingestor.refresh_recent(series, hours=args.hours, connector_id=connector.id)
         if not any([args.discover, backfill_year, args.refresh_recent]):
             LOG.debug("No action flags set; use --discover, --backfill-year, or --refresh-recent.")
     except Exception as exc:

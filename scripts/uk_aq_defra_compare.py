@@ -280,7 +280,12 @@ def build_supabase_client() -> Client:
 
 
 def load_station(client: Client, station_ref: str) -> Dict[str, str]:
-    resp = client.table("stations").select("id,label,station_ref,service_id").eq("station_ref", station_ref).execute()
+    resp = (
+        client.table("stations")
+        .select("id,label,station_ref,connector_id,service_ref")
+        .eq("station_ref", station_ref)
+        .execute()
+    )
     data = resp.data if hasattr(resp, "data") else resp.get("data")
     if not data:
         raise RuntimeError(f"Station {station_ref} not found in Supabase.")

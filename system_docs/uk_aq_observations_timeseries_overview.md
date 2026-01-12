@@ -5,10 +5,10 @@ This note describes how the `timeseries` and `observations` tables work, how to 
 ## What the tables represent
 
 ### `timeseries`
-- Stores metadata for each unique measurement series coming from an SOS service (one row per series).
+- Stores metadata for each unique measurement series coming from an SOS service_ref (one row per series).
 - Each series is tied to a monitoring site via `timeseries.station_id` (FK → `stations.id`).
 - Series identify a pollutant/parameter via `timeseries.phenomenon_id` and include units, labels, and raw metadata.
-- The pair `(service_id, timeseries_ref)` is unique, so each external SOS series maps to exactly one row.
+- The pair `(connector_id, service_ref, timeseries_ref)` is unique, so each external SOS series maps to exactly one row.
 
 ### `observations`
 - Stores the actual time-value measurements for each series.
@@ -79,7 +79,7 @@ order by obs.observed_at desc;
 ## Ingestion flow (how data gets there)
 
 The typical ingest sequence is:
-1) Discover services and stations.
+1) Discover SOS services and stations.
 2) Fetch timeseries metadata (with `expanded=true`).
 3) Backfill or poll `/timeseries/{id}/getData` from the SOS API.
 4) Upsert into `observations` keyed by `(timeseries_id, observed_at)`.

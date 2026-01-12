@@ -28,13 +28,13 @@ def test_live_stations_and_timeseries_and_data():
     client = UkAirClient()
     services = client.services()
     assert services, "No services returned"
-    service_id = str(services[0].get("id"))
+    service_ref = str(services[0].get("id"))
 
-    stations = client.stations(service_id, bbox=None, region=None)
+    stations = client.stations(service_ref, bbox=None, region=None)
     assert stations, "No stations returned"
 
     # Fetch timeseries without station filter to avoid API 400s
-    ts_payload = client.timeseries(service_id, station_ids=None, batch_size=10)
+    ts_payload = client.timeseries(service_ref, station_ids=None, batch_size=10)
     assert ts_payload, "No timeseries returned"
 
     ts_id = ts_payload[0].get("id")

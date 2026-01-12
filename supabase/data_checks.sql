@@ -1,15 +1,15 @@
 -- Data checks for UK AQ Supabase tables.
 -- Use this file to sanity-check ingest and geometry coverage.
 
--- Services and station counts per service.
+-- Connectors and station counts per connector.
 select
   svc.id,
-  svc.service_ref,
+  svc.connector_code,
   svc.label,
   count(stn.id) as station_count
-from services svc
-left join stations stn on stn.service_id = svc.id
-group by svc.id, svc.service_ref, svc.label
+from connectors svc
+left join stations stn on stn.connector_id = svc.id
+group by svc.id, svc.connector_code, svc.label
 order by station_count desc;
 
 -- Stations: total, with geometry, and missing geometry.

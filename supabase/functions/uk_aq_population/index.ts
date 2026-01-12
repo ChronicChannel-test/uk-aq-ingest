@@ -1,9 +1,10 @@
 // @ts-nocheck
+// Deployment touchpoint: change triggers edge deploy workflow.
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 
-const DEFAULT_PAGE_SIZE = 1000;
-const MAX_PAGE_SIZE = 5000;
+const DEFAULT_LIMIT = 2000;
 const MAX_LIMIT = 20000;
+const POPULATION_VIEW = "uk_population_observations";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")
   ?? Deno.env.get("SB_SUPABASE_URL")
@@ -69,81 +70,56 @@ serve(async (req) => {
   }
 
   const url = new URL(req.url);
-  const connectorId = normalizeText(url.searchParams.get("connector_id"));
-  const region = normalizeText(url.searchParams.get("region"));
-  const stationLike = normalizeText(url.searchParams.get("station_like"));
-  const targetLimit = parseLimit(url.searchParams.get("limit"), MAX_LIMIT);
-  const pageSize = parseLimit(url.searchParams.get("page_size"), MAX_PAGE_SIZE, DEFAULT_PAGE_SIZE);
+  const geoType = normalizeText(url.searchParams.get("geo_type"));
+  const referenceDateParam = url.searchParams.get("reference_date");
+  const referenceDate = normalizeDate(referenceDateParam);
+  const limit = parseLimit(url.searchParams.get("limit"), DEFAULT_LIMIT);
+
+  if (!geoType) {
+    return json({ error: "Missing geo_type." }, 400);
+  }
+  if (referenceDateParam && !referenceDate) {
+    return json({ error: "Invalid reference_date. Use YYYY-MM-DD." }, 400);
+  }
 
   try {
-    const rows = await fetchStations({
-      connectorId,
-      region,
-      stationLike,
-      targetLimit,
-      pageSize,
+    const resolvedDate = referenceDate || await fetchLatestDate(geoType);
+    if (!resolvedDate) {
+      return json({ geo_type: geoType, reference_date: null, count: 0, data: [] });
+    }
+    const { data, error } = await postgrestRequest<any[]>("GET", POPULATION_VIEW, {
+      select: "geo_code,geo_type,reference_date,population_value,dataset_id,measure",
+      geo_type: `eq.${geoType}`,
+      reference_date: `eq.${resolvedDate}`,
+      order: "geo_code.asc",
+      limit: String(limit),
     });
-    return json(rows);
+    if (error) {
+      throw new Error(error.message);
+    }
+    return json({
+      geo_type: geoType,
+      reference_date: resolvedDate,
+      count: data?.length ?? 0,
+      data: data ?? [],
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return json({ error: message }, 500);
   }
 });
 
-type FetchOptions = {
-  connectorId: string | null;
-  region: string | null;
-  stationLike: string | null;
-  targetLimit: number | null;
-  pageSize: number;
-};
-
-async function fetchStations({
-  connectorId,
-  region,
-  stationLike,
-  targetLimit,
-  pageSize,
-}: FetchOptions) {
-  const rows: Array<Record<string, unknown>> = [];
-  let offset = 0;
-  const baseParams: Record<string, string> = {
-    select: "id,station_ref,label,geometry",
-    geometry: "not.is.null",
-  };
-  if (connectorId) {
-    baseParams.connector_id = `eq.${connectorId}`;
+async function fetchLatestDate(geoType: string): Promise<string | null> {
+  const { data, error } = await postgrestRequest<any[]>("GET", POPULATION_VIEW, {
+    select: "reference_date",
+    geo_type: `eq.${geoType}`,
+    order: "reference_date.desc",
+    limit: "1",
+  });
+  if (error) {
+    throw new Error(error.message);
   }
-  if (region) {
-    baseParams.region = `ilike.*${region}*`;
-  }
-  if (stationLike) {
-    baseParams.label = `ilike.*${stationLike}*`;
-  }
-
-  while (true) {
-    const remaining = targetLimit ? Math.max(0, targetLimit - rows.length) : pageSize;
-    if (targetLimit && remaining === 0) {
-      break;
-    }
-    const limit = Math.min(pageSize, remaining || pageSize);
-    const { data, error } = await postgrestRequest<Array<Record<string, unknown>>>("GET", "stations", {
-      ...baseParams,
-      limit: String(limit),
-      offset: String(offset),
-    });
-    if (error) {
-      throw new Error(error.message);
-    }
-    const page = data ?? [];
-    rows.push(...page);
-    if (page.length < limit) {
-      break;
-    }
-    offset += page.length;
-  }
-
-  return rows;
+  return data?.[0]?.reference_date ?? null;
 }
 
 function normalizeText(value: string | null): string | null {
@@ -154,7 +130,18 @@ function normalizeText(value: string | null): string | null {
   return trimmed ? trimmed : null;
 }
 
-function parseLimit(value: string | null, max: number, fallback: number | null = null): number | null {
+function normalizeDate(value: string | null): string | null {
+  if (!value) {
+    return null;
+  }
+  const trimmed = value.trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    return null;
+  }
+  return trimmed;
+}
+
+function parseLimit(value: string | null, fallback: number): number {
   if (!value) {
     return fallback;
   }
@@ -162,8 +149,7 @@ function parseLimit(value: string | null, max: number, fallback: number | null =
   if (!Number.isFinite(parsed)) {
     return fallback;
   }
-  const clamped = Math.min(max, Math.max(1, Math.floor(parsed)));
-  return clamped;
+  return Math.max(1, Math.min(MAX_LIMIT, Math.floor(parsed)));
 }
 
 function json(payload: unknown, status = 200): Response {

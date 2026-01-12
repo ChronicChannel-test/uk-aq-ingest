@@ -79,12 +79,12 @@ serve(async (req) => {
       ? stationLikeParam
       : null
     : stationLikeParam ?? (region ? null : DEFAULT_STATION_LIKE);
-  const serviceId = normalizeText(url.searchParams.get("service_id"));
+  const connectorId = normalizeText(url.searchParams.get("connector_id"));
   const pollutant = normalizePollutant(url.searchParams.get("pollutant"));
   const limit = parseLimit(url.searchParams.get("limit"), DEFAULT_LIMIT);
 
   try {
-    const rows = await loadLatest({ region, stationLike, serviceId, pollutant, limit });
+    const rows = await loadLatest({ region, stationLike, connectorId, pollutant, limit });
     return json({
       region,
       pollutant,
@@ -100,12 +100,12 @@ serve(async (req) => {
 type LoadOptions = {
   region: string | null;
   stationLike: string | null;
-  serviceId: string | null;
+  connectorId: string | null;
   pollutant: string | null;
   limit: number;
 };
 
-async function loadLatest({ region, stationLike, serviceId, pollutant, limit }: LoadOptions) {
+async function loadLatest({ region, stationLike, connectorId, pollutant, limit }: LoadOptions) {
   const pollutantKey = normalizePollutant(pollutant);
   const phenomenonSelect = pollutantKey
     ? "phenomenon:phenomena!inner(id,label,notation,eionet_uri,pollutant_label)"
@@ -126,8 +126,8 @@ async function loadLatest({ region, stationLike, serviceId, pollutant, limit }: 
   if (region) {
     baseParams["stations.region"] = `ilike.*${region}*`;
   }
-  if (serviceId) {
-    baseParams.service_id = `eq.${serviceId}`;
+  if (connectorId) {
+    baseParams.connector_id = `eq.${connectorId}`;
   }
   const fetchRows = async (extra: Record<string, string>, useStationInner = false) => {
     const { data, error } = await postgrestRequest<any[]>("GET", "timeseries", {
