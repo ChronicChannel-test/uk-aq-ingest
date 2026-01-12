@@ -70,15 +70,21 @@ _STATION_LABEL_POLLUTANT_HINTS = (
     "co",
 )
 
+_DASH_PATTERN = re.compile(r"[\u2010\u2011\u2012\u2013\u2014\u2212]")
+
 
 def _normalize_station_label(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", "", value.lower())
 
 
+def _normalize_dashes(value: str) -> str:
+    return _DASH_PATTERN.sub("-", value)
+
+
 def _extract_station_descriptor_from_label(label: Optional[str]) -> Optional[str]:
     if not label:
         return None
-    text = label.strip()
+    text = _normalize_dashes(label.strip())
     if not text:
         return None
     match = re.match(r"^https?://\S+\s+\d+\s+-\s+(.*)$", text)
@@ -346,6 +352,27 @@ class SupabaseWriter:
         if rows:
             self.client.table("stations").upsert(rows, on_conflict="service_id,station_ref").execute()
         return len(rows)
+
+    def backfill_station_names(self, service_ids: Sequence[int]) -> int:
+        if not service_ids:
+            return 0
+        resp = (
+            self.client.table("stations")
+            .select("id,label")
+            .in_("service_id", list(service_ids))
+            .is_("station_name", "null")
+            .execute()
+        )
+        rows = resp.data if hasattr(resp, "data") else resp.get("data")
+        updates = []
+        for row in rows or []:
+            label = row.get("label")
+            station_name = _derive_station_name(label)
+            if station_name:
+                updates.append({"id": row.get("id"), "station_name": station_name})
+        if updates:
+            self.client.table("stations").upsert(updates, on_conflict="id").execute()
+        return len(updates)
 
     def mark_removed(self, seen_at: datetime, service_ids: Sequence[int]) -> None:
         if not service_ids:
@@ -627,6 +654,9 @@ def main() -> None:
             default_service_ref=default_service_ref,
         )
         LOG.info("Upserted %s stations into Supabase.", inserted)
+        backfilled = writer.backfill_station_names(service_ids)
+        if backfilled:
+            LOG.info("Backfilled station_name for %s stations.", backfilled)
         writer.mark_removed(run_at, service_ids)
 
         if not args.skip_metadata:
