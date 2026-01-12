@@ -1287,7 +1287,22 @@ class SupabaseWriter:
                 series_id,
             )
         if rows:
-            self.client.table("observations").upsert(rows, on_conflict="timeseries_id,observed_at").execute()
+            for attempt in range(1, 4):
+                try:
+                    self.client.table("observations").upsert(
+                        rows, on_conflict="timeseries_id,observed_at"
+                    ).execute()
+                    break
+                except Exception as exc:
+                    if not _is_transient_postgrest_error(exc) or attempt == 3:
+                        raise
+                    LOG.warning(
+                        "Observation upsert failed (attempt %s/3) for timeseries_id=%s: %s",
+                        attempt,
+                        series_id,
+                        exc,
+                    )
+                    time.sleep(min(30, 2**attempt))
 
     def update_last_value(
         self,
@@ -1886,6 +1901,23 @@ def _safe_number(raw: Any) -> Optional[float]:
         return num
     except (ValueError, TypeError):
         return None
+
+
+def _is_transient_postgrest_error(exc: Exception) -> bool:
+    text = str(exc).lower()
+    if "json could not be generated" in text:
+        return True
+    if "cloudflare" in text or "internal server error" in text:
+        return True
+    match = re.search(r"code[^0-9]*([0-9]{3})", text)
+    if match:
+        try:
+            code = int(match.group(1))
+        except ValueError:
+            code = 0
+        if 500 <= code <= 599:
+            return True
+    return False
 
 
 def _resolve_uniform_value(values: Iterable[Optional[str]]) -> Optional[str]:
