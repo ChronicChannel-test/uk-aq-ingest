@@ -22,7 +22,8 @@ This document summarizes the schema defined in `supabase/uk_air_quality_schema.s
 - `station_pcon_history`: Station-to-constituency snapshot per `pcon_version` for fast historical queries.
 - `uk_aq_region_names`: Region code/name lookup (e.g., `E12000001` → `North East`) used for hex metadata.
 - `uk_aq_refresh_station_la_codes(target_version)`: updates `stations.la_code` + `stations.la_version` using `la_boundaries`.
-- `uk_aq_refresh_station_pcon_codes(target_version)`: updates `stations.pcon_code` + `stations.pcon_version` using `pcon_boundaries`.
+- `uk_aq_refresh_station_pcon_codes(target_version)`: updates missing or out-of-date `stations.pcon_code` + `stations.pcon_version` using `pcon_boundaries`.
+- `uk_aq_refresh_station_pcon_codes_partition(target_version, partition_mod, partition_idx)`: partitioned station PCON refresh (missing/out-of-date only) for large datasets.
 - `uk_aq_refresh_station_pcon_history(target_version)`: populates `station_pcon_history` for a boundary version.
 - `uk_aq_refresh_station_pcon_history_partition(target_version, partition_mod, partition_idx)`: partitioned history refresh for large datasets.
 - `uk_aq_stations_with_pcon(target_version)`: returns stations joined to `station_pcon_history` for the requested version.

@@ -106,6 +106,17 @@ def parse_args() -> argparse.Namespace:
         help="Update stations with PCON codes after loading boundaries.",
     )
     parser.add_argument(
+        "--stations-partitions",
+        type=int,
+        default=1,
+        help="Number of partitions for station updates.",
+    )
+    parser.add_argument(
+        "--stations-partition-index",
+        type=int,
+        help="Run a single station partition index (0-based).",
+    )
+    parser.add_argument(
         "--update-history",
         action="store_true",
         help="Update station_pcon_history for the provided PCON version.",
@@ -190,13 +201,56 @@ def main() -> int:
         print("Nothing to do: use --update-stations/--update-history or remove --skip-boundaries.", file=sys.stderr)
         return 1
 
+    def run_rpc(name: str, params: Dict[str, Any]) -> Any:
+        for attempt in range(1, max(1, args.max_retries) + 2):
+            try:
+                response = client.rpc(name, params).execute()
+                return response.data if hasattr(response, "data") else None
+            except Exception:
+                if attempt >= max(1, args.max_retries) + 1:
+                    raise
+                time.sleep(max(0.0, args.retry_backoff_seconds) * attempt)
+        return None
+
     if args.update_stations:
-        response = client.rpc(
-            "uk_aq_refresh_station_pcon_codes",
-            {"target_version": args.pcon_version},
-        ).execute()
-        updated = response.data if hasattr(response, "data") else None
-        print(f"Updated stations with PCON codes: {updated}")
+        partitions = max(1, args.stations_partitions)
+        if args.stations_partition_index is not None:
+            if args.stations_partition_index < 0 or args.stations_partition_index >= partitions:
+                print(
+                    f"stations-partition-index must be between 0 and {partitions - 1}.",
+                    file=sys.stderr,
+                )
+                return 1
+            partition_indices = [args.stations_partition_index]
+        else:
+            partition_indices = list(range(partitions))
+
+        if partitions == 1 and args.stations_partition_index is None:
+            updated = run_rpc(
+                "uk_aq_refresh_station_pcon_codes",
+                {"target_version": args.pcon_version},
+            )
+            print(f"Updated stations with PCON codes: {updated}")
+        else:
+            total_updated = 0
+            for idx in partition_indices:
+                updated = run_rpc(
+                    "uk_aq_refresh_station_pcon_codes_partition",
+                    {
+                        "target_version": args.pcon_version,
+                        "partition_mod": partitions,
+                        "partition_idx": idx,
+                    },
+                )
+                if isinstance(updated, int):
+                    total_updated += updated
+                print(
+                    f"Updated stations with PCON codes partition {idx + 1}/{partitions}: {updated}"
+                )
+                if args.sleep_seconds:
+                    time.sleep(max(0.0, args.sleep_seconds))
+            if len(partition_indices) > 1:
+                print(f"Updated stations with PCON codes (total): {total_updated}")
 
     if args.update_history:
         partitions = max(1, args.history_partitions)
@@ -210,17 +264,6 @@ def main() -> int:
             partition_indices = [args.history_partition_index]
         else:
             partition_indices = list(range(partitions))
-
-        def run_rpc(name: str, params: Dict[str, Any]) -> Any:
-            for attempt in range(1, max(1, args.max_retries) + 2):
-                try:
-                    response = client.rpc(name, params).execute()
-                    return response.data if hasattr(response, "data") else None
-                except Exception:
-                    if attempt >= max(1, args.max_retries) + 1:
-                        raise
-                    time.sleep(max(0.0, args.retry_backoff_seconds) * attempt)
-            return None
 
         if partitions == 1 and args.history_partition_index is None:
             updated = run_rpc(

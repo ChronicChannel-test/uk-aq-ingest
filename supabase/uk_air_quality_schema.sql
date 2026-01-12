@@ -197,6 +197,41 @@ begin
   where pb.pcon_version = target_version
     and st.geometry is not null
     and pb.geometry is not null
+    and (st.pcon_code is null or st.pcon_version is distinct from target_version)
+    and ST_Covers(pb.geometry::geometry, st.geometry::geometry);
+  get diagnostics updated_count = row_count;
+  return updated_count;
+end;
+$$;
+
+create or replace function uk_aq_refresh_station_pcon_codes_partition(
+  target_version text,
+  partition_mod integer,
+  partition_idx integer
+)
+returns integer
+language plpgsql
+set search_path = public, pg_catalog
+as $$
+declare
+  updated_count integer;
+begin
+  if partition_mod <= 0 then
+    raise exception 'partition_mod must be > 0';
+  end if;
+  if partition_idx < 0 or partition_idx >= partition_mod then
+    raise exception 'partition_idx must be between 0 and %', partition_mod - 1;
+  end if;
+
+  update stations st
+  set pcon_code = pb.pcon_code,
+      pcon_version = pb.pcon_version
+  from pcon_boundaries pb
+  where pb.pcon_version = target_version
+    and st.geometry is not null
+    and pb.geometry is not null
+    and (st.pcon_code is null or st.pcon_version is distinct from target_version)
+    and mod(st.id, partition_mod::bigint) = partition_idx::bigint
     and ST_Covers(pb.geometry::geometry, st.geometry::geometry);
   get diagnostics updated_count = row_count;
   return updated_count;

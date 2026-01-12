@@ -1,0 +1,15 @@
+{
+  "id": "6ecaaa82-a399-491e-b8d9-a4cc72709210",
+  "created_at": "2026-01-12T00:15:05.626093+00:00",
+  "source": "ingest",
+  "severity": "error",
+  "message": "Unhandled ingest error.",
+  "stack": "Traceback (most recent call last):\n  File \"/Users/mikehinford/Library/CloudStorage/Dropbox/Projects/CIC Website/CIC Air Quality Networks Ingest/CIC-test-uk-air-quality-networks/scripts/uk_air_sos_ingest.py\", line 2612, in main\n    series = ingestor.discover_timeseries(\n  File \"/Users/mikehinford/Library/CloudStorage/Dropbox/Projects/CIC Website/CIC Air Quality Networks Ingest/CIC-test-uk-air-quality-networks/scripts/uk_air_sos_ingest.py\", line 1595, in discover_timeseries\n    seed = _infer_station_seed_from_index(station_index, station_name)\n  File \"/Users/mikehinford/Library/CloudStorage/Dropbox/Projects/CIC Website/CIC Air Quality Networks Ingest/CIC-test-uk-air-quality-networks/scripts/uk_air_sos_ingest.py\", line 2040, in _infer_station_seed_from_index\n    station_type = _resolve_uniform_value(row.get(\"station_type\") for row in rows)\nNameError: name '_resolve_uniform_value' is not defined\n",
+  "context": {
+    "station_like": "Bristol",
+    "region": null
+  },
+  "service_id": null,
+  "station_id": null,
+  "timeseries_id": null
+}
