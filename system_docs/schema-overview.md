@@ -8,7 +8,7 @@ This document summarizes the schema defined in `supabase/uk_air_quality_schema.s
 
 ## Core reference tables
 - External identifiers that arrive as text (even if numeric) are stored as `*_ref`; all `*_id` columns are internal bigint keys.
-- `services`: SOS instances with bigint `id` (internal) and `service_ref` (external), plus URL and polling fields (`poll_enabled`, `poll_interval_minutes`, `poll_window_hours`, `poll_timeseries_batch_size`, `stations_bbox_supported`, `timeseries_station_filter_supported`, `last_polled_at`).
+- `services`: SOS instances with bigint `id` (internal), `service_ref` (external), and `service_code` for filename prefixes, plus URL and polling fields (`poll_enabled`, `poll_interval_minutes`, `poll_window_hours`, `poll_timeseries_batch_size`, `stations_bbox_supported`, `timeseries_station_filter_supported`, `last_polled_at`).
 - `categories`: high-level grouping, per service.
 - `phenomena`: what is measured (pollutant/parameter), per service; includes optional `eionet_uri` + `notation`.
 - `offerings`: logical groupings, per service.

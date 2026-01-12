@@ -47,6 +47,7 @@ UK_AIR_SOS_SERVICE_LABEL = (
     or os.getenv("UK_AIR_SERVICE_LABEL")
     or "UK-AIR-SOS"
 )
+UK_AIR_SOS_SERVICE_CODE = "uk_air_sos"
 
 UK_BBOX = {
     "west": -11.0,
@@ -227,36 +228,52 @@ class SupabaseWriter:
         self.client: Client = create_client(supabase_url, supabase_key)
 
     def upsert_services(self, services: Iterable[Dict[str, Any]]) -> Dict[str, int]:
-        payload_by_ref: Dict[str, Dict[str, Any]] = {}
-        for svc in services:
-            ref = svc.get("id")
-            if ref is None:
-                continue
-            service_ref = str(ref)
-            payload_by_ref[service_ref] = {
+        services_list = [svc for svc in services if isinstance(svc, dict)]
+        primary = _select_primary_service(services_list)
+        if primary is None or primary.get("id") is None:
+            return {}
+        service_ref = str(primary.get("id"))
+        payload = [
+            {
                 "service_ref": service_ref,
-                "label": _normalize_service_label(svc.get("label") or svc.get("name")),
-                "service_url": svc.get("serviceUrl") or svc.get("url") or UK_AIR_SOS_BASE_URL,
+                "service_code": UK_AIR_SOS_SERVICE_CODE,
+                "label": _normalize_service_label(primary.get("label") or primary.get("name")),
+                "service_url": primary.get("serviceUrl") or primary.get("url") or UK_AIR_SOS_BASE_URL,
             }
-        payload = list(payload_by_ref.values())
-        if payload:
-            self.client.table("services").upsert(payload, on_conflict="service_ref").execute()
-        return self.get_service_id_map(list(payload_by_ref.keys()))
+        ]
+        self.client.table("services").upsert(payload, on_conflict="service_code").execute()
+        service_refs = [svc.get("id") for svc in services_list if svc.get("id") is not None]
+        return self.get_service_id_map(service_refs)
 
     def get_service_id_map(self, service_refs: Sequence[str]) -> Dict[str, int]:
         mapping: Dict[str, int] = {}
         if not service_refs:
             return mapping
+        service_id = self.get_service_id()
+        if service_id is None:
+            return mapping
+        for service_ref in service_refs:
+            mapping[str(service_ref)] = service_id
+        return mapping
+
+    def get_service_id(self) -> Optional[int]:
         resp = (
             self.client.table("services")
-            .select("id,service_ref")
-            .in_("service_ref", list(service_refs))
+            .select("id")
+            .eq("service_code", UK_AIR_SOS_SERVICE_CODE)
+            .limit(1)
             .execute()
         )
         rows = resp.data if hasattr(resp, "data") else resp.get("data")
-        for row in rows or []:
-            mapping[str(row["service_ref"])] = int(row["id"])
-        return mapping
+        if not rows:
+            return None
+        row = rows[0] if isinstance(rows, list) else rows
+        if not isinstance(row, dict):
+            return None
+        try:
+            return int(row.get("id"))
+        except (TypeError, ValueError):
+            return None
 
     def upsert_reference_table(
         self,
@@ -419,6 +436,17 @@ def _normalize_service_label(label: Optional[str]) -> Optional[str]:
     if trimmed.lower().startswith("my timeseries service"):
         return UK_AIR_SOS_SERVICE_LABEL
     return trimmed
+
+
+def _select_primary_service(services: Sequence[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    for svc in services:
+        if str(svc.get("id")) == "1":
+            return svc
+    for svc in services:
+        label = str(svc.get("label") or svc.get("name") or "").lower()
+        if "uk" in label and "air" in label:
+            return svc
+    return services[0] if services else None
 
 
 def _item_label(item: Dict[str, Any]) -> Optional[str]:
@@ -621,9 +649,10 @@ def main() -> None:
     run_at = utcnow()
     client = UkAirClient()
     services = client.services()
+    primary_service = _select_primary_service(services)
     default_service_ref = None
-    if len(services) == 1 and services[0].get("id"):
-        default_service_ref = str(services[0].get("id"))
+    if primary_service and primary_service.get("id") is not None:
+        default_service_ref = str(primary_service.get("id"))
     stations = client.stations()
     if not stations:
         LOG.warning("No stations returned from UK-AIR SOS.")

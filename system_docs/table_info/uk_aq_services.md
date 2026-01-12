@@ -4,7 +4,8 @@ Defines each SOS service instance (data source) and its polling configuration.
 
 ## Fields
 - id: Internal bigint primary key (generated identity).
-- service_ref: External service identifier (string), unique across services.
+- service_ref: External service identifier (string).
+- service_code: Short service code used as filename prefix for service outputs.
 - label: Human-readable service name.
 - service_url: Base URL for the SOS API.
 - poll_enabled: Whether scheduled polling should run for this service (default true).
@@ -17,5 +18,6 @@ Defines each SOS service instance (data source) and its polling configuration.
 - created_at: Row creation timestamp (default now()).
 
 ## Notes
-- `service_ref` is unique; internal joins use `id`.
+- `service_code` is unique; internal joins use `id`.
+- `service_ref` can repeat across services.
 - Known services can override the bbox/station filter support flags on insert.

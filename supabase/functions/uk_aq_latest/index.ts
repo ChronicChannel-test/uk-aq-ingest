@@ -221,13 +221,26 @@ function buildPollutantFilter(pollutant: string | null): string | null {
   if (!pollutant) {
     return null;
   }
-  const escaped = pollutant.replace(/,/g, "");
-  const conditions = [
-    `pollutant_label.eq.${escaped}`,
-    `notation.eq.${escaped}`,
-    `label.ilike.*${escaped}*`,
-  ];
+  const tokens = pollutantTokens(pollutant);
+  const conditions: string[] = [];
+  for (const token of tokens) {
+    const escaped = token.replace(/,/g, "");
+    conditions.push(`notation.ilike.${escaped}`);
+    conditions.push(`pollutant_label.ilike.${escaped}`);
+  }
   return `(${conditions.join(",")})`;
+}
+
+function pollutantTokens(pollutant: string): string[] {
+  const compact = pollutant.toLowerCase().replace(/[\s_]/g, "");
+  const tokens = new Set<string>([pollutant.toLowerCase()]);
+  if (compact === "pm25" || compact === "pm2.5" || compact === "pm2-5") {
+    tokens.add("pm2.5");
+    tokens.add("pm25");
+    tokens.add("pm2-5");
+    tokens.add("pm2_5");
+  }
+  return Array.from(tokens);
 }
 
 function parseLimit(value: string | null, fallback: number): number {
@@ -286,6 +299,9 @@ function resolvePhenomenonLabel(
   notation: string | null | undefined,
   eionetUri: string | null | undefined,
 ): string | null {
+  if (notation) {
+    return notation;
+  }
   if (pollutantLabel) {
     return pollutantLabel;
   }
