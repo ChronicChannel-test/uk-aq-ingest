@@ -1888,6 +1888,13 @@ def _safe_number(raw: Any) -> Optional[float]:
         return None
 
 
+def _resolve_uniform_value(values: Iterable[Optional[str]]) -> Optional[str]:
+    unique = {value for value in values if value not in (None, "")}
+    if len(unique) == 1:
+        return next(iter(unique))
+    return None
+
+
 def _range_chunks(start: datetime, end: datetime, step: timedelta) -> Iterable[datetime]:
     cursor = start
     while cursor < end:
