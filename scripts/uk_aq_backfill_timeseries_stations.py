@@ -478,6 +478,7 @@ def main() -> int:
                 "service_id": service_id,
                 "station_ref": station_ref_str,
                 "label": station_label,
+                "station_name": station_name,
                 "geometry": seed["geometry"],
             }
             if seed.get("station_type"):
@@ -502,6 +503,7 @@ def main() -> int:
                         "service_ref": service_ref,
                         "station_ref": row["station_ref"],
                         "label": row["label"],
+                        "station_name": row.get("station_name"),
                         "geometry": row.get("geometry"),
                         "station_type": row.get("station_type"),
                         "region": row.get("region"),

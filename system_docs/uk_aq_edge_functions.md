@@ -19,7 +19,12 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
   - Writes errors to `error_logs` and `/error_log/YYYY-MM-DD/`
 
 ### uk_aq_latest
-- Purpose: Serve the latest values for a region/station filter.
+- Purpose: Serve the latest values across all stations (optionally filtered by region/station/pollutant).
+- Triggered by: Web requests (read-only, no writes).
+- Returns: timeseries rows with station + phenomenon metadata and latest values.
+
+### uk_aq_bristol_latest
+- Purpose: Serve the latest values with a Bristol station default for local dashboards.
 - Triggered by: Web requests (read-only, no writes).
 - Returns: timeseries rows with station + phenomenon metadata and latest values.
 

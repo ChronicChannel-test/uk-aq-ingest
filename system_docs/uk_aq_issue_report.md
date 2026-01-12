@@ -10,6 +10,7 @@ Each issue below includes **fix options with pros/cons**. If only one viable fix
 
 ## 1) Public edge endpoint uses service‑role key with open CORS (High)
 **File:** `supabase/functions/uk_aq_latest/index.ts`【F:supabase/functions/uk_aq_latest/index.ts†L8-L19】【F:supabase/functions/uk_aq_latest/index.ts†L25-L31】【F:supabase/functions/uk_aq_latest/index.ts†L60-L68】
+**Related:** `supabase/functions/uk_aq_bristol_latest/index.ts`
 
 **Issue:** The `uk_aq_latest` edge function uses the Supabase **service‑role** key (bypassing RLS) and allows `Access-Control-Allow-Origin: *` for a public GET endpoint. This allows any origin to read privileged data.
 
@@ -99,7 +100,7 @@ Each issue below includes **fix options with pros/cons**. If only one viable fix
 ---
 
 ## Priority Order (Most Severe ➜ Least Severe)
-1) Public edge endpoint uses service‑role key with open CORS — `supabase/functions/uk_aq_latest/index.ts`【F:supabase/functions/uk_aq_latest/index.ts†L8-L19】【F:supabase/functions/uk_aq_latest/index.ts†L25-L31】【F:supabase/functions/uk_aq_latest/index.ts†L60-L68】
+1) Public edge endpoint uses service‑role key with open CORS — `supabase/functions/uk_aq_latest/index.ts` and `supabase/functions/uk_aq_bristol_latest/index.ts`【F:supabase/functions/uk_aq_latest/index.ts†L8-L19】【F:supabase/functions/uk_aq_latest/index.ts†L25-L31】【F:supabase/functions/uk_aq_latest/index.ts†L60-L68】
 2) Hard‑coded PurpleAir API key file path — `scripts/get_uk_sensors.py`【F:scripts/get_uk_sensors.py†L32-L78】
 3) Supabase client created without validating required env vars — `scripts/get_uk_sensors.py`【F:scripts/get_uk_sensors.py†L44-L49】
 4) No timeouts for Supabase/PostgREST or Dropbox fetches in edge ingestion — `supabase/functions/ingest_uk_air_sos/index.ts`【F:supabase/functions/ingest_uk_air_sos/index.ts†L97-L117】【F:supabase/functions/ingest_uk_air_sos/index.ts†L808-L839】

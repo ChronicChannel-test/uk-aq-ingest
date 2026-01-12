@@ -13,6 +13,7 @@ import csv
 import json
 import logging
 import os
+import re
 import time
 from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
@@ -45,6 +46,87 @@ UK_BBOX = {
     "east": 2.0,
     "north": 61.0,
 }
+
+
+_STATION_LABEL_POLLUTANT_HINTS = (
+    "sulphur",
+    "sulfur",
+    "nitrogen",
+    "ozone",
+    "particulate",
+    "pm10",
+    "pm25",
+    "pm2",
+    "carbon",
+    "benzene",
+    "toluene",
+    "monoxide",
+    "dioxide",
+    "oxide",
+    "lead",
+    "so2",
+    "no2",
+    "no",
+    "co",
+)
+
+
+def _normalize_station_label(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", value.lower())
+
+
+def _extract_station_descriptor_from_label(label: Optional[str]) -> Optional[str]:
+    if not label:
+        return None
+    text = label.strip()
+    if not text:
+        return None
+    match = re.match(r"^https?://\S+\s+\d+\s+-\s+(.*)$", text)
+    if not match:
+        match = re.match(r"^\S+\s+\d+\s+-\s+(.*)$", text)
+    if not match:
+        match = re.match(r"^\d+\s+-\s+(.*)$", text)
+    if match:
+        text = match.group(1)
+    if "," in text:
+        text = text.split(",", 1)[0]
+    text = text.strip()
+    return text or None
+
+
+def _looks_like_pollutant_suffix(value: str) -> bool:
+    normalized = _normalize_station_label(value)
+    if any(hint in normalized for hint in _STATION_LABEL_POLLUTANT_HINTS):
+        return True
+    lowered = value.lower()
+    return any(token in lowered for token in ("(air)", "micro", "aerosol"))
+
+
+def _extract_station_name_from_label(label: Optional[str]) -> Optional[str]:
+    text = _extract_station_descriptor_from_label(label)
+    if not text:
+        return None
+    if " - " in text:
+        candidate = text.split(" - ", 1)[0].strip()
+        if candidate:
+            return candidate
+    if "-" in text:
+        left, right = text.rsplit("-", 1)
+        if _looks_like_pollutant_suffix(right):
+            candidate = left.strip()
+            if candidate:
+                return candidate
+    return text
+
+
+def _derive_station_name(label: Optional[str]) -> Optional[str]:
+    if not label:
+        return None
+    cleaned = _extract_station_name_from_label(label)
+    if cleaned:
+        return cleaned
+    trimmed = label.strip()
+    return trimmed or None
 
 
 def utcnow() -> datetime:
@@ -246,10 +328,13 @@ class SupabaseWriter:
             service_id = service_ref_map.get(str(service_ref))
             if not service_id:
                 continue
+            label = station.get("label") or props.get("label") or station.get("name")
+            station_name = _derive_station_name(label)
             rows.append(
                 {
                     "station_ref": str(station_ref),
-                    "label": station.get("label") or props.get("label") or station.get("name"),
+                    "label": label,
+                    "station_name": station_name,
                     "station_type": props.get("stationType") or station.get("stationType"),
                     "region": props.get("region") or station.get("region"),
                     "geometry": f"SRID=4326;POINT({lon} {lat})" if lon is not None and lat is not None else None,

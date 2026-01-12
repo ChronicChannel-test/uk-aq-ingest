@@ -6,6 +6,7 @@ Monitoring sites within a service, with optional spatial metadata.
 - id: Internal bigint primary key (generated identity).
 - station_ref: External station identifier (string).
 - label: Human-readable station name.
+- station_name: Cleaned station name (best-effort, pollutant suffix removed).
 - station_type: Optional station type/classification from the service.
 - region: Optional region name from the service.
 - geometry: Optional Point geometry (WGS84, SRID 4326).

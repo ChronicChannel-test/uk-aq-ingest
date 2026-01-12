@@ -14,7 +14,7 @@ This document summarizes the schema defined in `supabase/uk_air_quality_schema.s
 - `offerings`: logical groupings, per service.
 - `features`: features of interest with geometry (Point, 4326), per service.
 - `procedures`: sensors/methods; optional raw_formats list, per service.
-- `stations`: monitoring sites; bigint `id` (internal) with `station_ref` (external), unique `(service_id, station_ref)`, plus lifecycle fields `first_seen_at`, `last_seen_at`, `removed_at`. Also stores `la_code`/`la_version` and `pcon_code`/`pcon_version` for geography lookups.
+- `stations`: monitoring sites; bigint `id` (internal) with `station_ref` (external), unique `(service_id, station_ref)`, plus lifecycle fields `first_seen_at`, `last_seen_at`, `removed_at`. Includes `station_name` as a cleaned display name and stores `la_code`/`la_version` and `pcon_code`/`pcon_version` for geography lookups.
 
 ## Geography mapping tables
 - `la_boundaries`: Local Authority polygons (MultiPolygon, 4326) with `la_code` + `la_version` for assigning stations to LAs.

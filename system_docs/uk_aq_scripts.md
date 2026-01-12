@@ -11,6 +11,24 @@ This document summarizes the UK-AQ helper scripts and their inputs/outputs.
 
 ## Scripts
 
+### `scripts/uk_aq_inject_project_ref.mjs`
+Purpose:
+- Replace Supabase placeholders in web assets during GitHub Actions deploys.
+
+Placeholders:
+- `__SUPABASE_PROJECT_REF__` or `{{SUPABASE_PROJECT_REF}}`
+- `__SUPABASE_PUBLISHABLE_DEFAULT_KEY__` or `{{SUPABASE_PUBLISHABLE_DEFAULT_KEY}}`
+- `__SUPABASE_ANON_JWT__` or `{{SUPABASE_ANON_JWT}}`
+
+Notes:
+- If no placeholders are found, the script exits without changes.
+- Optional: `UK_AQ_INJECT_PATHS` (comma-separated file paths) to limit which files are scanned.
+
+Environment:
+- `SUPABASE_PROJECT_REF`
+- `SUPABASE_PUBLISHABLE_DEFAULT_KEY`
+- `SUPABASE_ANON_JWT`
+
 ### `scripts/uk_air_sos_ingest.py`
 Purpose:
 - Discover stations and timeseries with optional filters.

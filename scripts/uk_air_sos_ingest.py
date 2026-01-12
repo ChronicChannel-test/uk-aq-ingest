@@ -1058,6 +1058,8 @@ class SupabaseWriter:
             station_ref = station.get("id") or props.get("id")
             if not station_ref:
                 continue
+            label = station.get("label") or props.get("label")
+            station_name = _derive_station_name(label)
             category_ref = None
             if isinstance(props.get("category"), dict):
                 category_ref = props.get("category", {}).get("id")
@@ -1067,7 +1069,8 @@ class SupabaseWriter:
             rows.append(
                 {
                     "station_ref": str(station_ref),
-                    "label": station.get("label") or props.get("label"),
+                    "label": label,
+                    "station_name": station_name,
                     "station_type": props.get("stationType") or station.get("stationType"),
                     "region": props.get("region") or station.get("region"),
                     "geometry": (
@@ -1614,6 +1617,7 @@ class UkAirIngestor:
                 "service_id": service.id,
                 "station_ref": ref,
                 "label": station_label,
+                "station_name": station_name,
                 "geometry": seed["geometry"],
             }
             if seed.get("station_type"):
@@ -2139,6 +2143,16 @@ def _extract_station_name_from_label(label: Optional[str]) -> Optional[str]:
             if candidate:
                 return candidate
     return text
+
+
+def _derive_station_name(label: Optional[str]) -> Optional[str]:
+    if not label:
+        return None
+    cleaned = _extract_station_name_from_label(label)
+    if cleaned:
+        return cleaned
+    trimmed = label.strip()
+    return trimmed or None
 
 
 def _expand_pollutant_terms(pollutant_set: Set[str]) -> Set[str]:

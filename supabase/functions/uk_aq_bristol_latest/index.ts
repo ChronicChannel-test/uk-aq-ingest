@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 
-const DEFAULT_STATION_LIKE = null;
+const DEFAULT_STATION_LIKE = "Bristol";
 const DEFAULT_LIMIT = 1000;
 const MAX_LIMIT = 10000;
 
