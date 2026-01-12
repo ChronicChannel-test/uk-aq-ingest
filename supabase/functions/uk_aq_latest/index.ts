@@ -3,7 +3,7 @@ import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 
 const DEFAULT_STATION_LIKE = "Bristol";
 const DEFAULT_LIMIT = 1000;
-const MAX_LIMIT = 1000;
+const MAX_LIMIT = 10000;
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")
   ?? Deno.env.get("SB_SUPABASE_URL")
@@ -70,15 +70,23 @@ serve(async (req) => {
 
   const url = new URL(req.url);
   const region = normalizeText(url.searchParams.get("region"));
-  const stationLike = normalizeText(url.searchParams.get("station_like"))
-    ?? (region ? null : DEFAULT_STATION_LIKE);
+  const stationLikeParam = normalizeText(url.searchParams.get("station_like"));
+  const scopeParam = normalizeText(url.searchParams.get("scope"));
+  const includeAll = scopeParam === "all" || stationLikeParam === "all";
+  const stationLike = includeAll
+    ? stationLikeParam && stationLikeParam !== "all"
+      ? stationLikeParam
+      : null
+    : stationLikeParam ?? (region ? null : DEFAULT_STATION_LIKE);
   const serviceId = normalizeText(url.searchParams.get("service_id"));
+  const pollutant = normalizePollutant(url.searchParams.get("pollutant"));
   const limit = parseLimit(url.searchParams.get("limit"), DEFAULT_LIMIT);
 
   try {
-    const rows = await loadLatest({ region, stationLike, serviceId, limit });
+    const rows = await loadLatest({ region, stationLike, serviceId, pollutant, limit });
     return json({
       region,
+      pollutant,
       count: rows.length,
       data: rows,
     });
@@ -92,19 +100,28 @@ type LoadOptions = {
   region: string | null;
   stationLike: string | null;
   serviceId: string | null;
+  pollutant: string | null;
   limit: number;
 };
 
-async function loadLatest({ region, stationLike, serviceId, limit }: LoadOptions) {
+async function loadLatest({ region, stationLike, serviceId, pollutant, limit }: LoadOptions) {
+  const pollutantKey = normalizePollutant(pollutant);
+  const phenomenonSelect = pollutantKey
+    ? "phenomenon:phenomena!inner(id,label,notation,eionet_uri,pollutant_label)"
+    : "phenomenon:phenomena(id,label,notation,eionet_uri,pollutant_label)";
   const selectBase =
-    "id,timeseries_ref,label,uom,last_value,last_value_at,station:stations(id,station_ref,label,region),phenomenon:phenomena(id,label,notation,eionet_uri,pollutant_label)";
+    `id,timeseries_ref,label,uom,last_value,last_value_at,station:stations(id,station_ref,label,region),${phenomenonSelect}`;
   const selectStationInner =
-    "id,timeseries_ref,label,uom,last_value,last_value_at,station:stations!inner(id,station_ref,label,region),phenomenon:phenomena(id,label,notation,eionet_uri,pollutant_label)";
+    `id,timeseries_ref,label,uom,last_value,last_value_at,station:stations!inner(id,station_ref,label,region),${phenomenonSelect}`;
   const baseParams: Record<string, string> = {
     select: region ? selectStationInner : selectBase,
     last_value: "not.is.null",
     last_value_at: "not.is.null",
   };
+  const pollutantFilter = buildPollutantFilter(pollutantKey);
+  if (pollutantFilter) {
+    baseParams.or = pollutantFilter;
+  }
   if (region) {
     baseParams["stations.region"] = `ilike.*${region}*`;
   }
@@ -176,6 +193,40 @@ function normalizeText(value: string | null): string | null {
   }
   const trimmed = value.trim();
   return trimmed ? trimmed : null;
+}
+
+function normalizePollutant(value: string | null): string | null {
+  const normalized = normalizeText(value);
+  if (!normalized) {
+    return null;
+  }
+  const compact = normalized.toLowerCase().replace(/[\s_]/g, "");
+  if (compact === "pm25" || compact === "pm2.5") {
+    return "pm2.5";
+  }
+  if (compact === "pm10") {
+    return "pm10";
+  }
+  if (compact === "no2") {
+    return "no2";
+  }
+  if (compact === "o3") {
+    return "o3";
+  }
+  return normalized.toLowerCase();
+}
+
+function buildPollutantFilter(pollutant: string | null): string | null {
+  if (!pollutant) {
+    return null;
+  }
+  const escaped = pollutant.replace(/,/g, "");
+  const conditions = [
+    `phenomena.pollutant_label.eq.${escaped}`,
+    `phenomena.notation.eq.${escaped}`,
+    `phenomena.label.ilike.*${escaped}*`,
+  ];
+  return `(${conditions.join(",")})`;
 }
 
 function parseLimit(value: string | null, fallback: number): number {
