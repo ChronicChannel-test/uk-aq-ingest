@@ -142,6 +142,35 @@ Environment:
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
 
+### `scripts/uk_aq_pcon_lookup_batch.py`
+Purpose:
+- Look up PCON codes for stations with geometry but missing `pcon_code` in small batches.
+- Optional: fill `station_name` from an exact coordinate match or the station label.
+
+Common commands:
+```
+python3 scripts/uk_aq_pcon_lookup_batch.py --limit 10 --max-seconds 240
+python3 scripts/uk_aq_pcon_lookup_batch.py --limit 10 --max-seconds 240 --station-name-from-label
+```
+
+Inputs:
+- Stations with `geometry` not null and `pcon_code` null.
+
+Key flags:
+- `--limit` (default: 10) cap stations per run.
+- `--max-seconds` (default: 240) stop early when runtime is exceeded.
+- `--sleep-seconds` (default: 1.0) throttle API requests.
+- `--pcon-version` (default: `UK_AQ_PCON_VERSION` or `2024`).
+- `--station-name-from-label` to fill missing station_name from `label` if no match is found.
+
+Environment:
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `MAPIT_BASE_URL` (optional; defaults to `https://mapit.mysociety.org`)
+- `MAPIT_API_KEY` (optional)
+- `UK_AQ_USER_AGENT` (optional; defaults to `uk-aq-pcon-lookup-batch`)
+- `UK_AQ_PCON_VERSION` (optional)
+
 ### `scripts/uk_aq_load_guidelines.py`
 Purpose:
 - Load WHO GAQG 2021 guideline limits into `uk_aq_guidelines`.

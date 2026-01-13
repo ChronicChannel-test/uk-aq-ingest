@@ -1,0 +1,286 @@
+# uk_aq_load_pcon_boundaries.py — simple explanation and options
+
+## What the script does (plain-English + analogy)
+Think of the script like a delivery driver who loads a map into a warehouse, then walks around the warehouse to tag every item with the correct neighborhood code.
+
+1. **It opens the map file (GeoJSON).**
+   - The script reads a GeoJSON file containing boundary shapes for UK parliamentary constituencies (PCONs).
+   - Analogy: it opens a big map book full of neighborhood outlines.
+
+2. **It converts each boundary into a database-friendly shape.**
+   - Each polygon/multipolygon is turned into WKT (Well-Known Text) with SRID 4326.
+   - Analogy: it traces each neighborhood outline onto a standard stencil that the warehouse can understand.
+
+3. **It uploads the boundaries in small batches.**
+   - The script upserts into `pcon_boundaries` in batches (default 10 rows).
+   - It pauses briefly between batches (default 0.2 seconds).
+   - Analogy: the driver brings in 10 boxes at a time, drops them on the shelf, waits a moment, and repeats.
+
+4. **(Optional) It updates stations’ PCON codes by calling database functions.**
+   - It calls `uk_aq_refresh_station_pcon_codes` (or its partitioned variant), which likely does a spatial lookup: “which boundary contains this station point?”.
+   - Analogy: after the map is loaded, the driver walks around and sticks the right neighborhood label on each item.
+
+5. **(Optional) It updates station PCON history.**
+   - It calls `uk_aq_refresh_station_pcon_history` (or partitioned variant) to record which PCON version applies.
+   - Analogy: the driver writes the label history into a ledger.
+
+## Why it hammers Supabase so much
+This script creates a lot of short, repeated database requests, and the expensive part is likely the spatial work:
+
+1. **Many small writes:**
+   - Default batch size is 10 rows and the sleep is only 0.2 seconds. For large boundary files, that’s lots of upserts. Each batch is a separate network request.
+
+2. **Expensive spatial joins in RPCs:**
+   - The station update RPCs almost certainly do spatial intersections between station points and many PCON polygons. That’s CPU-heavy for the database, especially if done in one big sweep or if indexes are cold.
+
+3. **Partitioned updates still add load:**
+   - If you partition, each partition is still a heavy operation; you’ve just spread it out. If you run multiple partitions close together, the load is still high.
+
+4. **Retries and backoff:**
+   - The retry logic can multiply load during transient errors: failed batches are repeated after short delays.
+
+In short: **lots of frequent upserts + heavy spatial calculations = high DB load.**
+
+## The goal you described
+You want a system where:
+- If a station has geometry but **missing PCON code**, a small request is triggered to find its PCON code + version.
+- If `station_name` is null, try to infer a usable location label (maybe using stations with identical coordinates).
+- This work should be done **somewhere else** (not hammering the main DB), and then results should be sent back for update.
+
+## Options for moving or redesigning the task
+Below are several ways to do this, with pros/cons and a bias toward free or low-cost services.
+
+### Option A — Keep it in Supabase but make it *event-driven* + cached
+**Idea:** Use a DB trigger to enqueue “needs PCON” tasks, then a scheduled job or worker processes them in small batches.
+
+**How it works:**
+- Add a small queue table like `station_pcon_requests` (id, station_id, lat, lon, created_at, status).
+- A trigger inserts into the queue when a station has geometry but missing PCON.
+- A background worker (could be Supabase Edge Function + cron or a tiny external cron job) processes N requests at a time.
+- Cache results by lat/lon (e.g., round to 5 decimals) so repeated coords don’t repeat expensive lookups.
+- For `station_name` null: if another station has exact same coordinates, reuse that name.
+
+**Pros:**
+- No extra infrastructure beyond what you already use.
+- Easy to throttle and schedule off-peak.
+- Cache avoids repeated expensive spatial queries.
+
+**Cons:**
+- Still uses the main Supabase DB for spatial lookups.
+- Edge Functions have execution time limits; big batches need careful throttling.
+
+### Option B — Use a *separate Supabase project* just for spatial lookup
+**Idea:** Clone boundary tables into a dedicated Supabase instance. Use it as a “PCON lookup service.”
+
+**How it works:**
+- New Supabase project with PostGIS enabled.
+- Load boundaries there.
+- Worker sends lookup requests to the “lookup DB”, gets PCON code + version, writes back to the main DB.
+
+**Pros:**
+- Heavy spatial work doesn’t hit your main DB.
+- Still easy to manage (same Supabase tooling).
+
+**Cons:**
+- Another Supabase project to maintain.
+- Free tier limits may be tight for large spatial workloads.
+
+### Option C — Use a local/cheap spatial engine (PostGIS/DuckDB/SpatiaLite)
+**Idea:** Do the spatial point-in-polygon checks offline, then push results back to Supabase.
+
+**How it works:**
+- Run a local PostGIS container or DuckDB with spatial extension.
+- Load boundaries once locally.
+- Batch process stations needing PCON, match using spatial queries.
+- Update Supabase in bulk.
+
+**Pros:**
+- Keeps heavy spatial work off Supabase entirely.
+- Very cheap if run on a small VM or even your dev machine.
+
+**Cons:**
+- Requires maintaining a separate runtime + boundary data.
+- Manual or scheduled job management.
+
+### Option D — Use a *free public boundary API* for PCON lookup
+**Idea:** Call a public API that returns a PCON code for a lat/lon.
+
+**Possible APIs:**
+- **MapIt** (UK Parliament boundary lookup) — free with fair usage.
+- **ONS/OS open data + local lookup** (if packaged as a local dataset).
+
+**Pros:**
+- No spatial DB needed.
+- Simple request/response flow.
+
+**Cons:**
+- Rate limits and reliability concerns.
+- External dependency; might change or throttle.
+
+### Option E — Hybrid: cache + nearest-station naming
+**Idea:** Use existing stations to fill missing station names and reduce external lookups.
+
+**How it works:**
+- First check for exact same geometry; reuse `station_name`.
+- If no exact match, try “nearest station within X meters” for a placeholder name.
+- Only if still unknown, call a reverse geocoder (Nominatim) for a rough location label.
+
+**Pros:**
+- Minimizes external calls.
+- Keeps data consistent across same-location stations.
+
+**Cons:**
+- Naming could be approximate and inconsistent.
+- Nominatim has strict usage limits; must cache heavily.
+
+## Recommended approach (low-cost + minimal load)
+If you want to keep costs down and avoid hammering your main DB, a good blend is:
+
+1. **Queue + worker:**
+   - Use a queue table + trigger in Supabase.
+   - Worker runs on a schedule (e.g., every hour) and handles small batches.
+
+2. **Local/cheap spatial lookup:**
+   - Run a lightweight PostGIS/DuckDB job elsewhere (free VM, local machine, or GitHub Actions scheduled job).
+   - Store boundaries there for fast local lookup.
+
+3. **Cache results:**
+   - Create a `station_geo_cache` table keyed by rounded lat/lon so you only lookup each location once.
+
+4. **Station name inference:**
+   - Step 1: exact coord match → reuse name.
+   - Step 2: nearest station within a small radius → “Near <station_name>”.
+   - Step 3: reverse geocoder (Nominatim) only when needed and cached.
+
+This keeps the main Supabase DB doing only lightweight writes and avoids repeated spatial joins.
+
+## A simple “external function” flow (matches your request)
+**Trigger condition:** Station has geometry, but missing PCON.
+
+**Pipeline:**
+1. **Supabase trigger** inserts into `station_pcon_requests`.
+2. **External worker** reads queue → looks up PCON code/version.
+3. **Worker writes back** to main DB with PCON code/version + inferred name.
+
+**Where the worker could live (free-ish options):**
+- A small VPS (e.g., low-cost or free tier).
+- GitHub Actions scheduled workflow (if runtime is short).
+- A local machine or NAS running a cron job.
+
+**Pros:**
+- Prevents DB hammering.
+- Work can be throttled and cached.
+
+**Cons:**
+- More moving parts (queue + worker + cache).
+
+## Draft GitHub Actions plan for PCON lookups
+This is a lightweight, scheduled workflow that runs short jobs (minutes) to look up PCON codes for stations that are missing them. It fits the “runtime is short” requirement by limiting batch size and job duration.
+
+**High-level flow:**
+1. **Schedule** the workflow (e.g., hourly or daily).
+2. **Pull a small batch** of stations missing PCON codes (and possibly missing `station_name`) from Supabase.
+3. **Compute PCON + version** using a local lookup dataset or a small embedded spatial engine.
+4. **Infer station_name** if missing:
+   - exact coordinate match → reuse name,
+   - else nearest station within a small radius,
+   - else optional reverse geocode (cached).
+5. **Write updates back** to Supabase in a single bulk update per run.
+6. **Stop early** if the batch is empty or the runtime budget is close to the limit.
+
+### Why “runtime is short” matters
+GitHub-hosted runners are designed for short, bursty workloads. If you keep each run small (e.g., 100–500 stations), the job completes quickly and stays within free-tier usage limits.
+
+### Minimal workflow structure (conceptual)
+- **Trigger:** `schedule` (cron), plus `workflow_dispatch` for manual runs.
+- **Job steps:**
+  1. Checkout repo.
+  2. Set up Python.
+  3. Install dependencies (only the minimal spatial + HTTP deps).
+  4. (Optional) Download boundary data from Dropbox if the GeoJSON is too large for the repo.
+  5. Run a script like `scripts/uk_aq_pcon_lookup_batch.py --limit 200 --max-seconds 240`.
+- **Secrets:** Supabase URL and service role key.
+  - Optional: `DROPBOX_PCON_GEOJSON_URL` for a direct shared-file link.
+  - Optional: `DROPBOX_PCON_GEOJSON_URL_TEMPLATE` for year-based folders (use `{year}` placeholder), e.g. `https://.../GEOJSON/PCON/{year}/pcon.geojson?dl=1`.
+
+### Pros
+- Free or low-cost (GitHub Actions free tier).
+- Easy to throttle and cap runtime.
+- No long-running infrastructure to maintain.
+
+### Cons
+- Needs a compact boundary dataset or a fast lookup method available to the runner.
+- Cron accuracy and compute limits may cause backlogs if the queue grows quickly.
+
+### Practical tweaks to keep runtime short
+- Keep a **hard batch limit** and exit after one batch.
+- Use a **small cache** keyed by rounded lat/lon to avoid repeated lookups.
+- Prefer **local boundary data** over external APIs to reduce latency and rate limits.
+
+### Free-tier note
+GitHub Actions free-tier minutes depend on your account plan and whether the repo is public or private, so the safest approach is to keep jobs short and confirm limits in your GitHub billing/usage settings.
+  
+## Quick answer on “use station_names of other stations if they have exactly the same geo co-ords?”
+Yes — that’s a low-cost, low-risk way to fill missing station_name values. It’s deterministic and avoids external geocoding. If multiple names exist for the same coords, pick the most common or latest.
+
+---
+
+## Plan: Dropbox directory lookup by geo_type + year (no direct URL)
+Here’s a practical plan that avoids shared-file URLs and uses your Dropbox directory layout like:
+`/GEOJSON/{geo_type}/{year}/` (e.g., `/GEOJSON/PCON/2024/`).
+
+### Inputs
+- `geo_type` (e.g., `PCON`, `LAD`, `WARD`)
+- `year` (optional) or `latest`
+
+### High-level flow
+1. **List available years** for the `geo_type` folder:
+   - Call Dropbox API `files/list_folder` for `/GEOJSON/{geo_type}`.
+   - Parse folder names as years (e.g., `2022`, `2024`) and sort.
+2. **Resolve year**:
+   - If `year` is provided, use it.
+   - If `latest`, choose the most recent year found in the folder list.
+3. **Pick the GeoJSON file**:
+   - Call `files/list_folder` for `/GEOJSON/{geo_type}/{year}`.
+   - If there’s exactly one `.geojson`, use it.
+   - If there are multiple, pick by a small rule (e.g., filename includes `pcon` or `boundary`), or fail with a clear error to avoid ambiguity.
+4. **Download**:
+   - Use Dropbox API `files/download` to fetch the chosen GeoJSON to the runner.
+5. **Run lookup**:
+   - Use the local GeoJSON for point-in-polygon matching (no MapIt).
+6. **Write results**:
+   - Update `stations.pcon_code` + `pcon_version`, and optionally station name inference.
+
+### Where this logic lives
+- **Action step** (shell + Python helper) that:
+  - Lists folder contents via Dropbox API,
+  - Picks year and file,
+  - Downloads the GeoJSON to `data/`.
+- **Batch lookup script** reads the downloaded GeoJSON and does local spatial lookup.
+
+### Required secrets/config
+- `DROPBOX_ACCESS_TOKEN` (app token for Dropbox API)
+- `UK_AQ_GEO_TYPE` (e.g., `PCON`)
+- `UK_AQ_GEO_YEAR` (`2024` or `latest`)
+
+### Pros
+- No shared URLs required.
+- Clean support for `geo_type` + `year` selection.
+- Easy to pick `latest` automatically based on folder contents.
+
+### Cons
+- Requires Dropbox API token.
+- Needs a small bit of logic to disambiguate multiple files in a year folder.
+
+### Suggested “latest” logic
+- Filter subfolder names to `^\d{4}$`.
+- Sort numerically.
+- Use the highest value.
+
+This plan keeps the workflow flexible while matching your Dropbox directory structure and avoids URL-based downloads entirely.
+
+## TL;DR summary
+- The script reads GeoJSON, converts geometry to WKT, and upserts boundaries in small batches.
+- It then runs heavy spatial RPCs to tag stations and history with PCON codes.
+- It hammers Supabase because it sends many requests and triggers expensive spatial joins.
+- Best low-cost approach: **queue + external worker + caching**, possibly using a separate spatial DB or a public API for lookup.

@@ -515,6 +515,20 @@ begin
 end;
 $$;
 
+create or replace function uk_aq_station_name_for_point(target_point geography(Point, 4326))
+returns text
+language sql
+set search_path = public, pg_catalog
+as $$
+  select st.station_name
+  from stations st
+  where st.station_name is not null
+    and st.geometry is not null
+    and ST_Equals(st.geometry::geometry, target_point::geometry)
+  order by st.last_seen_at desc nulls last, st.created_at desc
+  limit 1;
+$$;
+
 drop function if exists uk_aq_stations_with_pcon(text);
 create or replace function uk_aq_stations_with_pcon(target_version text)
 returns table (

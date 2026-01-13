@@ -1,0 +1,54 @@
+name: UK AQ PCON lookup
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+jobs:
+  lookup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: python3 -m pip install --upgrade pip && python3 -m pip install -r requirements-dev.txt
+
+      - name: Download PCON GeoJSON (optional)
+        env:
+          DROPBOX_PCON_GEOJSON_URL: ${{ secrets.DROPBOX_PCON_GEOJSON_URL }}
+          DROPBOX_PCON_GEOJSON_URL_TEMPLATE: ${{ secrets.DROPBOX_PCON_GEOJSON_URL_TEMPLATE }}
+          UK_AQ_PCON_VERSION: "2024"
+        run: |
+          if [ -n "${DROPBOX_PCON_GEOJSON_URL}" ]; then
+            mkdir -p data
+            curl -L "${DROPBOX_PCON_GEOJSON_URL}" -o data/pcon_boundaries.geojson
+          elif [ -n "${DROPBOX_PCON_GEOJSON_URL_TEMPLATE}" ]; then
+            mkdir -p data
+            URL="$(printf '%s' "${DROPBOX_PCON_GEOJSON_URL_TEMPLATE}" | sed "s/{year}/${UK_AQ_PCON_VERSION}/g")"
+            curl -L "${URL}" -o data/pcon_boundaries.geojson
+          else
+            echo "No DROPBOX_PCON_GEOJSON_URL provided; skipping download."
+          fi
+
+      - name: Run PCON lookup batch
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          MAPIT_API_KEY: ${{ secrets.MAPIT_API_KEY }}
+          MAPIT_BASE_URL: ${{ secrets.MAPIT_BASE_URL }}
+          UK_AQ_USER_AGENT: uk-aq-pcon-lookup-action
+          UK_AQ_PCON_VERSION: "2024"
+        run: |
+          python3 scripts/uk_aq_pcon_lookup_batch.py \
+            --limit 10 \
+            --max-seconds 300 \
+            --sleep-seconds 2 \
+            --station-name-from-label
