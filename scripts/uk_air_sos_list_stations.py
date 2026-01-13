@@ -25,7 +25,6 @@ warnings.filterwarnings(
     category=Warning,
     module="urllib3",
 )
-
 import requests
 from dotenv import load_dotenv
 from supabase import Client, create_client

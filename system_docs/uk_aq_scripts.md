@@ -8,6 +8,13 @@ This document summarizes the UK-AQ helper scripts and their inputs/outputs.
 - `UK_AIR_SOS_BASE_URL` (optional; defaults to `https://uk-air.defra.gov.uk/sos-ukair/api/v1`)
   - The scripts also accept the legacy `UK_AIR_BASE_URL` or `UKAIR_BASE_URL` if set.
 - `UK_AIR_SOS_SERVICE_LABEL` (optional; defaults to `UK-AIR-SOS`)
+- `SCOMM_BASE_URL` (optional; defaults to `https://data.sensor.community`)
+- `SCOMM_CONNECTOR_CODE` (optional; defaults to `sensorcommunity`; legacy `SCOMM_CONNECTOR_REF` supported)
+- `SCOMM_SERVICE_REF` (optional; defaults to `SCOMM_CONNECTOR_CODE`)
+- `SCOMM_SERVICE_LABEL` (optional; defaults to `Sensor.Community`; legacy `SCOMM_CONNECTOR_LABEL` supported)
+- `SCOMM_COUNTRY` (optional; defaults to `GB`)
+- `SCOMM_USER_AGENT` (optional; identifies your client when polling Sensor.Community)
+- `SCOMM_LOG_LEVEL` (optional; defaults to `INFO`)
 
 ## Scripts
 
@@ -125,6 +132,8 @@ Key flags:
 - `--retry-backoff-seconds` (default: 2.0) base backoff between retries.
 - `--history-partitions` (default: 1) split history updates into partitions.
 - `--history-partition-index` run a single history partition (0-based).
+- `--stations-partitions` (default: 1) split station updates into partitions (uses `uk_aq_refresh_station_pcon_codes_partition`).
+- `--stations-partition-index` run a single station partition (0-based).
 - `--skip-boundaries` to skip uploads and only run update flags.
 - `--update-stations` to run `uk_aq_refresh_station_pcon_codes`.
 - `--update-history` to run `uk_aq_refresh_station_pcon_history`.
@@ -223,6 +232,41 @@ Writes to (when `--to-supabase` is set):
 - `phenomena`, `procedures`, `offerings` (unless `--skip-metadata` is used)
   - `stations` lifecycle fields: `first_seen_at`, `last_seen_at`, `removed_at`
   - Stations not seen in the current run are marked with `removed_at`.
+
+### `scripts/sensorcommunity_list_stations.py`
+Purpose:
+- Fetch all current Sensor.Community stations for `SCOMM_COUNTRY` (default `GB`).
+- Filter to UK bounding box (keeps stations with missing coordinates; `geometry` will be null in Supabase).
+- Optional upsert into Supabase.
+
+Common commands:
+```
+python3 scripts/sensorcommunity_list_stations.py
+python3 scripts/sensorcommunity_list_stations.py --format csv --output uk_sensorcommunity_stations.csv
+python3 scripts/sensorcommunity_list_stations.py --to-supabase
+```
+
+Writes to (when `--to-supabase` is set):
+- `connectors`, `stations`
+Notes:
+- Uses `SCOMM_SERVICE_REF` (defaults to `SCOMM_CONNECTOR_CODE`) for `stations.service_ref`.
+
+### `scripts/sensorcommunity_ingest.py`
+Purpose:
+- Fetch recent Sensor.Community values for `SCOMM_COUNTRY` (default `GB`).
+- Upsert connector + station metadata.
+- Insert latest observations for PM10 and PM2.5.
+
+Common commands:
+```
+python3 scripts/sensorcommunity_ingest.py --refresh-recent
+python3 scripts/sensorcommunity_ingest.py --refresh-recent --raw-output sensorcommunity_raw.json
+```
+
+Writes to:
+- `connectors`, `stations`, `timeseries`, `observations`
+Notes:
+- Uses `SCOMM_SERVICE_REF` (defaults to `SCOMM_CONNECTOR_CODE`) for `stations.service_ref` and `timeseries.service_ref`.
 
 ### `scripts/uk_aq_defra_compare.py`
 Purpose:
