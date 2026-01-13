@@ -26,6 +26,10 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
 - Notes:
   - Uses `SCOMM_*` environment variables for base URL, service metadata, and country.
   - Filters to the UK bounding box by default; stations with missing coordinates are kept.
+- Logs:
+  - Writes a log file to Dropbox `/log/YYYY-MM-DD/` (prefix `uk_aq_log_edge_scomm_`).
+  - Writes raw payloads to Dropbox `/raw_data/YYYY-MM-DD/` as ZIP (prefix `uk_aq_raw_edge_scomm_`).
+  - Writes errors to `error_logs` and `/error_log/YYYY-MM-DD/`.
 
 ### uk_aq_latest
 - Purpose: Serve the latest values across all stations (optionally filtered by region/station/pollutant).
@@ -72,9 +76,13 @@ Dropbox (raw/log/error uploads):
 Dropbox folders:
 - `UK_AIR_DROPBOX_ROOT` (e.g., `/CIC-Test` or `/LIVE`)
 - `UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL` (required to enable raw uploads)
+- `SCOMM_DROPBOX_ROOT` (optional override for Sensor.Community)
+- `SCOMM_RAW_DROPBOX_ALLOWED_SUPABASE_URL` (optional allowlist override for Sensor.Community)
 
 Optional:
 - `UK_AIR_ERROR_DROPBOX_FOLDER` (defaults to `error_log`)
+- `SCOMM_ERROR_DROPBOX_FOLDER` (optional override for Sensor.Community)
+- `SCOMM_ERROR_DROPBOX_ALLOWED_SUPABASE_URL` (optional allowlist for Sensor.Community error uploads)
 
 ## Notes
 

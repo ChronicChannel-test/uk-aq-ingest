@@ -541,7 +541,7 @@ def _slugify(value: str) -> str:
 
 def _build_raw_label(args: argparse.Namespace) -> str:
     stamp = utcnow().strftime("%Y%m%dT%H%M%SZ")
-    parts = ["uk_aq_raw", stamp]
+    parts = ["uk_aq_raw_uk_air_sos", stamp]
     if args.station_like:
         parts.append(_slugify(args.station_like))
     if args.region:
@@ -551,7 +551,7 @@ def _build_raw_label(args: argparse.Namespace) -> str:
 
 def _build_log_filename(args: argparse.Namespace) -> str:
     stamp = utcnow().strftime("%Y%m%dT%H%M%SZ")
-    parts = ["uk_aq_log", stamp]
+    parts = ["uk_aq_log_uk_air_sos", stamp]
     if args.station_like:
         parts.append(_slugify(args.station_like))
     if args.region:
@@ -564,7 +564,7 @@ def _build_error_filename(created_at: str, error_id: str) -> str:
         stamp = datetime.fromisoformat(created_at.replace("Z", "+00:00")).strftime("%Y%m%dT%H%M%SZ")
     except ValueError:
         stamp = utcnow().strftime("%Y%m%dT%H%M%SZ")
-    return f"uk_aq_error_{stamp}_{error_id}.json"
+    return f"uk_aq_error_uk_air_sos_{stamp}_{error_id}.json"
 
 
 def _load_dropbox_config(folder_override: Optional[str]) -> Optional[DropboxConfig]:

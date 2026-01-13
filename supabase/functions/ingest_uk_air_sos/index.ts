@@ -33,6 +33,7 @@ type ErrorLogEntry = {
   message: string;
   stack?: string | null;
   context?: Record<string, unknown> | null;
+  connector_code?: string | null;
   connector_id?: string | number | null;
   station_id?: string | number | null;
   timeseries_id?: string | number | null;
@@ -151,6 +152,7 @@ function logUnhandledError(
     message,
     stack: error.stack,
     context,
+    connector_code: UK_AIR_SOS_CONNECTOR_CODE,
   });
 }
 
@@ -328,6 +330,7 @@ serve(async (req) => {
                 points,
                 errorLogger,
                 connector?.id ?? requestedConnectorId ?? null,
+                connector?.connector_code ?? requestedConnectorCode ?? UK_AIR_SOS_CONNECTOR_CODE,
               );
               polled += 1;
             } catch (err) {
@@ -344,6 +347,7 @@ serve(async (req) => {
                   timespan,
                   connector_id: connector?.id ?? requestedConnectorId ?? null,
                 },
+                connector_code: connector?.connector_code ?? requestedConnectorCode ?? UK_AIR_SOS_CONNECTOR_CODE,
                 connector_id: connector?.id ?? requestedConnectorId ?? null,
                 timeseries_id: row.id,
               });
@@ -367,6 +371,7 @@ serve(async (req) => {
                 connector_id: connector.id,
                 error: pollUpdateError.message,
               },
+              connector_code: connector.connector_code ?? requestedConnectorCode ?? UK_AIR_SOS_CONNECTOR_CODE,
               connector_id: connector.id,
             });
           }
@@ -398,6 +403,7 @@ serve(async (req) => {
         connector_code: requestedConnectorCode,
         connector_label: requestedConnectorLabel,
       },
+      connector_code: requestedConnectorCode ?? UK_AIR_SOS_CONNECTOR_CODE,
       connector_id: requestedConnectorId ?? null,
     });
   } finally {
@@ -411,6 +417,9 @@ serve(async (req) => {
       log.warn("Poll errors", { sample: errors.slice(0, 25) });
     }
     let accessToken: string | null = null;
+    const resolvedConnectorCode = connector?.connector_code
+      ?? requestedConnectorCode
+      ?? UK_AIR_SOS_CONNECTOR_CODE;
     const refreshDropbox = dropboxConfig
       ? () => dropboxRefreshAccessToken(dropboxConfig)
       : undefined;
@@ -426,6 +435,7 @@ serve(async (req) => {
         accessToken,
         log,
         connector?.id ?? requestedConnectorId ?? null,
+        resolvedConnectorCode,
         errorLogger,
         refreshDropbox,
       );
@@ -433,6 +443,7 @@ serve(async (req) => {
         accessToken,
         rawRecorder,
         connector?.id ?? requestedConnectorId ?? null,
+        resolvedConnectorCode,
         errorLogger,
         refreshDropbox,
       );
@@ -634,24 +645,45 @@ function dropboxWithRoot(path: string): string {
   return `${DROPBOX_ROOT_FOLDER}${cleaned}`;
 }
 
-function buildDropboxLogPath(connectorId: string | null, timestamp: Date): string {
+function normalizeConnectorPrefix(connectorCode: string | null): string {
+  const cleaned = (connectorCode ?? "").trim().toLowerCase();
+  const normalized = cleaned.replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+  return normalized || "unknown";
+}
+
+function buildDropboxLogPath(
+  connectorId: string | null,
+  connectorCode: string | null,
+  timestamp: Date,
+): string {
   const stamp = formatCompactTimestamp(timestamp);
   const dateFolder = formatDateYmd(timestamp);
   const suffix = connectorId ? `_connector_${connectorId}` : "";
-  return `${DROPBOX_LOG_FOLDER}/${dateFolder}/uk_aq_log_edge_${stamp}${suffix}.log`;
+  const prefix = normalizeConnectorPrefix(connectorCode);
+  return `${DROPBOX_LOG_FOLDER}/${dateFolder}/uk_aq_log_edge_${prefix}_${stamp}${suffix}.log`;
 }
 
-function buildDropboxRawPath(connectorId: string | null, timestamp: Date): string {
+function buildDropboxRawPath(
+  connectorId: string | null,
+  connectorCode: string | null,
+  timestamp: Date,
+): string {
   const stamp = formatCompactTimestamp(timestamp);
   const dateFolder = formatDateYmd(timestamp);
   const suffix = connectorId ? `_connector_${connectorId}` : "";
-  return `${DROPBOX_RAW_FOLDER}/${dateFolder}/uk_aq_raw_edge_${stamp}${suffix}.zip`;
+  const prefix = normalizeConnectorPrefix(connectorCode);
+  return `${DROPBOX_RAW_FOLDER}/${dateFolder}/uk_aq_raw_edge_${prefix}_${stamp}${suffix}.zip`;
 }
 
-function buildDropboxErrorPath(errorId: string, createdAt: string): string {
+function buildDropboxErrorPath(
+  errorId: string,
+  createdAt: string,
+  connectorCode: string | null,
+): string {
   const dateFolder = createdAt.slice(0, 10);
   const stamp = formatCompactTimestamp(new Date(createdAt));
-  return `${DROPBOX_ERROR_FOLDER}/${dateFolder}/uk_aq_error_${stamp}_${errorId}.json`;
+  const prefix = normalizeConnectorPrefix(connectorCode);
+  return `${DROPBOX_ERROR_FOLDER}/${dateFolder}/uk_aq_error_edge_${prefix}_${stamp}_${errorId}.json`;
 }
 
 function formatCompactTimestamp(timestamp: Date): string {
@@ -666,6 +698,7 @@ async function uploadDropboxLog(
   accessToken: string,
   log: LogBuffer,
   connectorId: string | null,
+  connectorCode: string | null,
   errorLogger: { logError: (entry: ErrorLogEntry) => Promise<void> },
   refreshToken?: () => Promise<string>,
 ): Promise<string> {
@@ -677,7 +710,7 @@ async function uploadDropboxLog(
     return accessToken;
   }
   try {
-    const logPath = buildDropboxLogPath(connectorId, new Date());
+    const logPath = buildDropboxLogPath(connectorId, connectorCode, new Date());
     accessToken = await dropboxUploadFileWithRetry(
       accessToken,
       logPath,
@@ -694,8 +727,10 @@ async function uploadDropboxLog(
       stack: err instanceof Error ? err.stack : undefined,
       context: {
         connector_id: connectorId,
+        connector_code: connectorCode,
         error: err instanceof Error ? err.message : String(err),
       },
+      connector_code: connectorCode ?? null,
       connector_id: connectorId ?? null,
     });
   }
@@ -706,6 +741,7 @@ async function uploadDropboxRaw(
   accessToken: string,
   recorder: RawRecorder | null,
   connectorId: string | null,
+  connectorCode: string | null,
   errorLogger: { logError: (entry: ErrorLogEntry) => Promise<void> },
   refreshToken?: () => Promise<string>,
 ): Promise<string> {
@@ -717,7 +753,7 @@ async function uploadDropboxRaw(
     return accessToken;
   }
   try {
-    const rawPath = buildDropboxRawPath(connectorId, new Date());
+    const rawPath = buildDropboxRawPath(connectorId, connectorCode, new Date());
     const filename = rawPath.split("/").pop() ?? "uk_aq_raw_edge.jsonl";
     const jsonlName = filename.replace(/\.zip$/i, ".jsonl");
     const zipped = await zipTextCompressed(jsonlName, content);
@@ -736,8 +772,10 @@ async function uploadDropboxRaw(
       stack: err instanceof Error ? err.stack : undefined,
       context: {
         connector_id: connectorId,
+        connector_code: connectorCode,
         error: err instanceof Error ? err.message : String(err),
       },
+      connector_code: connectorCode ?? null,
       connector_id: connectorId ?? null,
     });
   }
@@ -782,9 +820,14 @@ function createErrorLogger(config: DropboxConfig | null, enabled: boolean) {
         if (!accessToken) {
           accessToken = await dropboxRefreshAccessToken(config);
         }
-        const dropboxPath = buildDropboxErrorPath(errorId, createdAt);
+        const dropboxPath = buildDropboxErrorPath(
+          errorId,
+          createdAt,
+          entry.connector_code ?? UK_AIR_SOS_CONNECTOR_CODE,
+        );
         const payload = {
           ...row,
+          connector_code: entry.connector_code ?? null,
           created_at: createdAt,
           dropbox_path: dropboxPath,
         };
@@ -1431,6 +1474,7 @@ async function upsertLastValue(
   points: Array<{ observed_at: string; value: number | null }>,
   errorLogger: { logError: (entry: ErrorLogEntry) => Promise<void> },
   connectorId: string | null,
+  connectorCode: string | null,
 ): Promise<void> {
   const lastValueFromPayload = toNumber(data?.lastValue);
   const lastValueTimestamp = data?.lastValueTimestamp;
@@ -1477,6 +1521,7 @@ async function upsertLastValue(
         connector_id: connectorId,
         error: error.message,
       },
+      connector_code: connectorCode ?? UK_AIR_SOS_CONNECTOR_CODE,
       connector_id: connectorId ?? null,
       timeseries_id: seriesId,
     });

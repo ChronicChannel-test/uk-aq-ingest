@@ -261,6 +261,7 @@ Common commands:
 ```
 python3 scripts/sensorcommunity_ingest.py --refresh-recent
 python3 scripts/sensorcommunity_ingest.py --refresh-recent --raw-output sensorcommunity_raw.json
+python3 scripts/sensorcommunity_ingest.py --refresh-recent --raw-dropbox
 ```
 
 Writes to:
@@ -268,6 +269,10 @@ Writes to:
 Notes:
 - Uses `SCOMM_SERVICE_REF` (defaults to `SCOMM_CONNECTOR_CODE`) for `stations.service_ref` and `timeseries.service_ref`.
 - Ensures `phenomena` rows for `pm10`/`pm2.5` and sets `timeseries.phenomenon_id`.
+- `SCOMM_FILE_LOG_LEVEL` controls file log verbosity when raw Dropbox capture is enabled.
+- Raw Dropbox uploads are gated by `SCOMM_RAW_DROPBOX_ALLOWED_SUPABASE_URL` (or `UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL`).
+- Dropbox credentials required: `DROPBOX_APP_KEY`, `DROPBOX_APP_SECRET`, `DROPBOX_REFRESH_TOKEN`.
+- Optional folders: `SCOMM_RAW_DROPBOX_FOLDER`/`SCOMM_ERROR_DROPBOX_FOLDER` (fallback to `UK_AIR_*`).
 
 ### `scripts/uk_aq_defra_compare.py`
 Purpose:

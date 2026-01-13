@@ -17,19 +17,29 @@ Environment:
 - SCOMM_SERVICE_LABEL (optional; defaults to Sensor.Community; legacy SCOMM_CONNECTOR_LABEL supported)
 - SCOMM_COUNTRY (optional; defaults to GB)
 - SCOMM_USER_AGENT (optional; identifies your client per Sensor.Community guidance)
+- SCOMM_FILE_LOG_LEVEL (optional; defaults to INFO)
+- DROPBOX_APP_KEY, DROPBOX_APP_SECRET, DROPBOX_REFRESH_TOKEN (for Dropbox logging)
+- SCOMM_RAW_DROPBOX_ALLOWED_SUPABASE_URL (optional; gates raw Dropbox uploads)
+- SCOMM_RAW_DROPBOX_FOLDER (optional; defaults to /raw_data; falls back to UK_AIR_RAW_DROPBOX_FOLDER)
+- SCOMM_ERROR_DROPBOX_FOLDER (optional; defaults to /error_log; falls back to UK_AIR_ERROR_DROPBOX_FOLDER)
 
 Example:
   python scripts/sensorcommunity_ingest.py --refresh-recent
 """
 
 import argparse
+import gzip
 import json
 import logging
 import os
+import tempfile
 import time
+import traceback
+import uuid
 import warnings
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 warnings.filterwarnings(
@@ -49,6 +59,7 @@ load_dotenv()
 
 LOG = logging.getLogger("sensorcommunity_ingest")
 DEFAULT_LOG_LEVEL = os.getenv("SCOMM_LOG_LEVEL", "INFO").upper()
+DEFAULT_FILE_LOG_LEVEL = os.getenv("SCOMM_FILE_LOG_LEVEL", "INFO").upper()
 logging.basicConfig(
     level=getattr(logging, DEFAULT_LOG_LEVEL, logging.INFO),
     format="%(asctime)s %(levelname)s %(message)s",
@@ -71,6 +82,15 @@ SCOMM_SERVICE_LABEL = (
 )
 SCOMM_COUNTRY = os.getenv("SCOMM_COUNTRY", "GB")
 SCOMM_USER_AGENT = os.getenv("SCOMM_USER_AGENT", "uk-air-quality-networks")
+
+DEFAULT_RAW_DROPBOX_FOLDER = "/raw_data"
+DEFAULT_ERROR_DROPBOX_FOLDER = "/error_log"
+DROPBOX_LOG_RETENTION_DAYS = 31
+DROPBOX_TOKEN_URL = "https://api.dropbox.com/oauth2/token"
+DROPBOX_UPLOAD_URL = "https://content.dropboxapi.com/2/files/upload"
+DROPBOX_LIST_FOLDER_URL = "https://api.dropboxapi.com/2/files/list_folder"
+DROPBOX_DOWNLOAD_ZIP_URL = "https://content.dropboxapi.com/2/files/download_zip"
+DROPBOX_DELETE_URL = "https://api.dropboxapi.com/2/files/delete_v2"
 
 UK_BBOX = {
     "west": -11.0,
@@ -100,8 +120,533 @@ SCOMM_PHENOMENA = {
 }
 
 
+@dataclass(frozen=True)
+class DropboxConfig:
+    app_key: str
+    app_secret: str
+    refresh_token: str
+    folder: str
+
+
+class RawPayloadRecorder:
+    def __init__(self, output_path: Path) -> None:
+        self.output_path = output_path
+        self._handle = gzip.open(output_path, "wt", encoding="utf-8")
+        self.count = 0
+        self.record_event("meta", {"created_at": utcnow().isoformat()})
+
+    def record_event(self, name: str, payload: Dict[str, Any]) -> None:
+        self._write(
+            {
+                "type": name,
+                "recorded_at": utcnow().isoformat(),
+                "payload": payload,
+            }
+        )
+
+    def record_response(
+        self,
+        path: str,
+        params: Optional[Dict[str, Any]],
+        status_code: int,
+        payload: Any,
+    ) -> None:
+        self._write(
+            {
+                "type": "response",
+                "fetched_at": utcnow().isoformat(),
+                "path": path,
+                "params": params,
+                "status_code": status_code,
+                "payload": payload,
+            }
+        )
+
+    def _write(self, payload: Dict[str, Any]) -> None:
+        self._handle.write(json.dumps(payload, ensure_ascii=True) + "\n")
+        self.count += 1
+
+    def close(self) -> None:
+        self._handle.close()
+
+
+@dataclass
+class RawDropboxSession:
+    recorder: RawPayloadRecorder
+    config: DropboxConfig
+    temp_dir: tempfile.TemporaryDirectory
+    log_path: Path
+    log_handler: logging.Handler
+
+    def finalize(self) -> None:
+        logging.getLogger().removeHandler(self.log_handler)
+        self.log_handler.close()
+        self.recorder.close()
+        try:
+            access_token = _dropbox_refresh_access_token(self.config)
+            if self.recorder.count > 1:
+                dropbox_path = _dropbox_target_path(self.config.folder, self.recorder.output_path.name)
+                _dropbox_upload_file(access_token, self.recorder.output_path, dropbox_path)
+                _emit_info(f"Uploaded raw payloads to Dropbox: {dropbox_path}")
+            else:
+                LOG.debug("Raw payload capture produced no response entries; skipping raw Dropbox upload.")
+            log_dropbox_path = _dropbox_log_target_path(self.config.folder, self.log_path.name)
+            _dropbox_upload_file(access_token, self.log_path, log_dropbox_path)
+            _dropbox_archive_logs(access_token, _dropbox_log_root_folder(self.config.folder), days=DROPBOX_LOG_RETENTION_DAYS)
+        except Exception as exc:
+            LOG.warning("Dropbox upload failed: %s", exc)
+        finally:
+            self.temp_dir.cleanup()
+
+
+class ErrorLogger:
+    def __init__(self, client: Client) -> None:
+        self.client = client
+        self.dropbox_config = _load_error_dropbox_config()
+        self._dropbox_access_token: Optional[str] = None
+
+    def log_error(
+        self,
+        *,
+        source: str,
+        severity: str,
+        message: str,
+        context: Optional[Dict[str, Any]] = None,
+        connector_id: Optional[int] = None,
+        station_id: Optional[int] = None,
+        timeseries_id: Optional[int] = None,
+        exc: Optional[BaseException] = None,
+    ) -> None:
+        error_id = str(uuid.uuid4())
+        created_at = utcnow().isoformat()
+        stack = None
+        if exc is not None:
+            stack = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+        payload: Dict[str, Any] = {
+            "id": error_id,
+            "source": source,
+            "severity": severity,
+            "message": message,
+            "stack": stack,
+            "context": context,
+            "connector_id": connector_id,
+            "station_id": station_id,
+            "timeseries_id": timeseries_id,
+        }
+        try:
+            self.client.table("error_logs").insert(payload).execute()
+        except Exception as insert_exc:
+            LOG.warning("Failed to insert error_logs row: %s", insert_exc)
+            return
+
+        if not self.dropbox_config:
+            return
+
+        dropbox_path = _dropbox_error_target_path(
+            self.dropbox_config.folder,
+            _build_error_filename(created_at, error_id),
+        )
+        error_payload = {
+            "id": error_id,
+            "created_at": created_at,
+            "source": source,
+            "severity": severity,
+            "message": message,
+            "stack": stack,
+            "context": context,
+            "connector_id": connector_id,
+            "station_id": station_id,
+            "timeseries_id": timeseries_id,
+        }
+        try:
+            if not self._dropbox_access_token:
+                self._dropbox_access_token = _dropbox_refresh_access_token(self.dropbox_config)
+            _dropbox_upload_bytes(
+                self._dropbox_access_token,
+                json.dumps(error_payload, ensure_ascii=True, indent=2).encode("utf-8"),
+                dropbox_path,
+            )
+            self.client.table("error_logs").update({"dropbox_path": dropbox_path}).eq(
+                "id",
+                error_id,
+            ).execute()
+        except Exception as exc:
+            LOG.warning("Dropbox error log upload failed: %s", exc)
+
+
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _configure_logging(console_level_name: str, file_level_name: str) -> None:
+    console_level = getattr(logging, (console_level_name or "").upper(), logging.INFO)
+    file_level = getattr(logging, (file_level_name or "").upper(), logging.INFO)
+    logging.getLogger().setLevel(min(console_level, file_level))
+    LOG.setLevel(min(console_level, file_level))
+    for handler in logging.getLogger().handlers:
+        handler.setLevel(console_level)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
+    logging.getLogger("urllib3").setLevel(logging.WARNING)
+    logging.getLogger("supabase").setLevel(logging.WARNING)
+    logging.getLogger("postgrest").setLevel(logging.WARNING)
+    logging.getLogger("gotrue").setLevel(logging.WARNING)
+
+
+def _emit_info(message: str) -> None:
+    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S,%f")[:-3]
+    print(f"{timestamp} INFO {message}")
+
+
+def _add_file_logger(path: Path, level_name: str) -> logging.Handler:
+    level = getattr(logging, (level_name or "").upper(), logging.INFO)
+    handler = logging.FileHandler(path, encoding="utf-8")
+    handler.setLevel(level)
+    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+    logging.getLogger().addHandler(handler)
+    return handler
+
+
+def _dropbox_refresh_access_token(config: DropboxConfig) -> str:
+    payload = {
+        "grant_type": "refresh_token",
+        "refresh_token": config.refresh_token,
+        "client_id": config.app_key,
+        "client_secret": config.app_secret,
+    }
+    resp = requests.post(DROPBOX_TOKEN_URL, data=payload, timeout=30)
+    if resp.status_code >= 400:
+        raise RuntimeError(f"Dropbox token request failed ({resp.status_code}): {resp.text}")
+    data = resp.json()
+    token = data.get("access_token")
+    if not token:
+        raise RuntimeError("Dropbox token response missing access_token.")
+    return token
+
+
+def _dropbox_upload_file(access_token: str, local_path: Path, dropbox_path: str) -> None:
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Dropbox-API-Arg": json.dumps(
+            {
+                "path": dropbox_path,
+                "mode": "add",
+                "autorename": True,
+                "mute": False,
+            }
+        ),
+        "Content-Type": "application/octet-stream",
+    }
+    with local_path.open("rb") as handle:
+        resp = requests.post(DROPBOX_UPLOAD_URL, headers=headers, data=handle, timeout=120)
+    if resp.status_code >= 400:
+        raise RuntimeError(f"Dropbox upload failed ({resp.status_code}): {resp.text}")
+
+
+def _dropbox_upload_bytes(access_token: str, payload: bytes, dropbox_path: str) -> None:
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Dropbox-API-Arg": json.dumps(
+            {
+                "path": dropbox_path,
+                "mode": "add",
+                "autorename": True,
+                "mute": False,
+            }
+        ),
+        "Content-Type": "application/octet-stream",
+    }
+    resp = requests.post(DROPBOX_UPLOAD_URL, headers=headers, data=payload, timeout=120)
+    if resp.status_code >= 400:
+        raise RuntimeError(f"Dropbox upload failed ({resp.status_code}): {resp.text}")
+
+
+def _dropbox_download_zip(access_token: str, folder_path: str) -> bytes:
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Dropbox-API-Arg": json.dumps({"path": folder_path}),
+    }
+    resp = requests.post(DROPBOX_DOWNLOAD_ZIP_URL, headers=headers, timeout=120)
+    if resp.status_code >= 400:
+        raise RuntimeError(f"Dropbox download_zip failed ({resp.status_code}): {resp.text}")
+    return resp.content
+
+
+def _normalize_dropbox_path(path: str) -> str:
+    cleaned = (path or "").strip()
+    if not cleaned:
+        return ""
+    if not cleaned.startswith("/"):
+        cleaned = f"/{cleaned}"
+    return cleaned.rstrip("/")
+
+
+def _dropbox_root_folder(folder: str) -> str:
+    env_root = _normalize_dropbox_path(os.getenv("UK_AIR_DROPBOX_ROOT", ""))
+    cleaned = _normalize_dropbox_path(folder)
+    if cleaned.endswith("/raw_data"):
+        cleaned = cleaned[: -len("/raw_data")]
+    elif cleaned.endswith("/log"):
+        cleaned = cleaned[: -len("/log")]
+    elif cleaned.endswith("/error_log"):
+        cleaned = cleaned[: -len("/error_log")]
+    if env_root:
+        if not cleaned:
+            return env_root
+        if cleaned == env_root or cleaned.startswith(f"{env_root}/"):
+            return cleaned
+        return f"{env_root}{cleaned}"
+    return cleaned
+
+
+def _dropbox_base_folder(folder: str) -> str:
+    root = _dropbox_root_folder(folder or DEFAULT_RAW_DROPBOX_FOLDER)
+    if root:
+        return f"{root}/raw_data"
+    return "/raw_data"
+
+
+def _dropbox_target_path(folder: str, filename: str) -> str:
+    date_folder = utcnow().strftime("%Y-%m-%d")
+    return f"{_dropbox_base_folder(folder)}/{date_folder}/{filename}"
+
+
+def _dropbox_log_root_folder(folder: str) -> str:
+    root = _dropbox_root_folder(folder)
+    if root:
+        return f"{root}/log"
+    return "/log"
+
+
+def _dropbox_log_folder_path(folder: str, date_folder: Optional[str] = None) -> str:
+    root = _dropbox_log_root_folder(folder)
+    date_folder = date_folder or utcnow().strftime("%Y-%m-%d")
+    return f"{root}/{date_folder}"
+
+
+def _dropbox_log_target_path(folder: str, filename: str) -> str:
+    return f"{_dropbox_log_folder_path(folder)}/{filename}"
+
+
+def _dropbox_error_root_folder(folder: str) -> str:
+    root = _dropbox_root_folder(folder or DEFAULT_ERROR_DROPBOX_FOLDER)
+    if root.endswith("/error_log"):
+        root = root[: -len("/error_log")]
+    if root:
+        return f"{root}/error_log"
+    return "/error_log"
+
+
+def _dropbox_error_folder_path(folder: str, date_folder: Optional[str] = None) -> str:
+    root = _dropbox_error_root_folder(folder)
+    date_folder = date_folder or utcnow().strftime("%Y-%m-%d")
+    return f"{root}/{date_folder}"
+
+
+def _dropbox_error_target_path(folder: str, filename: str) -> str:
+    return f"{_dropbox_error_folder_path(folder)}/{filename}"
+
+
+def _dropbox_archive_logs(
+    access_token: str,
+    log_root: str,
+    days: int = DROPBOX_LOG_RETENTION_DAYS,
+    archive_days: int = 365,
+) -> None:
+    headers = {"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"}
+    cutoff_date = (utcnow() - timedelta(days=days)).date()
+    archive_cutoff = (utcnow() - timedelta(days=archive_days)).date()
+    archive_root = f"{log_root}/archive"
+
+    def list_folder(path: str) -> List[Dict[str, Any]]:
+        payload: Dict[str, Any] = {"path": path}
+        entries: List[Dict[str, Any]] = []
+        while True:
+            resp = requests.post(DROPBOX_LIST_FOLDER_URL, headers=headers, json=payload, timeout=30)
+            if resp.status_code == 409:
+                return []
+            if resp.status_code >= 400:
+                raise RuntimeError(f"Dropbox list_folder failed ({resp.status_code}): {resp.text}")
+            data = resp.json()
+            entries.extend(data.get("entries", []))
+            if not data.get("has_more"):
+                return entries
+            payload = {"cursor": data.get("cursor")}
+
+    entries = list_folder(log_root)
+    archive_entries = list_folder(archive_root)
+    existing_archives = {
+        entry.get("name")
+        for entry in archive_entries
+        if entry.get(".tag") == "file" and entry.get("name")
+    }
+
+    for entry in entries:
+        if entry.get(".tag") != "folder":
+            continue
+        name = entry.get("name")
+        if not name or name == "archive":
+            continue
+        try:
+            folder_date = datetime.strptime(name, "%Y-%m-%d").date()
+        except ValueError:
+            continue
+        if folder_date >= cutoff_date:
+            continue
+        archive_name = f"{name}.zip"
+        archive_path = f"{archive_root}/{archive_name}"
+        folder_path = entry.get("path_lower") or entry.get("path_display")
+        if not folder_path:
+            continue
+        if archive_name not in existing_archives:
+            zip_payload = _dropbox_download_zip(access_token, folder_path)
+            _dropbox_upload_bytes(access_token, zip_payload, archive_path)
+        delete_resp = requests.post(
+            DROPBOX_DELETE_URL,
+            headers=headers,
+            json={"path": folder_path},
+            timeout=30,
+        )
+        if delete_resp.status_code >= 400:
+            LOG.warning(
+                "Dropbox log folder delete failed (%s): %s",
+                delete_resp.status_code,
+                delete_resp.text,
+            )
+
+    for entry in archive_entries:
+        if entry.get(".tag") != "file":
+            continue
+        name = entry.get("name") or ""
+        if not name.endswith(".zip"):
+            continue
+        date_part = name[:-4]
+        try:
+            archive_date = datetime.strptime(date_part, "%Y-%m-%d").date()
+        except ValueError:
+            continue
+        if archive_date >= archive_cutoff:
+            continue
+        path = entry.get("path_lower") or entry.get("path_display")
+        if not path:
+            continue
+        delete_resp = requests.post(
+            DROPBOX_DELETE_URL,
+            headers=headers,
+            json={"path": path},
+            timeout=30,
+        )
+        if delete_resp.status_code >= 400:
+            LOG.warning(
+                "Dropbox archive delete failed (%s): %s",
+                delete_resp.status_code,
+                delete_resp.text,
+            )
+
+
+def _build_raw_label(args: argparse.Namespace) -> str:
+    stamp = utcnow().strftime("%Y%m%dT%H%M%SZ")
+    parts = ["uk_aq_raw_scomm", stamp, SCOMM_COUNTRY.lower()]
+    if args.no_filter:
+        parts.append("nofilter")
+    return "_".join(parts)
+
+
+def _build_log_filename(args: argparse.Namespace) -> str:
+    stamp = utcnow().strftime("%Y%m%dT%H%M%SZ")
+    parts = ["uk_aq_log_scomm", stamp, SCOMM_COUNTRY.lower()]
+    if args.no_filter:
+        parts.append("nofilter")
+    return f"{'_'.join(parts)}.log"
+
+
+def _build_error_filename(created_at: str, error_id: str) -> str:
+    try:
+        stamp = datetime.fromisoformat(created_at.replace("Z", "+00:00")).strftime("%Y%m%dT%H%M%SZ")
+    except ValueError:
+        stamp = utcnow().strftime("%Y%m%dT%H%M%SZ")
+    return f"uk_aq_error_scomm_{stamp}_{error_id}.json"
+
+
+def _load_dropbox_config(folder_override: Optional[str]) -> Optional[DropboxConfig]:
+    app_key = os.getenv("DROPBOX_APP_KEY", "").strip()
+    app_secret = os.getenv("DROPBOX_APP_SECRET", "").strip()
+    refresh_token = os.getenv("DROPBOX_REFRESH_TOKEN", "").strip()
+    folder = (
+        folder_override
+        or os.getenv("SCOMM_RAW_DROPBOX_FOLDER")
+        or os.getenv("UK_AIR_RAW_DROPBOX_FOLDER")
+        or DEFAULT_RAW_DROPBOX_FOLDER
+    ).strip()
+    if not (app_key and app_secret and refresh_token):
+        LOG.warning("Dropbox credentials missing; skipping raw payload upload.")
+        return None
+    return DropboxConfig(
+        app_key=app_key,
+        app_secret=app_secret,
+        refresh_token=refresh_token,
+        folder=folder,
+    )
+
+
+def _load_error_dropbox_config() -> Optional[DropboxConfig]:
+    app_key = os.getenv("DROPBOX_APP_KEY", "").strip()
+    app_secret = os.getenv("DROPBOX_APP_SECRET", "").strip()
+    refresh_token = os.getenv("DROPBOX_REFRESH_TOKEN", "").strip()
+    folder = (
+        os.getenv("SCOMM_ERROR_DROPBOX_FOLDER")
+        or os.getenv("UK_AIR_ERROR_DROPBOX_FOLDER")
+        or DEFAULT_ERROR_DROPBOX_FOLDER
+    ).strip()
+    if not (app_key and app_secret and refresh_token):
+        LOG.warning("Dropbox credentials missing; skipping error Dropbox upload.")
+        return None
+    return DropboxConfig(
+        app_key=app_key,
+        app_secret=app_secret,
+        refresh_token=refresh_token,
+        folder=folder,
+    )
+
+
+def _raw_dropbox_allowed() -> bool:
+    supabase_url = os.getenv("SUPABASE_URL", "").strip()
+    allowed_url = (
+        os.getenv("SCOMM_RAW_DROPBOX_ALLOWED_SUPABASE_URL")
+        or os.getenv("UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL")
+        or ""
+    ).strip()
+    if not allowed_url:
+        LOG.warning("SCOMM_RAW_DROPBOX_ALLOWED_SUPABASE_URL not set; raw Dropbox upload disabled.")
+        return False
+    if supabase_url != allowed_url:
+        LOG.warning("Raw Dropbox upload disabled (SUPABASE_URL does not match allowed URL).")
+        return False
+    return True
+
+
+def _prepare_raw_dropbox_session(args: argparse.Namespace) -> Optional[RawDropboxSession]:
+    if not args.raw_dropbox:
+        return None
+    if not _raw_dropbox_allowed():
+        return None
+    config = _load_dropbox_config(args.raw_dropbox_folder)
+    if not config:
+        return None
+    temp_dir = tempfile.TemporaryDirectory(prefix="uk_aq_scomm_raw_")
+    filename = f"{_build_raw_label(args)}.jsonl.gz"
+    output_path = Path(temp_dir.name) / filename
+    recorder = RawPayloadRecorder(output_path)
+    log_path = Path(temp_dir.name) / _build_log_filename(args)
+    log_handler = _add_file_logger(log_path, DEFAULT_FILE_LOG_LEVEL)
+    LOG.debug("Raw Dropbox capture enabled (output=%s).", output_path.name)
+    return RawDropboxSession(
+        recorder=recorder,
+        config=config,
+        temp_dir=temp_dir,
+        log_path=log_path,
+        log_handler=log_handler,
+    )
 
 
 def parse_timestamp(value: Optional[str]) -> Optional[datetime]:
@@ -129,12 +674,19 @@ def coerce_float(value: Any) -> Optional[float]:
 
 
 class SensorCommunityClient:
-    def __init__(self, base_url: str = SCOMM_BASE_URL, timeout: int = 60, retries: int = 3):
+    def __init__(
+        self,
+        base_url: str = SCOMM_BASE_URL,
+        timeout: int = 60,
+        retries: int = 3,
+        raw_recorder: Optional[RawPayloadRecorder] = None,
+    ):
         self.base_url = base_url
         self.timeout = timeout
         self.retries = retries
         self.session = requests.Session()
         self.session.headers.update({"User-Agent": SCOMM_USER_AGENT})
+        self.raw_recorder = raw_recorder
 
     def get(self, path: str) -> Any:
         url = f"{self.base_url}/{path.lstrip('/')}"
@@ -145,7 +697,10 @@ class SensorCommunityClient:
                     self._sleep(attempt)
                     continue
                 resp.raise_for_status()
-                return resp.json()
+                payload = resp.json()
+                if self.raw_recorder:
+                    self.raw_recorder.record_response(path, None, resp.status_code, payload)
+                return payload
             except requests.RequestException as exc:
                 LOG.warning("Request failed (attempt %s/%s): %s", attempt, self.retries, exc)
                 if attempt == self.retries:
@@ -469,114 +1024,150 @@ def parse_args() -> argparse.Namespace:
         help="Write raw payloads to this file (JSON).",
     )
     parser.add_argument(
+        "--raw-dropbox",
+        action="store_true",
+        help="Upload raw payloads to Dropbox (testing only; gated by allowlist).",
+    )
+    parser.add_argument(
+        "--raw-dropbox-folder",
+        help="Dropbox folder path for raw payloads (optional).",
+    )
+    parser.add_argument(
         "--no-filter",
         action="store_true",
         help="Skip the UK bounding box filter and ingest all stations in the response.",
+    )
+    parser.add_argument(
+        "--log-level",
+        default=DEFAULT_LOG_LEVEL,
+        help="Logging level (DEBUG, INFO, WARNING, ERROR).",
     )
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
+    _configure_logging(args.log_level, DEFAULT_FILE_LOG_LEVEL)
     if not args.refresh_recent:
         LOG.error("No action specified. Use --refresh-recent.")
         raise SystemExit(2)
-    client = SensorCommunityClient()
-    payload = client.recent_values()
-    if not payload:
-        LOG.warning("No sensor values returned from Sensor.Community.")
-        return
+    raw_session = _prepare_raw_dropbox_session(args)
+    error_logger: Optional[ErrorLogger] = None
+    try:
+        client = SensorCommunityClient(raw_recorder=raw_session.recorder if raw_session else None)
+        payload = client.recent_values()
+        if not payload:
+            LOG.warning("No sensor values returned from Sensor.Community.")
+            return
 
-    filtered = (
-        payload
-        if args.no_filter
-        else [s for s in payload if station_in_bbox_or_missing_coords(station_stub(s), UK_BBOX)]
-    )
+        filtered = (
+            payload
+            if args.no_filter
+            else [s for s in payload if station_in_bbox_or_missing_coords(station_stub(s), UK_BBOX)]
+        )
 
-    if args.raw_output:
-        with open(args.raw_output, "w", encoding="utf-8") as handle:
-            json.dump(
+        if args.raw_output:
+            with open(args.raw_output, "w", encoding="utf-8") as handle:
+                json.dump(
+                    {
+                        "source": SCOMM_BASE_URL,
+                        "fetched_at": utcnow().isoformat(),
+                        "bbox": None if args.no_filter else UK_BBOX,
+                        "count": len(filtered),
+                        "stations": filtered,
+                    },
+                    handle,
+                    indent=2,
+                )
+
+        writer = SupabaseWriter()
+        error_logger = ErrorLogger(writer.client)
+        connector_id = writer.upsert_connector()
+        service_ref = SCOMM_SERVICE_REF
+        phenomenon_ids = writer.upsert_phenomena(connector_id)
+        writer.upsert_stations(filtered, connector_id, service_ref)
+
+        station_refs = []
+        observations_by_timeseries: Dict[TimeseriesKey, Tuple[Optional[float], datetime]] = {}
+        timeseries_refs: List[str] = []
+        for record in filtered:
+            payload = normalize_station_payload(record)
+            station_ref = payload.get("station_ref")
+            if not station_ref:
+                continue
+            station_refs.append(station_ref)
+            observed_at = parse_timestamp(record.get("timestamp")) or utcnow()
+            values, series_refs = build_observation_rows(station_ref, record, observed_at)
+            timeseries_refs.extend(series_refs)
+            for key, value in values:
+                existing = observations_by_timeseries.get(key)
+                if existing is None or existing[1] < observed_at:
+                    observations_by_timeseries[key] = (value, observed_at)
+
+        station_id_map = writer.fetch_station_ids(connector_id, service_ref, station_refs)
+        timeseries_payload = []
+        for key, (value, observed_at) in observations_by_timeseries.items():
+            station_id = station_id_map.get(key.station_ref)
+            if not station_id:
+                continue
+            mapped = VALUE_TYPE_MAP.get(
+                "P1" if key.pollutant == "pm10" else "P2"
+            )
+            label = f"{key.station_ref} {mapped['label']}" if mapped else key.pollutant
+            timeseries_payload.append(
                 {
-                    "source": SCOMM_BASE_URL,
-                    "fetched_at": utcnow().isoformat(),
-                    "bbox": None if args.no_filter else UK_BBOX,
-                    "count": len(filtered),
-                    "stations": filtered,
-                },
-                handle,
-                indent=2,
+                    "timeseries_ref": f"{key.station_ref}:{key.pollutant}",
+                    "label": label,
+                    "uom": mapped["uom"] if mapped else None,
+                    "station_id": station_id,
+                    "connector_id": connector_id,
+                    "service_ref": str(service_ref),
+                    "phenomenon_id": phenomenon_ids.get(key.pollutant),
+                    "last_value_at": observed_at.isoformat(),
+                    "last_value": value,
+                }
             )
 
-    writer = SupabaseWriter()
-    connector_id = writer.upsert_connector()
-    service_ref = SCOMM_SERVICE_REF
-    phenomenon_ids = writer.upsert_phenomena(connector_id)
-    writer.upsert_stations(filtered, connector_id, service_ref)
+        writer.upsert_timeseries(timeseries_payload)
+        backfilled = writer.backfill_timeseries_phenomena(connector_id, service_ref, phenomenon_ids)
+        if backfilled:
+            LOG.info("Backfilled phenomenon_id for %s timeseries rows.", backfilled)
+        timeseries_id_map = writer.fetch_timeseries_ids(connector_id, service_ref, timeseries_refs)
 
-    station_refs = []
-    observations_by_timeseries: Dict[TimeseriesKey, Tuple[Optional[float], datetime]] = {}
-    timeseries_refs: List[str] = []
-    for record in filtered:
-        payload = normalize_station_payload(record)
-        station_ref = payload.get("station_ref")
-        if not station_ref:
-            continue
-        station_refs.append(station_ref)
-        observed_at = parse_timestamp(record.get("timestamp")) or utcnow()
-        values, series_refs = build_observation_rows(station_ref, record, observed_at)
-        timeseries_refs.extend(series_refs)
-        for key, value in values:
-            existing = observations_by_timeseries.get(key)
-            if existing is None or existing[1] < observed_at:
-                observations_by_timeseries[key] = (value, observed_at)
+        observation_rows = []
+        for key, (value, observed_at) in observations_by_timeseries.items():
+            timeseries_ref = f"{key.station_ref}:{key.pollutant}"
+            timeseries_id = timeseries_id_map.get(timeseries_ref)
+            if not timeseries_id:
+                continue
+            observation_rows.append(
+                {
+                    "timeseries_id": timeseries_id,
+                    "observed_at": observed_at.isoformat(),
+                    "value": value,
+                    "status": None,
+                }
+            )
 
-    station_id_map = writer.fetch_station_ids(connector_id, service_ref, station_refs)
-    timeseries_payload = []
-    for key, (value, observed_at) in observations_by_timeseries.items():
-        station_id = station_id_map.get(key.station_ref)
-        if not station_id:
-            continue
-        mapped = VALUE_TYPE_MAP.get(
-            "P1" if key.pollutant == "pm10" else "P2"
-        )
-        label = f"{key.station_ref} {mapped['label']}" if mapped else key.pollutant
-        timeseries_payload.append(
-            {
-                "timeseries_ref": f"{key.station_ref}:{key.pollutant}",
-                "label": label,
-                "uom": mapped["uom"] if mapped else None,
-                "station_id": station_id,
-                "connector_id": connector_id,
-                "service_ref": str(service_ref),
-                "phenomenon_id": phenomenon_ids.get(key.pollutant),
-                "last_value_at": observed_at.isoformat(),
-                "last_value": value,
-            }
-        )
-
-    writer.upsert_timeseries(timeseries_payload)
-    backfilled = writer.backfill_timeseries_phenomena(connector_id, service_ref, phenomenon_ids)
-    if backfilled:
-        LOG.info("Backfilled phenomenon_id for %s timeseries rows.", backfilled)
-    timeseries_id_map = writer.fetch_timeseries_ids(connector_id, service_ref, timeseries_refs)
-
-    observation_rows = []
-    for key, (value, observed_at) in observations_by_timeseries.items():
-        timeseries_ref = f"{key.station_ref}:{key.pollutant}"
-        timeseries_id = timeseries_id_map.get(timeseries_ref)
-        if not timeseries_id:
-            continue
-        observation_rows.append(
-            {
-                "timeseries_id": timeseries_id,
-                "observed_at": observed_at.isoformat(),
-                "value": value,
-                "status": None,
-            }
-        )
-
-    inserted = writer.upsert_observations(observation_rows)
-    LOG.info("Upserted %s observations.", inserted)
+        inserted = writer.upsert_observations(observation_rows)
+        LOG.info("Upserted %s observations.", inserted)
+    except Exception as exc:
+        LOG.warning("Unhandled ingest error: %s", exc)
+        if error_logger:
+            error_logger.log_error(
+                source="sensorcommunity_ingest",
+                severity="error",
+                message="Unhandled ingest error.",
+                context={
+                    "country": SCOMM_COUNTRY,
+                    "no_filter": args.no_filter,
+                    "raw_dropbox": bool(args.raw_dropbox),
+                },
+                exc=exc,
+            )
+    finally:
+        if raw_session:
+            raw_session.finalize()
 
 
 if __name__ == "__main__":
