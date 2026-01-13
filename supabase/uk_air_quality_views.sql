@@ -205,47 +205,15 @@ left join pm25_agg
   on pm25_agg.pcon_code = pb.pcon_code
   and pm25_agg.pcon_version = pb.pcon_version;
 
--- Population observations union (Nomis + NRS + NISRA)
-create or replace view uk_population_observations as
-select
-  geo_code,
-  geo_type,
-  reference_date,
-  population_value,
-  dataset_id,
-  measure
-from nomis_population_observations
-union all
-select
-  geo_code,
-  geo_type,
-  reference_date,
-  population_value,
-  dataset_id,
-  measure
-from nrs_population_observations
-union all
-select
-  geo_code,
-  geo_type,
-  reference_date,
-  population_value,
-  dataset_id,
-  measure
-from nisra_population_observations;
-
 -- Enforce RLS on base tables for view readers.
 alter view if exists bristol_latest_pollutants set (security_invoker = true);
 alter view if exists la_latest_pm25 set (security_invoker = true);
 alter view if exists pcon_latest_pm25 set (security_invoker = true);
-alter view if exists uk_population_observations set (security_invoker = true);
 
 revoke all on bristol_latest_pollutants from anon, authenticated;
 revoke all on la_latest_pm25 from anon, authenticated;
 revoke all on pcon_latest_pm25 from anon, authenticated;
-revoke all on uk_population_observations from anon, authenticated;
 
 grant select on bristol_latest_pollutants to authenticated, service_role;
 grant select on la_latest_pm25 to authenticated, service_role;
 grant select on pcon_latest_pm25 to authenticated, service_role;
-grant select on uk_population_observations to authenticated, service_role;
