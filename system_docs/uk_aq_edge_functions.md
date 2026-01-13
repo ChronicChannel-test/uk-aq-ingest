@@ -18,6 +18,15 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
   - Writes raw payloads to Dropbox `/raw_data/YYYY-MM-DD/` as ZIP
   - Writes errors to `error_logs` and `/error_log/YYYY-MM-DD/`
 
+### ingest_sensorcommunity
+- Purpose: Poll Sensor.Community recent values and write stations, timeseries, and observations.
+- Triggered by: Supabase cron (see `supabase/uk_aq_polling_cron.sql`).
+- Writes:
+  - `connectors`, `stations`, `phenomena`, `timeseries`, `observations`
+- Notes:
+  - Uses `SCOMM_*` environment variables for base URL, service metadata, and country.
+  - Filters to the UK bounding box by default; stations with missing coordinates are kept.
+
 ### uk_aq_latest
 - Purpose: Serve the latest values across all stations (optionally filtered by region/station/pollutant).
 - Triggered by: Web requests (read-only, no writes).
