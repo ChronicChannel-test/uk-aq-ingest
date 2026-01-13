@@ -798,27 +798,23 @@ function normalizeConnectorPrefix(connectorCode: string | null): string {
 }
 
 function buildDropboxLogPath(
-  connectorId: string | null,
   connectorCode: string | null,
   timestamp: Date,
 ): string {
   const stamp = formatCompactTimestamp(timestamp);
   const dateFolder = formatDateYmd(timestamp);
-  const suffix = connectorId ? `_connector_${connectorId}` : "";
   const prefix = normalizeConnectorPrefix(connectorCode);
-  return `${DROPBOX_LOG_FOLDER}/${dateFolder}/uk_aq_log_edge_${prefix}_${stamp}${suffix}.log`;
+  return `${DROPBOX_LOG_FOLDER}/${dateFolder}/uk_aq_log_edge_${prefix}_${stamp}.log`;
 }
 
 function buildDropboxRawPath(
-  connectorId: string | null,
   connectorCode: string | null,
   timestamp: Date,
 ): string {
   const stamp = formatCompactTimestamp(timestamp);
   const dateFolder = formatDateYmd(timestamp);
-  const suffix = connectorId ? `_connector_${connectorId}` : "";
   const prefix = normalizeConnectorPrefix(connectorCode);
-  return `${DROPBOX_RAW_FOLDER}/${dateFolder}/uk_aq_raw_edge_${prefix}_${stamp}${suffix}.zip`;
+  return `${DROPBOX_RAW_FOLDER}/${dateFolder}/uk_aq_raw_edge_${prefix}_${stamp}.zip`;
 }
 
 function buildDropboxErrorPath(
@@ -856,7 +852,7 @@ async function uploadDropboxLog(
     return accessToken;
   }
   try {
-    const logPath = buildDropboxLogPath(connectorId, connectorCode, new Date());
+    const logPath = buildDropboxLogPath(connectorCode, new Date());
     accessToken = await dropboxUploadFileWithRetry(
       accessToken,
       logPath,
@@ -899,7 +895,7 @@ async function uploadDropboxRaw(
     return accessToken;
   }
   try {
-    const rawPath = buildDropboxRawPath(connectorId, connectorCode, new Date());
+    const rawPath = buildDropboxRawPath(connectorCode, new Date());
     const filename = rawPath.split("/").pop() ?? "uk_aq_raw_edge.jsonl";
     const jsonlName = filename.replace(/\.zip$/i, ".jsonl");
     const zipped = await zipTextCompressed(jsonlName, content);
