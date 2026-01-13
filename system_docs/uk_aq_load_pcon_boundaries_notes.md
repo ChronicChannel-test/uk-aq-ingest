@@ -174,6 +174,46 @@ This keeps the main Supabase DB doing only lightweight writes and avoids repeate
 **Cons:**
 - More moving parts (queue + worker + cache).
 
+## Draft GitHub Actions plan for PCON lookups
+This is a lightweight, scheduled workflow that runs short jobs (minutes) to look up PCON codes for stations that are missing them. It fits the “runtime is short” requirement by limiting batch size and job duration.
+
+**High-level flow:**
+1. **Schedule** the workflow (e.g., hourly or daily).
+2. **Pull a small batch** of stations missing PCON codes (and possibly missing `station_name`) from Supabase.
+3. **Compute PCON + version** using a local lookup dataset or a small embedded spatial engine.
+4. **Infer station_name** if missing:
+   - exact coordinate match → reuse name,
+   - else nearest station within a small radius,
+   - else optional reverse geocode (cached).
+5. **Write updates back** to Supabase in a single bulk update per run.
+6. **Stop early** if the batch is empty or the runtime budget is close to the limit.
+
+### Why “runtime is short” matters
+GitHub-hosted runners are designed for short, bursty workloads. If you keep each run small (e.g., 100–500 stations), the job completes quickly and stays within free-tier usage limits.
+
+### Minimal workflow structure (conceptual)
+- **Trigger:** `schedule` (cron), plus `workflow_dispatch` for manual runs.
+- **Job steps:**
+  1. Checkout repo.
+  2. Set up Python.
+  3. Install dependencies (only the minimal spatial + HTTP deps).
+  4. Run a script like `scripts/uk_aq_pcon_lookup_batch.py --limit 200 --max-seconds 240`.
+- **Secrets:** Supabase URL and service role key.
+
+### Pros
+- Free or low-cost (GitHub Actions free tier).
+- Easy to throttle and cap runtime.
+- No long-running infrastructure to maintain.
+
+### Cons
+- Needs a compact boundary dataset or a fast lookup method available to the runner.
+- Cron accuracy and compute limits may cause backlogs if the queue grows quickly.
+
+### Practical tweaks to keep runtime short
+- Keep a **hard batch limit** and exit after one batch.
+- Use a **small cache** keyed by rounded lat/lon to avoid repeated lookups.
+- Prefer **local boundary data** over external APIs to reduce latency and rate limits.
+  
 ## Quick answer on “use station_names of other stations if they have exactly the same geo co-ords?”
 Yes — that’s a low-cost, low-risk way to fill missing station_name values. It’s deterministic and avoids external geocoding. If multiple names exist for the same coords, pick the most common or latest.
 

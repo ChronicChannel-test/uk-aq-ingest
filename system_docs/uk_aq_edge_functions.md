@@ -35,6 +35,7 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
 - Purpose: Serve the latest values across all stations (optionally filtered by region/station/pollutant).
 - Triggered by: Web requests (read-only, no writes).
 - Returns: timeseries rows with station + phenomenon metadata and latest values.
+- Params: `region`, `station_like`, `pollutant`, `connector_id`, `limit`, `pcon_code`.
 
 ### uk_aq_bristol_latest
 - Purpose: Serve the latest values with a Bristol station default for local dashboards.

@@ -71,6 +71,7 @@ serve(async (req) => {
 
   const url = new URL(req.url);
   const region = normalizeText(url.searchParams.get("region"));
+  const pconCode = normalizeText(url.searchParams.get("pcon_code"));
   const stationLikeParam = normalizeText(url.searchParams.get("station_like"));
   const scopeParam = normalizeText(url.searchParams.get("scope"));
   const includeAll = scopeParam === "all" || stationLikeParam === "all";
@@ -84,9 +85,10 @@ serve(async (req) => {
   const limit = parseLimit(url.searchParams.get("limit"), DEFAULT_LIMIT);
 
   try {
-    const rows = await loadLatest({ region, stationLike, connectorId, pollutant, limit });
+    const rows = await loadLatest({ region, pconCode, stationLike, connectorId, pollutant, limit });
     return json({
       region,
+      pcon_code: pconCode,
       pollutant,
       count: rows.length,
       data: rows,
@@ -99,23 +101,25 @@ serve(async (req) => {
 
 type LoadOptions = {
   region: string | null;
+  pconCode: string | null;
   stationLike: string | null;
   connectorId: string | null;
   pollutant: string | null;
   limit: number;
 };
 
-async function loadLatest({ region, stationLike, connectorId, pollutant, limit }: LoadOptions) {
+async function loadLatest({ region, pconCode, stationLike, connectorId, pollutant, limit }: LoadOptions) {
   const pollutantKey = normalizePollutant(pollutant);
+  const useStationInner = Boolean(region || pconCode);
   const phenomenonSelect = pollutantKey
     ? "phenomenon:phenomena!inner(id,label,notation,eionet_uri,pollutant_label)"
     : "phenomenon:phenomena(id,label,notation,eionet_uri,pollutant_label)";
   const selectBase =
-    `id,timeseries_ref,label,uom,last_value,last_value_at,station:stations(id,station_ref,label,station_name,region),${phenomenonSelect}`;
+    `id,timeseries_ref,label,uom,last_value,last_value_at,station:stations(id,station_ref,label,station_name,region,pcon_code,pcon_version),${phenomenonSelect}`;
   const selectStationInner =
-    `id,timeseries_ref,label,uom,last_value,last_value_at,station:stations!inner(id,station_ref,label,station_name,region),${phenomenonSelect}`;
+    `id,timeseries_ref,label,uom,last_value,last_value_at,station:stations!inner(id,station_ref,label,station_name,region,pcon_code,pcon_version),${phenomenonSelect}`;
   const baseParams: Record<string, string> = {
-    select: region ? selectStationInner : selectBase,
+    select: useStationInner ? selectStationInner : selectBase,
     last_value: "gte.0",
     last_value_at: "not.is.null",
   };
@@ -125,6 +129,9 @@ async function loadLatest({ region, stationLike, connectorId, pollutant, limit }
   }
   if (region) {
     baseParams["stations.region"] = `ilike.*${region}*`;
+  }
+  if (pconCode) {
+    baseParams["stations.pcon_code"] = `eq.${pconCode}`;
   }
   if (connectorId) {
     baseParams.connector_id = `eq.${connectorId}`;
@@ -148,7 +155,7 @@ async function loadLatest({ region, stationLike, connectorId, pollutant, limit }
   } else {
     const match = `*${stationLike}*`;
     const [seriesResult, stationResult] = await Promise.all([
-      fetchRows({ label: `ilike.${match}` }, Boolean(region)),
+      fetchRows({ label: `ilike.${match}` }, useStationInner),
       fetchRows({ "stations.label": `ilike.${match}` }, true),
     ]);
     const combined = new Map<string, any>();
