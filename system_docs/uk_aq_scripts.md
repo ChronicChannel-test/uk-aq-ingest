@@ -267,6 +267,7 @@ Writes to:
 - `connectors`, `stations`, `timeseries`, `observations`
 Notes:
 - Uses `SCOMM_SERVICE_REF` (defaults to `SCOMM_CONNECTOR_CODE`) for `stations.service_ref` and `timeseries.service_ref`.
+- Ensures `phenomena` rows for `pm10`/`pm2.5` and sets `timeseries.phenomenon_id`.
 
 ### `scripts/uk_aq_defra_compare.py`
 Purpose:

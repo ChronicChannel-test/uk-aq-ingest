@@ -84,6 +84,21 @@ VALUE_TYPE_MAP = {
     "P2": {"pollutant": "pm2.5", "label": "PM2.5", "uom": "ug/m3"},
 }
 
+SCOMM_PHENOMENA = {
+    "pm10": {
+        "eionet_uri": "sensorcommunity:pm10",
+        "label": "PM10",
+        "notation": "PM10",
+        "pollutant_label": "pm10",
+    },
+    "pm2.5": {
+        "eionet_uri": "sensorcommunity:pm2.5",
+        "label": "PM2.5",
+        "notation": "PM2.5",
+        "pollutant_label": "pm2.5",
+    },
+}
+
 
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
@@ -225,6 +240,78 @@ class SupabaseWriter:
                 rows, on_conflict="connector_id,service_ref,station_ref"
             ).execute()
         return len(rows)
+
+    def upsert_phenomena(self, connector_id: int) -> Dict[str, int]:
+        payload = []
+        for pollutant, meta in SCOMM_PHENOMENA.items():
+            payload.append(
+                {
+                    "connector_id": connector_id,
+                    "eionet_uri": meta["eionet_uri"],
+                    "label": meta["label"],
+                    "notation": meta["notation"],
+                    "pollutant_label": meta["pollutant_label"],
+                }
+            )
+        self.client.table("phenomena").upsert(
+            payload, on_conflict="connector_id,eionet_uri"
+        ).execute()
+        rows = (
+            self.client.table("phenomena")
+            .select("id,eionet_uri")
+            .eq("connector_id", connector_id)
+            .in_("eionet_uri", [meta["eionet_uri"] for meta in SCOMM_PHENOMENA.values()])
+            .execute()
+        )
+        data = rows.data if hasattr(rows, "data") else rows.get("data")
+        ids_by_uri: Dict[str, int] = {}
+        for row in data or []:
+            ids_by_uri[str(row["eionet_uri"])] = int(row["id"])
+        ids_by_pollutant: Dict[str, int] = {}
+        for pollutant, meta in SCOMM_PHENOMENA.items():
+            phen_id = ids_by_uri.get(meta["eionet_uri"])
+            if phen_id:
+                ids_by_pollutant[pollutant] = phen_id
+        return ids_by_pollutant
+
+    def backfill_timeseries_phenomena(
+        self, connector_id: int, service_ref: str, phenomenon_ids: Dict[str, int]
+    ) -> int:
+        resp = (
+            self.client.table("timeseries")
+            .select("id,timeseries_ref")
+            .eq("connector_id", connector_id)
+            .eq("service_ref", str(service_ref))
+            .is_("phenomenon_id", "null")
+            .execute()
+        )
+        rows = resp.data if hasattr(resp, "data") else resp.get("data")
+        ids_by_pollutant: Dict[str, List[int]] = {"pm10": [], "pm2.5": []}
+        for row in rows or []:
+            ts_ref = str(row.get("timeseries_ref") or "")
+            ts_ref_lower = ts_ref.lower()
+            pollutant = None
+            if ts_ref_lower.endswith(":pm10"):
+                pollutant = "pm10"
+            elif ts_ref_lower.endswith(":pm2.5"):
+                pollutant = "pm2.5"
+            if not pollutant:
+                continue
+            row_id = row.get("id")
+            if row_id is None:
+                continue
+            ids_by_pollutant[pollutant].append(int(row_id))
+
+        total_updated = 0
+        for pollutant, ids in ids_by_pollutant.items():
+            phen_id = phenomenon_ids.get(pollutant)
+            if not phen_id or not ids:
+                continue
+            self.client.table("timeseries").update(
+                {"phenomenon_id": phen_id}
+            ).in_("id", ids).execute()
+            total_updated += len(ids)
+        return total_updated
 
     def fetch_station_ids(
         self, connector_id: int, service_ref: str, station_refs: Iterable[str]
@@ -423,6 +510,7 @@ def main() -> None:
     writer = SupabaseWriter()
     connector_id = writer.upsert_connector()
     service_ref = SCOMM_SERVICE_REF
+    phenomenon_ids = writer.upsert_phenomena(connector_id)
     writer.upsert_stations(filtered, connector_id, service_ref)
 
     station_refs = []
@@ -460,12 +548,16 @@ def main() -> None:
                 "station_id": station_id,
                 "connector_id": connector_id,
                 "service_ref": str(service_ref),
+                "phenomenon_id": phenomenon_ids.get(key.pollutant),
                 "last_value_at": observed_at.isoformat(),
                 "last_value": value,
             }
         )
 
     writer.upsert_timeseries(timeseries_payload)
+    backfilled = writer.backfill_timeseries_phenomena(connector_id, service_ref, phenomenon_ids)
+    if backfilled:
+        LOG.info("Backfilled phenomenon_id for %s timeseries rows.", backfilled)
     timeseries_id_map = writer.fetch_timeseries_ids(connector_id, service_ref, timeseries_refs)
 
     observation_rows = []

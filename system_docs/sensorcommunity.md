@@ -11,6 +11,7 @@ This network uses Sensor.Community (formerly Luftdaten) for community air qualit
 - Connector metadata is stored in `connectors` (`connector_code`: `sensorcommunity`).
 - Stations are stored in `stations` with `connector_id`, `service_ref` (defaults to `sensorcommunity`), and `station_ref` based on the Sensor.Community sensor ID.
 - Timeseries are created per station + pollutant (`pm10`, `pm2.5`), using `timeseries_ref` like `{station_ref}:{pollutant}` and the same `service_ref`.
+- Phenomena rows are created for `pm10` and `pm2.5`, and `timeseries.phenomenon_id` is set accordingly.
 - Observations are inserted into `observations` with the timestamp provided by Sensor.Community payloads.
 
 ## Poll cadence
