@@ -8,6 +8,11 @@ This document summarizes the UK-AQ helper scripts and their inputs/outputs.
 - `UK_AIR_SOS_BASE_URL` (optional; defaults to `https://uk-air.defra.gov.uk/sos-ukair/api/v1`)
   - The scripts also accept the legacy `UK_AIR_BASE_URL` or `UKAIR_BASE_URL` if set.
 - `UK_AIR_SOS_SERVICE_LABEL` (optional; defaults to `UK-AIR-SOS`)
+- `SCOMM_BASE_URL` (optional; defaults to `https://data.sensor.community`)
+- `SCOMM_CONNECTOR_REF` (optional; defaults to `sensorcommunity`)
+- `SCOMM_CONNECTOR_LABEL` (optional; defaults to `Sensor.Community`)
+- `SCOMM_COUNTRY` (optional; defaults to `GB`)
+- `SCOMM_USER_AGENT` (optional; identifies your client when polling Sensor.Community)
 
 ## Scripts
 
@@ -187,7 +192,7 @@ Environment:
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
 
-### `scripts/uk_aq_list_stations.py`
+### `scripts/uk_air_sos_list_stations.py`
 Purpose:
 - Fetch all current stations from UK-AIR SOS.
 - Filter to UK bounding box (keeps stations with missing coordinates; `geometry` will be null in Supabase).
@@ -195,12 +200,12 @@ Purpose:
 
 Common commands:
 ```
-python3 scripts/uk_aq_list_stations.py
-python3 scripts/uk_aq_list_stations.py --format csv --output uk_stations.csv
-python3 scripts/uk_aq_list_stations.py --to-supabase
-python3 scripts/uk_aq_list_stations.py --no-filter --output uk_aq_stations_all.json
-python3 scripts/uk_aq_list_stations.py --raw-output uk_aq_stations_raw.json
-python3 scripts/uk_aq_list_stations.py --service-id-from-timeseries
+python3 scripts/uk_air_sos_list_stations.py
+python3 scripts/uk_air_sos_list_stations.py --format csv --output uk_stations.csv
+python3 scripts/uk_air_sos_list_stations.py --to-supabase
+python3 scripts/uk_air_sos_list_stations.py --no-filter --output uk_aq_stations_all.json
+python3 scripts/uk_air_sos_list_stations.py --raw-output uk_aq_stations_raw.json
+python3 scripts/uk_air_sos_list_stations.py --service-id-from-timeseries
 ```
 
 Default outputs:
@@ -219,6 +224,37 @@ Writes to (when `--to-supabase` is set):
 - `phenomena`, `procedures`, `offerings` (unless `--skip-metadata` is used)
   - `stations` lifecycle fields: `first_seen_at`, `last_seen_at`, `removed_at`
   - Stations not seen in the current run are marked with `removed_at`.
+
+### `scripts/sensorcommunity_list_stations.py`
+Purpose:
+- Fetch all current Sensor.Community stations for `SCOMM_COUNTRY` (default `GB`).
+- Filter to UK bounding box (keeps stations with missing coordinates; `geometry` will be null in Supabase).
+- Optional upsert into Supabase.
+
+Common commands:
+```
+python3 scripts/sensorcommunity_list_stations.py
+python3 scripts/sensorcommunity_list_stations.py --format csv --output uk_sensorcommunity_stations.csv
+python3 scripts/sensorcommunity_list_stations.py --to-supabase
+```
+
+Writes to (when `--to-supabase` is set):
+- `connectors`, `stations`
+
+### `scripts/sensorcommunity_ingest.py`
+Purpose:
+- Fetch recent Sensor.Community values for `SCOMM_COUNTRY` (default `GB`).
+- Upsert connector + station metadata.
+- Insert latest observations for PM10 and PM2.5.
+
+Common commands:
+```
+python3 scripts/sensorcommunity_ingest.py --refresh-recent
+python3 scripts/sensorcommunity_ingest.py --refresh-recent --raw-output sensorcommunity_raw.json
+```
+
+Writes to:
+- `connectors`, `stations`, `timeseries`, `observations`
 
 ### `scripts/uk_aq_defra_compare.py`
 Purpose:

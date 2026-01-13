@@ -3,9 +3,9 @@
 Fetch UK-AIR SOS stations and filter to the UK bounding box.
 
 Examples:
-  python scripts/uk_aq_list_stations.py
-  python scripts/uk_aq_list_stations.py --format csv --output uk_stations.csv
-  python scripts/uk_aq_list_stations.py --no-filter
+  python scripts/uk_air_sos_list_stations.py
+  python scripts/uk_air_sos_list_stations.py --format csv --output uk_stations.csv
+  python scripts/uk_air_sos_list_stations.py --no-filter
 """
 
 import argparse

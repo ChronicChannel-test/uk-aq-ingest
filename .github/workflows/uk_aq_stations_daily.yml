@@ -32,7 +32,7 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           UK_AIR_SOS_BASE_URL: ${{ secrets.UK_AIR_SOS_BASE_URL }}
         run: |
-          python3 scripts/uk_aq_list_stations.py --to-supabase
+          python3 scripts/uk_air_sos_list_stations.py --to-supabase
 
       - name: Commit stations JSON
         run: |
