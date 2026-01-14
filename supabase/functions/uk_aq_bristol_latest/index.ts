@@ -171,6 +171,11 @@ async function loadLatest({ region, stationLike, connectorId, pollutant, limit }
       ...row,
       station_label: resolveStationLabel(row.station?.label, row.station?.station_ref, row.label),
       station_name: row.station?.station_name ?? null,
+      display_name: formatDisplayName(
+        row.station?.station_name,
+        resolveStationLabel(row.station?.label, row.station?.station_ref, row.label),
+        row.station?.station_ref,
+      ),
       phenomenon_label: pollutantLabel,
       pollutant_label: pollutantLabel,
       uom_display: formatUnit(row.uom),
@@ -215,6 +220,26 @@ function normalizePollutant(value: string | null): string | null {
     return "o3";
   }
   return normalized.toLowerCase();
+}
+
+function formatDisplayName(
+  stationName: string | null | undefined,
+  stationLabel: string | null | undefined,
+  stationRef: string | number,
+): string | null {
+  const base = stationName ?? stationLabel ?? null;
+  if (!base) {
+    return String(stationRef);
+  }
+  if (!stationName) {
+    return base;
+  }
+  const refText = String(stationRef);
+  const normalizedBase = base.toLowerCase();
+  if (normalizedBase.includes(refText.toLowerCase())) {
+    return base;
+  }
+  return `${base} - ${refText}`;
 }
 
 function buildPollutantFilter(pollutant: string | null): string | null {

@@ -34,13 +34,13 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
 ### uk_aq_latest
 - Purpose: Serve the latest values across all stations (optionally filtered by region/station/pollutant).
 - Triggered by: Web requests (read-only, no writes).
-- Returns: timeseries rows with station + phenomenon metadata and latest values.
+- Returns: timeseries rows with station + phenomenon metadata, connector metadata (`connector_id`, `connector_code`, `connector_label`), `display_name`, and latest values.
 - Params: `region`, `station_like`, `pollutant`, `connector_id`, `limit`, `pcon_code`.
 
 ### uk_aq_bristol_latest
 - Purpose: Serve the latest values with a Bristol station default for local dashboards.
 - Triggered by: Web requests (read-only, no writes).
-- Returns: timeseries rows with station + phenomenon metadata and latest values.
+- Returns: timeseries rows with station + phenomenon metadata, `display_name`, and latest values.
 
 ### uk_aq_stations
 - Purpose: Serve station geometry for the hex map (bypasses RLS via service role).

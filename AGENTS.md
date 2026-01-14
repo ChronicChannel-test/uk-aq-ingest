@@ -21,3 +21,4 @@
 - When `supabase/uk_air_quality_schema.sql` changes, update `system_docs/schema-overview.md` to match.
 - When new tables are added, add a matching doc in `system_docs/table_info/`.
 - When new edge functions are added under `supabase/functions/`, update `.github/workflows/supabase_edge_deploy.yml` to deploy them.
+- When edge functions are modified, update `system_docs/uk_aq_edge_functions.md`.

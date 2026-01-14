@@ -23,8 +23,8 @@ jobs:
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install requests python-dotenv supabase
+          python3 -m pip install --upgrade pip
+          python3 -m pip install requests python-dotenv supabase pyproj
 
       - name: Sync stations
         env:
@@ -34,13 +34,142 @@ jobs:
         run: |
           python3 scripts/uk_air_sos_list_stations.py --to-supabase
 
+      - name: Sync Sensor.Community stations
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          python3 scripts/sensorcommunity_list_stations.py --to-supabase
+
+      - name: Detect new stations
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import subprocess
+
+          def extract_refs(payload):
+              if not isinstance(payload, dict):
+                  return set()
+              stations = payload.get("stations")
+              if not isinstance(stations, list):
+                  return set()
+              refs = set()
+              for station in stations:
+                  if not isinstance(station, dict):
+                      continue
+                  ref = station.get("station_ref")
+                  if ref is None:
+                      continue
+                  refs.add(str(ref))
+              return refs
+
+          def load_old(path):
+              try:
+                  data = subprocess.check_output(["git", "show", f"HEAD:{path}"], text=True)
+              except subprocess.CalledProcessError:
+                  return set()
+              try:
+                  payload = json.loads(data)
+              except json.JSONDecodeError:
+                  return set()
+              return extract_refs(payload)
+
+          def load_new(path):
+              try:
+                  with open(path, "r", encoding="utf-8") as handle:
+                      payload = json.load(handle)
+              except FileNotFoundError:
+                  return set()
+              return extract_refs(payload)
+
+          total_added = 0
+          for path in ("uk_aq_stations.json", "sensorcommunity_stations.json"):
+              old_refs = load_old(path)
+              new_refs = load_new(path)
+              total_added += len(new_refs - old_refs)
+
+          flag = "1" if total_added > 0 else "0"
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as handle:
+              handle.write(f"PCON_STATIONS_ADDED={flag}\n")
+              handle.write(f"PCON_NEW_STATIONS_COUNT={total_added}\n")
+          print(f"Detected new stations: {total_added}")
+          PY
+
+      - name: Download PCON GeoJSON from Dropbox
+        if: env.PCON_STATIONS_ADDED == '1'
+        env:
+          DROPBOX_APP_KEY: ${{ secrets.DROPBOX_APP_KEY }}
+          DROPBOX_APP_SECRET: ${{ secrets.DROPBOX_APP_SECRET }}
+          DROPBOX_REFRESH_TOKEN: ${{ secrets.DROPBOX_REFRESH_TOKEN }}
+          PCON_GEOJSON_DROPBOX_PATH: ${{ secrets.PCON_GEOJSON_DROPBOX_PATH }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import sys
+
+          import requests
+
+          app_key = os.environ.get("DROPBOX_APP_KEY")
+          app_secret = os.environ.get("DROPBOX_APP_SECRET")
+          refresh_token = os.environ.get("DROPBOX_REFRESH_TOKEN")
+          path = os.environ.get("PCON_GEOJSON_DROPBOX_PATH")
+          if not all([app_key, app_secret, refresh_token, path]):
+              print("Missing Dropbox credentials or PCON_GEOJSON_DROPBOX_PATH.", file=sys.stderr)
+              sys.exit(1)
+
+          token_resp = requests.post(
+              "https://api.dropbox.com/oauth2/token",
+              data={
+                  "grant_type": "refresh_token",
+                  "refresh_token": refresh_token,
+                  "client_id": app_key,
+                  "client_secret": app_secret,
+              },
+              timeout=30,
+          )
+          token_resp.raise_for_status()
+          access_token = token_resp.json()["access_token"]
+
+          download_resp = requests.post(
+              "https://content.dropboxapi.com/2/files/download",
+              headers={
+                  "Authorization": f"Bearer {access_token}",
+                  "Dropbox-API-Arg": json.dumps({"path": path}),
+              },
+              timeout=60,
+          )
+          download_resp.raise_for_status()
+
+          os.makedirs("tmp", exist_ok=True)
+          with open("tmp/pcon.geojson", "wb") as handle:
+              handle.write(download_resp.content)
+          print("Downloaded PCON GeoJSON to tmp/pcon.geojson")
+          PY
+
+      - name: Update PCON codes for new stations
+        if: env.PCON_STATIONS_ADDED == '1'
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          PCON_VERSION: ${{ secrets.PCON_VERSION }}
+          PCON_STATIONS_PARTITIONS: ${{ secrets.PCON_STATIONS_PARTITIONS }}
+        run: |
+          PARTITIONS="${PCON_STATIONS_PARTITIONS:-1}"
+          python3 scripts/uk_aq_load_pcon_boundaries.py \
+            --geojson tmp/pcon.geojson \
+            --pcon-version "${PCON_VERSION}" \
+            --update-stations \
+            --stations-partitions "${PARTITIONS}"
+
       - name: Commit stations JSON
         run: |
-          if git status --porcelain | grep -q " uk_aq_stations.json"; then
+          if git status --porcelain | grep -qE " (uk_aq_stations\\.json|sensorcommunity_stations\\.json)$"; then
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
-            git add uk_aq_stations.json
-            git commit -m "chore: update uk_aq_stations.json"
+            git add uk_aq_stations.json sensorcommunity_stations.json
+            git commit -m "chore: updated 2 station files"
             git push
           else
             echo "No changes to commit."

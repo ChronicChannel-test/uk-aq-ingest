@@ -176,6 +176,47 @@ Environment:
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
 
+### `scripts/uk_aq_enrich_station_names.py`
+Purpose:
+- Preview OSNI Gazetteer place-name matches for stations missing `station_name`.
+
+Common commands:
+```
+python3 scripts/uk_aq_enrich_station_names.py --limit 10 --matches 5
+```
+
+Inputs:
+- GeoJSON point files:
+  - Placenames (default: `data/geojson/OSNI/osni_open_data_-_gazetteer_-_place_names.geojson`).
+  - Streetnames (default: `data/geojson/OSNI/osni_open_data_-_gazetteer_-_streetnames.geojson`).
+- Optional GB GPKG: `data/gpkg/OS/os_open_names_gpkg/Data/opname_gb.gpkg` (downloaded from Dropbox if requested).
+  - If the GPKG CRS is not EPSG:4326, install `pyproj` so the script can project station coordinates.
+
+Key flags:
+- `--limit` number of stations to inspect.
+- `--matches` number of nearby names to list per station.
+- `--max-distance-m` optional maximum distance in meters.
+- `--streetnames-geojson` override streetnames GeoJSON path.
+- `--no-ni-filter` to also attempt OSNI matching for non-NI stations (debugging only).
+- `--page-size` Supabase pagination batch size.
+- `--gb-gpkg-path` local path for the OS Open Names GB GeoPackage.
+- `--gb-gpkg-dropbox-path` Dropbox path for the GB GPKG (defaults to `UK_AQ_OS_OPEN_NAMES_GB_DROPBOX_PATH` or the local path).
+- `--download-gb-gpkg` download the GB GPKG from Dropbox if missing.
+- `--include-gb` include GB stations using OS Open Names lookups.
+- `--gb-search-radius-m` search radius for OS Open Names in meters (default: 5000).
+  - GB matches are split into place/street/other based on `local_type`.
+  - Place matches also use `populated_place` (fallback to district/borough).
+  - GB lookups now scan all candidates within the search radius to find the nearest street.
+- `--include-pollutants` to include pollutant names per station (timeseries/phenomena lookup).
+- `--include-latest` to include latest observations per station by phenomenon.
+
+Environment:
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `UK_AQ_OS_OPEN_NAMES_GB_DROPBOX_PATH` (optional Dropbox path for the GB GPKG).
+- `DROPBOX_APP_KEY`, `DROPBOX_APP_SECRET`, `DROPBOX_REFRESH_TOKEN` (needed if `--download-gb-gpkg` is used).
+- `PYPROJ_NETWORK` (optional; set to `ON` if pyproj needs to download grid data).
+
 ### `scripts/uk_aq_backfill_timeseries_stations.py`
 Purpose:
 - Backfill timeseries rows missing station/feature mappings by re-querying SOS metadata.
