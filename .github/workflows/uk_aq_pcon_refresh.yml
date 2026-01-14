@@ -61,7 +61,15 @@ jobs:
                   json=payload,
                   timeout=30,
               )
-              resp.raise_for_status()
+              try:
+                  resp.raise_for_status()
+              except requests.HTTPError:
+                  detail = resp.text
+                  print(
+                      f"Dropbox API error for {endpoint} (status {resp.status_code}): {detail}",
+                      file=sys.stderr,
+                  )
+                  raise
               if resp.content:
                   return resp.json()
               return {}
