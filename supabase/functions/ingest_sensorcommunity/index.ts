@@ -407,13 +407,13 @@ function normalizeStationPayload(record: Record<string, unknown>): {
   const stationRef = sensor.id ?? record.sensor_id ?? record.id;
   const label = (location.name ?? record.location_name) as string | null ?? null;
   const stationType = (sensorType.name ?? sensorType.id) as string | null ?? null;
-  const stationExposure = stationExposure(location);
+  const exposure = stationExposure(location);
   return {
     station_ref: stationRef !== undefined && stationRef !== null ? String(stationRef) : null,
     label,
     station_name: label,
     station_type: stationType !== undefined && stationType !== null ? String(stationType) : null,
-    station_exposure: stationExposure,
+    station_exposure: exposure,
     longitude: lonVal,
     latitude: latVal,
   };

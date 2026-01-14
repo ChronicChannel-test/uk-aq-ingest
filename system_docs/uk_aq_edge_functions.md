@@ -26,7 +26,7 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
 - Notes:
   - Uses `SCOMM_*` environment variables for base URL, service metadata, and country.
   - Filters to the UK bounding box by default; stations with missing coordinates are kept.
-  - Sets `stations.station_exposure` to `indoor`/`outdoor` when `location.indoor` is present.
+  - Sets `stations.station_exposure` to `indoor`/`outdoor` when `location.indoor` is present (0/1 or boolean).
 - Logs:
   - Writes a log file to Dropbox `/log/YYYY-MM-DD/` (prefix `uk_aq_log_edge_scomm_`).
   - Writes raw payloads to Dropbox `/raw_data/YYYY-MM-DD/` as ZIP (prefix `uk_aq_raw_edge_scomm_`).
