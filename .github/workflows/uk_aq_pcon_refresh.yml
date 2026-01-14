@@ -83,6 +83,9 @@ jobs:
           root_info = account_info.get("root_info", {})
           root_tag = root_info.get(".tag")
           app_folder_name = root_info.get("app_folder_name")
+          account_email = account_info.get("email")
+          account_id = account_info.get("account_id")
+          print(f"Dropbox account: {account_email} ({account_id})")
           print(f"Dropbox root_info: {root_info}")
           print(f"Dropbox root_tag: {root_tag}, app_folder_name: {app_folder_name}")
 
