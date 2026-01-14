@@ -54,17 +54,7 @@ jobs:
               print("Missing Dropbox credentials or PCON GeoJSON path.", file=sys.stderr)
               sys.exit(1)
 
-          def normalize_path(path):
-              cleaned = path.strip()
-              if not cleaned.startswith("/"):
-                  cleaned = f"/{cleaned}"
-              if cleaned.startswith("/Apps/"):
-                  parts = cleaned.split("/", 3)
-                  if len(parts) >= 4:
-                      cleaned = f"/{parts[3]}"
-              return cleaned
-
-          def dropbox_request(endpoint, payload):
+          def dropbox_request(endpoint, payload=None):
               resp = requests.post(
                   f"https://api.dropboxapi.com/2/{endpoint}",
                   headers={"Authorization": f"Bearer {access_token}"},
@@ -72,7 +62,9 @@ jobs:
                   timeout=30,
               )
               resp.raise_for_status()
-              return resp.json()
+              if resp.content:
+                  return resp.json()
+              return {}
 
           token_resp = requests.post(
               "https://api.dropbox.com/oauth2/token",
@@ -86,6 +78,22 @@ jobs:
           )
           token_resp.raise_for_status()
           access_token = token_resp.json()["access_token"]
+
+          account_info = dropbox_request("users/get_current_account")
+          root_info = account_info.get("root_info", {})
+          root_tag = root_info.get(".tag")
+          app_folder_name = root_info.get("app_folder_name")
+
+          def normalize_path(path):
+              cleaned = path.strip()
+              if not cleaned.startswith("/"):
+                  cleaned = f"/{cleaned}"
+              # App folder tokens expect paths relative to the app root.
+              if root_tag == "app_folder" and cleaned.startswith("/Apps/"):
+                  parts = cleaned.split("/", 3)
+                  if len(parts) >= 4 and (not app_folder_name or parts[2] == app_folder_name):
+                      cleaned = f"/{parts[3]}"
+              return cleaned
 
           base_path = normalize_path(base_path)
           pcon_version = (os.environ.get("PCON_VERSION") or "").strip()
