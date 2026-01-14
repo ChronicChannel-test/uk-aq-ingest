@@ -388,6 +388,7 @@ function normalizeStationPayload(record: Record<string, unknown>): {
   label: string | null;
   station_name: string | null;
   station_type: string | null;
+  station_exposure: string | null;
   longitude: number | null;
   latitude: number | null;
 } {
@@ -406,14 +407,45 @@ function normalizeStationPayload(record: Record<string, unknown>): {
   const stationRef = sensor.id ?? record.sensor_id ?? record.id;
   const label = (location.name ?? record.location_name) as string | null ?? null;
   const stationType = (sensorType.name ?? sensorType.id) as string | null ?? null;
+  const stationExposure = stationExposure(location);
   return {
     station_ref: stationRef !== undefined && stationRef !== null ? String(stationRef) : null,
     label,
     station_name: label,
     station_type: stationType !== undefined && stationType !== null ? String(stationType) : null,
+    station_exposure: stationExposure,
     longitude: lonVal,
     latitude: latVal,
   };
+}
+
+function stationExposure(location: Record<string, unknown>): string | null {
+  const indoor = location.indoor;
+  if (indoor === null || indoor === undefined) {
+    return null;
+  }
+  if (typeof indoor === "boolean") {
+    return indoor ? "indoor" : "outdoor";
+  }
+  if (typeof indoor === "number") {
+    if (indoor === 1) {
+      return "indoor";
+    }
+    if (indoor === 0) {
+      return "outdoor";
+    }
+    return null;
+  }
+  if (typeof indoor === "string") {
+    const value = indoor.trim().toLowerCase();
+    if (["1", "true", "yes", "y"].includes(value)) {
+      return "indoor";
+    }
+    if (["0", "false", "no", "n"].includes(value)) {
+      return "outdoor";
+    }
+  }
+  return null;
 }
 
 function mergeStationRow(
@@ -574,6 +606,7 @@ async function upsertStations(
       label: payload.label ?? `Sensor.Community ${stationRef}`,
       station_name: payload.station_name,
       station_type: payload.station_type,
+      station_exposure: payload.station_exposure,
       geometry: payload.longitude !== null && payload.latitude !== null
         ? `SRID=4326;POINT(${payload.longitude} ${payload.latitude})`
         : null,

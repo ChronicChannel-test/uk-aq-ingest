@@ -23,10 +23,17 @@ import requests
 from dotenv import load_dotenv
 from supabase import create_client
 
-load_dotenv()
+_ENV_PATH = Path(__file__).resolve().parents[1] / ".env"
+if _ENV_PATH.exists():
+    load_dotenv(dotenv_path=_ENV_PATH)
+else:
+    load_dotenv()
 
 LOG = logging.getLogger("uk_aq_osni_probe")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("postgrest").setLevel(logging.WARNING)
+logging.getLogger("supabase").setLevel(logging.WARNING)
 
 DEFAULT_PLACENAMES_GEOJSON_PATH = (
     "data/geojson/OSNI/osni_open_data_-_gazetteer_-_place_names.geojson"
@@ -106,8 +113,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--limit",
         type=int,
-        default=10,
-        help="Number of stations to inspect (default: 10).",
+        default=0,
+        help="Number of stations to inspect (0 means no limit).",
     )
     parser.add_argument(
         "--matches",
@@ -148,8 +155,9 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--include-gb",
-        action="store_true",
-        help="Include GB stations using OS Open Names lookups.",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Include GB stations using OS Open Names lookups (default: true).",
     )
     parser.add_argument(
         "--gb-search-radius-m",
@@ -166,6 +174,12 @@ def parse_args() -> argparse.Namespace:
         "--include-latest",
         action="store_true",
         help="Include latest observation per station (timeseries/observations lookup).",
+    )
+    parser.add_argument(
+        "--output-format",
+        choices=("summary", "json"),
+        default="summary",
+        help="Output format (summary or json).",
     )
     return parser.parse_args()
 
@@ -610,7 +624,7 @@ def _proposed_station_name(
     place_title = _title_case(place_name)
     street_title = _title_case(street_name)
     if place_title and street_title:
-        return f"{place_title} {street_title}"
+        return f"{place_title} - {street_title}"
     return None
 
 
@@ -619,12 +633,42 @@ def _proposed_gb_station_name(
     street_matches: Sequence[Dict[str, Any]],
 ) -> Optional[str]:
     place_name = place_matches[0].get("name") if place_matches else None
-    street_name = street_matches[0].get("name") if street_matches else None
+    street_entry = street_matches[0] if street_matches else {}
+    street_name = street_entry.get("name")
     place_title = _title_case(place_name)
     street_title = _title_case(street_name)
+    local_type = str(street_entry.get("local_type") or "").strip().lower()
+    if "postcode" in local_type and street_name:
+        street_title = str(street_name)
     if place_title and street_title:
-        return f"{place_title} {street_title}"
+        return f"{place_title} - {street_title}"
     return None
+
+
+def _format_latest_summary(latest: Dict[str, Dict[str, Any]]) -> str:
+    if not latest:
+        return ""
+    parts = []
+    for pollutant in sorted(latest.keys()):
+        entry = latest.get(pollutant) or {}
+        value = entry.get("value")
+        observed_at = entry.get("observed_at")
+        parts.append(f"{pollutant}:{value}@{observed_at}")
+    return "; ".join(parts)
+
+
+def build_station_summary(payload: Dict[str, Any]) -> Dict[str, Any]:
+    station = payload.get("station") or {}
+    lat = station.get("station_lat")
+    lon = station.get("station_lon")
+    return {
+        "station_ref": station.get("station_ref"),
+        "label": station.get("label"),
+        "coordinates": f"{lat} {lon}",
+        "proposed_station_name": payload.get("proposed_station_name"),
+        "pollutants": payload.get("pollutants") or [],
+        "latest_observation": payload.get("latest_observation") or {},
+    }
 
 
 def _classify_gb_match(match: Dict[str, Any]) -> str:
@@ -703,6 +747,130 @@ def _extract_gb_place_matches(
     return sorted(places.values(), key=lambda item: item["distance_m"])
 
 
+def iter_station_payloads(args: argparse.Namespace):
+    if args.download_gb_gpkg:
+        _ensure_gb_gpkg(args)
+    places = _load_osni_places(args.geojson)
+    streets = _load_osni_streetnames(args.streetnames_geojson)
+    LOG.info("Loaded %s OSNI place names.", len(places))
+    LOG.info("Loaded %s OSNI street names.", len(streets))
+    gb_lookup: Optional[OpenNamesLookup] = None
+    try:
+        if args.include_gb:
+            gb_path = _ensure_gb_gpkg(args)
+            gb_lookup = OpenNamesLookup(gb_path)
+            LOG.info(
+                "Loaded OS Open Names GPKG table %s (srs_id=%s).",
+                gb_lookup.table,
+                gb_lookup.srs_id,
+            )
+
+        rows = _fetch_stations(args.page_size)
+        if not rows:
+            LOG.warning("No stations returned from Supabase.")
+            return
+
+        stations: List[Dict[str, Any]] = []
+        for row in rows:
+            coords = _parse_geometry_coords(row.get("geometry"))
+            if coords is None:
+                continue
+            lon, lat = coords
+            row["station_lon"] = lon
+            row["station_lat"] = lat
+            stations.append(row)
+
+        if not stations:
+            LOG.warning("No stations with station_name null matched the filters.")
+            return
+
+        station_ids = [
+            int(station["id"]) for station in stations if station.get("id") is not None
+        ]
+        include_pollutants = args.include_pollutants or args.output_format == "summary"
+        pollutant_map: Dict[int, List[str]] = {}
+        if include_pollutants:
+            pollutant_map = _fetch_station_pollutants(station_ids)
+        include_latest = args.include_latest or args.output_format == "summary"
+        latest_map: Dict[int, Dict[str, Any]] = {}
+        if include_latest:
+            latest_map = _fetch_station_latest_observations(station_ids)
+
+        LOG.info("Inspecting %s stations with station_name null.", len(stations))
+        output_count = 0
+        for station in stations:
+            if args.limit and output_count >= args.limit:
+                break
+            lon = station.get("station_lon")
+            lat = station.get("station_lat")
+            if lon is None or lat is None:
+                continue
+            ni_place_matches: List[Dict[str, Any]] = []
+            ni_street_matches: List[Dict[str, Any]] = []
+            gb_matches: List[Dict[str, Any]] = []
+            gb_place_matches: List[Dict[str, Any]] = []
+            gb_street_matches: List[Dict[str, Any]] = []
+            gb_other_matches: List[Dict[str, Any]] = []
+            is_ni = _in_bbox(lon, lat, NI_BBOX)
+            if is_ni:
+                if places:
+                    ni_place_matches = _build_matches(
+                        lon,
+                        lat,
+                        places,
+                        max_distance_m=args.max_distance_m,
+                        limit=args.matches,
+                        name_key="place_name",
+                    )
+                if streets:
+                    ni_street_matches = _build_street_matches(
+                        lon,
+                        lat,
+                        streets,
+                        max_distance_m=args.max_distance_m,
+                        limit=args.matches,
+                    )
+            if args.include_gb and not is_ni and gb_lookup is not None:
+                gb_matches = gb_lookup.nearest_matches(
+                    lon,
+                    lat,
+                    limit=args.matches,
+                    search_radius_m=args.gb_search_radius_m,
+                    max_candidates=None,
+                )
+                gb_place_matches = _extract_gb_place_matches(gb_matches)
+                _, gb_street_matches, gb_other_matches = _split_gb_matches(gb_matches)
+            proposed_name = None
+            if is_ni:
+                proposed_name = _proposed_station_name(ni_place_matches, ni_street_matches)
+            elif args.include_gb:
+                gb_street_fallback = gb_street_matches or gb_other_matches
+                proposed_name = _proposed_gb_station_name(
+                    gb_place_matches, gb_street_fallback
+                )
+            station_id = station.get("id")
+            pollutants = pollutant_map.get(int(station_id), []) if station_id else []
+            latest_obs = latest_map.get(int(station_id), {}) if station_id else {}
+            payload = {
+                "group": "ni_station" if is_ni else "gb_station",
+                "station": station,
+                "ni_place_matches": ni_place_matches,
+                "ni_street_matches": ni_street_matches,
+                "gb_matches": gb_matches,
+                "gb_place_matches": gb_place_matches,
+                "gb_street_matches": gb_street_matches,
+                "gb_other_matches": gb_other_matches,
+                "proposed_station_name": proposed_name,
+                "pollutants": pollutants if include_pollutants else [],
+                "latest_observation": latest_obs if include_latest else {},
+            }
+            yield payload
+            output_count += 1
+    finally:
+        if gb_lookup is not None:
+            gb_lookup.close()
+
+
 def _normalize_dropbox_path(path: str) -> str:
     cleaned = (path or "").strip()
     if not cleaned:
@@ -760,13 +928,18 @@ def _ensure_gb_gpkg(args: argparse.Namespace) -> Path:
     path = Path(args.gb_gpkg_path)
     if path.exists():
         return path
-    if not args.download_gb_gpkg:
-        raise FileNotFoundError(
-            f"GB GPKG not found at {path}. Set --download-gb-gpkg to download from Dropbox."
-        )
     dropbox_path = args.gb_gpkg_dropbox_path or os.getenv(
         "UK_AQ_OS_OPEN_NAMES_GB_DROPBOX_PATH", ""
     )
+    if dropbox_path:
+        local_candidate = Path(dropbox_path).expanduser()
+        if local_candidate.exists():
+            return local_candidate
+    if not (args.download_gb_gpkg or dropbox_path):
+        raise FileNotFoundError(
+            f"GB GPKG not found at {path}. Set --download-gb-gpkg or "
+            "UK_AQ_OS_OPEN_NAMES_GB_DROPBOX_PATH to download from Dropbox."
+        )
     if not dropbox_path:
         dropbox_path = str(path)
     if not dropbox_path.endswith(".gpkg"):
@@ -1077,142 +1250,16 @@ class OpenNamesLookup:
 
 def main() -> int:
     args = parse_args()
-    if args.download_gb_gpkg:
-        _ensure_gb_gpkg(args)
-    places = _load_osni_places(args.geojson)
-    streets = _load_osni_streetnames(args.streetnames_geojson)
-    LOG.info("Loaded %s OSNI place names.", len(places))
-    LOG.info("Loaded %s OSNI street names.", len(streets))
-    gb_lookup: Optional[OpenNamesLookup] = None
-    if args.include_gb:
-        gb_path = _ensure_gb_gpkg(args)
-        gb_lookup = OpenNamesLookup(gb_path)
-        LOG.info(
-            "Loaded OS Open Names GPKG table %s (srs_id=%s).",
-            gb_lookup.table,
-            gb_lookup.srs_id,
-        )
-
-    rows = _fetch_stations(args.page_size)
-    if not rows:
-        LOG.warning("No stations returned from Supabase.")
-        return 0
-
-    ni_candidates: List[Dict[str, Any]] = []
-    gb_candidates: List[Dict[str, Any]] = []
-    for row in rows:
-        coords = _parse_geometry_coords(row.get("geometry"))
-        if coords is None:
-            continue
-        lon, lat = coords
-        row["station_lon"] = lon
-        row["station_lat"] = lat
-        is_ni = _in_bbox(lon, lat, NI_BBOX)
-        if is_ni:
-            ni_candidates.append(row)
+    output_count = 0
+    for payload in iter_station_payloads(args) or []:
+        if args.output_format == "json":
+            print(json.dumps(payload, indent=2))
         else:
-            gb_candidates.append(row)
-
-    selected: List[Dict[str, Any]] = []
-    for station in ni_candidates:
-        if len(selected) >= args.limit:
-            break
-        station["group"] = "ni_station"
-        selected.append(station)
-    if args.include_gb and len(selected) < args.limit:
-        for station in gb_candidates:
-            if len(selected) >= args.limit:
-                break
-            station["group"] = "gb_station"
-            selected.append(station)
-    if args.no_ni_filter and len(selected) < args.limit and not args.include_gb:
-        for station in gb_candidates:
-            if len(selected) >= args.limit:
-                break
-            station["group"] = "missing_station_name"
-            selected.append(station)
-
-    if not selected:
-        LOG.warning("No stations with station_name null matched the filters.")
-        return 0
-
-    station_ids = [
-        int(station["id"]) for station in selected if station.get("id") is not None
-    ]
-    pollutant_map: Dict[int, List[str]] = {}
-    if args.include_pollutants:
-        pollutant_map = _fetch_station_pollutants(station_ids)
-    latest_map: Dict[int, Dict[str, Any]] = {}
-    if args.include_latest:
-        latest_map = _fetch_station_latest_observations(station_ids)
-
-    LOG.info("Inspecting %s stations (NI first).", len(selected))
-    for station in selected:
-        lon = station.get("station_lon")
-        lat = station.get("station_lat")
-        if lon is None or lat is None:
-            continue
-        place_matches: List[Dict[str, Any]] = []
-        street_matches: List[Dict[str, Any]] = []
-        gb_matches: List[Dict[str, Any]] = []
-        gb_place_matches: List[Dict[str, Any]] = []
-        gb_street_matches: List[Dict[str, Any]] = []
-        gb_other_matches: List[Dict[str, Any]] = []
-        if station.get("group") == "ni_station" or (
-            args.no_ni_filter and station.get("group") == "missing_station_name"
-        ):
-            if places:
-                place_matches = _build_matches(
-                    lon,
-                    lat,
-                    places,
-                    max_distance_m=args.max_distance_m,
-                    limit=args.matches,
-                    name_key="place_name",
-                )
-            if streets:
-                street_matches = _build_street_matches(
-                    lon,
-                    lat,
-                    streets,
-                    max_distance_m=args.max_distance_m,
-                    limit=args.matches,
-                )
-        if station.get("group") == "gb_station" and gb_lookup is not None:
-            gb_matches = gb_lookup.nearest_matches(
-                lon,
-                lat,
-                limit=args.matches,
-                search_radius_m=args.gb_search_radius_m,
-                max_candidates=None,
-            )
-            gb_place_matches = _extract_gb_place_matches(gb_matches)
-            _, gb_street_matches, gb_other_matches = _split_gb_matches(gb_matches)
-        proposed_name = None
-        if station.get("group") == "ni_station":
-            proposed_name = _proposed_station_name(place_matches, street_matches)
-        elif station.get("group") == "gb_station":
-            proposed_name = _proposed_gb_station_name(gb_place_matches, gb_street_matches)
-        payload = {
-            "group": station.get("group"),
-            "station": station,
-            "place_matches": place_matches,
-            "street_matches": street_matches,
-            "gb_matches": gb_matches,
-            "gb_place_matches": gb_place_matches,
-            "gb_street_matches": gb_street_matches,
-            "gb_other_matches": gb_other_matches,
-            "proposed_station_name": proposed_name,
-            "pollutants": pollutant_map.get(int(station["id"]), [])
-            if args.include_pollutants and station.get("id") is not None
-            else [],
-            "latest_observation": latest_map.get(int(station["id"]), {})
-            if args.include_latest and station.get("id") is not None
-            else {},
-        }
-        print(json.dumps(payload, indent=2))
-    if gb_lookup is not None:
-        gb_lookup.close()
+            summary = build_station_summary(payload)
+            print(json.dumps(summary, ensure_ascii=True, indent=2))
+        output_count += 1
+    if args.output_format == "summary":
+        LOG.info("Summary stations output=%s", output_count)
     return 0
 
 

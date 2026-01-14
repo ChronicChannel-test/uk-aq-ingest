@@ -14,18 +14,20 @@ This document summarizes the schema defined in `supabase/uk_air_quality_schema.s
 - `offerings`: logical groupings, per connector + `service_ref`.
 - `features`: features of interest with geometry (Point, 4326), per connector + `service_ref`.
 - `procedures`: sensors/methods; optional raw_formats list, per connector + `service_ref`.
-- `stations`: monitoring sites; bigint `id` (internal) with `station_ref` (external) and `service_ref` (remote SOS service id), unique `(connector_id, service_ref, station_ref)`, plus lifecycle fields `first_seen_at`, `last_seen_at`, `removed_at`. Includes `station_name` as a cleaned display name and stores `la_code`/`la_version` and `pcon_code`/`pcon_version` for geography lookups.
+- `stations`: monitoring sites; bigint `id` (internal) with `station_ref` (external) and `service_ref` (remote SOS service id), unique `(connector_id, service_ref, station_ref)`, plus lifecycle fields `first_seen_at`, `last_seen_at`, `removed_at`. Includes `station_name` as a cleaned display name, `station_type` as the service-provided classification, `station_exposure` for indoor/outdoor, and stores `la_code`/`la_version` and `pcon_code`/`pcon_version` for geography lookups.
 
 ## Geography mapping tables
 - `la_boundaries`: Local Authority polygons (MultiPolygon, 4326) with `la_code` + `la_version` for assigning stations to LAs.
 - `pcon_boundaries`: Parliamentary Constituency polygons (MultiPolygon, 4326) with `pcon_code` + `pcon_version` for assigning stations to constituencies.
 - `station_pcon_history`: Station-to-constituency snapshot per `pcon_version` for fast historical queries.
+- `station_pcon_queue`: Throttled queue for PCON lookups (pending stations with geometry + missing PCON).
 - `uk_aq_region_names`: Region code/name lookup (e.g., `E12000001` → `North East`) used for hex metadata.
 - `uk_aq_refresh_station_la_codes(target_version)`: updates `stations.la_code` + `stations.la_version` using `la_boundaries`.
 - `uk_aq_refresh_station_pcon_codes(target_version)`: updates missing or out-of-date `stations.pcon_code` + `stations.pcon_version` using `pcon_boundaries`.
 - `uk_aq_refresh_station_pcon_codes_partition(target_version, partition_mod, partition_idx)`: partitioned station PCON refresh (missing/out-of-date only) for large datasets.
 - `uk_aq_refresh_station_pcon_history(target_version)`: populates `station_pcon_history` for a boundary version.
 - `uk_aq_refresh_station_pcon_history_partition(target_version, partition_mod, partition_idx)`: partitioned history refresh for large datasets.
+- `uk_aq_process_station_pcon_queue(target_version, batch_limit)`: processes a small batch of queued stations with active observations.
 - `uk_aq_stations_with_pcon(target_version)`: returns stations joined to `station_pcon_history` for the requested version.
 - `uk_aq_fix_station_geometry_swapped()`: fixes stations with swapped lat/lon coordinates.
 

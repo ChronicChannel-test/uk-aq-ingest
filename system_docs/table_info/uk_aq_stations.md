@@ -8,6 +8,7 @@ Monitoring sites within a connector/service_ref, with optional spatial metadata.
 - label: Human-readable station name.
 - station_name: Cleaned station name (best-effort, pollutant suffix removed).
 - station_type: Optional station type/classification from the service.
+- station_exposure: Optional exposure classification (e.g., indoor/outdoor).
 - region: Optional region name from the service.
 - la_code: Optional Local Authority GSS code for the station location.
 - la_version: Optional Local Authority boundary version used for `la_code`.
@@ -25,3 +26,4 @@ Monitoring sites within a connector/service_ref, with optional spatial metadata.
 ## Notes
 - Uniqueness is enforced on (connector_id, service_ref, station_ref).
 - Geometry has a GIST index to support spatial queries.
+- For Sensor.Community, `station_exposure` is mapped from `location.indoor` (1 → `indoor`, 0 → `outdoor`; missing stays null).

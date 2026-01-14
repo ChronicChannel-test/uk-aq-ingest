@@ -154,6 +154,11 @@ If you want to keep costs down and avoid hammering your main DB, a good blend is
 
 This keeps the main Supabase DB doing only lightweight writes and avoids repeated spatial joins.
 
+## Current direction (queue + GitHub Actions)
+- Use `station_pcon_queue` to throttle PCON updates.
+- GitHub Actions runs every 30 minutes and processes 5 stations per run via `uk_aq_process_station_pcon_queue`.
+- Boundaries are downloaded from Dropbox (latest year folder) and only loaded when missing.
+
 ## A simple “external function” flow (matches your request)
 **Trigger condition:** Station has geometry, but missing PCON.
 

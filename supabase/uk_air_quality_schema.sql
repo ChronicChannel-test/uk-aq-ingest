@@ -272,6 +272,7 @@ create table if not exists stations (
   label text not null,
   station_name text,
   station_type text,
+  station_exposure text,
   region text,
   la_code text,
   la_version text,
@@ -315,6 +316,7 @@ alter table if exists stations add column if not exists la_version text;
 alter table if exists stations add column if not exists pcon_code text;
 alter table if exists stations add column if not exists pcon_version text;
 alter table if exists stations add column if not exists station_name text;
+alter table if exists stations add column if not exists station_exposure text;
 
 create unique index if not exists stations_connector_ref_uidx
   on stations(connector_id, service_ref, station_ref);
@@ -515,6 +517,128 @@ begin
 end;
 $$;
 
+-- Station PCON queue (throttled updates)
+create table if not exists station_pcon_queue (
+  station_id bigint primary key references stations(id) on delete cascade,
+  status text default 'pending',
+  attempts integer default 0,
+  last_error text,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+create index if not exists station_pcon_queue_status_idx
+  on station_pcon_queue(status, created_at);
+
+create or replace function uk_aq_enqueue_station_pcon()
+returns trigger
+language plpgsql
+set search_path = public, pg_catalog
+as $$
+begin
+  if new.geometry is not null and new.pcon_code is null then
+    insert into station_pcon_queue (station_id, status, updated_at)
+    values (new.id, 'pending', now())
+    on conflict (station_id) do update
+    set status = 'pending',
+        updated_at = now();
+  elsif new.pcon_code is not null then
+    update station_pcon_queue
+    set status = 'done',
+        updated_at = now()
+    where station_id = new.id;
+  end if;
+  return new;
+end;
+$$;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_trigger
+    where tgname = 'stations_pcon_queue_enqueue'
+  ) then
+    create trigger stations_pcon_queue_enqueue
+    after insert or update of geometry, pcon_code on stations
+    for each row execute function uk_aq_enqueue_station_pcon();
+  end if;
+end $$;
+
+create or replace function uk_aq_process_station_pcon_queue(
+  target_version text,
+  batch_limit integer default 5
+)
+returns integer
+language plpgsql
+set search_path = public, pg_catalog
+as $$
+declare
+  updated_count integer;
+  boundary_count integer;
+begin
+  if batch_limit is null or batch_limit <= 0 then
+    raise exception 'batch_limit must be > 0';
+  end if;
+
+  select count(*) into boundary_count
+  from pcon_boundaries
+  where pcon_version = target_version;
+  if boundary_count = 0 then
+    return 0;
+  end if;
+
+  with candidate as (
+    select q.station_id
+    from station_pcon_queue q
+    join stations st on st.id = q.station_id
+    where q.status = 'pending'
+      and st.geometry is not null
+      and (st.pcon_code is null or st.pcon_version is distinct from target_version)
+      and exists (
+        select 1
+        from timeseries ts
+        where ts.station_id = st.id
+          and ts.last_value is not null
+      )
+    order by q.created_at
+    for update skip locked
+    limit batch_limit
+  ),
+  marked as (
+    update station_pcon_queue q
+    set status = 'processing',
+        attempts = q.attempts + 1,
+        updated_at = now()
+    from candidate c
+    where q.station_id = c.station_id
+    returning q.station_id
+  ),
+  updated as (
+    update stations st
+    set pcon_code = pb.pcon_code,
+        pcon_version = pb.pcon_version
+    from pcon_boundaries pb
+    join marked m on m.station_id = st.id
+    where pb.pcon_version = target_version
+      and st.geometry is not null
+      and pb.geometry is not null
+      and ST_Covers(pb.geometry::geometry, st.geometry::geometry)
+    returning st.id
+  ),
+  queue_update as (
+    update station_pcon_queue q
+    set status = case when u.id is not null then 'done' else 'pending' end,
+        updated_at = now()
+    from marked m
+    left join updated u on u.id = m.station_id
+    where q.station_id = m.station_id
+    returning q.station_id
+  )
+  select count(*) into updated_count from updated;
+  return updated_count;
+end;
+$$;
+
 drop function if exists uk_aq_stations_with_pcon(text);
 create or replace function uk_aq_stations_with_pcon(target_version text)
 returns table (
@@ -522,6 +646,7 @@ returns table (
   station_ref text,
   label text,
   station_type text,
+  station_exposure text,
   region text,
   la_code text,
   la_version text,
@@ -544,6 +669,7 @@ as $$
     st.station_ref,
     st.label,
     st.station_type,
+    st.station_exposure,
     st.region,
     st.la_code,
     st.la_version,
@@ -879,6 +1005,7 @@ alter table if exists pm25_amct_sites enable row level security;
 alter table if exists la_boundaries enable row level security;
 alter table if exists pcon_boundaries enable row level security;
 alter table if exists station_pcon_history enable row level security;
+alter table if exists station_pcon_queue enable row level security;
 alter table if exists pcon_current enable row level security;
 alter table if exists pcon_legacy enable row level security;
 alter table if exists gss_codes enable row level security;
@@ -891,7 +1018,7 @@ declare
   t text;
 begin
   for t in select unnest(array[
-    'connectors','categories','phenomena','offerings','features','procedures','stations','timeseries','reference_values','observations','pm25_population_exposure','pm25_amct_sites','la_boundaries','pcon_boundaries','station_pcon_history','pcon_current','pcon_legacy','gss_codes','uk_aq_region_names','uk_aq_guidelines'
+    'connectors','categories','phenomena','offerings','features','procedures','stations','timeseries','reference_values','observations','pm25_population_exposure','pm25_amct_sites','la_boundaries','pcon_boundaries','station_pcon_history','station_pcon_queue','pcon_current','pcon_legacy','gss_codes','uk_aq_region_names','uk_aq_guidelines'
   ])
   loop
     -- Read policy for authenticated + service_role

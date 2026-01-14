@@ -26,6 +26,7 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
 - Notes:
   - Uses `SCOMM_*` environment variables for base URL, service metadata, and country.
   - Filters to the UK bounding box by default; stations with missing coordinates are kept.
+  - Sets `stations.station_exposure` to `indoor`/`outdoor` when `location.indoor` is present.
 - Logs:
   - Writes a log file to Dropbox `/log/YYYY-MM-DD/` (prefix `uk_aq_log_edge_scomm_`).
   - Writes raw payloads to Dropbox `/raw_data/YYYY-MM-DD/` as ZIP (prefix `uk_aq_raw_edge_scomm_`).
@@ -36,11 +37,15 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
 - Triggered by: Web requests (read-only, no writes).
 - Returns: timeseries rows with station + phenomenon metadata, connector metadata (`connector_id`, `connector_code`, `connector_label`), `display_name`, and latest values.
 - Params: `region`, `station_like`, `pollutant`, `connector_id`, `limit`, `pcon_code`.
+- `display_name` logic:
+  - If `station_name` is present, return `{station_name} - {station_ref}` (unless the ref is already in the name).
+  - If `station_name` is null, return `station_label` as-is.
 
 ### uk_aq_bristol_latest
 - Purpose: Serve the latest values with a Bristol station default for local dashboards.
 - Triggered by: Web requests (read-only, no writes).
 - Returns: timeseries rows with station + phenomenon metadata, `display_name`, and latest values.
+- `display_name` logic matches `uk_aq_latest`.
 
 ### uk_aq_stations
 - Purpose: Serve station geometry for the hex map (bypasses RLS via service role).

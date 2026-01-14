@@ -332,10 +332,21 @@ class SupabaseWriter:
     ) -> int:
         seen_at_value = seen_at.isoformat()
         rows = []
+        skipped_missing_ref: List[Dict[str, Any]] = []
+        skipped_missing_service: List[Dict[str, Any]] = []
+        skipped_limit = 10
         for station in stations:
             props = station.get("properties", {}) if isinstance(station.get("properties"), dict) else {}
             station_ref = station.get("id") or props.get("id")
             if not station_ref:
+                if len(skipped_missing_ref) < skipped_limit:
+                    skipped_missing_ref.append(
+                        {
+                            "id": station.get("id"),
+                            "label": station.get("label") or props.get("label") or station.get("name"),
+                            "service": station.get("service") or props.get("service"),
+                        }
+                    )
                 continue
             lon, lat = station_coords(station, bbox=UK_BBOX)
             raw_service = station.get("service") or props.get("service")
@@ -351,6 +362,14 @@ class SupabaseWriter:
             if not service_ref and default_service_ref:
                 service_ref = default_service_ref
             if not service_ref:
+                if len(skipped_missing_service) < skipped_limit:
+                    skipped_missing_service.append(
+                        {
+                            "id": station_ref,
+                            "label": station.get("label") or props.get("label") or station.get("name"),
+                            "service": raw_service,
+                        }
+                    )
                 continue
             label = station.get("label") or props.get("label") or station.get("name")
             station_name = _derive_station_name(label)
@@ -373,6 +392,18 @@ class SupabaseWriter:
                 rows,
                 on_conflict="connector_id,service_ref,station_ref",
             ).execute()
+        if skipped_missing_ref:
+            LOG.warning(
+                "Skipped %s stations missing station_ref. Examples=%s",
+                len(skipped_missing_ref),
+                json.dumps(skipped_missing_ref, ensure_ascii=True),
+            )
+        if skipped_missing_service:
+            LOG.warning(
+                "Skipped %s stations missing service_ref. Examples=%s",
+                len(skipped_missing_service),
+                json.dumps(skipped_missing_service, ensure_ascii=True),
+            )
         return len(rows)
 
     def backfill_station_names(self, connector_ids: Sequence[int]) -> int:

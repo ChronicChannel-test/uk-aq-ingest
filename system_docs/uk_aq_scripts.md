@@ -182,18 +182,18 @@ Purpose:
 
 Common commands:
 ```
-python3 scripts/uk_aq_enrich_station_names.py --limit 10 --matches 5
+python3 scripts/uk_aq_enrich_station_names.py --matches 5
 ```
 
 Inputs:
 - GeoJSON point files:
   - Placenames (default: `data/geojson/OSNI/osni_open_data_-_gazetteer_-_place_names.geojson`).
   - Streetnames (default: `data/geojson/OSNI/osni_open_data_-_gazetteer_-_streetnames.geojson`).
-- Optional GB GPKG: `data/gpkg/OS/os_open_names_gpkg/Data/opname_gb.gpkg` (downloaded from Dropbox if requested).
+- Optional GB GPKG: `data/gpkg/OS/os_open_names_gpkg/Data/opname_gb.gpkg` (downloaded from Dropbox if missing and a Dropbox path is provided).
   - If the GPKG CRS is not EPSG:4326, install `pyproj` so the script can project station coordinates.
 
 Key flags:
-- `--limit` number of stations to inspect.
+- `--limit` number of stations to inspect (0 means no limit).
 - `--matches` number of nearby names to list per station.
 - `--max-distance-m` optional maximum distance in meters.
 - `--streetnames-geojson` override streetnames GeoJSON path.
@@ -201,21 +201,43 @@ Key flags:
 - `--page-size` Supabase pagination batch size.
 - `--gb-gpkg-path` local path for the OS Open Names GB GeoPackage.
 - `--gb-gpkg-dropbox-path` Dropbox path for the GB GPKG (defaults to `UK_AQ_OS_OPEN_NAMES_GB_DROPBOX_PATH` or the local path).
-- `--download-gb-gpkg` download the GB GPKG from Dropbox if missing.
-- `--include-gb` include GB stations using OS Open Names lookups.
+- `--download-gb-gpkg` download the GB GPKG from Dropbox if missing (also auto-downloads when a Dropbox path is set).
+- `--include-gb`/`--no-include-gb` include GB stations using OS Open Names lookups (default: on).
 - `--gb-search-radius-m` search radius for OS Open Names in meters (default: 5000).
   - GB matches are split into place/street/other based on `local_type`.
   - Place matches also use `populated_place` (fallback to district/borough).
   - GB lookups now scan all candidates within the search radius to find the nearest street.
+  - When no GB street matches are found, the closest `gb_other_matches` entry is used for the proposed name.
+  - Postcode fallbacks keep their original casing.
 - `--include-pollutants` to include pollutant names per station (timeseries/phenomena lookup).
 - `--include-latest` to include latest observations per station by phenomenon.
+- `--output-format` set to `summary` (default, JSON lines) or `json` (full payload).
+  - NI matches use `ni_place_matches`/`ni_street_matches` to avoid confusion with GB matches.
 
 Environment:
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `UK_AQ_OS_OPEN_NAMES_GB_DROPBOX_PATH` (optional Dropbox path for the GB GPKG).
-- `DROPBOX_APP_KEY`, `DROPBOX_APP_SECRET`, `DROPBOX_REFRESH_TOKEN` (needed if `--download-gb-gpkg` is used).
+- `DROPBOX_APP_KEY`, `DROPBOX_APP_SECRET`, `DROPBOX_REFRESH_TOKEN` (needed if a Dropbox download is triggered).
 - `PYPROJ_NETWORK` (optional; set to `ON` if pyproj needs to download grid data).
+
+### `scripts/uk_aq_enrich_station_names_report.py`
+Purpose:
+- Write station name enrichment results to JSON files for review.
+
+Outputs:
+- `station_names_proposed_YYYYMMDD_HHMMSS.json` (summary for every station with `station_name` null).
+- `station_names_missing_YYYYMMDD_HHMMSS.json` (detailed payloads where `proposed_station_name` is null, including match lists and a missing summary).
+
+Common commands:
+```
+python3 scripts/uk_aq_enrich_station_names_report.py
+python3 scripts/uk_aq_enrich_station_names_report.py --limit 50 --matches 10
+```
+
+Notes:
+- Uses the same enrichment logic as `scripts/uk_aq_enrich_station_names.py` so changes there apply here.
+- Always includes pollutants and latest observation details in the outputs.
 
 ### `scripts/uk_aq_backfill_timeseries_stations.py`
 Purpose:
@@ -291,6 +313,7 @@ Writes to (when `--to-supabase` is set):
 - `connectors`, `stations`
 Notes:
 - Uses `SCOMM_SERVICE_REF` (defaults to `SCOMM_CONNECTOR_CODE`) for `stations.service_ref`.
+- Sets `stations.station_exposure` to `indoor`/`outdoor` when `location.indoor` is present.
 
 ### `scripts/sensorcommunity_ingest.py`
 Purpose:
@@ -314,6 +337,7 @@ Notes:
 - Raw Dropbox uploads are gated by `SCOMM_RAW_DROPBOX_ALLOWED_SUPABASE_URL` (or `UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL`).
 - Dropbox credentials required: `DROPBOX_APP_KEY`, `DROPBOX_APP_SECRET`, `DROPBOX_REFRESH_TOKEN`.
 - Optional folders: `SCOMM_RAW_DROPBOX_FOLDER`/`SCOMM_ERROR_DROPBOX_FOLDER` (fallback to `UK_AIR_*`).
+- Sets `stations.station_exposure` to `indoor`/`outdoor` when `location.indoor` is present.
 
 ### `scripts/uk_aq_defra_compare.py`
 Purpose:

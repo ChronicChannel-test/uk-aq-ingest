@@ -775,6 +775,7 @@ class SupabaseWriter:
                 "label": payload.get("label") or f"Sensor.Community {station_ref_value}",
                 "station_name": payload.get("station_name"),
                 "station_type": payload.get("station_type"),
+                "station_exposure": payload.get("station_exposure"),
                 "geometry": (
                     f"SRID=4326;POINT({lon} {lat})"
                     if lon is not None and lat is not None
@@ -953,14 +954,37 @@ def normalize_station_payload(station: Dict[str, Any]) -> Dict[str, Any]:
     station_ref = sensor.get("id") or station.get("sensor_id") or station.get("id")
     label = location.get("name") or station.get("location_name")
     station_type = sensor_type.get("name") or sensor_type.get("id")
+    station_exposure = _station_exposure(location)
     return {
         "station_ref": str(station_ref) if station_ref is not None else None,
         "label": label,
         "station_name": label,
         "station_type": station_type,
+        "station_exposure": station_exposure,
         "longitude": lon_val,
         "latitude": lat_val,
     }
+
+
+def _station_exposure(location: Dict[str, Any]) -> Optional[str]:
+    indoor = location.get("indoor")
+    if indoor is None:
+        return None
+    if isinstance(indoor, bool):
+        return "indoor" if indoor else "outdoor"
+    if isinstance(indoor, (int, float)):
+        if indoor == 1:
+            return "indoor"
+        if indoor == 0:
+            return "outdoor"
+        return None
+    if isinstance(indoor, str):
+        value = indoor.strip().lower()
+        if value in {"1", "true", "yes", "y"}:
+            return "indoor"
+        if value in {"0", "false", "no", "n"}:
+            return "outdoor"
+    return None
 
 
 def station_stub(station: Dict[str, Any]) -> Dict[str, Any]:
