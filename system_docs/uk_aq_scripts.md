@@ -198,6 +198,20 @@ Key flags:
 - `--max-distance-m` optional maximum distance in meters.
 - `--streetnames-geojson` override streetnames GeoJSON path.
 - `--no-ni-filter` to also attempt OSNI matching for non-NI stations (debugging only).
+
+### `scripts/uk_aq_enrich_test_script.py`
+Purpose:
+- Debug the Supabase REST counts used to decide whether enrichment runs.
+
+Common commands:
+```
+python3 scripts/uk_aq_enrich_test_script.py
+python3 scripts/uk_aq_enrich_test_script.py --samples 10 --verbose
+```
+
+Environment:
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
 - `--page-size` Supabase pagination batch size.
 - `--gb-gpkg-path` local path for the OS Open Names GB GeoPackage.
 - `--gb-gpkg-dropbox-path` Dropbox path for the GB GPKG (defaults to `UK_AQ_OS_OPEN_NAMES_GB_DROPBOX_PATH` or the local path).

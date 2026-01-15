@@ -70,7 +70,7 @@ jobs:
               return 0
             return int(match.group(1))
 
-          station_name_missing = count_null("station_name", require_geometry=False)
+          station_name_missing = count_null("station_name", require_geometry=True)
 
           with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as handle:
             handle.write(f"STATION_NAME_NULL_COUNT={station_name_missing}\\n")
