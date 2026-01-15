@@ -312,6 +312,21 @@ Writes to (when `--to-supabase` is set):
   - `stations` lifecycle fields: `first_seen_at`, `last_seen_at`, `removed_at`
   - Stations not seen in the current run are marked with `removed_at`.
 
+### `scripts/uk_aq_export_stations_dropbox.py`
+Purpose:
+- Export a combined stations snapshot from Supabase and upload it to Dropbox.
+
+Output:
+- `uk_aq_stations_<timestamp>.json` uploaded to the Dropbox folder (default `uk_aq_stations`).
+
+Environment:
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `DROPBOX_APP_KEY`
+- `DROPBOX_APP_SECRET`
+- `DROPBOX_REFRESH_TOKEN`
+- `UK_AQ_STATIONS_DROPBOX_DIR` (optional)
+
 ### `scripts/sensorcommunity_list_stations.py`
 Purpose:
 - Fetch all current Sensor.Community stations for `SCOMM_COUNTRY` (default `GB`).

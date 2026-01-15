@@ -27,6 +27,9 @@ This repo uses GitHub Actions for scheduled syncs and deployments.
 
 ### `uk_aq_stations_daily.yml`
 - Schedule: daily at 03:00 UTC.
-- Purpose: sync stations to Supabase and update `uk_air_sos_stations.json`.
+- Purpose: sync stations to Supabase and export a combined stations snapshot to Dropbox.
 - Script: `python3 scripts/uk_air_sos_list_stations.py --to-supabase`.
-- Secrets: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `UK_AIR_SOS_BASE_URL`.
+- Export: `python3 scripts/uk_aq_export_stations_dropbox.py` (uploads `uk_aq_stations_<timestamp>.json`).
+- Optional: Sensor.Community discovery step (disabled by default).
+- Secrets: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `UK_AIR_SOS_BASE_URL`, `DROPBOX_APP_KEY`,
+  `DROPBOX_APP_SECRET`, `DROPBOX_REFRESH_TOKEN`, `UK_AQ_STATIONS_DROPBOX_DIR`.

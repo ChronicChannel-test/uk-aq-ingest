@@ -15,6 +15,7 @@ jobs:
     env:
       UK_AIR_SOS_CONNECTOR_CODE: uk_air_sos
       SCOMM_CONNECTOR_CODE: sensorcommunity
+      RUN_SCOMM_STATIONS_EXPORT: "0"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -36,6 +37,15 @@ jobs:
           UK_AIR_SOS_BASE_URL: ${{ secrets.UK_AIR_SOS_BASE_URL }}
         run: |
           python3 scripts/uk_air_sos_list_stations.py --to-supabase
+
+      - name: Discover Sensor.Community stations (optional)
+        if: env.RUN_SCOMM_STATIONS_EXPORT == '1'
+        env:
+          SCOMM_BASE_URL: ${{ secrets.SCOMM_BASE_URL }}
+          SCOMM_COUNTRY: ${{ secrets.SCOMM_COUNTRY }}
+        run: |
+          python3 scripts/sensorcommunity_list_stations.py \
+            --output "${SCOMM_CONNECTOR_CODE}_stations.json"
 
       - name: Check null station_name
         id: check_null_station_name
@@ -176,14 +186,13 @@ jobs:
           fi
           python3 scripts/uk_aq_enrich_station_names.py --apply
 
-      - name: Commit stations JSON
+      - name: Export stations to Dropbox
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          DROPBOX_APP_KEY: ${{ secrets.DROPBOX_APP_KEY }}
+          DROPBOX_APP_SECRET: ${{ secrets.DROPBOX_APP_SECRET }}
+          DROPBOX_REFRESH_TOKEN: ${{ secrets.DROPBOX_REFRESH_TOKEN }}
+          UK_AQ_STATIONS_DROPBOX_DIR: ${{ secrets.UK_AQ_STATIONS_DROPBOX_DIR }}
         run: |
-          if git status --porcelain | grep -qE " (${UK_AIR_SOS_CONNECTOR_CODE}_stations\\.json|${SCOMM_CONNECTOR_CODE}_stations\\.json)$"; then
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            git add "${UK_AIR_SOS_CONNECTOR_CODE}_stations.json" "${SCOMM_CONNECTOR_CODE}_stations.json"
-            git commit -m "chore: updated 2 station files"
-            git push
-          else
-            echo "No changes to commit."
-          fi
+          python3 scripts/uk_aq_export_stations_dropbox.py
