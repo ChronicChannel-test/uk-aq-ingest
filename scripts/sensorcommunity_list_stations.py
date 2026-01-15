@@ -16,7 +16,7 @@ import os
 import time
 import warnings
 from datetime import datetime, timezone
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 warnings.filterwarnings(
     "ignore",
@@ -117,18 +117,19 @@ class SupabaseWriter:
             raise RuntimeError("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required.")
         self.client: Client = create_client(supabase_url, supabase_key)
 
-    def upsert_connector(self) -> int:
+    def upsert_connector(self) -> Tuple[int, bool]:
         payload = {
             "connector_code": SCOMM_CONNECTOR_CODE,
             "label": SCOMM_SERVICE_LABEL,
             "service_url": SCOMM_BASE_URL,
+            "overwrite_station_name": False,
             "stations_bbox_supported": False,
             "timeseries_station_filter_supported": False,
         }
         self.client.table("connectors").upsert(payload, on_conflict="connector_code").execute()
         row = (
             self.client.table("connectors")
-            .select("id")
+            .select("id,overwrite_station_name")
             .eq("connector_code", SCOMM_CONNECTOR_CODE)
             .single()
             .execute()
@@ -136,10 +137,36 @@ class SupabaseWriter:
         data = row.data if hasattr(row, "data") else row.get("data")
         if not data:
             raise RuntimeError("Failed to resolve connector id for Sensor.Community.")
-        return int(data["id"])
+        overwrite_station_name = data.get("overwrite_station_name")
+        return int(data["id"]), bool(overwrite_station_name)
+
+    def fetch_station_names(
+        self, connector_id: int, service_ref: str, station_refs: Iterable[str]
+    ) -> Dict[str, Optional[str]]:
+        refs = [str(ref) for ref in station_refs if ref]
+        if not refs:
+            return {}
+        mapping: Dict[str, Optional[str]] = {}
+        for chunk in chunked(refs, 200):
+            resp = (
+                self.client.table("stations")
+                .select("station_ref,station_name")
+                .eq("connector_id", connector_id)
+                .eq("service_ref", str(service_ref))
+                .in_("station_ref", list(chunk))
+                .execute()
+            )
+            rows = resp.data if hasattr(resp, "data") else resp.get("data")
+            for row in rows or []:
+                mapping[str(row.get("station_ref"))] = row.get("station_name")
+        return mapping
 
     def upsert_stations(
-        self, stations: Iterable[Dict[str, Any]], connector_id: int, service_ref: str
+        self,
+        stations: Iterable[Dict[str, Any]],
+        connector_id: int,
+        service_ref: str,
+        overwrite_station_name: bool,
     ) -> int:
         rows_by_ref: Dict[str, Dict[str, Any]] = {}
         for station in stations:
@@ -176,6 +203,19 @@ class SupabaseWriter:
             else:
                 rows_by_ref[station_ref_value] = _merge_station_row(existing, candidate)
         rows = list(rows_by_ref.values())
+        if rows and not overwrite_station_name:
+            existing_names = self.fetch_station_names(
+                connector_id,
+                service_ref,
+                [row.get("station_ref") for row in rows if row.get("station_ref")],
+            )
+            for row in rows:
+                station_ref_value = row.get("station_ref")
+                existing_name = existing_names.get(str(station_ref_value))
+                if isinstance(existing_name, str) and not existing_name.strip():
+                    existing_name = None
+                if existing_name is not None and "station_name" in row:
+                    row.pop("station_name", None)
         if rows:
             self.client.table("stations").upsert(
                 rows, on_conflict="connector_id,service_ref,station_ref"
@@ -324,8 +364,13 @@ def main() -> None:
 
     if args.to_supabase:
         writer = SupabaseWriter()
-        connector_id = writer.upsert_connector()
-        inserted = writer.upsert_stations(filtered, connector_id, SCOMM_SERVICE_REF)
+        connector_id, overwrite_station_name = writer.upsert_connector()
+        inserted = writer.upsert_stations(
+            filtered,
+            connector_id,
+            SCOMM_SERVICE_REF,
+            overwrite_station_name,
+        )
         LOG.info("Upserted %s stations into Supabase.", inserted)
 
     if args.format == "csv":
@@ -362,6 +407,13 @@ def _station_stub(station: Dict[str, Any]) -> Dict[str, Any]:
             "latitude": location.get("latitude"),
         }
     }
+
+
+def chunked(values: List[str], size: int) -> Iterable[List[str]]:
+    if size <= 0:
+        size = 200
+    for idx in range(0, len(values), size):
+        yield values[idx : idx + size]
 
 
 if __name__ == "__main__":

@@ -7,6 +7,7 @@ Defines each network connector and its polling configuration.
 - connector_code: Short connector code used as filename prefix for connector outputs.
 - label: Human-readable connector name.
 - service_url: Base URL for the SOS API (if applicable).
+- overwrite_station_name: Whether station ingests may overwrite existing `stations.station_name` values (default true).
 - poll_enabled: Whether scheduled polling should run for this connector (default true).
 - poll_interval_minutes: Intended polling cadence in minutes (default 60).
 - poll_window_hours: Lookback window for polling recent observations (default 6).

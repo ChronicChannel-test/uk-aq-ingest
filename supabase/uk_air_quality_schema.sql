@@ -23,6 +23,7 @@ create table if not exists connectors (
   label text not null,
   service_url text,
   display_name_template text,
+  overwrite_station_name boolean default true,
   poll_enabled boolean default true,
   poll_interval_minutes int default 60,
   poll_window_hours int default 6,
@@ -55,6 +56,7 @@ begin
 end $$;
 
 alter table if exists connectors add column if not exists connector_code text;
+alter table if exists connectors add column if not exists overwrite_station_name boolean default true;
 drop index if exists services_service_code_uidx;
 drop index if exists services_service_ref_uidx;
 create unique index if not exists connectors_connector_code_uidx on connectors(connector_code);
@@ -69,6 +71,10 @@ begin
      or new.label = 'UK-AIR-SOS' then
     new.stations_bbox_supported = false;
     new.timeseries_station_filter_supported = false;
+  end if;
+  if new.connector_code = 'sensorcommunity'
+     or new.label = 'Sensor.Community' then
+    new.overwrite_station_name = false;
   end if;
   return new;
 end;
@@ -90,6 +96,11 @@ update connectors
 set display_name_template = '{station_name}'
 where service_url = 'https://uk-air.defra.gov.uk/sos-ukair/api/v1'
   or label = 'UK-AIR-SOS';
+
+update connectors
+set overwrite_station_name = false
+where connector_code = 'sensorcommunity'
+  or label = 'Sensor.Community';
 
 update connectors
 set connector_code = 'uk_air_sos'
