@@ -578,9 +578,12 @@ def _normalize_station(
             service_ref = mapped
     if not service_ref and default_service_ref:
         service_ref = default_service_ref
+    label = station.get("label") or props.get("label") or station.get("name")
+    station_name = _derive_station_name(label)
     return {
         "station_ref": station_ref,
-        "label": station.get("label") or props.get("label") or station.get("name"),
+        "label": label,
+        "station_name": station_name,
         "station_type": props.get("stationType") or station.get("stationType"),
         "region": props.get("region") or station.get("region"),
         "longitude": lon,
@@ -610,6 +613,7 @@ def _write_csv(
     fieldnames = [
         "station_ref",
         "label",
+        "station_name",
         "station_type",
         "region",
         "longitude",

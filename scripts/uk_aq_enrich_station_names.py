@@ -689,12 +689,9 @@ def build_station_summary(payload: Dict[str, Any]) -> Dict[str, Any]:
     lat = station.get("station_lat")
     lon = station.get("station_lon")
     return {
-        "station_ref": station.get("station_ref"),
         "label": station.get("label"),
         "coordinates": f"{lat} {lon}",
         "proposed_station_name": payload.get("proposed_station_name"),
-        "pollutants": payload.get("pollutants") or [],
-        "latest_observation": payload.get("latest_observation") or {},
     }
 
 
@@ -921,11 +918,25 @@ def _apply_station_name_updates(updates: Sequence[Dict[str, Any]], batch_size: i
     client = create_client(supabase_url, service_role_key)
     applied = 0
     for chunk in _chunked(list(updates), batch_size):
-        response = client.table("stations").upsert(chunk, on_conflict="id").execute()
-        error = getattr(response, "error", None)
-        if error:
-            raise RuntimeError(f"Station_name update failed: {error}")
-        applied += len(chunk)
+        for update in chunk:
+            station_id = update.get("id")
+            station_name = update.get("station_name")
+            if station_id is None:
+                continue
+            response = (
+                client.table("stations")
+                .update({"station_name": station_name})
+                .eq("id", station_id)
+                .execute()
+            )
+            error = getattr(response, "error", None)
+            if error:
+                raise RuntimeError(f"Station_name update failed for id={station_id}: {error}")
+            data = getattr(response, "data", None) or []
+            if not data:
+                LOG.warning("Station_name update returned no rows for id=%s", station_id)
+                continue
+            applied += 1
     return applied
 
 
