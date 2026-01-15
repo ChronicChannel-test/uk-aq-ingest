@@ -193,6 +193,7 @@ jobs:
           DROPBOX_APP_KEY: ${{ secrets.DROPBOX_APP_KEY }}
           DROPBOX_APP_SECRET: ${{ secrets.DROPBOX_APP_SECRET }}
           DROPBOX_REFRESH_TOKEN: ${{ secrets.DROPBOX_REFRESH_TOKEN }}
+          UK_AIR_DROPBOX_ROOT: ${{ secrets.UK_AIR_DROPBOX_ROOT }}
           UK_AQ_STATIONS_DROPBOX_DIR: ${{ secrets.UK_AQ_STATIONS_DROPBOX_DIR }}
         run: |
           python3 scripts/uk_aq_export_stations_dropbox.py
