@@ -109,6 +109,12 @@ jobs:
           )
           PY
 
+      - name: Debug station_name outputs
+        run: |
+          echo "station_name_null_count=${{ steps.check_null_station_name.outputs.station_name_null_count }}"
+          echo "station_name_null_count_all=${{ steps.check_null_station_name.outputs.station_name_null_count_all }}"
+          echo "station_name_should_run=${{ steps.check_null_station_name.outputs.station_name_should_run }}"
+
       - name: Enrich station names
         if: steps.check_null_station_name.outputs.station_name_should_run == '1'
         env:
