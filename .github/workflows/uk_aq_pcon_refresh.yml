@@ -233,12 +233,16 @@ jobs:
           python3 - <<'PY'
           import os
           import requests
+          import urllib.parse
 
           supabase_url = os.environ.get("SUPABASE_URL")
           supabase_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
           pcon_version = os.environ.get("PCON_VERSION")
           if not supabase_url or not supabase_key or not pcon_version:
               raise SystemExit("SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, and PCON_VERSION are required.")
+
+          parsed_url = urllib.parse.urlparse(supabase_url)
+          print(f"Using SUPABASE_URL host: {parsed_url.hostname}")
 
           batch_limit = int(os.environ.get("PCON_QUEUE_BATCH_SIZE") or "5")
           payload = {"target_version": pcon_version, "batch_limit": batch_limit}
