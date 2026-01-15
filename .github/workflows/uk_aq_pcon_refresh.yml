@@ -185,7 +185,7 @@ jobs:
               "pcon_version": f"eq.{pcon_version}",
               "limit": "1",
           }
-          url = f\"{supabase_url}/rest/v1/pcon_boundaries?{urllib.parse.urlencode(params)}\"
+          url = f"{supabase_url}/rest/v1/pcon_boundaries?{urllib.parse.urlencode(params)}"
           resp = requests.get(
               url,
               headers={
