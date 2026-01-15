@@ -214,18 +214,18 @@ jobs:
           PCON_NAME_FIELD: ${{ secrets.PCON_NAME_FIELD }}
           PCON_SLEEP_SECONDS: ${{ secrets.PCON_SLEEP_SECONDS }}
           PCON_BOUNDARY_BATCH_SIZE: ${{ secrets.PCON_BOUNDARY_BATCH_SIZE }}
-                    PCON_MAX_RETRIES: ${{ secrets.PCON_MAX_RETRIES }}
-                    PCON_RETRY_BACKOFF_SECONDS: ${{ secrets.PCON_RETRY_BACKOFF_SECONDS }}
+          PCON_MAX_RETRIES: ${{ secrets.PCON_MAX_RETRIES }}
+          PCON_RETRY_BACKOFF_SECONDS: ${{ secrets.PCON_RETRY_BACKOFF_SECONDS }}
         run: |
           python3 scripts/uk_aq_load_pcon_boundaries.py \
             --geojson "${PCON_GEOJSON_PATH}" \
             --pcon-version "${PCON_VERSION}" \
             --code-field "${PCON_CODE_FIELD:-PCON24CD}" \
             --name-field "${PCON_NAME_FIELD:-PCON24NM}" \
-                        --batch-size "${PCON_BOUNDARY_BATCH_SIZE:-5}" \
-                        --sleep-seconds "${PCON_SLEEP_SECONDS:-1.0}" \
-                        --max-retries "${PCON_MAX_RETRIES:-5}" \
-                        --retry-backoff-seconds "${PCON_RETRY_BACKOFF_SECONDS:-2}"
+            --batch-size "${PCON_BOUNDARY_BATCH_SIZE:-5}" \
+            --sleep-seconds "${PCON_SLEEP_SECONDS:-1.0}" \
+            --max-retries "${PCON_MAX_RETRIES:-5}" \
+            --retry-backoff-seconds "${PCON_RETRY_BACKOFF_SECONDS:-2}"
 
       - name: Process PCON queue
         env:
