@@ -99,6 +99,20 @@ def _normalize_dropbox_path(path: str) -> str:
     return cleaned.rstrip("/")
 
 
+def _dropbox_root_folder() -> str:
+    return _normalize_dropbox_path(os.getenv("UK_AIR_DROPBOX_ROOT", ""))
+
+
+def _resolve_dropbox_dir(target_dir: str) -> str:
+    base = _normalize_dropbox_path(target_dir)
+    root = _dropbox_root_folder()
+    if not root:
+        return base
+    if not base:
+        return root
+    return f"{root}{base}"
+
+
 def _timestamp_utc() -> str:
     return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
@@ -150,7 +164,7 @@ def main() -> int:
     args = parse_args()
     timestamp = _timestamp_utc()
     output_path = Path(args.output) if args.output else Path(f"uk_aq_stations_{timestamp}.json")
-    dropbox_dir = _normalize_dropbox_path(args.dropbox_dir) or "/uk_aq_stations"
+    dropbox_dir = _resolve_dropbox_dir(args.dropbox_dir) or "/uk_aq_stations"
     dropbox_path = f"{dropbox_dir}/{output_path.name}"
 
     stations: List[Dict[str, Any]] = []
