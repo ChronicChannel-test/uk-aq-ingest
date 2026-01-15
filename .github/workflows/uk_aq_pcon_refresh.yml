@@ -248,7 +248,7 @@ jobs:
           print(f"Using PCON_VERSION: {pcon_version}")
           print(f"Using service role key length: {len(supabase_key)}")
 
-          batch_limit = int(os.environ.get("PCON_QUEUE_BATCH_SIZE") or "5")
+          batch_limit = int(os.environ.get("PCON_QUEUE_BATCH_SIZE") or "1")
           print(f"Using batch_limit: {batch_limit}")
           payload = {"target_version": pcon_version, "batch_limit": batch_limit}
           rpc_url = f"{supabase_url}/rest/v1/rpc/uk_aq_process_station_pcon_queue"

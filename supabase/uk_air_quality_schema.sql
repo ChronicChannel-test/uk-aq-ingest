@@ -321,6 +321,7 @@ alter table if exists stations add column if not exists station_exposure text;
 create unique index if not exists stations_connector_ref_uidx
   on stations(connector_id, service_ref, station_ref);
 create index if not exists stations_geom_idx on stations using gist (geometry);
+create index if not exists stations_geom_cast_idx on stations using gist ((geometry::geometry));
 create index if not exists stations_la_code_idx on stations(la_code);
 create index if not exists stations_la_version_idx on stations(la_version);
 create index if not exists stations_pcon_code_idx on stations(pcon_code);
@@ -372,6 +373,7 @@ create table if not exists pcon_boundaries (
 create unique index if not exists pcon_boundaries_code_version_uidx
   on pcon_boundaries(pcon_code, pcon_version);
 create index if not exists pcon_boundaries_geom_idx on pcon_boundaries using gist (geometry);
+create index if not exists pcon_boundaries_geom_cast_idx on pcon_boundaries using gist ((geometry::geometry));
 
 create or replace function uk_aq_refresh_station_pcon_codes(target_version text)
 returns integer
@@ -586,6 +588,8 @@ begin
   if boundary_count = 0 then
     return 0;
   end if;
+
+  perform set_config('statement_timeout', '5min', true);
 
   with candidate as (
     select q.station_id
