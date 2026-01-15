@@ -79,7 +79,7 @@ jobs:
           print(f"Missing station_name: {station_name_missing}")
           PY
 
-      - name: Enrich station names (report)
+      - name: Enrich station names
         if: env.STATION_NAME_SHOULD_RUN == '1'
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -89,7 +89,7 @@ jobs:
           DROPBOX_REFRESH_TOKEN: ${{ secrets.DROPBOX_REFRESH_TOKEN }}
           UK_AQ_OS_OPEN_NAMES_GB_DROPBOX_PATH: ${{ secrets.UK_AQ_OS_OPEN_NAMES_GB_DROPBOX_PATH }}
         run: |
-          python3 scripts/uk_aq_enrich_station_names_report.py
+          python3 scripts/uk_aq_enrich_station_names.py
 
       - name: Commit stations JSON
         run: |
