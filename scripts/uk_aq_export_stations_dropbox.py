@@ -106,8 +106,6 @@ def _dropbox_root_folder() -> str:
 def _resolve_dropbox_dir(target_dir: str) -> str:
     base = _normalize_dropbox_path(target_dir)
     root = _dropbox_root_folder()
-    if not root:
-        return base
     if not base:
         return root
     return f"{root}{base}"
@@ -164,7 +162,10 @@ def main() -> int:
     args = parse_args()
     timestamp = _timestamp_utc()
     output_path = Path(args.output) if args.output else Path(f"uk_aq_stations_{timestamp}.json")
-    dropbox_dir = _resolve_dropbox_dir(args.dropbox_dir) or "/uk_aq_stations"
+    root = _dropbox_root_folder()
+    if not root:
+        raise RuntimeError("UK_AIR_DROPBOX_ROOT must be set for stations export.")
+    dropbox_dir = _resolve_dropbox_dir(args.dropbox_dir) or f"{root}/uk_aq_stations"
     dropbox_path = f"{dropbox_dir}/{output_path.name}"
 
     stations: List[Dict[str, Any]] = []
@@ -201,6 +202,7 @@ def main() -> int:
     output_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     access_token = _dropbox_refresh_access_token()
     _dropbox_upload_file(access_token, output_path, dropbox_path)
+    print(f"Dropbox root: {root}")
     print(f"Uploaded {output_path.name} to Dropbox: {dropbox_path}")
     return 0
 
