@@ -204,6 +204,15 @@ def _coerce_float(value: Any) -> Optional[float]:
         return None
 
 
+def _supabase_project_ref(url: Optional[str]) -> Optional[str]:
+    if not url:
+        return None
+    match = re.search(r"https?://([^./]+)\.supabase\.(co|in)", url)
+    if match:
+        return match.group(1)
+    return None
+
+
 def _chunked(items: Sequence[Dict[str, Any]], size: int) -> Iterable[List[Dict[str, Any]]]:
     if size <= 0:
         raise ValueError("chunk size must be > 0")
@@ -782,6 +791,16 @@ def iter_station_payloads(args: argparse.Namespace):
                 gb_lookup.table,
                 gb_lookup.srs_id,
             )
+            LOG.info(
+                "OS Open Names columns: geom=%s lat=%s lon=%s rtree=%s name=%s",
+                gb_lookup.geom_col,
+                gb_lookup.lat_col,
+                gb_lookup.lon_col,
+                gb_lookup.rtree_table,
+                gb_lookup.name_col,
+            )
+        else:
+            LOG.info("Skipping GB lookups (--include-gb=false).")
 
         rows = _fetch_stations(args.page_size)
         if not rows:
@@ -789,15 +808,18 @@ def iter_station_payloads(args: argparse.Namespace):
             return
 
         stations: List[Dict[str, Any]] = []
+        missing_geometry = 0
         for row in rows:
             coords = _parse_geometry_coords(row.get("geometry"))
             if coords is None:
+                missing_geometry += 1
                 continue
             lon, lat = coords
             row["station_lon"] = lon
             row["station_lat"] = lat
             stations.append(row)
 
+        LOG.info("Stations fetched=%s, with geometry=%s, missing geometry=%s.", len(rows), len(stations), missing_geometry)
         if not stations:
             LOG.warning("No stations with station_name null matched the filters.")
             return
@@ -1286,8 +1308,15 @@ class OpenNamesLookup:
 
 def main() -> int:
     args = parse_args()
+    supabase_url = os.getenv("SUPABASE_URL")
+    project_ref = _supabase_project_ref(supabase_url)
+    if project_ref:
+        LOG.info("Supabase project ref: %s", project_ref)
+    else:
+        LOG.info("Supabase project ref: <unknown>")
     output_count = 0
     updates: List[Dict[str, Any]] = []
+    proposed_count = 0
     for payload in iter_station_payloads(args) or []:
         if args.apply:
             proposed_name = payload.get("proposed_station_name")
@@ -1296,6 +1325,7 @@ def main() -> int:
             else:
                 proposed_text = ""
             if proposed_text:
+                proposed_count += 1
                 station = payload.get("station") or {}
                 station_id = station.get("id")
                 if station_id is not None:
@@ -1308,6 +1338,7 @@ def main() -> int:
         output_count += 1
     if args.output_format == "summary":
         LOG.info("Summary stations output=%s", output_count)
+    LOG.info("Proposed station_name count=%s (out of %s).", proposed_count, output_count)
     if args.apply:
         applied = _apply_station_name_updates(updates, args.apply_batch_size)
         LOG.info("Applied station_name updates=%s (proposed=%s).", applied, len(updates))
