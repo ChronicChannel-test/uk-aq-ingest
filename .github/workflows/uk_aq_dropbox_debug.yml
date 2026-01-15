@@ -90,6 +90,8 @@ jobs:
 
           def normalize_path(path):
               cleaned = path.strip()
+              if cleaned in ("", "/"):
+                  return ""
               if not cleaned.startswith("/"):
                   cleaned = f"/{cleaned}"
               if root_tag == "app_folder" and cleaned.startswith("/Apps/"):
