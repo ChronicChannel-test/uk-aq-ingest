@@ -623,6 +623,7 @@ begin
       and m.station_id = st.id
       and st.geometry is not null
       and pb.geometry is not null
+      and pb.geometry::geometry && st.geometry::geometry
       and ST_Covers(pb.geometry::geometry, st.geometry::geometry)
     returning st.id
   ),
