@@ -1079,23 +1079,23 @@ class SupabaseWriter:
             category_id = None
             if category_id_map and category_ref is not None:
                 category_id = category_id_map.get(str(category_ref))
-            rows.append(
-                {
-                    "station_ref": str(station_ref),
-                    "label": label,
-                    "station_name": station_name,
-                    "station_type": props.get("stationType") or station.get("stationType"),
-                    "region": props.get("region") or station.get("region"),
-                    "geometry": (
-                        f"SRID=4326;POINT({lon} {lat})"
-                        if lon is not None and lat is not None
-                        else None
-                    ),
-                    "connector_id": connector_id,
-                    "service_ref": str(service_ref),
-                    "category_id": category_id,
-                }
-            )
+            row = {
+                "station_ref": str(station_ref),
+                "label": label,
+                "station_type": props.get("stationType") or station.get("stationType"),
+                "region": props.get("region") or station.get("region"),
+                "geometry": (
+                    f"SRID=4326;POINT({lon} {lat})"
+                    if lon is not None and lat is not None
+                    else None
+                ),
+                "connector_id": connector_id,
+                "service_ref": str(service_ref),
+                "category_id": category_id,
+            }
+            if station_name:
+                row["station_name"] = station_name
+            rows.append(row)
         if rows:
             self.client.table("stations").upsert(
                 rows, on_conflict="connector_id,service_ref,station_ref"

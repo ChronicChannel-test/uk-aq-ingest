@@ -150,11 +150,13 @@ class SupabaseWriter:
             lon = payload.get("longitude")
             lat = payload.get("latitude")
             station_ref_value = str(station_ref)
+            station_name = payload.get("station_name")
+            if isinstance(station_name, str) and not station_name.strip():
+                station_name = None
             candidate = {
                 "station_ref": station_ref_value,
                 "service_ref": str(service_ref),
                 "label": payload.get("label") or f"Sensor.Community {station_ref_value}",
-                "station_name": payload.get("station_name"),
                 "station_type": payload.get("station_type"),
                 "station_exposure": payload.get("station_exposure"),
                 "geometry": (
@@ -166,6 +168,8 @@ class SupabaseWriter:
                 "last_seen_at": utcnow().isoformat(),
                 "removed_at": None,
             }
+            if station_name:
+                candidate["station_name"] = station_name
             existing = rows_by_ref.get(station_ref_value)
             if existing is None:
                 rows_by_ref[station_ref_value] = candidate

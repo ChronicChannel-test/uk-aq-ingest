@@ -373,20 +373,20 @@ class SupabaseWriter:
                 continue
             label = station.get("label") or props.get("label") or station.get("name")
             station_name = _derive_station_name(label)
-            rows.append(
-                {
-                    "station_ref": str(station_ref),
-                    "service_ref": str(service_ref),
-                    "label": label,
-                    "station_name": station_name,
-                    "station_type": props.get("stationType") or station.get("stationType"),
-                    "region": props.get("region") or station.get("region"),
-                    "geometry": f"SRID=4326;POINT({lon} {lat})" if lon is not None and lat is not None else None,
-                    "connector_id": connector_id,
-                    "last_seen_at": seen_at_value,
-                    "removed_at": None,
-                }
-            )
+            row = {
+                "station_ref": str(station_ref),
+                "service_ref": str(service_ref),
+                "label": label,
+                "station_type": props.get("stationType") or station.get("stationType"),
+                "region": props.get("region") or station.get("region"),
+                "geometry": f"SRID=4326;POINT({lon} {lat})" if lon is not None and lat is not None else None,
+                "connector_id": connector_id,
+                "last_seen_at": seen_at_value,
+                "removed_at": None,
+            }
+            if station_name:
+                row["station_name"] = station_name
+            rows.append(row)
         if rows:
             self.client.table("stations").upsert(
                 rows,
