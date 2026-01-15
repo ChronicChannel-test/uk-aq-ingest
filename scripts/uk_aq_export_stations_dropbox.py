@@ -6,9 +6,11 @@ Export all stations from Supabase and upload a timestamped JSON file to Dropbox.
 from __future__ import annotations
 
 import argparse
+import binascii
 import json
 import os
 import re
+import struct
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
@@ -127,6 +129,54 @@ def _normalize_geometry(value: Any) -> Optional[Any]:
     return None
 
 
+def _coords_from_geometry(value: Any) -> Tuple[Optional[float], Optional[float]]:
+    if value is None:
+        return None, None
+    if isinstance(value, dict):
+        coords = value.get("coordinates")
+        if isinstance(coords, (list, tuple)) and len(coords) >= 2:
+            lon, lat = coords[0], coords[1]
+            if isinstance(lon, (int, float)) and isinstance(lat, (int, float)):
+                return float(lat), float(lon)
+        return None, None
+    if isinstance(value, str):
+        try:
+            raw = binascii.unhexlify(value)
+        except (binascii.Error, ValueError):
+            return None, None
+        if len(raw) < 21:
+            return None, None
+        endian_flag = raw[0]
+        if endian_flag == 0:
+            endian = ">"
+        elif endian_flag == 1:
+            endian = "<"
+        else:
+            return None, None
+        offset = 1
+        try:
+            geom_type = struct.unpack(f"{endian}I", raw[offset:offset + 4])[0]
+        except struct.error:
+            return None, None
+        offset += 4
+        has_srid = bool(geom_type & 0x20000000)
+        base_type = geom_type & 0xFF
+        if base_type != 1:
+            return None, None
+        if has_srid:
+            if len(raw) < offset + 4:
+                return None, None
+            offset += 4
+        if len(raw) < offset + 16:
+            return None, None
+        try:
+            x, y = struct.unpack(f"{endian}dd", raw[offset:offset + 16])
+        except struct.error:
+            return None, None
+        return float(y), float(x)
+    return None, None
+
+
 def _iter_stations(page_size: int) -> Iterable[Dict[str, Any]]:
     supabase_url = os.getenv("SUPABASE_URL", "").strip()
     service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
@@ -169,6 +219,10 @@ def main() -> int:
     stations: List[Dict[str, Any]] = []
     for row in _iter_stations(args.page_size):
         geometry = _normalize_geometry(row.get("geometry"))
+        lat, lon = _coords_from_geometry(geometry)
+        coordinates = None
+        if lat is not None and lon is not None:
+            coordinates = f"{lat:.6f} {lon:.6f}"
         connector = row.get("connector") or {}
         stations.append(
             {
@@ -178,6 +232,7 @@ def main() -> int:
                 "station_name": row.get("station_name"),
                 "station_type": row.get("station_type"),
                 "station_exposure": row.get("station_exposure"),
+                "coordinates": coordinates,
                 "region": row.get("region"),
                 "la_code": row.get("la_code"),
                 "la_version": row.get("la_version"),
