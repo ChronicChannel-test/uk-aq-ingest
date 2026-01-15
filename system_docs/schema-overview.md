@@ -27,7 +27,7 @@ This document summarizes the schema defined in `supabase/uk_air_quality_schema.s
 - `uk_aq_refresh_station_pcon_codes_partition(target_version, partition_mod, partition_idx)`: partitioned station PCON refresh (missing/out-of-date only) for large datasets.
 - `uk_aq_refresh_station_pcon_history(target_version)`: populates `station_pcon_history` for a boundary version.
 - `uk_aq_refresh_station_pcon_history_partition(target_version, partition_mod, partition_idx)`: partitioned history refresh for large datasets.
-- `uk_aq_process_station_pcon_queue(target_version, batch_limit)`: processes a small batch of queued stations with active observations.
+- `uk_aq_process_station_pcon_queue(target_version, batch_limit)`: processes a small batch of queued stations with active observations, updating `stations` and `station_pcon_queue` via spatial coverage checks.
 - `uk_aq_stations_with_pcon(target_version)`: returns stations joined to `station_pcon_history` for the requested version.
 - `uk_aq_fix_station_geometry_swapped()`: fixes stations with swapped lat/lon coordinates.
 
