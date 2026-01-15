@@ -94,6 +94,7 @@ jobs:
 
           with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as handle:
             handle.write(f"STATION_NAME_NULL_COUNT={station_name_missing}\\n")
+            handle.write(f"STATION_NAME_NULL_COUNT_ALL={station_name_missing_all}\\n")
             handle.write(f"STATION_NAME_SHOULD_RUN={'1' if station_name_missing > 0 else '0'}\\n")
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as handle:
             handle.write(f"station_name_null_count={station_name_missing}\\n")
@@ -114,9 +115,12 @@ jobs:
           echo "station_name_null_count=${{ steps.check_null_station_name.outputs.station_name_null_count }}"
           echo "station_name_null_count_all=${{ steps.check_null_station_name.outputs.station_name_null_count_all }}"
           echo "station_name_should_run=${{ steps.check_null_station_name.outputs.station_name_should_run }}"
+          echo "STATION_NAME_NULL_COUNT=$STATION_NAME_NULL_COUNT"
+          echo "STATION_NAME_NULL_COUNT_ALL=$STATION_NAME_NULL_COUNT_ALL"
+          echo "STATION_NAME_SHOULD_RUN=$STATION_NAME_SHOULD_RUN"
 
       - name: Enrich station names
-        if: steps.check_null_station_name.outputs.station_name_should_run == '1'
+        if: env.STATION_NAME_SHOULD_RUN == '1'
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
