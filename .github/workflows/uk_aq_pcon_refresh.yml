@@ -158,8 +158,8 @@ jobs:
           geojson_path = Path("tmp/pcon.geojson")
           geojson_path.write_bytes(download_resp.content)
           with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as handle:
-              handle.write(f"PCON_VERSION={pcon_version}\\n")
-              handle.write(f"PCON_GEOJSON_PATH={geojson_path}\\n")
+              handle.write(f"PCON_VERSION={pcon_version}\n")
+              handle.write(f"PCON_GEOJSON_PATH={geojson_path}\n")
           print(f"Downloaded {file_path} to {geojson_path} (version {pcon_version})")
           PY
 
