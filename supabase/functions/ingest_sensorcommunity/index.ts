@@ -16,6 +16,7 @@ type ConnectorRow = {
   connector_code: string;
   label: string;
   service_url: string | null;
+  overwrite_station_name?: boolean | null;
 };
 
 type DropboxConfig = {
@@ -500,7 +501,7 @@ async function loadConnector(
   connectorLabel: string,
   serviceUrl: string,
 ): Promise<ConnectorRow | null> {
-  const select = "id,connector_code,label,service_url";
+  const select = "id,connector_code,label,service_url,overwrite_station_name";
   if (connectorId) {
     const { data } = await postgrestRequest<ConnectorRow[]>("GET", "connectors", {
       select,
@@ -530,6 +531,7 @@ async function loadConnector(
         connector_code: connectorCode,
         label: connectorLabel,
         service_url: serviceUrl,
+        overwrite_station_name: false,
         poll_enabled: true,
         poll_interval_minutes: 15,
         poll_window_hours: 1,
@@ -592,6 +594,7 @@ async function upsertStations(
   stations: Array<Record<string, unknown>>,
   connectorId: string,
   serviceRef: string,
+  overwriteStationName: boolean,
 ): Promise<number> {
   const rowsByRef: Record<string, Record<string, unknown>> = {};
   for (const station of stations) {
@@ -621,6 +624,25 @@ async function upsertStations(
   if (!rows.length) {
     return 0;
   }
+  if (!overwriteStationName) {
+    const existingNames = await fetchStationNames(
+      connectorId,
+      serviceRef,
+      rows.map((row) => String(row.station_ref ?? "")).filter((ref) => ref),
+    );
+    for (const row of rows) {
+      const stationRef = String(row.station_ref ?? "");
+      if (!stationRef) {
+        continue;
+      }
+      const existingName = existingNames[stationRef];
+      if (existingName && typeof existingName === "string" && existingName.trim()) {
+        if ("station_name" in row) {
+          delete row.station_name;
+        }
+      }
+    }
+  }
   await postgrestRequest(
     "POST",
     "stations",
@@ -629,6 +651,31 @@ async function upsertStations(
     "resolution=merge-duplicates,return=minimal",
   );
   return rows.length;
+}
+
+async function fetchStationNames(
+  connectorId: string,
+  serviceRef: string,
+  stationRefs: string[],
+): Promise<Record<string, string | null>> {
+  const mapping: Record<string, string | null> = {};
+  for (let idx = 0; idx < stationRefs.length; idx += 200) {
+    const chunk = stationRefs.slice(idx, idx + 200);
+    const { data } = await postgrestRequest<Array<{ station_ref: string; station_name: string | null }>>(
+      "GET",
+      "stations",
+      {
+        select: "station_ref,station_name",
+        connector_id: `eq.${connectorId}`,
+        service_ref: `eq.${serviceRef}`,
+        station_ref: postgrestIn(chunk),
+      },
+    );
+    for (const row of data ?? []) {
+      mapping[String(row.station_ref)] = row.station_name ?? null;
+    }
+  }
+  return mapping;
 }
 
 async function fetchStationIds(
@@ -1494,7 +1541,12 @@ serve(async (req) => {
             filteredCount = filtered.length;
 
             const phenomenonIds = await upsertPhenomena(connector.id);
-            await upsertStations(filtered, connector.id, requestedServiceRef);
+            await upsertStations(
+              filtered,
+              connector.id,
+              requestedServiceRef,
+              connector.overwrite_station_name ?? true,
+            );
 
             const stationRefSet = new Set<string>();
             const timeseriesRefSet = new Set<string>();
