@@ -69,13 +69,13 @@ jobs:
             content_range = resp.headers.get("content-range", "")
             if label:
               print(f"{label} content-range={content_range!r}")
-            match = re.search(r"/(\\d+)$", content_range)
+            match = re.search(r"/(\d+)$", content_range)
             if not match:
               return 0
             return int(match.group(1))
 
           project_ref = None
-          match = re.search(r"https?://([^./]+)\\.supabase\\.(co|in)", supabase_url)
+          match = re.search(r"https?://([^./]+)\.supabase\.(co|in)", supabase_url)
           if match:
             project_ref = match.group(1)
           print(f"Supabase project ref: {project_ref or '<unknown>'}")
