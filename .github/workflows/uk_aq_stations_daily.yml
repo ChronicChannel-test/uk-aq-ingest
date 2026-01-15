@@ -114,7 +114,7 @@ jobs:
           DROPBOX_REFRESH_TOKEN: ${{ secrets.DROPBOX_REFRESH_TOKEN }}
           UK_AQ_OS_OPEN_NAMES_GB_DROPBOX_PATH: ${{ secrets.UK_AQ_OS_OPEN_NAMES_GB_DROPBOX_PATH }}
         run: |
-          python3 scripts/uk_aq_enrich_station_names.py
+          python3 scripts/uk_aq_enrich_station_names.py --apply
 
       - name: Commit stations JSON
         run: |

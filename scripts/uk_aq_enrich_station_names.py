@@ -17,7 +17,7 @@ import re
 import sqlite3
 import struct
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 import requests
 from dotenv import load_dotenv
@@ -181,6 +181,17 @@ def parse_args() -> argparse.Namespace:
         default="summary",
         help="Output format (summary or json).",
     )
+    parser.add_argument(
+        "--apply",
+        action="store_true",
+        help="Update station_name in Supabase for stations with proposed names.",
+    )
+    parser.add_argument(
+        "--apply-batch-size",
+        type=int,
+        default=200,
+        help="Batch size for station_name updates (default: 200).",
+    )
     return parser.parse_args()
 
 
@@ -191,6 +202,13 @@ def _coerce_float(value: Any) -> Optional[float]:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _chunked(items: Sequence[Dict[str, Any]], size: int) -> Iterable[List[Dict[str, Any]]]:
+    if size <= 0:
+        raise ValueError("chunk size must be > 0")
+    for idx in range(0, len(items), size):
+        yield list(items[idx : idx + size])
 
 
 def _parse_wkb_point(hex_value: str) -> Optional[Tuple[float, float]]:
@@ -871,6 +889,24 @@ def iter_station_payloads(args: argparse.Namespace):
             gb_lookup.close()
 
 
+def _apply_station_name_updates(updates: Sequence[Dict[str, Any]], batch_size: int) -> int:
+    if not updates:
+        return 0
+    supabase_url = os.getenv("SUPABASE_URL")
+    service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+    if not supabase_url or not service_role_key:
+        raise RuntimeError("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY.")
+    client = create_client(supabase_url, service_role_key)
+    applied = 0
+    for chunk in _chunked(list(updates), batch_size):
+        response = client.table("stations").upsert(chunk, on_conflict="id").execute()
+        error = getattr(response, "error", None)
+        if error:
+            raise RuntimeError(f"Station_name update failed: {error}")
+        applied += len(chunk)
+    return applied
+
+
 def _normalize_dropbox_path(path: str) -> str:
     cleaned = (path or "").strip()
     if not cleaned:
@@ -1251,7 +1287,19 @@ class OpenNamesLookup:
 def main() -> int:
     args = parse_args()
     output_count = 0
+    updates: List[Dict[str, Any]] = []
     for payload in iter_station_payloads(args) or []:
+        if args.apply:
+            proposed_name = payload.get("proposed_station_name")
+            if proposed_name is not None:
+                proposed_text = str(proposed_name).strip()
+            else:
+                proposed_text = ""
+            if proposed_text:
+                station = payload.get("station") or {}
+                station_id = station.get("id")
+                if station_id is not None:
+                    updates.append({"id": station_id, "station_name": proposed_text})
         if args.output_format == "json":
             print(json.dumps(payload, indent=2))
         else:
@@ -1260,6 +1308,9 @@ def main() -> int:
         output_count += 1
     if args.output_format == "summary":
         LOG.info("Summary stations output=%s", output_count)
+    if args.apply:
+        applied = _apply_station_name_updates(updates, args.apply_batch_size)
+        LOG.info("Applied station_name updates=%s (proposed=%s).", applied, len(updates))
     return 0
 
 

@@ -1,0 +1,6850 @@
+[
+{
+  "station_ref": "24901",
+  "label": "Sensor.Community 24901",
+  "coordinates": "51.402 0.016",
+  "proposed_station_name": "Bromley - Ringer's Road",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:21:36+00:00",
+      "value": 0.27,
+      "timeseries_id": 23408,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:21:36+00:00",
+      "value": 0.27,
+      "timeseries_id": 23407,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "61394",
+  "label": "Sensor.Community 61394",
+  "coordinates": "50.952 -0.12",
+  "proposed_station_name": "Burgess Hill - Wykeham Way",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "79118",
+  "label": "Sensor.Community 79118",
+  "coordinates": "51.336 -0.846",
+  "proposed_station_name": "Yateley - Monteagle Gardens",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "41898",
+  "label": "Sensor.Community 41898",
+  "coordinates": "53.366 -1.498",
+  "proposed_station_name": "Sheffield - Cowlishaw Road",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "61393",
+  "label": "Sensor.Community 61393",
+  "coordinates": "50.952 -0.12",
+  "proposed_station_name": "Burgess Hill - Wykeham Way",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:33+00:00",
+      "value": 1,
+      "timeseries_id": 23423,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:33+00:00",
+      "value": 0.28,
+      "timeseries_id": 23424,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "41897",
+  "label": "Sensor.Community 41897",
+  "coordinates": "53.366 -1.498",
+  "proposed_station_name": "Sheffield - Cowlishaw Road",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:41+00:00",
+      "value": 19.33,
+      "timeseries_id": 23425,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:41+00:00",
+      "value": 7.13,
+      "timeseries_id": 23426,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "79117",
+  "label": "Sensor.Community 79117",
+  "coordinates": "51.336 -0.846",
+  "proposed_station_name": "Yateley - Monteagle Gardens",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:24:00+00:00",
+      "value": 0,
+      "timeseries_id": 23041,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:24:00+00:00",
+      "value": 0,
+      "timeseries_id": 23042,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "75745",
+  "label": "Sensor.Community 75745",
+  "coordinates": "51.366 -0.222",
+  "proposed_station_name": "London - Malden Road",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "44124",
+  "label": "Sensor.Community 44124",
+  "coordinates": "52.44257775 -1.94274742969",
+  "proposed_station_name": "Birmingham - Rachel Gardens",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:21:38+00:00",
+      "value": 0.4,
+      "timeseries_id": 23430,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:21:38+00:00",
+      "value": 0.4,
+      "timeseries_id": 23429,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "57249",
+  "label": "Sensor.Community 57249",
+  "coordinates": "52.014 -0.68",
+  "proposed_station_name": "Milton Keynes - Rodwell Gardens",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {}
+},
+{
+  "station_ref": "46015",
+  "label": "Sensor.Community 46015",
+  "coordinates": "51.898 -0.874",
+  "proposed_station_name": "North Marston - School Hill",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "46014",
+  "label": "Sensor.Community 46014",
+  "coordinates": "51.898 -0.874",
+  "proposed_station_name": "North Marston - School Hill",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:29+00:00",
+      "value": 0.32,
+      "timeseries_id": 23427,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:29+00:00",
+      "value": 0.15,
+      "timeseries_id": 23428,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "77673",
+  "label": "Sensor.Community 77673",
+  "coordinates": "51.47821571466 0.07521182299",
+  "proposed_station_name": "London - Plum Lane",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "57250",
+  "label": "Sensor.Community 57250",
+  "coordinates": "52.014 -0.68",
+  "proposed_station_name": "Milton Keynes - Rodwell Gardens",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "77672",
+  "label": "Sensor.Community 77672",
+  "coordinates": "51.47821571466 0.07521182299",
+  "proposed_station_name": "London - Plum Lane",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:22:39+00:00",
+      "value": 1.98,
+      "timeseries_id": 23238,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:22:39+00:00",
+      "value": 11.88,
+      "timeseries_id": 23237,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "49112",
+  "label": "Sensor.Community 49112",
+  "coordinates": "51.186 0.274",
+  "proposed_station_name": "Tonbridge - Cowdreys",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "49111",
+  "label": "Sensor.Community 49111",
+  "coordinates": "51.186 0.274",
+  "proposed_station_name": "Tonbridge - Cowdreys",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:21:40+00:00",
+      "value": 0.93,
+      "timeseries_id": 23434,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:21:40+00:00",
+      "value": 6.22,
+      "timeseries_id": 23433,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "90315",
+  "label": "Sensor.Community 90315",
+  "coordinates": "50.774 0.256",
+  "proposed_station_name": "Eastbourne - BN20 8LT",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "90314",
+  "label": "Sensor.Community 90314",
+  "coordinates": "50.774 0.256",
+  "proposed_station_name": "Eastbourne - BN20 8LT",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:22:52+00:00",
+      "value": 21.05,
+      "timeseries_id": 23435,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:22:52+00:00",
+      "value": 3.97,
+      "timeseries_id": 23436,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "75744",
+  "label": "Sensor.Community 75744",
+  "coordinates": "51.366 -0.222",
+  "proposed_station_name": "London - Malden Road",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:07+00:00",
+      "value": 6.7,
+      "timeseries_id": 23105,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:07+00:00",
+      "value": 4.4,
+      "timeseries_id": 23106,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "97089",
+  "label": "Sensor.Community 97089",
+  "coordinates": "54.824 -1.748",
+  "proposed_station_name": "Lanchester - All Saint's Catholic Primary School",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "97088",
+  "label": "Sensor.Community 97088",
+  "coordinates": "54.824 -1.748",
+  "proposed_station_name": "Lanchester - All Saint's Catholic Primary School",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:22:04+00:00",
+      "value": 0.5,
+      "timeseries_id": 23458,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:22:04+00:00",
+      "value": 2.7,
+      "timeseries_id": 23457,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "70668",
+  "label": "Sensor.Community 70668",
+  "coordinates": "51.25 -1.118",
+  "proposed_station_name": "Basingstoke - RG22 6JW",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "67866",
+  "label": "Sensor.Community 67866",
+  "coordinates": "51.44841272965 -1.02178484201",
+  "proposed_station_name": "Reading - Walmer Close",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "66668",
+  "label": "Sensor.Community 66668",
+  "coordinates": "51.438 -2.006",
+  "proposed_station_name": "Calne - Cox's Hill",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "66667",
+  "label": "Sensor.Community 66667",
+  "coordinates": "51.438 -2.006",
+  "proposed_station_name": "Calne - Cox's Hill",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:03+00:00",
+      "value": 7.43,
+      "timeseries_id": 23445,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:03+00:00",
+      "value": 1.85,
+      "timeseries_id": 23446,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "96210",
+  "label": "Sensor.Community 96210",
+  "coordinates": "55.644 -3.174",
+  "proposed_station_name": "Peebles - Whitehaugh Park",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "96209",
+  "label": "Sensor.Community 96209",
+  "coordinates": "55.644 -3.174",
+  "proposed_station_name": "Peebles - Whitehaugh Park",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:25+00:00",
+      "value": 0,
+      "timeseries_id": 23043,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:25+00:00",
+      "value": 0,
+      "timeseries_id": 23044,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "63260",
+  "label": "Sensor.Community 63260",
+  "coordinates": "51.38 0.098",
+  "proposed_station_name": "Orpington - Broomhill Road",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "88014",
+  "label": "Sensor.Community 88014",
+  "coordinates": "51.402 -1.276",
+  "proposed_station_name": "Thatcham - Lower Way",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "88013",
+  "label": "Sensor.Community 88013",
+  "coordinates": "51.402 -1.276",
+  "proposed_station_name": "Thatcham - Lower Way",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:38+00:00",
+      "value": 2.6,
+      "timeseries_id": 23447,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:38+00:00",
+      "value": 0.9,
+      "timeseries_id": 23448,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "63259",
+  "label": "Sensor.Community 63259",
+  "coordinates": "51.38 0.098",
+  "proposed_station_name": "Orpington - Broomhill Road",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:21:55+00:00",
+      "value": 2.9,
+      "timeseries_id": 23398,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:21:55+00:00",
+      "value": 7.22,
+      "timeseries_id": 23397,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "36209",
+  "label": "Sensor.Community 36209",
+  "coordinates": "54.97294984307 -1.58977797255",
+  "proposed_station_name": "Newcastle Upon Tyne - Riverside Walk",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:36+00:00",
+      "value": 4,
+      "timeseries_id": 23391,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:36+00:00",
+      "value": 4,
+      "timeseries_id": 23392,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "69513",
+  "label": "Sensor.Community 69513",
+  "coordinates": "51.470944 -2.5794697",
+  "proposed_station_name": "Bristol - Briavels Grove",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:35+00:00",
+      "value": 0.25,
+      "timeseries_id": 23047,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:35+00:00",
+      "value": 0.15,
+      "timeseries_id": 23048,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "58214",
+  "label": "Sensor.Community 58214",
+  "coordinates": "52.218 1.48",
+  "proposed_station_name": "Saxmundham - Gull Road",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:22:50+00:00",
+      "value": 12.93,
+      "timeseries_id": 23059,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:22:50+00:00",
+      "value": 2.07,
+      "timeseries_id": 23060,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "76451",
+  "label": "Sensor.Community 76451",
+  "coordinates": "53.36420157516 -1.2042200868",
+  "proposed_station_name": "Dinnington - Birkdale Avenue",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:20:24+00:00",
+      "value": 9.75,
+      "timeseries_id": 23262,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:20:24+00:00",
+      "value": 20.8,
+      "timeseries_id": 23261,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "16324",
+  "label": "Sensor.Community 16324",
+  "coordinates": "50.776 0.294",
+  "proposed_station_name": "Eastbourne - Avondale Road",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:22:34+00:00",
+      "value": 0,
+      "timeseries_id": 23052,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:22:34+00:00",
+      "value": 0,
+      "timeseries_id": 23051,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "86019",
+  "label": "Sensor.Community 86019",
+  "coordinates": "51.056 -1.798",
+  "proposed_station_name": "Salisbury - Meyrick Avenue",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:47+00:00",
+      "value": 16.47,
+      "timeseries_id": 23063,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:47+00:00",
+      "value": 2.9,
+      "timeseries_id": 23064,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "62416",
+  "label": "Sensor.Community 62416",
+  "coordinates": "51.1195345615 0.28037667274",
+  "proposed_station_name": "Royal Tunbridge Wells - Chieveley Drive",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "62415",
+  "label": "Sensor.Community 62415",
+  "coordinates": "51.1195345615 0.28037667274",
+  "proposed_station_name": "Royal Tunbridge Wells - Chieveley Drive",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:22:50+00:00",
+      "value": 0,
+      "timeseries_id": 23449,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:22:50+00:00",
+      "value": 0,
+      "timeseries_id": 23450,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "77757",
+  "label": "Sensor.Community 77757",
+  "coordinates": "53.3640998 -1.486489",
+  "proposed_station_name": "Sheffield - Kenbourne Road",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "51452",
+  "label": "Sensor.Community 51452",
+  "coordinates": "52.02 -1.74",
+  "proposed_station_name": "Draycott - Wydelands",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "77756",
+  "label": "Sensor.Community 77756",
+  "coordinates": "53.3640998 -1.486489",
+  "proposed_station_name": "Sheffield - Kenbourne Road",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:22:33+00:00",
+      "value": 5.72,
+      "timeseries_id": 23258,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:22:33+00:00",
+      "value": 16.2,
+      "timeseries_id": 23257,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "47218",
+  "label": "Sensor.Community 47218",
+  "coordinates": "53.362 -2.222",
+  "proposed_station_name": "Heald Green - Gloucester Road",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "51451",
+  "label": "Sensor.Community 51451",
+  "coordinates": "52.02 -1.74",
+  "proposed_station_name": "Draycott - Wydelands",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:54+00:00",
+      "value": 1.23,
+      "timeseries_id": 23401,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:54+00:00",
+      "value": 0.93,
+      "timeseries_id": 23402,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "47217",
+  "label": "Sensor.Community 47217",
+  "coordinates": "53.362 -2.222",
+  "proposed_station_name": "Heald Green - Gloucester Road",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:22:41+00:00",
+      "value": 2,
+      "timeseries_id": 23440,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:22:41+00:00",
+      "value": 2,
+      "timeseries_id": 23439,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "39954",
+  "label": "Sensor.Community 39954",
+  "coordinates": "51.516 -0.47",
+  "proposed_station_name": "Yiewsley - Otterfield Road",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "28853",
+  "label": "Sensor.Community 28853",
+  "coordinates": "53.39221607432 -1.51845216751",
+  "proposed_station_name": "Sheffield - Hollins Lane",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "28852",
+  "label": "Sensor.Community 28852",
+  "coordinates": "53.39221607432 -1.51845216751",
+  "proposed_station_name": "Sheffield - Hollins Lane",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:20:13+00:00",
+      "value": 3.75,
+      "timeseries_id": 23074,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:20:13+00:00",
+      "value": 14.18,
+      "timeseries_id": 23073,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "39955",
+  "label": "Sensor.Community 39955",
+  "coordinates": "51.516 -0.47",
+  "proposed_station_name": "Yiewsley - Otterfield Road",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:22:56+00:00",
+      "value": 6,
+      "timeseries_id": 23071,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:22:56+00:00",
+      "value": 6,
+      "timeseries_id": 23072,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "56689",
+  "label": "Sensor.Community 56689",
+  "coordinates": "53.342 -1.534",
+  "proposed_station_name": "Sheffield - Fenney Lane",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "90195",
+  "label": "Sensor.Community 90195",
+  "coordinates": "50.91 -1.514",
+  "proposed_station_name": "Ashurst Bridge - Ashurst Bridge Road",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:35+00:00",
+      "value": 97.45,
+      "timeseries_id": 23149,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:35+00:00",
+      "value": 79.3,
+      "timeseries_id": 23150,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "56688",
+  "label": "Sensor.Community 56688",
+  "coordinates": "53.342 -1.534",
+  "proposed_station_name": "Sheffield - Fenney Lane",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:31+00:00",
+      "value": 6,
+      "timeseries_id": 23055,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:31+00:00",
+      "value": 8,
+      "timeseries_id": 23056,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "90260",
+  "label": "Sensor.Community 90260",
+  "coordinates": "54.4 -0.72",
+  "proposed_station_name": "Goathland - YO22 5AL",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:39+00:00",
+      "value": 8.7,
+      "timeseries_id": 23107,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:39+00:00",
+      "value": 20.7,
+      "timeseries_id": 23108,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "77761",
+  "label": "Sensor.Community 77761",
+  "coordinates": "53.34657090351 -1.50874257088",
+  "proposed_station_name": "Sheffield - S7 2LN",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "19505",
+  "label": "Sensor.Community 19505",
+  "coordinates": "50.852 -0.14",
+  "proposed_station_name": "Brighton - Friar Walk",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:22:41+00:00",
+      "value": 1.45,
+      "timeseries_id": 23438,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:22:41+00:00",
+      "value": 8.75,
+      "timeseries_id": 23437,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "77760",
+  "label": "Sensor.Community 77760",
+  "coordinates": "53.34657090351 -1.50874257088",
+  "proposed_station_name": "Sheffield - S7 2LN",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:22:47+00:00",
+      "value": 1.73,
+      "timeseries_id": 23290,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:22:47+00:00",
+      "value": 7.35,
+      "timeseries_id": 23289,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "21103",
+  "label": "Sensor.Community 21103",
+  "coordinates": "53.398 -1.514",
+  "proposed_station_name": "Sheffield - Malin Road",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:21:23+00:00",
+      "value": 0.8,
+      "timeseries_id": 23278,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:21:23+00:00",
+      "value": 0.8,
+      "timeseries_id": 23277,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "57475",
+  "label": "Sensor.Community 57475",
+  "coordinates": "50.87527154464 0.00964343534",
+  "proposed_station_name": "Lewes - Sun Street",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:31+00:00",
+      "value": 3.33,
+      "timeseries_id": 23061,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:31+00:00",
+      "value": 0.7,
+      "timeseries_id": 23062,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "66396",
+  "label": "Sensor.Community 66396",
+  "coordinates": "51.378 -1.342",
+  "proposed_station_name": "Newbury - Sunley Close",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "66395",
+  "label": "Sensor.Community 66395",
+  "coordinates": "51.378 -1.342",
+  "proposed_station_name": "Newbury - Sunley Close",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:13+00:00",
+      "value": 0,
+      "timeseries_id": 23049,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:13+00:00",
+      "value": 0,
+      "timeseries_id": 23050,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "60355",
+  "label": "Sensor.Community 60355",
+  "coordinates": "51.464 -0.066",
+  "proposed_station_name": "London - SE15 3PH",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "60354",
+  "label": "Sensor.Community 60354",
+  "coordinates": "51.464 -0.066",
+  "proposed_station_name": "London - SE15 3PH",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:22:19+00:00",
+      "value": 1.4,
+      "timeseries_id": 23444,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:22:19+00:00",
+      "value": 1.48,
+      "timeseries_id": 23443,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "66381",
+  "label": "Sensor.Community 66381",
+  "coordinates": "52.648 1.214",
+  "proposed_station_name": "Norwich - Luke Close",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "66380",
+  "label": "Sensor.Community 66380",
+  "coordinates": "52.648 1.214",
+  "proposed_station_name": "Norwich - Luke Close",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:22:18+00:00",
+      "value": 4.2,
+      "timeseries_id": 23442,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:22:18+00:00",
+      "value": 14.23,
+      "timeseries_id": 23441,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "28602",
+  "label": "Sensor.Community 28602",
+  "coordinates": "51.54593472227 -0.14490097761",
+  "proposed_station_name": "Camden Town - Grafton Crescent",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "28601",
+  "label": "Sensor.Community 28601",
+  "coordinates": "51.54593472227 -0.14490097761",
+  "proposed_station_name": "Camden Town - Grafton Crescent",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:11+00:00",
+      "value": 15.02,
+      "timeseries_id": 23271,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:11+00:00",
+      "value": 2.7,
+      "timeseries_id": 23272,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "21259",
+  "label": "Sensor.Community 21259",
+  "coordinates": "53.364 -1.48",
+  "proposed_station_name": "Sheffield - South View Crescent",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "95964",
+  "label": "Sensor.Community 95964",
+  "coordinates": "53.17 -2.24",
+  "proposed_station_name": "Congleton - Laburnum Close",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "21258",
+  "label": "Sensor.Community 21258",
+  "coordinates": "53.364 -1.48",
+  "proposed_station_name": "Sheffield - South View Crescent",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:21:28+00:00",
+      "value": 4.6,
+      "timeseries_id": 23294,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:21:28+00:00",
+      "value": 16.33,
+      "timeseries_id": 23293,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "95963",
+  "label": "Sensor.Community 95963",
+  "coordinates": "53.17 -2.24",
+  "proposed_station_name": "Congleton - Laburnum Close",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:37+00:00",
+      "value": 15,
+      "timeseries_id": 23117,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:37+00:00",
+      "value": 13.25,
+      "timeseries_id": 23118,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "43207",
+  "label": "Sensor.Community 43207",
+  "coordinates": "51.514825 -0.179171",
+  "proposed_station_name": "City Of Westminster - W2 3HE",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "43206",
+  "label": "Sensor.Community 43206",
+  "coordinates": "51.514825 -0.179171",
+  "proposed_station_name": "City Of Westminster - W2 3HE",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:19+00:00",
+      "value": 8.27,
+      "timeseries_id": 23383,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:19+00:00",
+      "value": 1.75,
+      "timeseries_id": 23384,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "64739",
+  "label": "Sensor.Community 64739",
+  "coordinates": "51.186 0.276",
+  "proposed_station_name": "Tonbridge - A2014",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "64738",
+  "label": "Sensor.Community 64738",
+  "coordinates": "51.186 0.276",
+  "proposed_station_name": "Tonbridge - A2014",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:43+00:00",
+      "value": 4.93,
+      "timeseries_id": 23101,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:43+00:00",
+      "value": 1.38,
+      "timeseries_id": 23102,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "32406",
+  "label": "Sensor.Community 32406",
+  "coordinates": "57.117368 -2.194391",
+  "proposed_station_name": "Cults - Cairnlee Avenue East",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "13357",
+  "label": "Sensor.Community 13357",
+  "coordinates": "56.456 -3.12",
+  "proposed_station_name": "Longforgan - Longforgan Primary School",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "32405",
+  "label": "Sensor.Community 32405",
+  "coordinates": "57.117368 -2.194391",
+  "proposed_station_name": "Cults - Cairnlee Avenue East",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:06+00:00",
+      "value": 0.57,
+      "timeseries_id": 23103,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:06+00:00",
+      "value": 0.5,
+      "timeseries_id": 23104,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "24665",
+  "label": "Sensor.Community 24665",
+  "coordinates": "53.532 -1.478",
+  "proposed_station_name": "Worsbrough - Manor End",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:21:19+00:00",
+      "value": 0,
+      "timeseries_id": 23306,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:21:19+00:00",
+      "value": 0,
+      "timeseries_id": 23305,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "82805",
+  "label": "Sensor.Community 82805",
+  "coordinates": "51.0 -3.112",
+  "proposed_station_name": "Taunton - Queens Drive",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:22:35+00:00",
+      "value": 4.1,
+      "timeseries_id": 23128,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:22:35+00:00",
+      "value": 13.9,
+      "timeseries_id": 23127,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "13356",
+  "label": "Sensor.Community 13356",
+  "coordinates": "56.456 -3.12",
+  "proposed_station_name": "Longforgan - Longforgan Primary School",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:59+00:00",
+      "value": 2.13,
+      "timeseries_id": 23451,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:59+00:00",
+      "value": 1.9,
+      "timeseries_id": 23452,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "48674",
+  "label": "Sensor.Community 48674",
+  "coordinates": "51.67815362315 -1.29373669624",
+  "proposed_station_name": "Abingdon-On-Thames - Robin Close",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "73100",
+  "label": "Sensor.Community 73100",
+  "coordinates": "53.446 -2.266",
+  "proposed_station_name": "Manchester - M21 0TP",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:28+00:00",
+      "value": 16.95,
+      "timeseries_id": 23113,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:28+00:00",
+      "value": 2.72,
+      "timeseries_id": 23114,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "48673",
+  "label": "Sensor.Community 48673",
+  "coordinates": "51.67815362315 -1.29373669624",
+  "proposed_station_name": "Abingdon-On-Thames - Robin Close",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:21:55+00:00",
+      "value": 3,
+      "timeseries_id": 23078,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:21:55+00:00",
+      "value": 3,
+      "timeseries_id": 23077,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "78948",
+  "label": "Sensor.Community 78948",
+  "coordinates": "51.4725104 -2.59912197771",
+  "proposed_station_name": "Bristol - Kersteman Road",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "78947",
+  "label": "Sensor.Community 78947",
+  "coordinates": "51.4725104 -2.59912197771",
+  "proposed_station_name": "Bristol - Kersteman Road",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:37+00:00",
+      "value": 3.4,
+      "timeseries_id": 23069,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:37+00:00",
+      "value": 0.7,
+      "timeseries_id": 23070,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "70407",
+  "label": "Sensor.Community 70407",
+  "coordinates": "52.196 -0.074",
+  "proposed_station_name": "Bourn - Caxton End",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "70406",
+  "label": "Sensor.Community 70406",
+  "coordinates": "52.196 -0.074",
+  "proposed_station_name": "Bourn - Caxton End",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:23+00:00",
+      "value": 3,
+      "timeseries_id": 23280,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:23+00:00",
+      "value": 11.4,
+      "timeseries_id": 23279,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "85753",
+  "label": "Sensor.Community 85753",
+  "coordinates": "51.076 -1.794",
+  "proposed_station_name": "Salisbury - Marlborough Road",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:22:42+00:00",
+      "value": 1.33,
+      "timeseries_id": 23126,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:22:42+00:00",
+      "value": 4.03,
+      "timeseries_id": 23125,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "57477",
+  "label": "Sensor.Community 57477",
+  "coordinates": "50.7972089 0.0057754",
+  "proposed_station_name": "Peacehaven - Bunting Close",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:46+00:00",
+      "value": 6.97,
+      "timeseries_id": 23099,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:46+00:00",
+      "value": 3.67,
+      "timeseries_id": 23100,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "24389",
+  "label": "Sensor.Community 24389",
+  "coordinates": "56.468 -3.004",
+  "proposed_station_name": "Dundee - Morven Terrace",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:09+00:00",
+      "value": 1.98,
+      "timeseries_id": 23111,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:09+00:00",
+      "value": 1.2,
+      "timeseries_id": 23112,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "68483",
+  "label": "Sensor.Community 68483",
+  "coordinates": "52.64348164108 1.30273463361",
+  "proposed_station_name": "Norwich - Ladysmith Road",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "79409",
+  "label": "Sensor.Community 79409",
+  "coordinates": "50.96 0.254",
+  "proposed_station_name": "Heathfield - Mill Gardens",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "79408",
+  "label": "Sensor.Community 79408",
+  "coordinates": "50.96 0.254",
+  "proposed_station_name": "Heathfield - Mill Gardens",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:13+00:00",
+      "value": 0,
+      "timeseries_id": 23133,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:13+00:00",
+      "value": 0,
+      "timeseries_id": 23134,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "51849",
+  "label": "Sensor.Community 51849",
+  "coordinates": "51.09 -1.832",
+  "proposed_station_name": "Salisbury - Sheen Close",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "72258",
+  "label": "Sensor.Community 72258",
+  "coordinates": "51.41412 0.10452",
+  "proposed_station_name": "Orpington - Lullingstone Close",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "68482",
+  "label": "Sensor.Community 68482",
+  "coordinates": "52.64348164108 1.30273463361",
+  "proposed_station_name": "Norwich - Ladysmith Road",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:22:30+00:00",
+      "value": 2.88,
+      "timeseries_id": 23254,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:22:30+00:00",
+      "value": 11.18,
+      "timeseries_id": 23253,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "77753",
+  "label": "Sensor.Community 77753",
+  "coordinates": "53.44519983242 -1.46077126265",
+  "proposed_station_name": "Ecclesfield - Ecclesfield Close",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "77752",
+  "label": "Sensor.Community 77752",
+  "coordinates": "53.44519983242 -1.46077126265",
+  "proposed_station_name": "Ecclesfield - Ecclesfield Close",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:21:58+00:00",
+      "value": 3.15,
+      "timeseries_id": 23330,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:21:58+00:00",
+      "value": 9.88,
+      "timeseries_id": 23329,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "60832",
+  "label": "Sensor.Community 60832",
+  "coordinates": "51.558 -0.448",
+  "proposed_station_name": "London - Court Road",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "60831",
+  "label": "Sensor.Community 60831",
+  "coordinates": "51.558 -0.448",
+  "proposed_station_name": "London - Court Road",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:21:59+00:00",
+      "value": 0.63,
+      "timeseries_id": 23336,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:21:59+00:00",
+      "value": 6.63,
+      "timeseries_id": 23335,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "72257",
+  "label": "Sensor.Community 72257",
+  "coordinates": "51.41412 0.10452",
+  "proposed_station_name": "Orpington - Lullingstone Close",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:22:32+00:00",
+      "value": 4,
+      "timeseries_id": 23144,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:22:32+00:00",
+      "value": 3,
+      "timeseries_id": 23143,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "33863",
+  "label": "Sensor.Community 33863",
+  "coordinates": "51.436 -2.742",
+  "proposed_station_name": "Nailsea - Elm Lodge Road",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "93031",
+  "label": "Sensor.Community 93031",
+  "coordinates": "51.3245719204 -2.00887531042",
+  "proposed_station_name": "Potterne - Eastwell Road",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:22+00:00",
+      "value": 6.13,
+      "timeseries_id": 23155,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:22+00:00",
+      "value": 1.6,
+      "timeseries_id": 23156,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "78004",
+  "label": "Sensor.Community 78004",
+  "coordinates": "51.698 -0.292",
+  "proposed_station_name": "Shenley - Headingley Close",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:39+00:00",
+      "value": 45.8,
+      "timeseries_id": 23129,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:39+00:00",
+      "value": 6.47,
+      "timeseries_id": 23130,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "17080",
+  "label": "Sensor.Community 17080",
+  "coordinates": "57.106 -2.088",
+  "proposed_station_name": "Aberdeen - Langdykes Drive",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "33862",
+  "label": "Sensor.Community 33862",
+  "coordinates": "51.436 -2.742",
+  "proposed_station_name": "Nailsea - Elm Lodge Road",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:20+00:00",
+      "value": 5.32,
+      "timeseries_id": 23331,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:20+00:00",
+      "value": 2.25,
+      "timeseries_id": 23332,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "17079",
+  "label": "Sensor.Community 17079",
+  "coordinates": "57.106 -2.088",
+  "proposed_station_name": "Aberdeen - Langdykes Drive",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:22:50+00:00",
+      "value": 1.2,
+      "timeseries_id": 23139,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:22:50+00:00",
+      "value": 0.8,
+      "timeseries_id": 23140,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "69257",
+  "label": "Sensor.Community 69257",
+  "coordinates": "53.356 -1.748",
+  "proposed_station_name": "Hope - Fullwood Stile Lane",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "69256",
+  "label": "Sensor.Community 69256",
+  "coordinates": "53.356 -1.748",
+  "proposed_station_name": "Hope - Fullwood Stile Lane",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:22:45+00:00",
+      "value": 3.7,
+      "timeseries_id": 23154,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:22:45+00:00",
+      "value": 5.83,
+      "timeseries_id": 23153,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "76953",
+  "label": "Sensor.Community 76953",
+  "coordinates": "51.698 -0.292",
+  "proposed_station_name": "Shenley - Headingley Close",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:17+00:00",
+      "value": 110.07,
+      "timeseries_id": 23135,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:17+00:00",
+      "value": 12.9,
+      "timeseries_id": 23136,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "89994",
+  "label": "Sensor.Community 89994",
+  "coordinates": "54.426 -0.926",
+  "proposed_station_name": "North Yorkshire - Crosby Intake Plantation",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:51+00:00",
+      "value": 11.6,
+      "timeseries_id": 23175,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:51+00:00",
+      "value": 27.6,
+      "timeseries_id": 23176,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "22015",
+  "label": "Sensor.Community 22015",
+  "coordinates": "51.698 -0.292",
+  "proposed_station_name": "Shenley - Headingley Close",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:22:56+00:00",
+      "value": 79.97,
+      "timeseries_id": 23137,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:22:56+00:00",
+      "value": 31.23,
+      "timeseries_id": 23138,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "90502",
+  "label": "Sensor.Community 90502",
+  "coordinates": "51.472 -2.586",
+  "proposed_station_name": "Bristol - Maurice Road",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "90501",
+  "label": "Sensor.Community 90501",
+  "coordinates": "51.472 -2.586",
+  "proposed_station_name": "Bristol - Maurice Road",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:22:17+00:00",
+      "value": 0.4,
+      "timeseries_id": 23160,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:22:17+00:00",
+      "value": 0.9,
+      "timeseries_id": 23159,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "23867",
+  "label": "Sensor.Community 23867",
+  "coordinates": "53.404 -1.502",
+  "proposed_station_name": "Sheffield - Proctor Place",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "23866",
+  "label": "Sensor.Community 23866",
+  "coordinates": "53.404 -1.502",
+  "proposed_station_name": "Sheffield - Proctor Place",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:21:48+00:00",
+      "value": 0,
+      "timeseries_id": 23350,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:21:48+00:00",
+      "value": 0,
+      "timeseries_id": 23349,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "60817",
+  "label": "Sensor.Community 60817",
+  "coordinates": "51.518 -3.188",
+  "proposed_station_name": "Cardiff / Caerdydd - Cefn Carnau Road",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "74079",
+  "label": "Sensor.Community 74079",
+  "coordinates": "51.544 -3.276",
+  "proposed_station_name": "Gwaelod-Y-Garth - Main Road",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "60816",
+  "label": "Sensor.Community 60816",
+  "coordinates": "51.518 -3.188",
+  "proposed_station_name": "Cardiff / Caerdydd - Cefn Carnau Road",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:22:58+00:00",
+      "value": 9,
+      "timeseries_id": 23163,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:22:58+00:00",
+      "value": 10,
+      "timeseries_id": 23164,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "74078",
+  "label": "Sensor.Community 74078",
+  "coordinates": "51.544 -3.276",
+  "proposed_station_name": "Gwaelod-Y-Garth - Main Road",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:21:58+00:00",
+      "value": 7,
+      "timeseries_id": 23162,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:21:58+00:00",
+      "value": 7,
+      "timeseries_id": 23161,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "78100",
+  "label": "Sensor.Community 78100",
+  "coordinates": "53.3835960424 -1.49564751594",
+  "proposed_station_name": "Sheffield - Harcourt Road",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "66492",
+  "label": "Sensor.Community 66492",
+  "coordinates": "52.58459354153 1.1406916378",
+  "proposed_station_name": "Downham - Old Oak Close",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "78099",
+  "label": "Sensor.Community 78099",
+  "coordinates": "53.3835960424 -1.49564751594",
+  "proposed_station_name": "Sheffield - Harcourt Road",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:22:55+00:00",
+      "value": 11.13,
+      "timeseries_id": 23167,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:22:55+00:00",
+      "value": 3.13,
+      "timeseries_id": 23168,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "94979",
+  "label": "Sensor.Community 94979",
+  "coordinates": "53.87865544097 -1.45779132843",
+  "proposed_station_name": "Bardsey - Blackmoor Lane",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "66493",
+  "label": "Sensor.Community 66493",
+  "coordinates": "52.58459354153 1.1406916378",
+  "proposed_station_name": "Downham - Old Oak Close",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:27+00:00",
+      "value": 7,
+      "timeseries_id": 23169,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:27+00:00",
+      "value": 7,
+      "timeseries_id": 23170,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "27530",
+  "label": "Sensor.Community 27530",
+  "coordinates": "57.1546553253 -2.11653113365",
+  "proposed_station_name": "Aberdeen - Berryden Gardens",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "27706",
+  "label": "Sensor.Community 27706",
+  "coordinates": "51.384 0.04",
+  "proposed_station_name": "London - Brosse Way",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:42+00:00",
+      "value": 18.35,
+      "timeseries_id": 23083,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:42+00:00",
+      "value": 3.38,
+      "timeseries_id": 23084,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "27529",
+  "label": "Sensor.Community 27529",
+  "coordinates": "57.1546553253 -2.11653113365",
+  "proposed_station_name": "Aberdeen - Berryden Gardens",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:35+00:00",
+      "value": 2.33,
+      "timeseries_id": 23079,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:35+00:00",
+      "value": 2.13,
+      "timeseries_id": 23080,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "44735",
+  "label": "Sensor.Community 44735",
+  "coordinates": "52.444 -1.966",
+  "proposed_station_name": "Birmingham - Monkton Road",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "94978",
+  "label": "Sensor.Community 94978",
+  "coordinates": "53.87865544097 -1.45779132843",
+  "proposed_station_name": "Bardsey - Blackmoor Lane",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:11+00:00",
+      "value": 2,
+      "timeseries_id": 23171,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:11+00:00",
+      "value": 3,
+      "timeseries_id": 23172,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "44775",
+  "label": "Sensor.Community 44775",
+  "coordinates": "51.402 0.016",
+  "proposed_station_name": "Bromley - Ringer's Road",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "44734",
+  "label": "Sensor.Community 44734",
+  "coordinates": "52.444 -1.966",
+  "proposed_station_name": "Birmingham - Monkton Road",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "44774",
+  "label": "Sensor.Community 44774",
+  "coordinates": "51.402 0.016",
+  "proposed_station_name": "Bromley - Ringer's Road",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:09+00:00",
+      "value": 9.07,
+      "timeseries_id": 23081,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:09+00:00",
+      "value": 1.85,
+      "timeseries_id": 23082,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "24409",
+  "label": "Sensor.Community 24409",
+  "coordinates": "53.364 -1.504",
+  "proposed_station_name": "Sheffield - S11 8UT",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:33+00:00",
+      "value": 8.18,
+      "timeseries_id": 23087,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:33+00:00",
+      "value": 2.92,
+      "timeseries_id": 23088,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "6356",
+  "label": "Sensor.Community 6356",
+  "coordinates": "53.452 -2.264",
+  "proposed_station_name": "Manchester - Rowan Avenue",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:01+00:00",
+      "value": 15.07,
+      "timeseries_id": 23355,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:01+00:00",
+      "value": 4.1,
+      "timeseries_id": 23356,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "62632",
+  "label": "Sensor.Community 62632",
+  "coordinates": "51.248 -0.546",
+  "proposed_station_name": "Guildford - Rodney Way",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "76903",
+  "label": "Sensor.Community 76903",
+  "coordinates": "51.698 -0.292",
+  "proposed_station_name": "Shenley - Headingley Close",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:21:41+00:00",
+      "value": 0.2,
+      "timeseries_id": 23166,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:21:41+00:00",
+      "value": 1.02,
+      "timeseries_id": 23165,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "44343",
+  "label": "Sensor.Community 44343",
+  "coordinates": "51.46439645 -0.25848929332",
+  "proposed_station_name": "London - Shottfield Avenue",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "46382",
+  "label": "Sensor.Community 46382",
+  "coordinates": "52.973161 -2.513711",
+  "proposed_station_name": "Coxbank - Brook Lane",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "65718",
+  "label": "Sensor.Community 65718",
+  "coordinates": "52.466 -1.016",
+  "proposed_station_name": "Theddingworth - Toms Close",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "65717",
+  "label": "Sensor.Community 65717",
+  "coordinates": "52.466 -1.016",
+  "proposed_station_name": "Theddingworth - Toms Close",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:22:30+00:00",
+      "value": 2.25,
+      "timeseries_id": 23096,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:22:30+00:00",
+      "value": 4.2,
+      "timeseries_id": 23095,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "20744",
+  "label": "Sensor.Community 20744",
+  "coordinates": "52.16 -0.428",
+  "proposed_station_name": "Salph End - Hookhams Lane",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "41862",
+  "label": "Sensor.Community 41862",
+  "coordinates": "57.134 -2.136",
+  "proposed_station_name": "Aberdeen - Thorngrove Avenue",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "41861",
+  "label": "Sensor.Community 41861",
+  "coordinates": "57.134 -2.136",
+  "proposed_station_name": "Aberdeen - Thorngrove Avenue",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:22:30+00:00",
+      "value": 2,
+      "timeseries_id": 23098,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:22:30+00:00",
+      "value": 5.53,
+      "timeseries_id": 23097,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "20743",
+  "label": "Sensor.Community 20743",
+  "coordinates": "52.16 -0.428",
+  "proposed_station_name": "Salph End - Hookhams Lane",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:22:30+00:00",
+      "value": 1.77,
+      "timeseries_id": 23090,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:22:30+00:00",
+      "value": 5.93,
+      "timeseries_id": 23089,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "46381",
+  "label": "Sensor.Community 46381",
+  "coordinates": "52.973161 -2.513711",
+  "proposed_station_name": "Coxbank - Brook Lane",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:08+00:00",
+      "value": 5.88,
+      "timeseries_id": 23201,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:08+00:00",
+      "value": 7.63,
+      "timeseries_id": 23202,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "48476",
+  "label": "Sensor.Community 48476",
+  "coordinates": "51.192829 0.265172",
+  "proposed_station_name": "Tonbridge - Cromer Street",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "38541",
+  "label": "Sensor.Community 38541",
+  "coordinates": "55.90192721297 -3.1610262394",
+  "proposed_station_name": "Edinburgh - Balmwell Terrace",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:21:45+00:00",
+      "value": 0.7,
+      "timeseries_id": 23192,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:21:45+00:00",
+      "value": 5.15,
+      "timeseries_id": 23191,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "42187",
+  "label": "Sensor.Community 42187",
+  "coordinates": "51.414 0.018",
+  "proposed_station_name": "Bromley - Cambridge Road",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "87405",
+  "label": "Sensor.Community 87405",
+  "coordinates": "50.92738492676 0.23780733347",
+  "proposed_station_name": "Burlow - Chalky Place",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "60642",
+  "label": "Sensor.Community 60642",
+  "coordinates": "52.444 -1.966",
+  "proposed_station_name": "Birmingham - Monkton Road",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "42186",
+  "label": "Sensor.Community 42186",
+  "coordinates": "51.414 0.018",
+  "proposed_station_name": "Bromley - Cambridge Road",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:04+00:00",
+      "value": 8.6,
+      "timeseries_id": 23085,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:04+00:00",
+      "value": 1.9,
+      "timeseries_id": 23086,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "23629",
+  "label": "Sensor.Community 23629",
+  "coordinates": "57.15 -2.134",
+  "proposed_station_name": "Aberdeen - Camperdown Road",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "12585",
+  "label": "Sensor.Community 12585",
+  "coordinates": "50.76 0.282",
+  "proposed_station_name": "Eastbourne - Regency Mews",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:35+00:00",
+      "value": 3.97,
+      "timeseries_id": 23181,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:35+00:00",
+      "value": 1.8,
+      "timeseries_id": 23182,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "23628",
+  "label": "Sensor.Community 23628",
+  "coordinates": "57.15 -2.134",
+  "proposed_station_name": "Aberdeen - Camperdown Road",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:39+00:00",
+      "value": 1.52,
+      "timeseries_id": 23093,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:39+00:00",
+      "value": 1.42,
+      "timeseries_id": 23094,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "39950",
+  "label": "Sensor.Community 39950",
+  "coordinates": "51.444 -2.606",
+  "proposed_station_name": "Bristol - Dalston Road",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {}
+},
+{
+  "station_ref": "29731",
+  "label": "Sensor.Community 29731",
+  "coordinates": "51.488 0.152",
+  "proposed_station_name": "London - Bunker's Hill",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "44342",
+  "label": "Sensor.Community 44342",
+  "coordinates": "51.46439645 -0.25848929332",
+  "proposed_station_name": "London - Shottfield Avenue",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:21:27+00:00",
+      "value": 3,
+      "timeseries_id": 23410,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:21:27+00:00",
+      "value": 3,
+      "timeseries_id": 23409,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "87406",
+  "label": "Sensor.Community 87406",
+  "coordinates": "50.92738492676 0.23780733347",
+  "proposed_station_name": "Burlow - Chalky Place",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:23+00:00",
+      "value": 0,
+      "timeseries_id": 23193,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:23+00:00",
+      "value": 3,
+      "timeseries_id": 23194,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "29730",
+  "label": "Sensor.Community 29730",
+  "coordinates": "51.488 0.152",
+  "proposed_station_name": "London - Bunker's Hill",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:40+00:00",
+      "value": 4.97,
+      "timeseries_id": 23091,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:40+00:00",
+      "value": 1.77,
+      "timeseries_id": 23092,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "27333",
+  "label": "Sensor.Community 27333",
+  "coordinates": "57.104 -2.094",
+  "proposed_station_name": "Aberdeen - Wellington Wynd",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:22:30+00:00",
+      "value": 2.47,
+      "timeseries_id": 23122,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:22:30+00:00",
+      "value": 5.6,
+      "timeseries_id": 23121,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "60641",
+  "label": "Sensor.Community 60641",
+  "coordinates": "52.444 -1.966",
+  "proposed_station_name": "Birmingham - Monkton Road",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:07+00:00",
+      "value": 19.3,
+      "timeseries_id": 23217,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:07+00:00",
+      "value": 6.94,
+      "timeseries_id": 23218,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "22476",
+  "label": "Sensor.Community 22476",
+  "coordinates": "51.698 -0.292",
+  "proposed_station_name": "Shenley - Headingley Close",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:21:58+00:00",
+      "value": 5.35,
+      "timeseries_id": 23184,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:21:58+00:00",
+      "value": 27.42,
+      "timeseries_id": 23183,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "97369",
+  "label": "Sensor.Community 97369",
+  "coordinates": "55.748 -4.552",
+  "proposed_station_name": "North Ayrshire - Blae Loch",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "97370",
+  "label": "Sensor.Community 97370",
+  "coordinates": "55.748 -4.552",
+  "proposed_station_name": "North Ayrshire - Blae Loch",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:22:18+00:00",
+      "value": 0,
+      "timeseries_id": 23196,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:22:18+00:00",
+      "value": 0,
+      "timeseries_id": 23195,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "65685",
+  "label": "Sensor.Community 65685",
+  "coordinates": "50.84306122947 -1.06221109629",
+  "proposed_station_name": "Portsmouth - Salisbury Road",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "79226",
+  "label": "Sensor.Community 79226",
+  "coordinates": "50.84306122947 -1.06221109629",
+  "proposed_station_name": "Portsmouth - Salisbury Road",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "79225",
+  "label": "Sensor.Community 79225",
+  "coordinates": "50.84306122947 -1.06221109629",
+  "proposed_station_name": "Portsmouth - Salisbury Road",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:28+00:00",
+      "value": 9.45,
+      "timeseries_id": 23109,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:28+00:00",
+      "value": 1.52,
+      "timeseries_id": 23110,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "22450",
+  "label": "Sensor.Community 22450",
+  "coordinates": "57.39 -2.468",
+  "proposed_station_name": "Aberdeenshire - B9001",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "14370",
+  "label": "Sensor.Community 14370",
+  "coordinates": "50.792 0.252",
+  "proposed_station_name": "Eastbourne - The Close",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "22020",
+  "label": "Sensor.Community 22020",
+  "coordinates": "53.362 -1.518",
+  "proposed_station_name": "Sheffield - Greystones Close",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "22449",
+  "label": "Sensor.Community 22449",
+  "coordinates": "57.39 -2.468",
+  "proposed_station_name": "Aberdeenshire - B9001",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:06+00:00",
+      "value": 0.1,
+      "timeseries_id": 23119,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:06+00:00",
+      "value": 0.1,
+      "timeseries_id": 23120,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "14369",
+  "label": "Sensor.Community 14369",
+  "coordinates": "50.792 0.252",
+  "proposed_station_name": "Eastbourne - The Close",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:26+00:00",
+      "value": 4.55,
+      "timeseries_id": 23123,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:26+00:00",
+      "value": 0.43,
+      "timeseries_id": 23124,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "22019",
+  "label": "Sensor.Community 22019",
+  "coordinates": "53.362 -1.518",
+  "proposed_station_name": "Sheffield - Greystones Close",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:08:57+00:00",
+      "value": 0,
+      "timeseries_id": 23311,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:08:57+00:00",
+      "value": 0,
+      "timeseries_id": 23312,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "4697",
+  "label": "Sensor.Community 4697",
+  "coordinates": "50.78 0.292",
+  "proposed_station_name": "Eastbourne - Moy Avenue",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "69753",
+  "label": "Sensor.Community 69753",
+  "coordinates": "53.35895284036 -1.51966452599",
+  "proposed_station_name": "Sheffield - Edale Road",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "62928",
+  "label": "Sensor.Community 62928",
+  "coordinates": "52.236 -0.892",
+  "proposed_station_name": "Northampton - Derngate",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "62927",
+  "label": "Sensor.Community 62927",
+  "coordinates": "52.236 -0.892",
+  "proposed_station_name": "Northampton - Derngate",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:55+00:00",
+      "value": 3,
+      "timeseries_id": 23199,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:55+00:00",
+      "value": 1.6,
+      "timeseries_id": 23200,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "65182",
+  "label": "Sensor.Community 65182",
+  "coordinates": "51.068 -1.78",
+  "proposed_station_name": "Salisbury - Little Manor",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:54+00:00",
+      "value": 10.8,
+      "timeseries_id": 23211,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:54+00:00",
+      "value": 2.47,
+      "timeseries_id": 23212,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "69752",
+  "label": "Sensor.Community 69752",
+  "coordinates": "53.35895284036 -1.51966452599",
+  "proposed_station_name": "Sheffield - Edale Road",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:21:47+00:00",
+      "value": 4.55,
+      "timeseries_id": 23158,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:21:47+00:00",
+      "value": 19.35,
+      "timeseries_id": 23157,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "46756",
+  "label": "Sensor.Community 46756",
+  "coordinates": "52.826 -1.192",
+  "proposed_station_name": "East Leake - Quince Close",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "46755",
+  "label": "Sensor.Community 46755",
+  "coordinates": "52.826 -1.192",
+  "proposed_station_name": "East Leake - Quince Close",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:22:29+00:00",
+      "value": 2.75,
+      "timeseries_id": 23204,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:22:29+00:00",
+      "value": 5.55,
+      "timeseries_id": 23203,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "43364",
+  "label": "Sensor.Community 43364",
+  "coordinates": "52.424 -1.948",
+  "proposed_station_name": "Birmingham - Berberry Close",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "43363",
+  "label": "Sensor.Community 43363",
+  "coordinates": "52.424 -1.948",
+  "proposed_station_name": "Birmingham - Berberry Close",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:05+00:00",
+      "value": 1.98,
+      "timeseries_id": 23147,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:05+00:00",
+      "value": 0.93,
+      "timeseries_id": 23148,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "27366",
+  "label": "Sensor.Community 27366",
+  "coordinates": "57.148 -2.144",
+  "proposed_station_name": "Aberdeen - Woodhill Road",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "27365",
+  "label": "Sensor.Community 27365",
+  "coordinates": "57.148 -2.144",
+  "proposed_station_name": "Aberdeen - Woodhill Road",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:22:30+00:00",
+      "value": 1.7,
+      "timeseries_id": 23152,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:22:30+00:00",
+      "value": 1.83,
+      "timeseries_id": 23151,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "24682",
+  "label": "Sensor.Community 24682",
+  "coordinates": "53.39 -2.328",
+  "proposed_station_name": "Altrincham - WA15 7QG",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "24681",
+  "label": "Sensor.Community 24681",
+  "coordinates": "53.39 -2.328",
+  "proposed_station_name": "Altrincham - WA15 7QG",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:21:56+00:00",
+      "value": 3.88,
+      "timeseries_id": 23210,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:21:56+00:00",
+      "value": 16.5,
+      "timeseries_id": 23209,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "52693",
+  "label": "Sensor.Community 52693",
+  "coordinates": "51.012 -1.648",
+  "proposed_station_name": "Whiteparish - The Green",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "49645",
+  "label": "Sensor.Community 49645",
+  "coordinates": "50.73 -1.932",
+  "proposed_station_name": "Poole - Sunny Hill Road",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "52692",
+  "label": "Sensor.Community 52692",
+  "coordinates": "51.012 -1.648",
+  "proposed_station_name": "Whiteparish - The Green",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {}
+},
+{
+  "station_ref": "49644",
+  "label": "Sensor.Community 49644",
+  "coordinates": "50.73 -1.932",
+  "proposed_station_name": "Poole - Sunny Hill Road",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:45+00:00",
+      "value": 1,
+      "timeseries_id": 23207,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:45+00:00",
+      "value": 1,
+      "timeseries_id": 23208,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "73415",
+  "label": "Sensor.Community 73415",
+  "coordinates": "52.88 -2.936",
+  "proposed_station_name": "Lower Frankton - SY11 4PB",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "87435",
+  "label": "Sensor.Community 87435",
+  "coordinates": "53.396 -1.53",
+  "proposed_station_name": "Sheffield - Marchwood Avenue",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "87434",
+  "label": "Sensor.Community 87434",
+  "coordinates": "53.396 -1.53",
+  "proposed_station_name": "Sheffield - Marchwood Avenue",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:22:53+00:00",
+      "value": 19.2,
+      "timeseries_id": 23461,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:22:53+00:00",
+      "value": 5.53,
+      "timeseries_id": 23462,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "73414",
+  "label": "Sensor.Community 73414",
+  "coordinates": "52.88 -2.936",
+  "proposed_station_name": "Lower Frankton - SY11 4PB",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:22:04+00:00",
+      "value": 0,
+      "timeseries_id": 23220,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:22:04+00:00",
+      "value": 0,
+      "timeseries_id": 23219,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "79690",
+  "label": "Sensor.Community 79690",
+  "coordinates": "55.932 -3.238",
+  "proposed_station_name": "Edinburgh - EH14 1NX",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "79689",
+  "label": "Sensor.Community 79689",
+  "coordinates": "55.932 -3.238",
+  "proposed_station_name": "Edinburgh - EH14 1NX",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:30+00:00",
+      "value": 2,
+      "timeseries_id": 23223,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:30+00:00",
+      "value": 2,
+      "timeseries_id": 23224,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "29701",
+  "label": "Sensor.Community 29701",
+  "coordinates": "51.38 -0.176",
+  "proposed_station_name": "London - Welbeck Walk",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "29700",
+  "label": "Sensor.Community 29700",
+  "coordinates": "51.38 -0.176",
+  "proposed_station_name": "London - Welbeck Walk",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:21:51+00:00",
+      "value": 40.1,
+      "timeseries_id": 23300,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:21:51+00:00",
+      "value": 225.55,
+      "timeseries_id": 23299,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "14326",
+  "label": "Sensor.Community 14326",
+  "coordinates": "53.33 -1.18",
+  "proposed_station_name": "Rotherham - S81 8PT",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:24:01+00:00",
+      "value": 20.23,
+      "timeseries_id": 23185,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:24:01+00:00",
+      "value": 9.13,
+      "timeseries_id": 23186,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "74394",
+  "label": "Sensor.Community 74394",
+  "coordinates": "53.12118325866 -4.12707515527",
+  "proposed_station_name": "Llanberis - Stryd Fawr",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "74393",
+  "label": "Sensor.Community 74393",
+  "coordinates": "53.12118325866 -4.12707515527",
+  "proposed_station_name": "Llanberis - Stryd Fawr",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:21:40+00:00",
+      "value": 0.3,
+      "timeseries_id": 23216,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:21:40+00:00",
+      "value": 0.3,
+      "timeseries_id": 23215,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "45872",
+  "label": "Sensor.Community 45872",
+  "coordinates": "55.844 -3.21",
+  "proposed_station_name": "Penicuik - Breck Terrace",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "70191",
+  "label": "Sensor.Community 70191",
+  "coordinates": "52.038705 -0.845185",
+  "proposed_station_name": "Calverton - Middle Weald",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "83543",
+  "label": "Sensor.Community 83543",
+  "coordinates": "54.448 -0.942",
+  "proposed_station_name": "North Yorkshire - Burtree Lane",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:22:54+00:00",
+      "value": 12,
+      "timeseries_id": 23243,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:22:54+00:00",
+      "value": 14,
+      "timeseries_id": 23244,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "70192",
+  "label": "Sensor.Community 70192",
+  "coordinates": "52.038705 -0.845185",
+  "proposed_station_name": "Calverton - Middle Weald",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:42+00:00",
+      "value": 0,
+      "timeseries_id": 23213,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:42+00:00",
+      "value": 0,
+      "timeseries_id": 23214,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "45871",
+  "label": "Sensor.Community 45871",
+  "coordinates": "55.844 -3.21",
+  "proposed_station_name": "Penicuik - Breck Terrace",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:21:58+00:00",
+      "value": 0,
+      "timeseries_id": 23132,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:21:58+00:00",
+      "value": 0,
+      "timeseries_id": 23131,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "30037",
+  "label": "Sensor.Community 30037",
+  "coordinates": "51.512 -0.382",
+  "proposed_station_name": "Southall - UB1 1QN",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "46095",
+  "label": "Sensor.Community 46095",
+  "coordinates": "50.746 -2.716",
+  "proposed_station_name": "Loders - Smishops Lane",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "30036",
+  "label": "Sensor.Community 30036",
+  "coordinates": "51.512 -0.382",
+  "proposed_station_name": "Southall - UB1 1QN",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:22:07+00:00",
+      "value": 3.47,
+      "timeseries_id": 23188,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:22:07+00:00",
+      "value": 17.63,
+      "timeseries_id": 23187,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "46094",
+  "label": "Sensor.Community 46094",
+  "coordinates": "50.746 -2.716",
+  "proposed_station_name": "Loders - Smishops Lane",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:22:19+00:00",
+      "value": 1,
+      "timeseries_id": 23230,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:22:19+00:00",
+      "value": 1,
+      "timeseries_id": 23229,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "78414",
+  "label": "Sensor.Community 78414",
+  "coordinates": "51.4789693 0.0210932",
+  "proposed_station_name": "London - Invicta Road",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:22:36+00:00",
+      "value": 2.65,
+      "timeseries_id": 23406,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:22:36+00:00",
+      "value": 16.45,
+      "timeseries_id": 23405,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "34458",
+  "label": "Sensor.Community 34458",
+  "coordinates": "51.85050594043 -2.24506795406",
+  "proposed_station_name": "Gloucester - Lannett Road",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "34457",
+  "label": "Sensor.Community 34457",
+  "coordinates": "51.85050594043 -2.24506795406",
+  "proposed_station_name": "Gloucester - Lannett Road",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:21:59+00:00",
+      "value": 2.28,
+      "timeseries_id": 23228,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:21:59+00:00",
+      "value": 3.25,
+      "timeseries_id": 23227,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "33649",
+  "label": "Sensor.Community 33649",
+  "coordinates": "55.9382199 -3.1991134",
+  "proposed_station_name": "Edinburgh - Warrender Park Road",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "33648",
+  "label": "Sensor.Community 33648",
+  "coordinates": "55.9382199 -3.1991134",
+  "proposed_station_name": "Edinburgh - Warrender Park Road",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:48+00:00",
+      "value": 1.95,
+      "timeseries_id": 23251,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:48+00:00",
+      "value": 2.54,
+      "timeseries_id": 23252,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "48413",
+  "label": "Sensor.Community 48413",
+  "coordinates": "50.8674 0.3361",
+  "proposed_station_name": "Wealden - Maskelyne Road",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:22:32+00:00",
+      "value": 0.2,
+      "timeseries_id": 23236,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:22:32+00:00",
+      "value": 0.2,
+      "timeseries_id": 23235,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "43420",
+  "label": "Sensor.Community 43420",
+  "coordinates": "51.514 -0.178",
+  "proposed_station_name": "City Of Westminster - Smallbrook Mews",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "43436",
+  "label": "Sensor.Community 43436",
+  "coordinates": "51.444 -2.018",
+  "proposed_station_name": "Calne - Newbury Avenue",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "43419",
+  "label": "Sensor.Community 43419",
+  "coordinates": "51.514 -0.178",
+  "proposed_station_name": "City Of Westminster - Smallbrook Mews",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:24+00:00",
+      "value": 14.98,
+      "timeseries_id": 23239,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:24+00:00",
+      "value": 3,
+      "timeseries_id": 23240,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "42411",
+  "label": "Sensor.Community 42411",
+  "coordinates": "51.112 0.984",
+  "proposed_station_name": "Stone Hill - Cooper's Lane",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "42410",
+  "label": "Sensor.Community 42410",
+  "coordinates": "51.112 0.984",
+  "proposed_station_name": "Stone Hill - Cooper's Lane",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:08+00:00",
+      "value": 1,
+      "timeseries_id": 23231,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:08+00:00",
+      "value": 1,
+      "timeseries_id": 23232,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "68597",
+  "label": "Sensor.Community 68597",
+  "coordinates": "51.037457 -2.829591",
+  "proposed_station_name": "Langport Eastover - TA10 9PD",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:43+00:00",
+      "value": 1.47,
+      "timeseries_id": 23249,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:43+00:00",
+      "value": 1.37,
+      "timeseries_id": 23250,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "38637",
+  "label": "Sensor.Community 38637",
+  "coordinates": "53.034 -3.03",
+  "proposed_station_name": "Bersham - Kensington Close",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:22:52+00:00",
+      "value": 5.17,
+      "timeseries_id": 23189,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:22:52+00:00",
+      "value": 1.1,
+      "timeseries_id": 23190,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "26254",
+  "label": "Sensor.Community 26254",
+  "coordinates": "51.378 0.094",
+  "proposed_station_name": "Orpington - St Kilda Road",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "26253",
+  "label": "Sensor.Community 26253",
+  "coordinates": "51.378 0.094",
+  "proposed_station_name": "Orpington - St Kilda Road",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:22:03+00:00",
+      "value": 2.45,
+      "timeseries_id": 23206,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:22:03+00:00",
+      "value": 5.35,
+      "timeseries_id": 23205,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "82621",
+  "label": "Sensor.Community 82621",
+  "coordinates": "55.002 -1.592",
+  "proposed_station_name": "Newcastle Upon Tyne - Melville Grove",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "31871",
+  "label": "Sensor.Community 31871",
+  "coordinates": "52.198306 -2.199972",
+  "proposed_station_name": "Tolladine - Holly Mount Road",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "31870",
+  "label": "Sensor.Community 31870",
+  "coordinates": "52.198306 -2.199972",
+  "proposed_station_name": "Tolladine - Holly Mount Road",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:21:47+00:00",
+      "value": 3,
+      "timeseries_id": 23328,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:21:47+00:00",
+      "value": 3,
+      "timeseries_id": 23327,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "64628",
+  "label": "Sensor.Community 64628",
+  "coordinates": "50.96 0.314",
+  "proposed_station_name": "Punnett's Town - North Street",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "82622",
+  "label": "Sensor.Community 82622",
+  "coordinates": "55.002 -1.592",
+  "proposed_station_name": "Newcastle Upon Tyne - Melville Grove",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:22:31+00:00",
+      "value": 1,
+      "timeseries_id": 23260,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:22:31+00:00",
+      "value": 1,
+      "timeseries_id": 23259,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "46406",
+  "label": "Sensor.Community 46406",
+  "coordinates": "52.84234508036 -1.35001212358",
+  "proposed_station_name": "Castle Donington - Cordwell Close",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "89498",
+  "label": "Sensor.Community 89498",
+  "coordinates": "51.28 -0.86",
+  "proposed_station_name": "Fleet - GU51 4ED",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {}
+},
+{
+  "station_ref": "90241",
+  "label": "Sensor.Community 90241",
+  "coordinates": "54.438 -0.808",
+  "proposed_station_name": "Glaisdale - Carr Lane",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:11+00:00",
+      "value": 15.8,
+      "timeseries_id": 23295,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:11+00:00",
+      "value": 48.9,
+      "timeseries_id": 23296,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "95981",
+  "label": "Sensor.Community 95981",
+  "coordinates": "54.59 -5.926",
+  "proposed_station_name": "Belfast - Coyles Place",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "48490",
+  "label": "Sensor.Community 48490",
+  "coordinates": "55.996385 -4.89542",
+  "proposed_station_name": "Blairmore - Shore Road",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "33988",
+  "label": "Sensor.Community 33988",
+  "coordinates": "53.58 -1.666",
+  "proposed_station_name": "Lower Cumberworth - Cumberworth Lane",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "95980",
+  "label": "Sensor.Community 95980",
+  "coordinates": "54.59 -5.926",
+  "proposed_station_name": "Belfast - Coyles Place",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:22:13+00:00",
+      "value": 27,
+      "timeseries_id": 23264,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:22:13+00:00",
+      "value": 25,
+      "timeseries_id": 23263,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "33987",
+  "label": "Sensor.Community 33987",
+  "coordinates": "53.58 -1.666",
+  "proposed_station_name": "Lower Cumberworth - Cumberworth Lane",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:29+00:00",
+      "value": 21.15,
+      "timeseries_id": 23245,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:29+00:00",
+      "value": 3.42,
+      "timeseries_id": 23246,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "48489",
+  "label": "Sensor.Community 48489",
+  "coordinates": "55.996385 -4.89542",
+  "proposed_station_name": "Blairmore - Shore Road",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:21:54+00:00",
+      "value": 1,
+      "timeseries_id": 23234,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:21:54+00:00",
+      "value": 1,
+      "timeseries_id": 23233,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "64627",
+  "label": "Sensor.Community 64627",
+  "coordinates": "50.96 0.314",
+  "proposed_station_name": "Punnett's Town - North Street",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:04+00:00",
+      "value": 0,
+      "timeseries_id": 23265,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:04+00:00",
+      "value": 0,
+      "timeseries_id": 23266,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "53262",
+  "label": "Sensor.Community 53262",
+  "coordinates": "51.09 -1.786",
+  "proposed_station_name": "Salisbury - Poplar Way",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "53261",
+  "label": "Sensor.Community 53261",
+  "coordinates": "51.09 -1.786",
+  "proposed_station_name": "Salisbury - Poplar Way",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:22:30+00:00",
+      "value": 2.3,
+      "timeseries_id": 23242,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:22:30+00:00",
+      "value": 9.5,
+      "timeseries_id": 23241,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "79706",
+  "label": "Sensor.Community 79706",
+  "coordinates": "53.612 -2.416",
+  "proposed_station_name": "Bolton - Guild Street",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:22:43+00:00",
+      "value": 2.17,
+      "timeseries_id": 23282,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:22:43+00:00",
+      "value": 6.03,
+      "timeseries_id": 23281,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "46081",
+  "label": "Sensor.Community 46081",
+  "coordinates": "51.9070045 -0.6562845",
+  "proposed_station_name": "Leighton Buzzard - Eden Way",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "46080",
+  "label": "Sensor.Community 46080",
+  "coordinates": "51.9070045 -0.6562845",
+  "proposed_station_name": "Leighton Buzzard - Eden Way",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:22:03+00:00",
+      "value": 1.1,
+      "timeseries_id": 23286,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:22:03+00:00",
+      "value": 3.25,
+      "timeseries_id": 23285,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "76208",
+  "label": "Sensor.Community 76208",
+  "coordinates": "51.698 -0.292",
+  "proposed_station_name": "Shenley - Headingley Close",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:29+00:00",
+      "value": 27.1,
+      "timeseries_id": 23269,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:29+00:00",
+      "value": 6.43,
+      "timeseries_id": 23270,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "85287",
+  "label": "Sensor.Community 85287",
+  "coordinates": "52.48887027629 -0.7221069932",
+  "proposed_station_name": "Corby - Gateford Court",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "15630",
+  "label": "Sensor.Community 15630",
+  "coordinates": "50.842 0.166",
+  "proposed_station_name": "Berwick - Station Road",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "15629",
+  "label": "Sensor.Community 15629",
+  "coordinates": "50.842 0.166",
+  "proposed_station_name": "Berwick - Station Road",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:22:19+00:00",
+      "value": 1.45,
+      "timeseries_id": 23288,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:22:19+00:00",
+      "value": 4.03,
+      "timeseries_id": 23287,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "25435",
+  "label": "Sensor.Community 25435",
+  "coordinates": "52.772 -3.89",
+  "proposed_station_name": "Gwynedd - Gwynedd - LL40 2HF",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:31+00:00",
+      "value": 6.47,
+      "timeseries_id": 23275,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:31+00:00",
+      "value": 2.83,
+      "timeseries_id": 23276,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "63960",
+  "label": "Sensor.Community 63960",
+  "coordinates": "51.374 0.096",
+  "proposed_station_name": "Orpington - Orchard Grove",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "63959",
+  "label": "Sensor.Community 63959",
+  "coordinates": "51.374 0.096",
+  "proposed_station_name": "Orpington - Orchard Grove",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:22:59+00:00",
+      "value": 10.37,
+      "timeseries_id": 23463,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:22:59+00:00",
+      "value": 5.1,
+      "timeseries_id": 23464,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "81641",
+  "label": "Sensor.Community 81641",
+  "coordinates": "50.722 -1.944",
+  "proposed_station_name": "Poole - Balmoral Road",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "81640",
+  "label": "Sensor.Community 81640",
+  "coordinates": "50.722 -1.944",
+  "proposed_station_name": "Poole - Balmoral Road",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:22:21+00:00",
+      "value": 0,
+      "timeseries_id": 23298,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:22:21+00:00",
+      "value": 0,
+      "timeseries_id": 23297,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "55517",
+  "label": "Sensor.Community 55517",
+  "coordinates": "51.176 -0.708",
+  "proposed_station_name": "Elstead - Beacon View Road",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "38526",
+  "label": "Sensor.Community 38526",
+  "coordinates": "51.396 -2.354",
+  "proposed_station_name": "Bath - Queenwood Avenue",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "55518",
+  "label": "Sensor.Community 55518",
+  "coordinates": "51.176 -0.708",
+  "proposed_station_name": "Elstead - Beacon View Road",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:07+00:00",
+      "value": 0,
+      "timeseries_id": 23267,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:07+00:00",
+      "value": 0,
+      "timeseries_id": 23268,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "80897",
+  "label": "Sensor.Community 80897",
+  "coordinates": "52.95717120976 -1.20375441264",
+  "proposed_station_name": "Nottingham - Runswick Drive",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "80896",
+  "label": "Sensor.Community 80896",
+  "coordinates": "52.95717120976 -1.20375441264",
+  "proposed_station_name": "Nottingham - Runswick Drive",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:22:24+00:00",
+      "value": 11,
+      "timeseries_id": 23302,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:22:24+00:00",
+      "value": 7,
+      "timeseries_id": 23301,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "49063",
+  "label": "Sensor.Community 49063",
+  "coordinates": "51.464 -0.15",
+  "proposed_station_name": "Clapham - Cedars Road",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "49064",
+  "label": "Sensor.Community 49064",
+  "coordinates": "51.464 -0.15",
+  "proposed_station_name": "Clapham - Cedars Road",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:22:49+00:00",
+      "value": 1,
+      "timeseries_id": 23247,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:22:49+00:00",
+      "value": 1,
+      "timeseries_id": 23248,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "71424",
+  "label": "Sensor.Community 71424",
+  "coordinates": "51.37 -0.486",
+  "proposed_station_name": "Addlestone - Crockford Close",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "49200",
+  "label": "Sensor.Community 49200",
+  "coordinates": "51.6123338922 -1.26900404692",
+  "proposed_station_name": "Didcot - Olaf Schmid Mews",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "71423",
+  "label": "Sensor.Community 71423",
+  "coordinates": "51.37 -0.486",
+  "proposed_station_name": "Addlestone - Crockford Close",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:25+00:00",
+      "value": 7.9,
+      "timeseries_id": 23465,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:25+00:00",
+      "value": 1.45,
+      "timeseries_id": 23466,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "49199",
+  "label": "Sensor.Community 49199",
+  "coordinates": "51.6123338922 -1.26900404692",
+  "proposed_station_name": "Didcot - Olaf Schmid Mews",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:08+00:00",
+      "value": 3,
+      "timeseries_id": 23273,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:08+00:00",
+      "value": 3,
+      "timeseries_id": 23274,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "95409",
+  "label": "Sensor.Community 95409",
+  "coordinates": "55.97001789077 -3.17780077457",
+  "proposed_station_name": "Edinburgh - Gretna Mews",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:22:10+00:00",
+      "value": 1,
+      "timeseries_id": 23304,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:22:10+00:00",
+      "value": 1.65,
+      "timeseries_id": 23303,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "83729",
+  "label": "Sensor.Community 83729",
+  "coordinates": "56.48 -2.84",
+  "proposed_station_name": "Broughty Ferry - Wemyss Crescent",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "83728",
+  "label": "Sensor.Community 83728",
+  "coordinates": "56.48 -2.84",
+  "proposed_station_name": "Broughty Ferry - Wemyss Crescent",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:22:40+00:00",
+      "value": 1.37,
+      "timeseries_id": 23308,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:22:40+00:00",
+      "value": 2.97,
+      "timeseries_id": 23307,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "61809",
+  "label": "Sensor.Community 61809",
+  "coordinates": "56.46665135897 -3.20598006248",
+  "proposed_station_name": "Abernyte - PH14 9PZ",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "78407",
+  "label": "Sensor.Community 78407",
+  "coordinates": "51.074 -1.79",
+  "proposed_station_name": "Salisbury - College Street",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "78411",
+  "label": "Sensor.Community 78411",
+  "coordinates": "51.074 -1.796",
+  "proposed_station_name": "Salisbury - SP1 3AA",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "61808",
+  "label": "Sensor.Community 61808",
+  "coordinates": "56.46665135897 -3.20598006248",
+  "proposed_station_name": "Abernyte - PH14 9PZ",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:08+00:00",
+      "value": 5.18,
+      "timeseries_id": 23313,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:08+00:00",
+      "value": 2.13,
+      "timeseries_id": 23314,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "78406",
+  "label": "Sensor.Community 78406",
+  "coordinates": "51.074 -1.79",
+  "proposed_station_name": "Salisbury - College Street",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:22:47+00:00",
+      "value": 1.52,
+      "timeseries_id": 23284,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:22:47+00:00",
+      "value": 6.2,
+      "timeseries_id": 23283,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "78410",
+  "label": "Sensor.Community 78410",
+  "coordinates": "51.074 -1.796",
+  "proposed_station_name": "Salisbury - SP1 3AA",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:07+00:00",
+      "value": 2.65,
+      "timeseries_id": 23291,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:07+00:00",
+      "value": 0.55,
+      "timeseries_id": 23292,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "26911",
+  "label": "Sensor.Community 26911",
+  "coordinates": "56.46667506635 -3.20636630058",
+  "proposed_station_name": "Abernyte - PH14 9PZ",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "26627",
+  "label": "Sensor.Community 26627",
+  "coordinates": "56.46665135897 -3.20591568947",
+  "proposed_station_name": "Abernyte - PH14 9PZ",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "26626",
+  "label": "Sensor.Community 26626",
+  "coordinates": "56.46665135897 -3.20591568947",
+  "proposed_station_name": "Abernyte - PH14 9PZ",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:07+00:00",
+      "value": 4.78,
+      "timeseries_id": 23317,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:07+00:00",
+      "value": 1.73,
+      "timeseries_id": 23318,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "26910",
+  "label": "Sensor.Community 26910",
+  "coordinates": "56.46667506635 -3.20636630058",
+  "proposed_station_name": "Abernyte - PH14 9PZ",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:05+00:00",
+      "value": 2.7,
+      "timeseries_id": 23315,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:05+00:00",
+      "value": 0.95,
+      "timeseries_id": 23316,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "63306",
+  "label": "Sensor.Community 63306",
+  "coordinates": "52.06 1.248",
+  "proposed_station_name": "Kesgrave - Spindler Close",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "95286",
+  "label": "Sensor.Community 95286",
+  "coordinates": "56.31 -2.944",
+  "proposed_station_name": "Pitscottie - Dura View",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:22:43+00:00",
+      "value": 1.52,
+      "timeseries_id": 23320,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:22:43+00:00",
+      "value": 10.38,
+      "timeseries_id": 23319,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "63305",
+  "label": "Sensor.Community 63305",
+  "coordinates": "52.06 1.248",
+  "proposed_station_name": "Kesgrave - Spindler Close",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:42+00:00",
+      "value": 3,
+      "timeseries_id": 23225,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:42+00:00",
+      "value": 8,
+      "timeseries_id": 23226,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "28448",
+  "label": "Sensor.Community 28448",
+  "coordinates": "52.87 -1.416",
+  "proposed_station_name": "South Derbyshire - Chellaston Lane",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "28447",
+  "label": "Sensor.Community 28447",
+  "coordinates": "52.87 -1.416",
+  "proposed_station_name": "South Derbyshire - Chellaston Lane",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:50+00:00",
+      "value": 9.85,
+      "timeseries_id": 23321,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:50+00:00",
+      "value": 9.35,
+      "timeseries_id": 23322,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "24153",
+  "label": "Sensor.Community 24153",
+  "coordinates": "53.362 -1.518",
+  "proposed_station_name": "Sheffield - Greystones Close",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:22:01+00:00",
+      "value": 0,
+      "timeseries_id": 23054,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:22:01+00:00",
+      "value": 0,
+      "timeseries_id": 23053,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "64853",
+  "label": "Sensor.Community 64853",
+  "coordinates": "55.558 -4.644",
+  "proposed_station_name": "Troon - Maberry Place",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "64397",
+  "label": "Sensor.Community 64397",
+  "coordinates": "51.88092585 -2.0549533315",
+  "proposed_station_name": "Cheltenham - Cirencester Road",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {}
+},
+{
+  "station_ref": "64851",
+  "label": "Sensor.Community 64851",
+  "coordinates": "55.558 -4.644",
+  "proposed_station_name": "Troon - Maberry Place",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:48+00:00",
+      "value": 3.88,
+      "timeseries_id": 23323,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:48+00:00",
+      "value": 1.8,
+      "timeseries_id": 23324,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "43283",
+  "label": "Sensor.Community 43283",
+  "coordinates": "53.06870966712 -2.04217761755",
+  "proposed_station_name": "Cheddleton - ST13 7HR",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "43282",
+  "label": "Sensor.Community 43282",
+  "coordinates": "53.06870966712 -2.04217761755",
+  "proposed_station_name": "Cheddleton - ST13 7HR",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:31+00:00",
+      "value": 12.5,
+      "timeseries_id": 23325,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:31+00:00",
+      "value": 1.92,
+      "timeseries_id": 23326,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "46682",
+  "label": "Sensor.Community 46682",
+  "coordinates": "53.43 -2.224",
+  "proposed_station_name": "Manchester - Pridmouth Road",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "90059",
+  "label": "Sensor.Community 90059",
+  "coordinates": "54.37 -1.298",
+  "proposed_station_name": "Osmotherley - North End",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:22:04+00:00",
+      "value": 12.6,
+      "timeseries_id": 23354,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:22:04+00:00",
+      "value": 4,
+      "timeseries_id": 23353,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "80333",
+  "label": "Sensor.Community 80333",
+  "coordinates": "51.864 -2.246",
+  "proposed_station_name": "Gloucester - Marylone",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "80332",
+  "label": "Sensor.Community 80332",
+  "coordinates": "51.864 -2.246",
+  "proposed_station_name": "Gloucester - Marylone",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:22:52+00:00",
+      "value": 9.6,
+      "timeseries_id": 23337,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:22:52+00:00",
+      "value": 2.58,
+      "timeseries_id": 23338,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "46681",
+  "label": "Sensor.Community 46681",
+  "coordinates": "53.43 -2.224",
+  "proposed_station_name": "Manchester - Pridmouth Road",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:47+00:00",
+      "value": 6,
+      "timeseries_id": 23309,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:47+00:00",
+      "value": 7,
+      "timeseries_id": 23310,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "68959",
+  "label": "Sensor.Community 68959",
+  "coordinates": "53.23905548148 -1.45717442036",
+  "proposed_station_name": "Chesterfield - Inkerman Cottages",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "68958",
+  "label": "Sensor.Community 68958",
+  "coordinates": "53.23905548148 -1.45717442036",
+  "proposed_station_name": "Chesterfield - Inkerman Cottages",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:44+00:00",
+      "value": 15.52,
+      "timeseries_id": 23065,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:44+00:00",
+      "value": 8.88,
+      "timeseries_id": 23066,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "39435",
+  "label": "Sensor.Community 39435",
+  "coordinates": "51.88 -0.518",
+  "proposed_station_name": "Dunstable - Hawthorn Close",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "39434",
+  "label": "Sensor.Community 39434",
+  "coordinates": "51.88 -0.518",
+  "proposed_station_name": "Dunstable - Hawthorn Close",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:32+00:00",
+      "value": 0.57,
+      "timeseries_id": 23347,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:32+00:00",
+      "value": 0.3,
+      "timeseries_id": 23348,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "22069",
+  "label": "Sensor.Community 22069",
+  "coordinates": "57.196 -2.1",
+  "proposed_station_name": "Aberdeen - Greenbrae Circle",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "22068",
+  "label": "Sensor.Community 22068",
+  "coordinates": "57.196 -2.1",
+  "proposed_station_name": "Aberdeen - Greenbrae Circle",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:22:07+00:00",
+      "value": 18.9,
+      "timeseries_id": 23344,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:22:07+00:00",
+      "value": 20.03,
+      "timeseries_id": 23343,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "57967",
+  "label": "Sensor.Community 57967",
+  "coordinates": "50.88236802013 0.01429349184",
+  "proposed_station_name": "South Malling - Malling Close",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:14+00:00",
+      "value": 6.95,
+      "timeseries_id": 23345,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:14+00:00",
+      "value": 0.98,
+      "timeseries_id": 23346,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "77759",
+  "label": "Sensor.Community 77759",
+  "coordinates": "53.40598227691 -1.51242256165",
+  "proposed_station_name": "Sheffield - Cotswold Road",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "77758",
+  "label": "Sensor.Community 77758",
+  "coordinates": "53.40598227691 -1.51242256165",
+  "proposed_station_name": "Sheffield - Cotswold Road",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:07:56+00:00",
+      "value": 11.55,
+      "timeseries_id": 23057,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:07:56+00:00",
+      "value": 4.65,
+      "timeseries_id": 23058,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "62825",
+  "label": "Sensor.Community 62825",
+  "coordinates": "51.6250445 -3.9543159",
+  "proposed_station_name": "Abertawe / Swansea - Nicander Parade",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "62824",
+  "label": "Sensor.Community 62824",
+  "coordinates": "51.6250445 -3.9543159",
+  "proposed_station_name": "Abertawe / Swansea - Nicander Parade",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:12+00:00",
+      "value": 4,
+      "timeseries_id": 23341,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:12+00:00",
+      "value": 4,
+      "timeseries_id": 23342,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "48988",
+  "label": "Sensor.Community 48988",
+  "coordinates": "51.44 -2.534",
+  "proposed_station_name": "Bristol - Wyndham Crescent",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "48987",
+  "label": "Sensor.Community 48987",
+  "coordinates": "51.44 -2.534",
+  "proposed_station_name": "Bristol - Wyndham Crescent",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:19:28+00:00",
+      "value": 1.92,
+      "timeseries_id": 23340,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:19:28+00:00",
+      "value": 11.88,
+      "timeseries_id": 23339,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "97614",
+  "label": "Sensor.Community 97614",
+  "coordinates": "51.44 -2.59",
+  "proposed_station_name": "Bristol - Orwell Street",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:52+00:00",
+      "value": 8.63,
+      "timeseries_id": 23359,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:52+00:00",
+      "value": 1.6,
+      "timeseries_id": 23360,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "69841",
+  "label": "Sensor.Community 69841",
+  "coordinates": "51.326 -0.068",
+  "proposed_station_name": "London - Orchard Road",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:22:25+00:00",
+      "value": 1.02,
+      "timeseries_id": 23362,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:22:25+00:00",
+      "value": 6.18,
+      "timeseries_id": 23361,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "22308",
+  "label": "Sensor.Community 22308",
+  "coordinates": "50.858 -1.778",
+  "proposed_station_name": "Ringwood - Waterside Close",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:21:01+00:00",
+      "value": 1.3,
+      "timeseries_id": 23468,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:21:01+00:00",
+      "value": 12.1,
+      "timeseries_id": 23467,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "23147",
+  "label": "Sensor.Community 23147",
+  "coordinates": "53.532 -1.478",
+  "proposed_station_name": "Worsbrough - Manor End",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "23146",
+  "label": "Sensor.Community 23146",
+  "coordinates": "53.532 -1.478",
+  "proposed_station_name": "Worsbrough - Manor End",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:21:42+00:00",
+      "value": 1.25,
+      "timeseries_id": 23116,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:21:42+00:00",
+      "value": 4.63,
+      "timeseries_id": 23115,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "47010",
+  "label": "Sensor.Community 47010",
+  "coordinates": "54.164 -3.124",
+  "proposed_station_name": "Great Urswick - Stone Dike Lane",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "47009",
+  "label": "Sensor.Community 47009",
+  "coordinates": "54.164 -3.124",
+  "proposed_station_name": "Great Urswick - Stone Dike Lane",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:53+00:00",
+      "value": 46.8,
+      "timeseries_id": 23363,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:53+00:00",
+      "value": 4.07,
+      "timeseries_id": 23364,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "73316",
+  "label": "Sensor.Community 73316",
+  "coordinates": "53.726 -0.444",
+  "proposed_station_name": "Hessle - Chalfont Close",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "97072",
+  "label": "Sensor.Community 97072",
+  "coordinates": "54.822 -1.748",
+  "proposed_station_name": "Lanchester - Alderdene",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:21:06+00:00",
+      "value": 5.13,
+      "timeseries_id": 23378,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:21:06+00:00",
+      "value": 5.53,
+      "timeseries_id": 23377,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "46402",
+  "label": "Sensor.Community 46402",
+  "coordinates": "52.82639730789 -1.19103223085",
+  "proposed_station_name": "East Leake - Orchard Close",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "66252",
+  "label": "Sensor.Community 66252",
+  "coordinates": "51.4539041 -0.3389022",
+  "proposed_station_name": "Twickenham - Palmerston Road",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "22550",
+  "label": "Sensor.Community 22550",
+  "coordinates": "57.13 -2.13",
+  "proposed_station_name": "Aberdeen - Hammerfield Avenue",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "66251",
+  "label": "Sensor.Community 66251",
+  "coordinates": "51.4539041 -0.3389022",
+  "proposed_station_name": "Twickenham - Palmerston Road",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:22+00:00",
+      "value": 10.98,
+      "timeseries_id": 23369,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:22+00:00",
+      "value": 2.08,
+      "timeseries_id": 23370,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "22549",
+  "label": "Sensor.Community 22549",
+  "coordinates": "57.13 -2.13",
+  "proposed_station_name": "Aberdeen - Hammerfield Avenue",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:13+00:00",
+      "value": 16.83,
+      "timeseries_id": 23365,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:13+00:00",
+      "value": 16.13,
+      "timeseries_id": 23366,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "46401",
+  "label": "Sensor.Community 46401",
+  "coordinates": "52.82639730789 -1.19103223085",
+  "proposed_station_name": "East Leake - Orchard Close",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:22:10+00:00",
+      "value": 0.85,
+      "timeseries_id": 23368,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:22:10+00:00",
+      "value": 1.58,
+      "timeseries_id": 23367,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "66700",
+  "label": "Sensor.Community 66700",
+  "coordinates": "51.02816 -2.86914",
+  "proposed_station_name": "Somerset - Giles Close",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:22:41+00:00",
+      "value": 1.17,
+      "timeseries_id": 23380,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:22:41+00:00",
+      "value": 1.17,
+      "timeseries_id": 23379,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "89424",
+  "label": "Sensor.Community 89424",
+  "coordinates": "50.74763805 -3.40945144605",
+  "proposed_station_name": "Cranbrook - EX5 7AJ",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:22:22+00:00",
+      "value": 2.97,
+      "timeseries_id": 23386,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:22:22+00:00",
+      "value": 7,
+      "timeseries_id": 23385,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "57885",
+  "label": "Sensor.Community 57885",
+  "coordinates": "51.06 -0.086",
+  "proposed_station_name": "Little London - Tillinghurst Lane",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "72230",
+  "label": "Sensor.Community 72230",
+  "coordinates": "51.43987672353 -0.12249916792",
+  "proposed_station_name": "Streatham - Emsworth Street",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "72229",
+  "label": "Sensor.Community 72229",
+  "coordinates": "51.43987672353 -0.12249916792",
+  "proposed_station_name": "Streatham - Emsworth Street",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:22:42+00:00",
+      "value": 5.65,
+      "timeseries_id": 23388,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:22:42+00:00",
+      "value": 26.73,
+      "timeseries_id": 23387,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "57884",
+  "label": "Sensor.Community 57884",
+  "coordinates": "51.06 -0.086",
+  "proposed_station_name": "Little London - Tillinghurst Lane",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:22:39+00:00",
+      "value": 3,
+      "timeseries_id": 23376,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:22:39+00:00",
+      "value": 2,
+      "timeseries_id": 23375,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "45303",
+  "label": "Sensor.Community 45303",
+  "coordinates": "57.16387152671 -2.27852582932",
+  "proposed_station_name": "Westhill - Meadowlands Close",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "45302",
+  "label": "Sensor.Community 45302",
+  "coordinates": "57.16387152671 -2.27852582932",
+  "proposed_station_name": "Westhill - Meadowlands Close",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:22:28+00:00",
+      "value": 1,
+      "timeseries_id": 23374,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:22:28+00:00",
+      "value": 1.1,
+      "timeseries_id": 23373,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "55879",
+  "label": "Sensor.Community 55879",
+  "coordinates": "51.564 -1.838",
+  "proposed_station_name": "Swindon - Tamworth Drive",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:21:47+00:00",
+      "value": 1.9,
+      "timeseries_id": 23352,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:21:47+00:00",
+      "value": 12.52,
+      "timeseries_id": 23351,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "73566",
+  "label": "Sensor.Community 73566",
+  "coordinates": "52.97 -3.168",
+  "proposed_station_name": "Llangollen - LL20 8PL",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "57881",
+  "label": "Sensor.Community 57881",
+  "coordinates": "50.8398551 0.1390998",
+  "proposed_station_name": "Selmeston - Lewes Road",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "73565",
+  "label": "Sensor.Community 73565",
+  "coordinates": "52.97 -3.168",
+  "proposed_station_name": "Llangollen - LL20 8PL",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:22:48+00:00",
+      "value": 7,
+      "timeseries_id": 23394,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:22:48+00:00",
+      "value": 5,
+      "timeseries_id": 23393,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "57880",
+  "label": "Sensor.Community 57880",
+  "coordinates": "50.8398551 0.1390998",
+  "proposed_station_name": "Selmeston - Lewes Road",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:22:53+00:00",
+      "value": 12,
+      "timeseries_id": 23389,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:22:53+00:00",
+      "value": 1.6,
+      "timeseries_id": 23390,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "82887",
+  "label": "Sensor.Community 82887",
+  "coordinates": "51.258 -2.2",
+  "proposed_station_name": "Westbury - Hackney Way",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "82886",
+  "label": "Sensor.Community 82886",
+  "coordinates": "51.258 -2.2",
+  "proposed_station_name": "Westbury - Hackney Way",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:38+00:00",
+      "value": 2,
+      "timeseries_id": 23399,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:38+00:00",
+      "value": 6,
+      "timeseries_id": 23400,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "64192",
+  "label": "Sensor.Community 64192",
+  "coordinates": "50.72 -2.084",
+  "proposed_station_name": "Holton Heath - St Martins Hill",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "70892",
+  "label": "Sensor.Community 70892",
+  "coordinates": "57.23737987431 -2.26681708853",
+  "proposed_station_name": "Hatton Of Fintray - Hatton Court",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "64282",
+  "label": "Sensor.Community 64282",
+  "coordinates": "50.72 -2.084",
+  "proposed_station_name": "Holton Heath - St Martins Hill",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:21:45+00:00",
+      "value": 1.23,
+      "timeseries_id": 23372,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:21:45+00:00",
+      "value": 12.48,
+      "timeseries_id": 23371,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "70891",
+  "label": "Sensor.Community 70891",
+  "coordinates": "57.23737987431 -2.26681708853",
+  "proposed_station_name": "Hatton Of Fintray - Hatton Court",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:15+00:00",
+      "value": 2.67,
+      "timeseries_id": 23381,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:15+00:00",
+      "value": 1.17,
+      "timeseries_id": 23382,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "55755",
+  "label": "Sensor.Community 55755",
+  "coordinates": "52.29 -1.474",
+  "proposed_station_name": "Offchurch - School Hill",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "55754",
+  "label": "Sensor.Community 55754",
+  "coordinates": "52.29 -1.474",
+  "proposed_station_name": "Offchurch - School Hill",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:21:57+00:00",
+      "value": 3,
+      "timeseries_id": 23358,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:21:57+00:00",
+      "value": 3,
+      "timeseries_id": 23357,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "61082",
+  "label": "Sensor.Community 61082",
+  "coordinates": "53.35435205957 -1.52587115765",
+  "proposed_station_name": "Sheffield - S11 7PU",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "61081",
+  "label": "Sensor.Community 61081",
+  "coordinates": "53.35435205957 -1.52587115765",
+  "proposed_station_name": "Sheffield - S11 7PU",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:21:44+00:00",
+      "value": 4.43,
+      "timeseries_id": 23174,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:21:44+00:00",
+      "value": 23.7,
+      "timeseries_id": 23173,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "68957",
+  "label": "Sensor.Community 68957",
+  "coordinates": "53.3805768 -1.5024412",
+  "proposed_station_name": "Sheffield - Hawthorne Mews",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "68956",
+  "label": "Sensor.Community 68956",
+  "coordinates": "53.3805768 -1.5024412",
+  "proposed_station_name": "Sheffield - Hawthorne Mews",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:08+00:00",
+      "value": 12.18,
+      "timeseries_id": 23179,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:08+00:00",
+      "value": 3.33,
+      "timeseries_id": 23180,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "89997",
+  "label": "Sensor.Community 89997",
+  "coordinates": "54.304 -0.882",
+  "proposed_station_name": "Lastingham - New Road",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:22:53+00:00",
+      "value": 0.1,
+      "timeseries_id": 23431,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:22:53+00:00",
+      "value": 0.1,
+      "timeseries_id": 23432,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "78322",
+  "label": "Sensor.Community 78322",
+  "coordinates": "50.616 -3.404",
+  "proposed_station_name": "Exmouth - Fairfield Close",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:19:26+00:00",
+      "value": 2.1,
+      "timeseries_id": 23404,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:19:26+00:00",
+      "value": 21.27,
+      "timeseries_id": 23403,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "53246",
+  "label": "Sensor.Community 53246",
+  "coordinates": "51.09 -1.786",
+  "proposed_station_name": "Salisbury - Poplar Way",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "39154",
+  "label": "Sensor.Community 39154",
+  "coordinates": "51.9248957 -0.6665414",
+  "proposed_station_name": "Leighton Buzzard - The Martins Drive",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:22:14+00:00",
+      "value": 14.9,
+      "timeseries_id": 23414,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:22:14+00:00",
+      "value": 45.1,
+      "timeseries_id": 23413,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "53245",
+  "label": "Sensor.Community 53245",
+  "coordinates": "51.09 -1.786",
+  "proposed_station_name": "Salisbury - Poplar Way",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:22:51+00:00",
+      "value": 1.92,
+      "timeseries_id": 23395,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:22:51+00:00",
+      "value": 1.15,
+      "timeseries_id": 23396,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "22364",
+  "label": "Sensor.Community 22364",
+  "coordinates": "53.412 -1.328",
+  "proposed_station_name": "Rotherham - S60 3LF",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "77023",
+  "label": "Sensor.Community 77023",
+  "coordinates": "51.44 -2.054",
+  "proposed_station_name": "Derry Hill - Studley Gardens",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "77022",
+  "label": "Sensor.Community 77022",
+  "coordinates": "51.44 -2.054",
+  "proposed_station_name": "Derry Hill - Studley Gardens",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:10+00:00",
+      "value": 7.53,
+      "timeseries_id": 23419,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:10+00:00",
+      "value": 3.15,
+      "timeseries_id": 23420,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "22363",
+  "label": "Sensor.Community 22363",
+  "coordinates": "53.412 -1.328",
+  "proposed_station_name": "Rotherham - S60 3LF",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:50+00:00",
+      "value": 0,
+      "timeseries_id": 23411,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:50+00:00",
+      "value": 0,
+      "timeseries_id": 23412,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "82588",
+  "label": "Sensor.Community 82588",
+  "coordinates": "55.9495259097 -3.7241345644",
+  "proposed_station_name": "Falkirk - FK1 2HN",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "40717",
+  "label": "Sensor.Community 40717",
+  "coordinates": "51.85 -2.246",
+  "proposed_station_name": "Gloucester - Lannett Road",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:32+00:00",
+      "value": 8.85,
+      "timeseries_id": 23415,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:32+00:00",
+      "value": 2.25,
+      "timeseries_id": 23416,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "82587",
+  "label": "Sensor.Community 82587",
+  "coordinates": "55.9495259097 -3.7241345644",
+  "proposed_station_name": "Falkirk - FK1 2HN",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:22:25+00:00",
+      "value": 6,
+      "timeseries_id": 23418,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:22:25+00:00",
+      "value": 5,
+      "timeseries_id": 23417,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "19407",
+  "label": "Sensor.Community 19407",
+  "coordinates": "53.364 -1.204",
+  "proposed_station_name": "Dinnington - Birkdale Avenue",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "19406",
+  "label": "Sensor.Community 19406",
+  "coordinates": "53.364 -1.204",
+  "proposed_station_name": "Dinnington - Birkdale Avenue",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:49+00:00",
+      "value": 8.87,
+      "timeseries_id": 23421,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:49+00:00",
+      "value": 4.03,
+      "timeseries_id": 23422,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "24902",
+  "label": "Sensor.Community 24902",
+  "coordinates": "51.402 0.016",
+  "proposed_station_name": "Bromley - Ringer's Road",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "67032",
+  "label": "Sensor.Community 67032",
+  "coordinates": "53.36166441101 -1.50314480066",
+  "proposed_station_name": "Sheffield - Sycamore Court",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:45+00:00",
+      "value": 15.15,
+      "timeseries_id": 23197,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:45+00:00",
+      "value": 3.55,
+      "timeseries_id": 23198,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "53550",
+  "label": "Sensor.Community 53550",
+  "coordinates": "52.914 -0.982",
+  "proposed_station_name": "Cropwell Bishop - Church Street",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "53549",
+  "label": "Sensor.Community 53549",
+  "coordinates": "52.914 -0.982",
+  "proposed_station_name": "Cropwell Bishop - Church Street",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:02+00:00",
+      "value": 2.97,
+      "timeseries_id": 23469,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:02+00:00",
+      "value": 1.92,
+      "timeseries_id": 23470,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "63607",
+  "label": "Sensor.Community 63607",
+  "coordinates": "52.478 -1.918",
+  "proposed_station_name": "Birmingham - King Edwards Drive",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "89628",
+  "label": "Sensor.Community 89628",
+  "coordinates": "51.616 -3.932",
+  "proposed_station_name": "Abertawe / Swansea - St Stephens Court",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "89627",
+  "label": "Sensor.Community 89627",
+  "coordinates": "51.616 -3.932",
+  "proposed_station_name": "Abertawe / Swansea - St Stephens Court",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:20:34+00:00",
+      "value": 7,
+      "timeseries_id": 23472,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:20:34+00:00",
+      "value": 10,
+      "timeseries_id": 23471,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "63606",
+  "label": "Sensor.Community 63606",
+  "coordinates": "52.478 -1.918",
+  "proposed_station_name": "Birmingham - King Edwards Drive",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:45+00:00",
+      "value": 2.53,
+      "timeseries_id": 23177,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:45+00:00",
+      "value": 1.5,
+      "timeseries_id": 23178,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "17741",
+  "label": "Sensor.Community 17741",
+  "coordinates": "51.822 -2.268",
+  "proposed_station_name": "Gloucester - Aldergrove",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:20:25+00:00",
+      "value": 2.35,
+      "timeseries_id": 23474,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:20:25+00:00",
+      "value": 10.65,
+      "timeseries_id": 23473,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "62631",
+  "label": "Sensor.Community 62631",
+  "coordinates": "51.248 -0.546",
+  "proposed_station_name": "Guildford - Rodney Way",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:22:27+00:00",
+      "value": 8.6,
+      "timeseries_id": 23460,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:22:27+00:00",
+      "value": 8,
+      "timeseries_id": 23459,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "56923",
+  "label": "Sensor.Community 56923",
+  "coordinates": "51.48768319589 -2.75272965431",
+  "proposed_station_name": "Portishead - Phoenix Way",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:22:28+00:00",
+      "value": 1.77,
+      "timeseries_id": 23454,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:22:28+00:00",
+      "value": 6.93,
+      "timeseries_id": 23453,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "45217",
+  "label": "Sensor.Community 45217",
+  "coordinates": "53.36547943258 -1.82507157326",
+  "proposed_station_name": "High Peak - Edale",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "45216",
+  "label": "Sensor.Community 45216",
+  "coordinates": "53.36547943258 -1.82507157326",
+  "proposed_station_name": "High Peak - Edale",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:21:36+00:00",
+      "value": 2,
+      "timeseries_id": 23142,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:21:36+00:00",
+      "value": 18.13,
+      "timeseries_id": 23141,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "25360",
+  "label": "Sensor.Community 25360",
+  "coordinates": "51.386 0.016",
+  "proposed_station_name": "London - Oakmead Avenue",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "25359",
+  "label": "Sensor.Community 25359",
+  "coordinates": "51.386 0.016",
+  "proposed_station_name": "London - Oakmead Avenue",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:20:07+00:00",
+      "value": 4.25,
+      "timeseries_id": 23068,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:20:07+00:00",
+      "value": 17.02,
+      "timeseries_id": 23067,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "29603",
+  "label": "Sensor.Community 29603",
+  "coordinates": "53.42311344148 -1.52507990599",
+  "proposed_station_name": "Sheffield - Stockarth Lane",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "29602",
+  "label": "Sensor.Community 29602",
+  "coordinates": "53.42311344148 -1.52507990599",
+  "proposed_station_name": "Sheffield - Stockarth Lane",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:21:46+00:00",
+      "value": 9,
+      "timeseries_id": 23076,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:21:46+00:00",
+      "value": 8,
+      "timeseries_id": 23075,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "90836",
+  "label": "Sensor.Community 90836",
+  "coordinates": "55.558 -4.644",
+  "proposed_station_name": "Troon - Maberry Place",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "90835",
+  "label": "Sensor.Community 90835",
+  "coordinates": "55.558 -4.644",
+  "proposed_station_name": "Troon - Maberry Place",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "81657",
+  "label": "Sensor.Community 81657",
+  "coordinates": "51.482 -0.58",
+  "proposed_station_name": "Datchet - The Avenue",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "81656",
+  "label": "Sensor.Community 81656",
+  "coordinates": "51.482 -0.58",
+  "proposed_station_name": "Datchet - The Avenue",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:08+00:00",
+      "value": 8.27,
+      "timeseries_id": 23603,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:08+00:00",
+      "value": 1.7,
+      "timeseries_id": 23604,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "77417",
+  "label": "Sensor.Community 77417",
+  "coordinates": "51.484 0.026",
+  "proposed_station_name": "London - Bernard Ashley Drive",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:25+00:00",
+      "value": 19.05,
+      "timeseries_id": 23455,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:25+00:00",
+      "value": 3.55,
+      "timeseries_id": 23456,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "27707",
+  "label": "Sensor.Community 27707",
+  "coordinates": "51.384 0.04",
+  "proposed_station_name": "London - Brosse Way",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "83750",
+  "label": "Sensor.Community 83750",
+  "coordinates": "54.14361807518 -0.80087900259",
+  "proposed_station_name": "Malton - Hazel Way",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "83749",
+  "label": "Sensor.Community 83749",
+  "coordinates": "54.14361807518 -0.80087900259",
+  "proposed_station_name": "Malton - Hazel Way",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:24+00:00",
+      "value": 31.3,
+      "timeseries_id": 23649,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:24+00:00",
+      "value": 12.63,
+      "timeseries_id": 23650,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "84224",
+  "label": "Sensor.Community 84224",
+  "coordinates": "51.208 0.304",
+  "proposed_station_name": "Tonbridge - Barclay Avenue",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "84223",
+  "label": "Sensor.Community 84223",
+  "coordinates": "51.208 0.304",
+  "proposed_station_name": "Tonbridge - Barclay Avenue",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:21:51+00:00",
+      "value": 1,
+      "timeseries_id": 24422,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:21:51+00:00",
+      "value": 1,
+      "timeseries_id": 24421,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "24666",
+  "label": "Sensor.Community 24666",
+  "coordinates": "53.532 -1.478",
+  "proposed_station_name": "Worsbrough - Manor End",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "35558",
+  "label": "Sensor.Community 35558",
+  "coordinates": "50.794 -1.066",
+  "proposed_station_name": "Portsmouth - PO4 8BP",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:04+00:00",
+      "value": 0,
+      "timeseries_id": 29367,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:04+00:00",
+      "value": 0,
+      "timeseries_id": 29368,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "35559",
+  "label": "Sensor.Community 35559",
+  "coordinates": "50.794 -1.066",
+  "proposed_station_name": "Portsmouth - PO4 8BP",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "83636",
+  "label": "Sensor.Community 83636",
+  "coordinates": "52.49774467234 -1.86838388468",
+  "proposed_station_name": "Birmingham - Cranemoor Close",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {}
+},
+{
+  "station_ref": "83637",
+  "label": "Sensor.Community 83637",
+  "coordinates": "52.49774467234 -1.86838388468",
+  "proposed_station_name": "Birmingham - Cranemoor Close",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "39951",
+  "label": "Sensor.Community 39951",
+  "coordinates": "51.444 -2.606",
+  "proposed_station_name": "Bristol - Dalston Road",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "77767",
+  "label": "Sensor.Community 77767",
+  "coordinates": "53.36288408133 -1.51216506958",
+  "proposed_station_name": "Sheffield - Strathtay Road",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {}
+},
+{
+  "station_ref": "77768",
+  "label": "Sensor.Community 77768",
+  "coordinates": "53.36288408133 -1.51216506958",
+  "proposed_station_name": "Sheffield - Strathtay Road",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "45262",
+  "label": "Sensor.Community 45262",
+  "coordinates": "53.34788 -1.747276",
+  "proposed_station_name": "Hope - Marsh Avenue",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:22:13+00:00",
+      "value": 4.93,
+      "timeseries_id": 37696,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:22:13+00:00",
+      "value": 12.6,
+      "timeseries_id": 37695,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "45263",
+  "label": "Sensor.Community 45263",
+  "coordinates": "53.34788 -1.747276",
+  "proposed_station_name": "Hope - Marsh Avenue",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "77668",
+  "label": "Sensor.Community 77668",
+  "coordinates": "51.49485098306 0.01586794853",
+  "proposed_station_name": "London - Renaissance Walk",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:22:38+00:00",
+      "value": 2.22,
+      "timeseries_id": 56868,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:22:38+00:00",
+      "value": 13.2,
+      "timeseries_id": 56867,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "77669",
+  "label": "Sensor.Community 77669",
+  "coordinates": "51.49485098306 0.01586794853",
+  "proposed_station_name": "London - Renaissance Walk",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "74385",
+  "label": "Sensor.Community 74385",
+  "coordinates": "52.88951859136 -4.41657580202",
+  "proposed_station_name": "Pwllheli - Market Square",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:21:45+00:00",
+      "value": 3.38,
+      "timeseries_id": 73114,
+      "phenomenon_id": 582
+    },
+    "PM10": {
+      "observed_at": "2026-01-15T08:21:45+00:00",
+      "value": 15.52,
+      "timeseries_id": 73113,
+      "phenomenon_id": 581
+    }
+  }
+},
+{
+  "station_ref": "74386",
+  "label": "Sensor.Community 74386",
+  "coordinates": "52.88951859136 -4.41657580202",
+  "proposed_station_name": "Pwllheli - Market Square",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "38525",
+  "label": "Sensor.Community 38525",
+  "coordinates": "51.396 -2.354",
+  "proposed_station_name": "Bath - Queenwood Avenue",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {}
+},
+{
+  "station_ref": "87991",
+  "label": "Sensor.Community 87991",
+  "coordinates": "55.826 -4.09",
+  "proposed_station_name": "Uddingston - Sheepburn Road",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "87990",
+  "label": "Sensor.Community 87990",
+  "coordinates": "55.826 -4.09",
+  "proposed_station_name": "Uddingston - Sheepburn Road",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:40+00:00",
+      "value": 2.92,
+      "timeseries_id": 75281,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:40+00:00",
+      "value": 0.95,
+      "timeseries_id": 75282,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "93046",
+  "label": "Sensor.Community 93046",
+  "coordinates": "51.202 0.276",
+  "proposed_station_name": "The Park - Old London Road",
+  "pollutants": [
+    "PM10",
+    "PM2.5"
+  ],
+  "latest_observation": {
+    "PM10": {
+      "observed_at": "2026-01-15T08:23:03+00:00",
+      "value": 6.38,
+      "timeseries_id": 80979,
+      "phenomenon_id": 581
+    },
+    "PM2.5": {
+      "observed_at": "2026-01-15T08:23:03+00:00",
+      "value": 1.2,
+      "timeseries_id": 80980,
+      "phenomenon_id": 582
+    }
+  }
+},
+{
+  "station_ref": "93047",
+  "label": "Sensor.Community 93047",
+  "coordinates": "51.202 0.276",
+  "proposed_station_name": "The Park - Old London Road",
+  "pollutants": [],
+  "latest_observation": {}
+},
+{
+  "station_ref": "36446",
+  "label": "Sensor.Community 36446",
+  "coordinates": "50.848 -1.216",
+  "proposed_station_name": "Fareham - PO14 3DF",
+  "pollutants": [],
+  "latest_observation": {}
+}
+]

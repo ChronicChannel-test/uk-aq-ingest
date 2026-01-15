@@ -198,6 +198,8 @@ Key flags:
 - `--max-distance-m` optional maximum distance in meters.
 - `--streetnames-geojson` override streetnames GeoJSON path.
 - `--no-ni-filter` to also attempt OSNI matching for non-NI stations (debugging only).
+- `--apply` update `stations.station_name` for rows with proposed names.
+- `--apply-batch-size` batch size for station_name updates (default: 200).
 
 ### `scripts/uk_aq_enrich_test_script.py`
 Purpose:
