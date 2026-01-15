@@ -684,6 +684,24 @@ def _format_latest_summary(latest: Dict[str, Dict[str, Any]]) -> str:
     return "; ".join(parts)
 
 
+def _resolve_region_from_gb_matches(
+    matches: Sequence[Dict[str, Any]], max_distance_m: Optional[float] = None
+) -> Optional[str]:
+    for match in matches:
+        region = match.get("region")
+        if not region:
+            continue
+        distance = match.get("distance_m")
+        if max_distance_m is not None and distance is not None:
+            try:
+                if float(distance) > max_distance_m:
+                    continue
+            except (TypeError, ValueError):
+                pass
+        return str(region)
+    return None
+
+
 def build_station_summary(payload: Dict[str, Any]) -> Dict[str, Any]:
     station = payload.get("station") or {}
     lat = station.get("station_lat")
@@ -848,6 +866,7 @@ def iter_station_payloads(args: argparse.Namespace):
             gb_place_matches: List[Dict[str, Any]] = []
             gb_street_matches: List[Dict[str, Any]] = []
             gb_other_matches: List[Dict[str, Any]] = []
+            proposed_region = None
             is_ni = _in_bbox(lon, lat, NI_BBOX)
             if is_ni:
                 if places:
@@ -877,6 +896,10 @@ def iter_station_payloads(args: argparse.Namespace):
                 )
                 gb_place_matches = _extract_gb_place_matches(gb_matches)
                 _, gb_street_matches, gb_other_matches = _split_gb_matches(gb_matches)
+                proposed_region = _resolve_region_from_gb_matches(
+                    gb_matches,
+                    max_distance_m=args.max_distance_m,
+                )
             proposed_name = None
             if is_ni:
                 proposed_name = _proposed_station_name(ni_place_matches, ni_street_matches)
@@ -898,6 +921,7 @@ def iter_station_payloads(args: argparse.Namespace):
                 "gb_street_matches": gb_street_matches,
                 "gb_other_matches": gb_other_matches,
                 "proposed_station_name": proposed_name,
+                "proposed_region": proposed_region,
                 "pollutants": pollutants if include_pollutants else [],
                 "latest_observation": latest_obs if include_latest else {},
             }
@@ -920,12 +944,14 @@ def _apply_station_name_updates(updates: Sequence[Dict[str, Any]], batch_size: i
     for chunk in _chunked(list(updates), batch_size):
         for update in chunk:
             station_id = update.get("id")
-            station_name = update.get("station_name")
             if station_id is None:
+                continue
+            update_fields = {k: v for k, v in update.items() if k != "id"}
+            if not update_fields:
                 continue
             response = (
                 client.table("stations")
-                .update({"station_name": station_name})
+                .update(update_fields)
                 .eq("id", station_id)
                 .execute()
             )
@@ -1328,19 +1354,26 @@ def main() -> int:
     output_count = 0
     updates: List[Dict[str, Any]] = []
     proposed_count = 0
+    proposed_region_count = 0
     for payload in iter_station_payloads(args) or []:
         if args.apply:
             proposed_name = payload.get("proposed_station_name")
+            proposed_region = payload.get("proposed_region")
             if proposed_name is not None:
                 proposed_text = str(proposed_name).strip()
             else:
                 proposed_text = ""
+            station = payload.get("station") or {}
+            station_id = station.get("id")
+            update_fields: Dict[str, Any] = {}
             if proposed_text:
                 proposed_count += 1
-                station = payload.get("station") or {}
-                station_id = station.get("id")
-                if station_id is not None:
-                    updates.append({"id": station_id, "station_name": proposed_text})
+                update_fields["station_name"] = proposed_text
+            if proposed_region and not station.get("region"):
+                proposed_region_count += 1
+                update_fields["region"] = proposed_region
+            if station_id is not None and update_fields:
+                updates.append({"id": station_id, **update_fields})
         if args.output_format == "json":
             print(json.dumps(payload, indent=2))
         else:
@@ -1350,6 +1383,7 @@ def main() -> int:
     if args.output_format == "summary":
         LOG.info("Summary stations output=%s", output_count)
     LOG.info("Proposed station_name count=%s (out of %s).", proposed_count, output_count)
+    LOG.info("Proposed region count=%s (out of %s).", proposed_region_count, output_count)
     if args.apply:
         applied = _apply_station_name_updates(updates, args.apply_batch_size)
         LOG.info("Applied station_name updates=%s (proposed=%s).", applied, len(updates))

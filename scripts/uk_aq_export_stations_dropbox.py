@@ -103,30 +103,28 @@ def _dropbox_root_folder() -> str:
     return _normalize_dropbox_path(os.getenv("UK_AIR_DROPBOX_ROOT", ""))
 
 
-def _resolve_dropbox_dir(target_dir: str) -> str:
-    base = _normalize_dropbox_path(target_dir)
-    root = _dropbox_root_folder()
-    if not base:
-        return root
-    return f"{root}{base}"
+def _join_dropbox_paths(root: str, subdir: str) -> str:
+    root_clean = _normalize_dropbox_path(root)
+    sub_clean = _normalize_dropbox_path(subdir).lstrip("/")
+    if not root_clean:
+        return f"/{sub_clean}" if sub_clean else ""
+    if not sub_clean:
+        return root_clean
+    return f"{root_clean}/{sub_clean}"
 
 
 def _timestamp_utc() -> str:
     return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
 
-def _parse_point_geometry(value: Any) -> Tuple[Optional[float], Optional[float]]:
+def _normalize_geometry(value: Any) -> Optional[Any]:
     if value is None:
-        return None, None
+        return None
     if isinstance(value, dict):
-        coords = value.get("coordinates")
-        if isinstance(coords, (list, tuple)) and len(coords) >= 2:
-            return float(coords[0]), float(coords[1])
+        return value
     if isinstance(value, str):
-        match = re.search(r"POINT\(([-0-9.]+)\s+([-0-9.]+)\)", value)
-        if match:
-            return float(match.group(1)), float(match.group(2))
-    return None, None
+        return value
+    return None
 
 
 def _iter_stations(page_size: int) -> Iterable[Dict[str, Any]]:
@@ -165,15 +163,16 @@ def main() -> int:
     root = _dropbox_root_folder()
     if not root:
         raise RuntimeError("UK_AIR_DROPBOX_ROOT must be set for stations export.")
-    dropbox_dir = _resolve_dropbox_dir(args.dropbox_dir) or f"{root}/uk_aq_stations"
+    dropbox_dir = _join_dropbox_paths(root, args.dropbox_dir or "uk_aq_stations")
     dropbox_path = f"{dropbox_dir}/{output_path.name}"
 
     stations: List[Dict[str, Any]] = []
     for row in _iter_stations(args.page_size):
-        lon, lat = _parse_point_geometry(row.get("geometry"))
+        geometry = _normalize_geometry(row.get("geometry"))
         connector = row.get("connector") or {}
         stations.append(
             {
+                "id": row.get("id"),
                 "station_ref": row.get("station_ref"),
                 "label": row.get("label"),
                 "station_name": row.get("station_name"),
@@ -184,8 +183,7 @@ def main() -> int:
                 "la_version": row.get("la_version"),
                 "pcon_code": row.get("pcon_code"),
                 "pcon_version": row.get("pcon_version"),
-                "longitude": lon,
-                "latitude": lat,
+                "geometry": geometry,
                 "service_ref": row.get("service_ref"),
                 "connector_id": row.get("connector_id"),
                 "connector_code": connector.get("connector_code"),

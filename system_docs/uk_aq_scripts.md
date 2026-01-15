@@ -179,6 +179,7 @@ Environment:
 ### `scripts/uk_aq_enrich_station_names.py`
 Purpose:
 - Preview OSNI Gazetteer place-name matches for stations missing `station_name`.
+ - Optionally backfill `stations.region` using OS Open Names GB lookups.
 
 Common commands:
 ```
@@ -199,7 +200,23 @@ Key flags:
 - `--streetnames-geojson` override streetnames GeoJSON path.
 - `--no-ni-filter` to also attempt OSNI matching for non-NI stations (debugging only).
 - `--apply` update `stations.station_name` for rows with proposed names.
+- `--apply` also updates `stations.region` when a GB match provides a region and the station is missing one.
 - `--apply-batch-size` batch size for station_name updates (default: 200).
+
+### `scripts/uk_aq_backfill_station_regions.py`
+Purpose:
+- Backfill `stations.region` using OS Open Names GB lookups for stations missing a region.
+
+Common commands:
+```
+python3 scripts/uk_aq_backfill_station_regions.py
+python3 scripts/uk_aq_backfill_station_regions.py --apply
+```
+
+Environment:
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- Optional Dropbox credentials if `--download-gb-gpkg` is used.
 
 ### `scripts/uk_aq_enrich_test_script.py`
 Purpose:
