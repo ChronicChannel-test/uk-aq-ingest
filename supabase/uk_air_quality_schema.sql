@@ -617,9 +617,10 @@ begin
     update stations st
     set pcon_code = pb.pcon_code,
         pcon_version = pb.pcon_version
-    from pcon_boundaries pb
-    join marked m on m.station_id = st.id
+    from pcon_boundaries pb,
+      marked m
     where pb.pcon_version = target_version
+      and m.station_id = st.id
       and st.geometry is not null
       and pb.geometry is not null
       and ST_Covers(pb.geometry::geometry, st.geometry::geometry)
