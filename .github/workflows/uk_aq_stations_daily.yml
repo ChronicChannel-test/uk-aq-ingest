@@ -35,6 +35,7 @@ jobs:
           python3 scripts/uk_air_sos_list_stations.py --to-supabase
 
       - name: Check null station_name
+        id: check_null_station_name
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
@@ -94,6 +95,10 @@ jobs:
           with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as handle:
             handle.write(f"STATION_NAME_NULL_COUNT={station_name_missing}\\n")
             handle.write(f"STATION_NAME_SHOULD_RUN={'1' if station_name_missing > 0 else '0'}\\n")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as handle:
+            handle.write(f"station_name_null_count={station_name_missing}\\n")
+            handle.write(f"station_name_null_count_all={station_name_missing_all}\\n")
+            handle.write(f"station_name_should_run={'1' if station_name_missing > 0 else '0'}\\n")
 
           print(
             "Missing station_name:",
@@ -105,7 +110,7 @@ jobs:
           PY
 
       - name: Enrich station names
-        if: env.STATION_NAME_SHOULD_RUN == '1'
+        if: steps.check_null_station_name.outputs.station_name_should_run == '1'
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
