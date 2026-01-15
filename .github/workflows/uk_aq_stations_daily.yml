@@ -120,7 +120,6 @@ jobs:
           echo "STATION_NAME_SHOULD_RUN=$STATION_NAME_SHOULD_RUN"
 
       - name: Enrich station names
-        if: env.STATION_NAME_SHOULD_RUN == '1'
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
@@ -129,6 +128,49 @@ jobs:
           DROPBOX_REFRESH_TOKEN: ${{ secrets.DROPBOX_REFRESH_TOKEN }}
           UK_AQ_OS_OPEN_NAMES_GB_DROPBOX_PATH: ${{ secrets.UK_AQ_OS_OPEN_NAMES_GB_DROPBOX_PATH }}
         run: |
+          python3 - <<'PY'
+          import os
+          import re
+          import requests
+
+          supabase_url = os.environ.get("SUPABASE_URL")
+          supabase_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+          if not supabase_url or not supabase_key:
+            raise SystemExit("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required.")
+
+          def count_null(field, require_geometry=False):
+            params = [f"select=id", f"{field}=is.null"]
+            if require_geometry:
+              params.append("geometry=not.is.null")
+            url = f"{supabase_url}/rest/v1/stations?{'&'.join(params)}"
+            resp = requests.get(
+              url,
+              headers={
+                "apikey": supabase_key,
+                "Authorization": f"Bearer {supabase_key}",
+                "Prefer": "count=exact",
+              },
+              timeout=30,
+            )
+            resp.raise_for_status()
+            content_range = resp.headers.get("content-range", "")
+            match = re.search(r"/(\d+)$", content_range)
+            if not match:
+              return 0
+            return int(match.group(1))
+
+          missing_with_geometry = count_null("station_name", require_geometry=True)
+          should_run = 1 if missing_with_geometry > 0 else 0
+          with open("station_name_should_run.env", "w", encoding="utf-8") as handle:
+            handle.write(f"STATION_NAME_SHOULD_RUN={should_run}\n")
+          print(f"station_name_missing_with_geometry={missing_with_geometry}")
+          print(f"station_name_should_run={should_run}")
+          PY
+          source station_name_should_run.env
+          if [ "$STATION_NAME_SHOULD_RUN" != "1" ]; then
+            echo "No missing station_name with geometry; skipping enrichment."
+            exit 0
+          fi
           python3 scripts/uk_aq_enrich_station_names.py --apply
 
       - name: Commit stations JSON
