@@ -124,7 +124,11 @@ jobs:
           else:
               listing = dropbox_request("files/list_folder", {"path": base_path})
               folders = []
+              print(f"Listing entries under {base_path}:")
               for entry in listing.get("entries", []):
+                  entry_name = entry.get("name")
+                  entry_tag = entry.get(".tag")
+                  print(f"- {entry_name} ({entry_tag})")
                   if entry.get(".tag") == "folder" and re.fullmatch(r"\\d{4}", entry.get("name", "")):
                       folders.append(entry["name"])
               if not folders:
