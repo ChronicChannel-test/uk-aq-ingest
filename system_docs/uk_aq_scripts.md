@@ -293,7 +293,7 @@ python3 scripts/uk_air_sos_list_stations.py --service-id-from-timeseries
 ```
 
 Default outputs:
-- `uk_aq_stations.json`
+- `uk_air_sos_stations.json`
 - `uk_aq_stations_all.json` (when using `--no-filter`)
 Optional raw output:
 - `--raw-output` writes raw station payloads to a separate JSON file.

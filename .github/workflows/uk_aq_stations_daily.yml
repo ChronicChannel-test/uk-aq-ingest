@@ -12,6 +12,9 @@ on:
 jobs:
   sync-stations:
     runs-on: ubuntu-latest
+    env:
+      UK_AIR_SOS_CONNECTOR_CODE: uk_air_sos
+      SCOMM_CONNECTOR_CODE: sensorcommunity
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -175,10 +178,10 @@ jobs:
 
       - name: Commit stations JSON
         run: |
-          if git status --porcelain | grep -qE " (uk_aq_stations\\.json|sensorcommunity_stations\\.json)$"; then
+          if git status --porcelain | grep -qE " (${UK_AIR_SOS_CONNECTOR_CODE}_stations\\.json|${SCOMM_CONNECTOR_CODE}_stations\\.json)$"; then
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
-            git add uk_aq_stations.json sensorcommunity_stations.json
+            git add "${UK_AIR_SOS_CONNECTOR_CODE}_stations.json" "${SCOMM_CONNECTOR_CODE}_stations.json"
             git commit -m "chore: updated 2 station files"
             git push
           else

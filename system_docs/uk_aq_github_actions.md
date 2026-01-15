@@ -27,6 +27,6 @@ This repo uses GitHub Actions for scheduled syncs and deployments.
 
 ### `uk_aq_stations_daily.yml`
 - Schedule: daily at 03:00 UTC.
-- Purpose: sync stations to Supabase and update `uk_aq_stations.json`.
+- Purpose: sync stations to Supabase and update `uk_air_sos_stations.json`.
 - Script: `python3 scripts/uk_air_sos_list_stations.py --to-supabase`.
 - Secrets: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `UK_AIR_SOS_BASE_URL`.

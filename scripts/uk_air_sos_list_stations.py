@@ -634,8 +634,8 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Fetch UK-AIR SOS stations for the UK.")
     parser.add_argument(
         "--output",
-        default="uk_aq_stations.json",
-        help="Output file path (default: uk_aq_stations.json).",
+        default="uk_air_sos_stations.json",
+        help="Output file path (default: uk_air_sos_stations.json).",
     )
     parser.add_argument(
         "--format",
