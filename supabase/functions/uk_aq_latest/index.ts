@@ -114,7 +114,7 @@ async function loadLatest({ region, pconCode, stationLike, connectorId, pollutan
   const phenomenonSelect = pollutantKey
     ? "phenomenon:phenomena!inner(id,label,notation,eionet_uri,pollutant_label)"
     : "phenomenon:phenomena(id,label,notation,eionet_uri,pollutant_label)";
-  const connectorSelect = "connector:connectors(id,connector_code,label)";
+  const connectorSelect = "connector:connectors(id,connector_code,label,display_name_template)";
   const stationSelect =
     "station:stations(id,station_ref,label,station_name,region,pcon_code,pcon_version,connector_id)";
   const stationSelectInner =
@@ -189,6 +189,7 @@ async function loadLatest({ region, pconCode, stationLike, connectorId, pollutan
       station_label: resolveStationLabel(row.station?.label, row.station?.station_ref, row.label),
       station_name: row.station?.station_name ?? null,
       display_name: formatDisplayName(
+        connector?.display_name_template,
         row.station?.station_name,
         resolveStationLabel(row.station?.label, row.station?.station_ref, row.label),
         row.station?.station_ref,
@@ -240,23 +241,56 @@ function normalizePollutant(value: string | null): string | null {
 }
 
 function formatDisplayName(
+  template: string | null | undefined,
   stationName: string | null | undefined,
   stationLabel: string | null | undefined,
   stationRef: string | number,
 ): string | null {
+  const refText = stationRef !== null && stationRef !== undefined ? String(stationRef) : "";
+  const fallback = formatFallbackDisplayName(stationName, stationLabel, refText);
+  const effectiveTemplate = template?.trim();
+  if (!effectiveTemplate) {
+    return fallback;
+  }
+  const rendered = renderDisplayTemplate(effectiveTemplate, {
+    station_name: stationName ?? "",
+    station_label: stationLabel ?? "",
+    station_ref: refText,
+  });
+  if (rendered) {
+    return rendered;
+  }
+  return fallback;
+}
+
+function formatFallbackDisplayName(
+  stationName: string | null | undefined,
+  stationLabel: string | null | undefined,
+  stationRef: string,
+): string | null {
   const base = stationName ?? stationLabel ?? null;
   if (!base) {
-    return String(stationRef);
+    return stationRef || null;
   }
   if (!stationName) {
     return base;
   }
-  const refText = String(stationRef);
   const normalizedBase = base.toLowerCase();
-  if (normalizedBase.includes(refText.toLowerCase())) {
+  if (stationRef && normalizedBase.includes(stationRef.toLowerCase())) {
     return base;
   }
-  return `${base} - ${refText}`;
+  return stationRef ? `${base} - ${stationRef}` : base;
+}
+
+function renderDisplayTemplate(
+  template: string,
+  tokens: Record<string, string>,
+): string | null {
+  const rendered = template.replace(/\{(station_name|station_label|station_ref)\}/g, (_, key) => {
+    return tokens[key] ?? "";
+  });
+  const cleaned = rendered.replace(/\s+-\s+/g, " - ").replace(/\s+/g, " ").trim();
+  return cleaned ? cleaned : null;
 }
 
 function buildPollutantFilter(pollutant: string | null): string | null {

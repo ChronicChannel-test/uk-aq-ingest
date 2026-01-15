@@ -38,8 +38,8 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
 - Returns: timeseries rows with station + phenomenon metadata, connector metadata (`connector_id`, `connector_code`, `connector_label`), `display_name`, and latest values.
 - Params: `region`, `station_like`, `pollutant`, `connector_id`, `limit`, `pcon_code`.
 - `display_name` logic:
-  - If `station_name` is present, return `{station_name} - {station_ref}` (unless the ref is already in the name).
-  - If `station_name` is null, return `station_label` as-is.
+  - Uses `connectors.display_name_template` if present, with tokens `{station_name}`, `{station_label}`, `{station_ref}`.
+  - Fallback is always `{station_name} - {station_ref}` (or `station_label` if `station_name` is missing).
 
 ### uk_aq_bristol_latest
 - Purpose: Serve the latest values with a Bristol station default for local dashboards.

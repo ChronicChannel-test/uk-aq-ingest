@@ -22,6 +22,7 @@ create table if not exists connectors (
   connector_code text not null,
   label text not null,
   service_url text,
+  display_name_template text,
   poll_enabled boolean default true,
   poll_interval_minutes int default 60,
   poll_window_hours int default 6,
@@ -84,6 +85,11 @@ set stations_bbox_supported = false,
     poll_timeseries_batch_size = null
 where service_url = 'https://uk-air.defra.gov.uk/sos-ukair/api/v1'
    or label = 'UK-AIR-SOS';
+
+update connectors
+set display_name_template = '{station_name}'
+where service_url = 'https://uk-air.defra.gov.uk/sos-ukair/api/v1'
+  or label = 'UK-AIR-SOS';
 
 update connectors
 set connector_code = 'uk_air_sos'

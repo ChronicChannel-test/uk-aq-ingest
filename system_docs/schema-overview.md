@@ -8,7 +8,7 @@ This document summarizes the schema defined in `supabase/uk_air_quality_schema.s
 
 ## Core reference tables
 - External identifiers that arrive as text (even if numeric) are stored as `*_ref`; all `*_id` columns are internal bigint keys.
-- `connectors`: network connectors with bigint `id` (internal) and `connector_code` for filename prefixes, plus URL and polling fields (`poll_enabled`, `poll_interval_minutes`, `poll_window_hours`, `poll_timeseries_batch_size`, `stations_bbox_supported`, `timeseries_station_filter_supported`, `last_polled_at`).
+- `connectors`: network connectors with bigint `id` (internal) and `connector_code` for filename prefixes, plus URL and polling fields (`display_name_template`, `poll_enabled`, `poll_interval_minutes`, `poll_window_hours`, `poll_timeseries_batch_size`, `stations_bbox_supported`, `timeseries_station_filter_supported`, `last_polled_at`).
 - `categories`: high-level grouping, per connector.
 - `phenomena`: what is measured (pollutant/parameter), per connector; includes optional `eionet_uri` + `notation`.
 - `offerings`: logical groupings, per connector + `service_ref`.
