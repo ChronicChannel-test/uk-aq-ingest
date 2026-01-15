@@ -75,7 +75,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--max-retries",
         type=int,
-        default=3,
+        default=5,
         help="Max retries per batch on transient errors.",
     )
     parser.add_argument(
@@ -186,11 +186,15 @@ def main() -> int:
                     ).execute()
                     print(".", end="", flush=True)
                     break
-                except Exception:
+                except Exception as exc:
                     if attempt >= max(1, args.max_retries) + 1:
                         print()
                         raise
                     print("!", end="", flush=True)
+                    print(
+                        f"\nRetrying batch (attempt {attempt}/{args.max_retries}) due to error: {exc}",
+                        file=sys.stderr,
+                    )
                     time.sleep(max(0.0, args.retry_backoff_seconds) * attempt)
             if args.sleep_seconds:
                 time.sleep(max(0.0, args.sleep_seconds))
