@@ -129,7 +129,7 @@ jobs:
                   entry_name = entry.get("name")
                   entry_tag = entry.get(".tag")
                   print(f"- {entry_name} ({entry_tag})")
-                  if entry.get(".tag") == "folder" and re.fullmatch(r"\\d{4}", entry.get("name", "")):
+                  if entry.get(".tag") == "folder" and re.fullmatch(r"\d{4}", entry.get("name", "")):
                       folders.append(entry["name"])
               if not folders:
                   raise SystemExit(f"No year folders found in {base_path}")
