@@ -22,6 +22,7 @@ This document summarizes the schema defined in `supabase/uk_air_quality_schema.s
 - `station_pcon_history`: Station-to-constituency snapshot per `pcon_version` for fast historical queries.
 - `station_pcon_queue`: Throttled queue for PCON lookups (pending stations with geometry + missing PCON).
 - Spatial index note: expression GIST indexes on `(geometry::geometry)` for `stations` and `pcon_boundaries` support the `ST_Covers` casts used in queue/history refreshes.
+- Lookup index note: partial index on `stations` where `pcon_code` is null helps periodic checks for missing constituency assignments.
 - `uk_aq_region_names`: Region code/name lookup (e.g., `E12000001` → `North East`) used for hex metadata.
 - `uk_aq_refresh_station_la_codes(target_version)`: updates `stations.la_code` + `stations.la_version` using `la_boundaries`.
 - `uk_aq_refresh_station_pcon_codes(target_version)`: updates missing or out-of-date `stations.pcon_code` + `stations.pcon_version` using `pcon_boundaries`.

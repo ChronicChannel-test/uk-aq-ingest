@@ -343,6 +343,9 @@ create index if not exists stations_la_code_idx on stations(la_code);
 create index if not exists stations_la_version_idx on stations(la_version);
 create index if not exists stations_pcon_code_idx on stations(pcon_code);
 create index if not exists stations_pcon_version_idx on stations(pcon_version);
+create index if not exists stations_pcon_code_null_idx
+  on stations(id)
+  where pcon_code is null;
 
 -- Local Authority boundaries (used to persist station LA codes)
 create table if not exists la_boundaries (
