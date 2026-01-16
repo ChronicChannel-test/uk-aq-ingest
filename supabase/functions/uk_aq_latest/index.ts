@@ -173,7 +173,9 @@ async function loadLatest({ region, pconCode, stationLike, connectorId, pollutan
     rows = Array.from(combined.values()).slice(0, limit);
   }
 
-  return rows.map((row) => {
+  const filtered = rows.filter(passesOutlierThreshold);
+
+  return filtered.map((row) => {
     const pollutantLabel = resolvePhenomenonLabel(
       row.phenomenon?.pollutant_label,
       row.phenomenon?.label,
@@ -414,4 +416,32 @@ function formatUnit(unit: string | null): string | null {
     return "µg/m³";
   }
   return trimmed;
+}
+
+function passesOutlierThreshold(row: any): boolean {
+  const rawValue = row?.last_value;
+  const value = Number(rawValue);
+  if (!Number.isFinite(value)) {
+    return false;
+  }
+  const pollutant = normalizePollutant(
+    row?.phenomenon?.notation
+      ?? row?.phenomenon?.pollutant_label
+      ?? row?.phenomenon?.label
+      ?? row?.phenomenon_label
+      ?? null,
+  );
+  if (!pollutant) {
+    return true;
+  }
+  const thresholds: Record<string, { min: number; max: number }> = {
+    "pm2.5": { min: 0, max: 500 },
+    "pm25": { min: 0, max: 500 },
+    "pm10": { min: 0, max: 600 },
+  };
+  const bounds = thresholds[pollutant];
+  if (!bounds) {
+    return true;
+  }
+  return value >= bounds.min && value <= bounds.max;
 }
