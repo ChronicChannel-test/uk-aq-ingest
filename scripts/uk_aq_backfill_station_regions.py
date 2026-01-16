@@ -7,12 +7,19 @@ from __future__ import annotations
 
 import argparse
 import os
-from typing import Any, Dict, List, Optional, Sequence
+import sqlite3
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from dotenv import load_dotenv
 from supabase import create_client
+from shapely.geometry import Point
+from shapely.ops import transform as shapely_transform
+from shapely import wkb as shapely_wkb
+from pyproj import Transformer
 
 from uk_aq_enrich_station_names import (
+    DEFAULT_GB_GPKG_PATH,
     NI_BBOX,
     OpenNamesLookup,
     _ensure_gb_gpkg,
@@ -44,7 +51,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--gb-gpkg-path",
         default=None,
-        help="Path to the OS Open Names GB GPKG (defaults to the enrich script setting).",
+        help=(
+            "Path to the OS Open Names GB GPKG (default: "
+            "UK_AQ_OS_OPEN_NAMES_GB_LOCAL_PATH or"
+            f" {DEFAULT_GB_GPKG_PATH})."
+        ),
+    )
+    parser.add_argument(
+        "--lad-gpkg-path",
+        default=os.getenv("UK_AQ_LAD_GPKG_PATH"),
+        help="Optional path to LAD GPKG (LAD_MAY_2025_UK_BGC_V2...). If provided, regions/la_code come from LAD polygons.",
     )
     parser.add_argument(
         "--gb-gpkg-dropbox-path",
@@ -68,6 +84,106 @@ def parse_args() -> argparse.Namespace:
         help="Batch size for region updates (default: 200).",
     )
     return parser.parse_args()
+
+
+def _default_gb_gpkg_path() -> str:
+    """Prefer the locally cached GPKG path from .env when available."""
+    return os.getenv("UK_AQ_OS_OPEN_NAMES_GB_LOCAL_PATH") or DEFAULT_GB_GPKG_PATH
+
+
+def _extract_wkb_from_gpkg(blob: bytes) -> Optional[bytes]:
+    """Strip GeoPackage header and return WKB payload."""
+    if not blob or len(blob) < 8:
+        return None
+    if blob[0:2] != b"GP":
+        return None
+    flags = blob[3]
+    envelope_indicator = (flags >> 1) & 0x07
+    envelope_sizes = {0: 0, 1: 32, 2: 48, 3: 48, 4: 64}
+    envelope_bytes = envelope_sizes.get(envelope_indicator)
+    if envelope_bytes is None:
+        return None
+    wkb_offset = 8 + envelope_bytes
+    if len(blob) < wkb_offset + 1:
+        return None
+    return blob[wkb_offset:]
+
+
+class LADLookup:
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        self.conn = sqlite3.connect(str(path))
+        self.conn.row_factory = sqlite3.Row
+        self.table = self._resolve_table()
+        self.geom_col, self.srs_id = self._resolve_geometry()
+        self.code_col = self._resolve_column(("LAD25CD",))
+        self.name_col = self._resolve_column(("LAD25NM",))
+        if not (self.geom_col and self.code_col and self.name_col):
+            raise RuntimeError("LAD GPKG missing required columns (geom/code/name).")
+        target_srid = self.srs_id or 4326
+        self.to_wgs84 = Transformer.from_crs(target_srid, 4326, always_xy=True)
+        self.polygons: List[Tuple[str, str, Any, Tuple[float, float, float, float]]] = []
+        self._load_polygons()
+
+    def close(self) -> None:
+        self.conn.close()
+
+    def _resolve_table(self) -> str:
+        row = self.conn.execute("select table_name from gpkg_contents where data_type='features'").fetchone()
+        if not row:
+            raise RuntimeError("No feature table found in LAD GPKG.")
+        return row[0]
+
+    def _resolve_geometry(self) -> Tuple[Optional[str], Optional[int]]:
+        row = self.conn.execute(
+            "select column_name, srs_id from gpkg_geometry_columns where table_name = ?",
+            (self.table,),
+        ).fetchone()
+        if not row:
+            return None, None
+        return row[0], int(row[1]) if row[1] is not None else None
+
+    def _resolve_column(self, candidates: Sequence[str]) -> Optional[str]:
+        rows = self.conn.execute(f"pragma table_info({self.table})").fetchall()
+        lower_map = {row[1].lower(): row[1] for row in rows}
+        for cand in candidates:
+            if cand.lower() in lower_map:
+                return lower_map[cand.lower()]
+        return None
+
+    def _load_polygons(self) -> None:
+        cursor = self.conn.execute(
+            f"select {self.code_col}, {self.name_col}, {self.geom_col} from {self.table}"
+        )
+        for row in cursor.fetchall():
+            geom_blob = row[self.geom_col]
+            if not geom_blob:
+                continue
+            wkb = _extract_wkb_from_gpkg(geom_blob)
+            if not wkb:
+                continue
+            try:
+                geom = shapely_wkb.loads(wkb)
+            except Exception:
+                continue
+            try:
+                geom_wgs = shapely_transform(self.to_wgs84.transform, geom)
+            except Exception:
+                continue
+            bounds = geom_wgs.bounds
+            code = str(row[self.code_col])
+            name = str(row[self.name_col])
+            self.polygons.append((code, name, geom_wgs, bounds))
+
+    def lookup(self, lon: float, lat: float) -> Optional[Tuple[str, str]]:
+        point = Point(lon, lat)
+        for code, name, geom, bounds in self.polygons:
+            minx, miny, maxx, maxy = bounds
+            if not (minx <= lon <= maxx and miny <= lat <= maxy):
+                continue
+            if geom.contains(point) or geom.intersects(point):
+                return name, code
+        return None
 
 
 def _fetch_stations(page_size: int) -> List[Dict[str, Any]]:
@@ -122,14 +238,18 @@ def _apply_updates(updates: List[Dict[str, Any]], batch_size: int) -> int:
         raise RuntimeError("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY.")
     client = create_client(supabase_url, service_role_key)
     applied = 0
-    for update in updates:
+    for idx, update in enumerate(updates, start=1):
         station_id = update.get("id")
         region = update.get("region")
         if station_id is None or not region:
             continue
+        la_code = update.get("la_code")
+        payload = {"region": region}
+        if la_code:
+            payload["la_code"] = la_code
         response = (
             client.table("stations")
-            .update({"region": region})
+            .update(payload)
             .eq("id", station_id)
             .execute()
         )
@@ -140,19 +260,31 @@ def _apply_updates(updates: List[Dict[str, Any]], batch_size: int) -> int:
         if not data:
             continue
         applied += 1
-        if applied % max(1, batch_size) == 0:
-            pass
+        if idx % max(1, batch_size) == 0:
+            print(".", end="", flush=True)
+    if applied >= max(1, batch_size):
+        print()
     return applied
 
 
 def main() -> int:
     args = parse_args()
+    if not args.gb_gpkg_path:
+        args.gb_gpkg_path = _default_gb_gpkg_path()
+    print(f"Using GB GPKG: {args.gb_gpkg_path}")
     gb_path = _ensure_gb_gpkg(args)
     gb_lookup = OpenNamesLookup(gb_path)
+
+    lad_lookup: Optional[LADLookup] = None
+    if args.lad_gpkg_path:
+        lad_path = Path(args.lad_gpkg_path).expanduser()
+        print(f"Using LAD GPKG: {lad_path}")
+        lad_lookup = LADLookup(lad_path)
 
     stations = _fetch_stations(args.page_size)
     processed = 0
     updates: List[Dict[str, Any]] = []
+    dots_printed = 0
     for station in stations:
         if args.limit and processed >= args.limit:
             break
@@ -160,23 +292,45 @@ def main() -> int:
         if coords is None:
             continue
         lon, lat = coords
-        if _in_bbox(lon, lat, NI_BBOX):
-            continue
-        matches = gb_lookup.nearest_matches(
-            lon,
-            lat,
-            limit=5,
-            search_radius_m=args.gb_search_radius_m,
-            max_candidates=None,
-        )
-        region = _resolve_region(matches, args.max_distance_m)
-        if region:
-            updates.append({"id": station.get("id"), "region": region})
+        lad_region = None
+        lad_code = None
+        if lad_lookup is not None:
+            lad_result = lad_lookup.lookup(lon, lat)
+            if lad_result:
+                lad_region, lad_code = lad_result
+        if lad_region is not None:
+            updates.append({"id": station.get("id"), "region": lad_region, "la_code": lad_code})
+        else:
+            if _in_bbox(lon, lat, NI_BBOX):
+                continue
+            matches = gb_lookup.nearest_matches(
+                lon,
+                lat,
+                limit=5,
+                search_radius_m=args.gb_search_radius_m,
+                max_candidates=None,
+            )
+            region = _resolve_region(matches, args.max_distance_m)
+            if region:
+                updates.append({"id": station.get("id"), "region": region})
         processed += 1
+        if processed % 50 == 0:
+            print(".", end="", flush=True)
+            dots_printed += 1
 
     gb_lookup.close()
+    if lad_lookup is not None:
+        lad_lookup.close()
+
+    if dots_printed:
+        print()
 
     print(f"Stations scanned={processed}, region updates proposed={len(updates)}")
+    if not args.apply:
+        for entry in updates:
+            station_id = entry.get("id")
+            region = entry.get("region")
+            print(f"id={station_id}, proposed_region={region}")
     if args.apply:
         applied = _apply_updates(updates, args.apply_batch_size)
         print(f"Region updates applied={applied}")

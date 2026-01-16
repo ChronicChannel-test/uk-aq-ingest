@@ -3,3 +3,5 @@ responses
 supabase
 requests
 python-dotenv
+shapely
+pyproj
