@@ -19,6 +19,7 @@ python3 -m pip install -r requirements-dev.txt
    - `SCOMM_USER_AGENT` (recommended)
    - `SCOMM_COUNTRY` (defaults to `GB`)
    - `SCOMM_BASE_URL` (defaults to `https://data.sensor.community`)
+   - `SCOMM_INGEST_MET_FIELDS` (defaults to `false`; set `true` to ingest temperature/humidity/pressure)
 2) Run the recent refresh:
 ```
 python3 scripts/sensorcommunity_ingest.py --refresh-recent

@@ -17,6 +17,7 @@ Environment:
 - SCOMM_SERVICE_LABEL (optional; defaults to Sensor.Community; legacy SCOMM_CONNECTOR_LABEL supported)
 - SCOMM_COUNTRY (optional; defaults to GB)
 - SCOMM_USER_AGENT (optional; identifies your client per Sensor.Community guidance)
+- SCOMM_INGEST_MET_FIELDS (optional; defaults to false; enable temperature/humidity/pressure ingestion)
 - SCOMM_FILE_LOG_LEVEL (optional; defaults to INFO)
 - DROPBOX_APP_KEY, DROPBOX_APP_SECRET, DROPBOX_REFRESH_TOKEN (for Dropbox logging)
 - SCOMM_RAW_DROPBOX_ALLOWED_SUPABASE_URL (optional; gates raw Dropbox uploads)
@@ -82,6 +83,9 @@ SCOMM_SERVICE_LABEL = (
 )
 SCOMM_COUNTRY = os.getenv("SCOMM_COUNTRY", "GB")
 SCOMM_USER_AGENT = os.getenv("SCOMM_USER_AGENT", "uk-air-quality-networks")
+SCOMM_INGEST_MET_FIELDS = (
+    os.getenv("SCOMM_INGEST_MET_FIELDS", "false").strip().lower() in {"1", "true", "yes", "y", "on"}
+)
 
 DEFAULT_RAW_DROPBOX_FOLDER = "/raw_data"
 DEFAULT_ERROR_DROPBOX_FOLDER = "/error_log"
@@ -118,6 +122,37 @@ SCOMM_PHENOMENA = {
         "pollutant_label": "pm2.5",
     },
 }
+
+if SCOMM_INGEST_MET_FIELDS:
+    VALUE_TYPE_MAP.update(
+        {
+            "temperature": {"pollutant": "temperature", "label": "Temperature", "uom": "degC"},
+            "humidity": {"pollutant": "humidity", "label": "Humidity", "uom": "%"},
+            "pressure": {"pollutant": "pressure", "label": "Pressure", "uom": "hPa"},
+        }
+    )
+    SCOMM_PHENOMENA.update(
+        {
+            "temperature": {
+                "eionet_uri": "sensorcommunity:temperature",
+                "label": "Temperature",
+                "notation": "temperature",
+                "pollutant_label": "temperature",
+            },
+            "humidity": {
+                "eionet_uri": "sensorcommunity:humidity",
+                "label": "Humidity",
+                "notation": "humidity",
+                "pollutant_label": "humidity",
+            },
+            "pressure": {
+                "eionet_uri": "sensorcommunity:pressure",
+                "label": "Pressure",
+                "notation": "pressure",
+                "pollutant_label": "pressure",
+            },
+        }
+    )
 
 
 @dataclass(frozen=True)

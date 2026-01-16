@@ -52,12 +52,12 @@ const UK_BBOX = {
   north: 61.0,
 };
 
-const VALUE_TYPE_MAP: Record<string, { pollutant: string; label: string; uom: string }> = {
+const BASE_VALUE_TYPE_MAP: Record<string, { pollutant: string; label: string; uom: string }> = {
   P1: { pollutant: "pm10", label: "PM10", uom: "ug/m3" },
   P2: { pollutant: "pm2.5", label: "PM2.5", uom: "ug/m3" },
 };
 
-const SCOMM_PHENOMENA: Record<string, { eionet_uri: string; label: string; notation: string; pollutant_label: string }> = {
+const BASE_SCOMM_PHENOMENA: Record<string, { eionet_uri: string; label: string; notation: string; pollutant_label: string }> = {
   pm10: {
     eionet_uri: "sensorcommunity:pm10",
     label: "PM10",
@@ -90,6 +90,47 @@ const SCOMM_SERVICE_LABEL = Deno.env.get("SCOMM_SERVICE_LABEL")
   ?? DEFAULT_SERVICE_LABEL;
 const SCOMM_COUNTRY = Deno.env.get("SCOMM_COUNTRY") ?? DEFAULT_COUNTRY;
 const SCOMM_USER_AGENT = Deno.env.get("SCOMM_USER_AGENT") ?? DEFAULT_USER_AGENT;
+const SCOMM_INGEST_MET_FIELDS = parseBool(Deno.env.get("SCOMM_INGEST_MET_FIELDS"), false);
+
+const VALUE_TYPE_MAP: Record<string, { pollutant: string; label: string; uom: string }> = {
+  ...BASE_VALUE_TYPE_MAP,
+  ...(SCOMM_INGEST_MET_FIELDS
+    ? {
+      temperature: { pollutant: "temperature", label: "Temperature", uom: "degC" },
+      humidity: { pollutant: "humidity", label: "Humidity", uom: "%" },
+      pressure: { pollutant: "pressure", label: "Pressure", uom: "hPa" },
+    }
+    : {}),
+};
+
+const SCOMM_PHENOMENA: Record<
+  string,
+  { eionet_uri: string; label: string; notation: string; pollutant_label: string }
+> = {
+  ...BASE_SCOMM_PHENOMENA,
+  ...(SCOMM_INGEST_MET_FIELDS
+    ? {
+      temperature: {
+        eionet_uri: "sensorcommunity:temperature",
+        label: "Temperature",
+        notation: "temperature",
+        pollutant_label: "temperature",
+      },
+      humidity: {
+        eionet_uri: "sensorcommunity:humidity",
+        label: "Humidity",
+        notation: "humidity",
+        pollutant_label: "humidity",
+      },
+      pressure: {
+        eionet_uri: "sensorcommunity:pressure",
+        label: "Pressure",
+        notation: "pressure",
+        pollutant_label: "pressure",
+      },
+    }
+    : {}),
+};
 
 const DROPBOX_APP_KEY = Deno.env.get("DROPBOX_APP_KEY") ?? "";
 const DROPBOX_APP_SECRET = Deno.env.get("DROPBOX_APP_SECRET") ?? "";
@@ -124,6 +165,14 @@ const DROPBOX_DELETE_URL = "https://api.dropboxapi.com/2/files/delete_v2";
 const REST_BASE_URL = SUPABASE_URL
   ? `${SUPABASE_URL.replace(/\/$/, "")}/rest/v1`
   : "";
+
+function parseBool(value: string | null | undefined, defaultValue = false): boolean {
+  if (value === null || value === undefined) {
+    return defaultValue;
+  }
+  const normalized = value.trim().toLowerCase();
+  return ["1", "true", "yes", "y", "on"].includes(normalized);
+}
 
 function postgrestHeaders(prefer?: string): Record<string, string> {
   const headers: Record<string, string> = {

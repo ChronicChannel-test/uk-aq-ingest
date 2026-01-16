@@ -14,6 +14,7 @@ This document summarizes the UK-AQ helper scripts and their inputs/outputs.
 - `SCOMM_SERVICE_LABEL` (optional; defaults to `Sensor.Community`; legacy `SCOMM_CONNECTOR_LABEL` supported)
 - `SCOMM_COUNTRY` (optional; defaults to `GB`)
 - `SCOMM_USER_AGENT` (optional; identifies your client when polling Sensor.Community)
+- `SCOMM_INGEST_MET_FIELDS` (optional; defaults to `false`; enable temperature/humidity/pressure ingestion)
 - `SCOMM_LOG_LEVEL` (optional; defaults to `INFO`)
 
 ## Scripts
@@ -381,6 +382,7 @@ Writes to:
 Notes:
 - Uses `SCOMM_SERVICE_REF` (defaults to `SCOMM_CONNECTOR_CODE`) for `stations.service_ref` and `timeseries.service_ref`.
 - Ensures `phenomena` rows for `pm10`/`pm2.5` and sets `timeseries.phenomenon_id`.
+- When `SCOMM_INGEST_MET_FIELDS=true`, also ingests `temperature`, `humidity`, and `pressure`.
 - `SCOMM_FILE_LOG_LEVEL` controls file log verbosity when raw Dropbox capture is enabled.
 - Raw Dropbox uploads are gated by `SCOMM_RAW_DROPBOX_ALLOWED_SUPABASE_URL` (or `UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL`).
 - Dropbox credentials required: `DROPBOX_APP_KEY`, `DROPBOX_APP_SECRET`, `DROPBOX_REFRESH_TOKEN`.

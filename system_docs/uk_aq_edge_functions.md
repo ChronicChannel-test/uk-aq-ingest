@@ -25,6 +25,7 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
   - `connectors`, `stations`, `phenomena`, `timeseries`, `observations`
 - Notes:
   - Uses `SCOMM_*` environment variables for base URL, service metadata, and country.
+  - `SCOMM_INGEST_MET_FIELDS=true` enables temperature/humidity/pressure ingestion.
   - Filters to the UK bounding box by default; stations with missing coordinates are kept.
   - Sets `stations.station_exposure` to `indoor`/`outdoor` when `location.indoor` is present (0/1 or boolean).
   - Honors `connectors.overwrite_station_name` to decide when `stations.station_name` can be overwritten (false keeps existing non-null names).
@@ -90,6 +91,7 @@ Optional:
 - `UK_AIR_ERROR_DROPBOX_FOLDER` (defaults to `error_log`)
 - `SCOMM_ERROR_DROPBOX_FOLDER` (optional override for Sensor.Community)
 - `SCOMM_ERROR_DROPBOX_ALLOWED_SUPABASE_URL` (optional allowlist for Sensor.Community error uploads)
+- `SCOMM_INGEST_MET_FIELDS` (defaults to `false`; set `true` to ingest temperature/humidity/pressure)
 
 ## Notes
 

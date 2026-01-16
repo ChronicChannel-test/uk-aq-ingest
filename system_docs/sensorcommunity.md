@@ -13,9 +13,11 @@ This network uses Sensor.Community (formerly Luftdaten) for community air qualit
 - Timeseries are created per station + pollutant (`pm10`, `pm2.5`), using `timeseries_ref` like `{station_ref}:{pollutant}` and the same `service_ref`.
 - Phenomena rows are created for `pm10` and `pm2.5`, and `timeseries.phenomenon_id` is set accordingly.
 - Observations are inserted into `observations` with the timestamp provided by Sensor.Community payloads.
+- When `SCOMM_INGEST_MET_FIELDS=true`, temperature/humidity/pressure are ingested with their own timeseries.
 
 ## Poll cadence
 - Intended polling cadence: every 15 minutes at **:10, :25, :40, :55** (UTC).
 
 ## Logging
 - `SCOMM_LOG_LEVEL` controls script verbosity (default: `INFO`).
+- `SCOMM_INGEST_MET_FIELDS` controls whether met fields are ingested (default: `false`).
