@@ -26,3 +26,6 @@
 
 ## Station Name Enrichment
 - Keep enrichment logic centralized in `scripts/uk_aq_enrich_station_names.py` so report scripts stay in sync.
+
+## Planning Requests
+- When proposing plans, offer more than one option when possible, list pros/cons for each, and recommend which to pick with a brief rationale.

@@ -578,7 +578,9 @@ create table if not exists station_pcon_queue (
   updated_at timestamptz default now()
 );
 create index if not exists station_pcon_queue_status_idx
-  on station_pcon_queue(status, createenqueue_station_pcon()
+  on station_pcon_queue(status, created_at);
+
+create or replace function uk_aq_enqueue_station_pcon()
 returns trigger
 language plpgsql
 set search_path = public, pg_catalog
