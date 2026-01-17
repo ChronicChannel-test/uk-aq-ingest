@@ -43,6 +43,7 @@ This documents how `.github/workflows/uk_aq_pcon_refresh.yml` keeps station `pco
 - Batch sizes and sleeps are configurable via secrets to avoid overloading Supabase.
 - The workflow uses a dedicated concurrency group `uk-aq-pcon-refresh` so overlapping runs are allowed but serialized per group.
 - The boundary loader also supports `--skip-if-exists` to avoid re-uploading when the target version is already present.
+- If `PCON_QUEUE_BATCH_SIZE` is supplied as a GitHub secret, Actions will mask matching values in logs (e.g., a batch size of `10` appears as `***`). Prefer setting it as a GitHub Actions variable to keep logs readable.
 
 ## Related script
 - `scripts/uk_aq_load_pcon_boundaries.py` performs the boundary upsert and optional station/history refresh when run directly. In this workflow it is used only to load boundaries when missing.

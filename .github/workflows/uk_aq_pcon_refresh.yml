@@ -233,7 +233,7 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           PCON_VERSION: ${{ env.PCON_VERSION }}
-          PCON_QUEUE_BATCH_SIZE: ${{ secrets.PCON_QUEUE_BATCH_SIZE }}
+          PCON_QUEUE_BATCH_SIZE: ${{ vars.PCON_QUEUE_BATCH_SIZE || secrets.PCON_QUEUE_BATCH_SIZE }}
         run: |
           python3 - <<'PY'
           import os
