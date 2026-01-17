@@ -222,6 +222,7 @@ jobs:
             --pcon-version "${PCON_VERSION}" \
             --code-field "${PCON_CODE_FIELD:-PCON24CD}" \
             --name-field "${PCON_NAME_FIELD:-PCON24NM}" \
+            --skip-if-exists \
             --batch-size "${PCON_BOUNDARY_BATCH_SIZE:-5}" \
             --sleep-seconds "${PCON_SLEEP_SECONDS:-1.0}" \
             --max-retries "${PCON_MAX_RETRIES:-5}" \
@@ -232,7 +233,7 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           PCON_VERSION: ${{ env.PCON_VERSION }}
-          PCON_QUEUE_BATCH_SIZE: ${{ secrets.PCON_QUEUE_BATCH_SIZE }}
+          PCON_QUEUE_BATCH_SIZE: ${{ vars.PCON_QUEUE_BATCH_SIZE || secrets.PCON_QUEUE_BATCH_SIZE }}
         run: |
           python3 - <<'PY'
           import os
