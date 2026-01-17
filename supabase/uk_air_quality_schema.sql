@@ -304,6 +304,35 @@ create table if not exists stations (
   created_at timestamptz default now()
 );
 
+create table if not exists station_metadata (
+  station_id bigint primary key references stations(id) on delete cascade,
+  attributes jsonb not null default '{}'::jsonb,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+create table if not exists station_network_memberships (
+  station_id bigint not null references stations(id) on delete cascade,
+  network_code text not null references connectors(connector_code),
+  network_label text,
+  is_primary boolean default false,
+  created_at timestamptz default now(),
+  primary key (station_id, network_code)
+);
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'station_network_memberships_network_code_fkey'
+  ) then
+    alter table station_network_memberships
+      add constraint station_network_memberships_network_code_fkey
+      foreign key (network_code) references connectors(connector_code);
+  end if;
+end $$;
+
 do $$
 begin
   if to_regclass('public.stations') is not null

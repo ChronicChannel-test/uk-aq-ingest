@@ -1,0 +1,30 @@
+source_field,stations_column,transform_or_notes,suggested_storage,example_source_field
+SiteCode,station_ref,Use as unique station identifier (with connector_id/service_ref).,stations.station_ref,SiteCode
+BreatheLondon (connector code),service_ref,Set service_ref to connector_code value for BreatheLondon.,stations.service_ref,N/A
+BreatheLondon connector id,connector_id,Lookup connectors.id for breathe_london connector.,stations.connector_id,N/A
+SiteName,label,Use as human-friendly label; keep raw as label.,stations.label,SiteName
+SiteName,station_name,Optional duplicate of label (if you keep both for normalization).,stations.station_name,SiteName
+SiteClassification,station_type,Map directly (e.g., Urban Background/Roadside).,stations.station_type,SiteClassification
+SiteLocationType,station_exposure,Map to exposure if desired (e.g., School/Hospital).,stations.station_exposure,SiteLocationType
+SiteGroup,region,Map to region grouping if useful (e.g., GLA/H&F).,stations.region,SiteGroup
+Latitude/Longitude,geometry,Build geography point from Longitude/Latitude (SRID 4326).,stations.geometry,Latitude/Longitude
+StartDate,first_seen_at,Use StartDate if provided; otherwise default now().,stations.first_seen_at,StartDate
+LastCommunication,last_seen_at,Use LastCommunication when present.,stations.last_seen_at,LastCommunication
+EndDate,removed_at,Use EndDate when non-null (site decommissioned).,stations.removed_at,EndDate
+Enabled,N/A,Not stored in stations; consider storing for operational status tracking.,station_metadata.attributes.enabled,Enabled
+SiteActive,N/A,Not stored in stations; consider storing for operational status tracking.,station_metadata.attributes.site_active,SiteActive
+OrganisationName,N/A,Not stored in stations; useful for owner/partner reporting.,station_metadata.attributes.organisation_name,OrganisationName
+SponsorName,N/A,Not stored in stations; useful for sponsor reporting.,station_metadata.attributes.sponsor_name,SponsorName
+DeviceCode,N/A,Not stored in stations; useful for device troubleshooting or joins.,station_metadata.attributes.device_code,DeviceCode
+SiteDescription,N/A,Not stored in stations; useful for user-facing context.,station_metadata.attributes.site_description,SiteDescription
+SitePhotoURL,N/A,Not stored in stations; useful for UI previews.,station_metadata.attributes.site_photo_url,SitePhotoURL
+BatteryStatus,N/A,Not stored in stations; time-varying status belongs in latest_status or observations.,station_metadata.attributes.battery_status,BatteryStatus
+BatteryPercentage,N/A,Not stored in stations; time-varying status belongs in latest_status or observations.,station_metadata.attributes.battery_percentage,BatteryPercentage
+SignalStrength,N/A,Not stored in stations; time-varying status belongs in latest_status or observations.,station_metadata.attributes.signal_strength,SignalStrength
+SensorsHealthStatus,N/A,Not stored in stations; time-varying status belongs in latest_status or observations.,station_metadata.attributes.sensors_health_status,SensorsHealthStatus
+OverallStatus,N/A,Not stored in stations; time-varying status belongs in latest_status or observations.,station_metadata.attributes.overall_status,OverallStatus
+PowerTag,N/A,Not stored in stations; useful for grouping by power source.,station_metadata.attributes.power_tag,PowerTag
+OtherTags,N/A,Not stored in stations; store as tags array or JSON if needed.,station_metadata.attributes.other_tags,OtherTags
+Indoor,N/A,Not stored in stations; potential boolean exposure flag.,station_metadata.attributes.indoor,Indoor
+HeadHeight,N/A,Not stored in stations; useful for siting metadata.,station_metadata.attributes.head_height,HeadHeight
+ToRoad,N/A,Not stored in stations; useful for siting metadata.,station_metadata.attributes.to_road,ToRoad

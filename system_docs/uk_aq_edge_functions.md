@@ -52,7 +52,7 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
 ### uk_aq_stations
 - Purpose: Serve station geometry for the hex map (bypasses RLS via service role).
 - Triggered by: Web requests (read-only, no writes).
-- Returns: stations with geometry (id, station_ref, label, geometry).
+- Returns: stations with geometry (id, station_ref, label, geometry) plus `station_network_memberships` (network codes, labels, primary flag).
 
 ### uk_aq_la_hex
 - Purpose: Serve LA-level latest PM2.5 summaries (median + mean) for the hex cartogram.
