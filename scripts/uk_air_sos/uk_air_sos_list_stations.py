@@ -3,9 +3,9 @@
 Fetch UK-AIR SOS stations and filter to the UK bounding box.
 
 Examples:
-  python scripts/uk_air_sos_list_stations.py
-  python scripts/uk_air_sos_list_stations.py --format csv --output uk_stations.csv
-  python scripts/uk_air_sos_list_stations.py --no-filter
+  python3 scripts/uk_air_sos/uk_air_sos_list_stations.py
+  python3 scripts/uk_air_sos/uk_air_sos_list_stations.py --format csv --output uk_stations.csv
+  python3 scripts/uk_air_sos/uk_air_sos_list_stations.py --no-filter
 """
 
 import argparse
@@ -29,7 +29,7 @@ import requests
 from dotenv import load_dotenv
 from supabase import Client, create_client
 
-from ingest_helpers import station_coords, station_in_bbox_or_missing_coords
+from scripts.ingest_helpers import station_coords, station_in_bbox_or_missing_coords
 load_dotenv()
 
 LOG = logging.getLogger("uk_aq_stations")

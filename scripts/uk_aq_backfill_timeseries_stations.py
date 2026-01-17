@@ -20,7 +20,7 @@ from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 
 from dotenv import load_dotenv
 
-from uk_air_sos_ingest import (
+from scripts.uk_air_sos.uk_air_sos_ingest import (
     UK_AIR_SOS_BASE_URL,
     UK_BBOX,
     SupabaseWriter,

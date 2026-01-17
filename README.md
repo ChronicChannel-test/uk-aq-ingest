@@ -52,23 +52,23 @@ pip install requests python-dotenv supabase
 Discover stations and timeseries, then backfill 2025:
 
 ```
-python3 scripts/uk_air_sos_ingest.py --discover --backfill-2025
+python3 scripts/uk_air_sos/uk_air_sos_ingest.py --discover --backfill-2025
 ```
 
 Refresh the last N hours (default 6h):
 
 ```
-python3 scripts/uk_air_sos_ingest.py --refresh-recent --hours 6
+python3 scripts/uk_air_sos/uk_air_sos_ingest.py --refresh-recent --hours 6
 ```
 
 Optional backfill chunk size (days):
 
 ```
-python3 scripts/uk_air_sos_ingest.py --backfill-2025 --chunk-days 14
+python3 scripts/uk_air_sos/uk_air_sos_ingest.py --backfill-2025 --chunk-days 14
 ```
 
 ## Notes
-- Filters are configurable in `scripts/uk_air_sos_ingest.py` (bbox, region, station type, pollutants).
+- Filters are configurable in `scripts/uk_air_sos/uk_air_sos_ingest.py` (bbox, region, station type, pollutants).
 - The script upserts into `connectors`, `stations`, `timeseries`, `observations`, and reference tables.
 
 ## Edge function polling (optional)

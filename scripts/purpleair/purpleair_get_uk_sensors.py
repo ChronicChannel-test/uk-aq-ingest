@@ -6,7 +6,7 @@ This script fetches all PurpleAir sensors within the UK bounding box
 and stores them in the Supabase database.
 
 Usage:
-    python get_uk_sensors.py [--fetch-sensors] [--fetch-data] [--daily]
+    python3 scripts/purpleair/purpleair_get_uk_sensors.py [--fetch-sensors] [--fetch-data] [--daily]
 
 Options:
     --fetch-sensors    Initial discovery of all UK sensors

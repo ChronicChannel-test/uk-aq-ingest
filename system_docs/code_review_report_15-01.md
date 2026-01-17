@@ -30,7 +30,7 @@ This report documents security vulnerabilities, bugs, code quality issues, and p
 
 ### ISSUE #1: Hardcoded Local File Path Exposes Developer Machine Structure
 
-**Location:** `scripts/get_uk_sensors.py:33`
+**Location:** `scripts/purpleair/purpleair_get_uk_sensors.py:33`
 
 **Problem:**
 ```python
@@ -56,7 +56,7 @@ API_KEY_FILE = '/Users/mikehinford/Library/CloudStorage/Dropbox/Projects/CIC Web
 
 **Recommended Fix: Option 1**
 
-Change `scripts/get_uk_sensors.py` line 64-79 to:
+Change `scripts/purpleair/purpleair_get_uk_sensors.py` line 64-79 to:
 
 ```python
 def _load_api_key(self) -> str:
@@ -124,8 +124,8 @@ Phase 3: Enable strict mode once errors resolved
 Scripts proceed even when critical environment variables are missing, failing later during execution.
 
 **Affected Files:**
-- `scripts/uk_air_sos_ingest.py` (Dropbox credentials)
-- `scripts/sensorcommunity_ingest.py` (Dropbox credentials)
+- `scripts/uk_air_sos/uk_air_sos_ingest.py` (Dropbox credentials)
+- `scripts/sensorcommunity/sensorcommunity_ingest.py` (Dropbox credentials)
 - `supabase/functions/ingest_uk_air_sos/index.ts` (Supabase URL/key)
 
 **Severity:** HIGH  
@@ -139,7 +139,7 @@ Scripts proceed even when critical environment variables are missing, failing la
 
 **Examples:**
 ```python
-# scripts/uk_air_sos_ingest.py:587-591
+# scripts/uk_air_sos/uk_air_sos_ingest.py:587-591
 app_secret = os.getenv("DROPBOX_APP_SECRET", "").strip()
 refresh_token = os.getenv("DROPBOX_REFRESH_TOKEN", "").strip()
 if not (app_key and app_secret and refresh_token):
@@ -304,7 +304,7 @@ def maybe_swap_coords(
 
 ### ISSUE #6: Unhandled Dropbox Token Expiration
 
-**Location:** `scripts/uk_air_sos_ingest.py:302-316` and similar in other files
+**Location:** `scripts/uk_air_sos/uk_air_sos_ingest.py:302-316` and similar in other files
 
 **Problem:**
 Dropbox access token refresh has no expiration checks or retry logic:
@@ -389,7 +389,7 @@ def _dropbox_refresh_access_token(config: DropboxConfig) -> str:
 
 ### ISSUE #7: Missing Rate Limiting on External API Calls
 
-**Location:** `scripts/uk_air_sos_ingest.py:652-698` (UkAirClient.get)
+**Location:** `scripts/uk_air_sos/uk_air_sos_ingest.py:652-698` (UkAirClient.get)
 
 **Problem:**
 ```python
@@ -459,7 +459,7 @@ def get(self, path: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, A
 Exceptions caught but logged without sufficient context:
 
 ```python
-# scripts/uk_air_sos_ingest.py:1773-1781
+# scripts/uk_air_sos/uk_air_sos_ingest.py:1773-1781
 except Exception as exc:
     errors += 1
     LOG.debug("Backfill failed for %s: %s", ts_ref, exc)
@@ -612,13 +612,13 @@ UK_AIR_FILE_LOG_LEVEL=INFO
 Each script configures logging independently:
 
 ```python
-# scripts/uk_air_sos_ingest.py:51-54
+# scripts/uk_air_sos/uk_air_sos_ingest.py:51-54
 logging.basicConfig(
     level=getattr(logging, DEFAULT_LOG_LEVEL, logging.WARNING),
     format="%(asctime)s %(levelname)s %(message)s",
 )
 
-# scripts/get_uk_sensors.py:52-59  (different format)
+# scripts/purpleair/purpleair_get_uk_sensors.py:52-59  (different format)
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
@@ -739,7 +739,7 @@ if (!params.success) {
 
 ### ISSUE #13: Potential Race Condition in Dropbox Log Archival
 
-**Location:** `scripts/uk_air_sos_ingest.py:440-535`
+**Location:** `scripts/uk_air_sos/uk_air_sos_ingest.py:440-535`
 
 **Problem:**
 Archive logic has race condition potential:
@@ -979,7 +979,7 @@ function log(level: string, message: string, context?: Record<string, unknown>) 
 Retry counts hardcoded:
 
 ```python
-# scripts/uk_air_sos_ingest.py:640
+# scripts/uk_air_sos/uk_air_sos_ingest.py:640
 def __init__(
     self,
     base_url: str = UK_AIR_SOS_BASE_URL,
@@ -1025,7 +1025,7 @@ def __init__(
 New Supabase client created per script run:
 
 ```python
-# scripts/uk_air_sos_ingest.py:843-847
+# scripts/uk_air_sos/uk_air_sos_ingest.py:843-847
 def __init__(self) -> None:
     supabase_url = os.getenv("SUPABASE_URL")
     supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
@@ -1116,7 +1116,7 @@ def validate_data_quality(client: Client, connector_id: int) -> List[str]:
 
 ### ISSUE #20: Timestamp Parsing Has Multiple Fallback Paths
 
-**Location:** `scripts/uk_air_sos_ingest.py:1943-1953`
+**Location:** `scripts/uk_air_sos/uk_air_sos_ingest.py:1943-1953`
 
 **Problem:**
 ```python
@@ -1178,7 +1178,7 @@ def _parse_timestamp(raw: Any, context: str = "") -> Optional[datetime]:
 
 **Problem:**
 Mixed naming conventions:
-- `uk_air_sos_ingest.py` (file)
+- `uk_air_sos/uk_air_sos_ingest.py` (file)
 - `UK_AIR_SOS_BASE_URL` (env var)
 - `uk_aq_latest` (edge function)
 - `UKAIR_LIVE` (test env var)
@@ -1196,15 +1196,15 @@ Mixed naming conventions:
 According to AGENTS.md:
 > Prefer `uk_aq` in filenames, scripts, and docs (avoid `ukair`).
 
-Rename files:
-- `scripts/uk_air_sos_ingest.py` → `scripts/uk_aq_sos_ingest.py`
-- `scripts/uk_air_sos_list_stations.py` → `scripts/uk_aq_sos_list_stations.py`
+Current direction keeps the service prefix for UK-AIR SOS:
+- Keep `uk_air_sos_*` filenames to match the service name.
+- Organize SOS scripts under `scripts/uk_air_sos/`.
 
 Update env vars:
 - `UK_AIR_SOS_BASE_URL` → Keep (matches service name "UK-AIR SOS")
 - `UKAIR_LIVE` → `UK_AQ_LIVE_TESTS`
 
-**Estimated Effort:** 2 hours (find/replace + testing)
+**Estimated Effort:** 1 hour (path updates + testing)
 
 ---
 
@@ -1410,11 +1410,11 @@ in the Software without restriction...
 ## Appendix A: Files Reviewed
 
 ### Python Scripts (19)
-- sensorcommunity_ingest.py
-- uk_air_sos_ingest.py
+- sensorcommunity/sensorcommunity_ingest.py
+- uk_air_sos/uk_air_sos_ingest.py
 - ingest_helpers.py
-- uk_air_sos_list_stations.py
-- sensorcommunity_list_stations.py
+- uk_air_sos/uk_air_sos_list_stations.py
+- sensorcommunity/sensorcommunity_list_stations.py
 - uk_aq_backfill_timeseries_stations.py
 - uk_aq_backfill_station_regions.py
 - uk_aq_fix_station_geometry.py
@@ -1426,8 +1426,8 @@ in the Software without restriction...
 - uk_aq_load_guidelines.py
 - uk_aq_error_log_archive.py
 - uk_aq_dropbox_test.py
-- get_uk_sensors.py
-- uk_aq_defra_compare.py
+- purpleair/purpleair_get_uk_sensors.py
+- gov_uk_sos_defra_compare.py
 - keepalive.mjs
 
 ### TypeScript Edge Functions (8)

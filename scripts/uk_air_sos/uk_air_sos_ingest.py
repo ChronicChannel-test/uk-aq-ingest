@@ -17,8 +17,8 @@ Environment:
 - connectors.timeseries_station_filter_supported (optional; when false, skip station filtering for timeseries)
 
 Examples:
-  python scripts/uk_air_sos_ingest.py --discover --backfill-2025
-  python scripts/uk_air_sos_ingest.py --refresh-recent --hours 6
+  python3 scripts/uk_air_sos/uk_air_sos_ingest.py --discover --backfill-2025
+  python3 scripts/uk_air_sos/uk_air_sos_ingest.py --refresh-recent --hours 6
 """
 
 import argparse
@@ -41,7 +41,7 @@ import requests
 from dotenv import load_dotenv
 from supabase import Client, create_client
 
-from ingest_helpers import station_coords, station_in_bbox, station_in_bbox_or_missing_coords
+from scripts.ingest_helpers import station_coords, station_in_bbox, station_in_bbox_or_missing_coords
 load_dotenv()
 
 DEFAULT_LOG_LEVEL = os.getenv("UK_AIR_LOG_LEVEL", "WARNING").upper()

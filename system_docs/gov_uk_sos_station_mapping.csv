@@ -4,7 +4,7 @@ UK-AIR SOS (connector code),service_ref,Set service_ref to connector_code value 
 UK-AIR SOS connector id,connector_id,Lookup connectors.id for uk_air_sos connector.,stations.connector_id,N/A
 label,label,Use SOS label as human-friendly label.,stations.label,label
 label,station_name,Derive a cleaned station_name from label when possible.,stations.station_name,label
-properties.stationType,station_type,Expect AURN for this network; map directly.,stations.station_type,stationType
+properties.stationType,station_type,Map SOS stationType directly (often AURN but may vary).,stations.station_type,stationType
 properties.region,region,Map SOS region value directly when present.,stations.region,region
 geometry.coordinates,geometry,Build geography point from lon/lat (SRID 4326).,stations.geometry,geometry.coordinates
 properties.geometry.coordinates,geometry,Fallback for geometry when nested under properties.,stations.geometry,properties.geometry.coordinates

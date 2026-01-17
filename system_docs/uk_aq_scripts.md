@@ -37,7 +37,7 @@ Environment:
 - `SUPABASE_PUBLISHABLE_DEFAULT_KEY`
 - `SUPABASE_ANON_JWT`
 
-### `scripts/uk_air_sos_ingest.py`
+### `scripts/uk_air_sos/uk_air_sos_ingest.py`
 Purpose:
 - Discover stations and timeseries with optional filters.
 - Backfill observations for a chosen year.
@@ -45,8 +45,8 @@ Purpose:
 
 Common commands:
 ```
-python3 scripts/uk_air_sos_ingest.py --discover --backfill-2025
-python3 scripts/uk_air_sos_ingest.py --refresh-recent --hours 6
+python3 scripts/uk_air_sos/uk_air_sos_ingest.py --discover --backfill-2025
+python3 scripts/uk_air_sos/uk_air_sos_ingest.py --refresh-recent --hours 6
 ```
 
 Writes to:
@@ -294,7 +294,7 @@ Environment:
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
 
-### `scripts/uk_air_sos_list_stations.py`
+### `scripts/uk_air_sos/uk_air_sos_list_stations.py`
 Purpose:
 - Fetch all current stations from UK-AIR SOS.
 - Filter to UK bounding box (keeps stations with missing coordinates; `geometry` will be null in Supabase).
@@ -302,12 +302,12 @@ Purpose:
 
 Common commands:
 ```
-python3 scripts/uk_air_sos_list_stations.py
-python3 scripts/uk_air_sos_list_stations.py --format csv --output uk_stations.csv
-python3 scripts/uk_air_sos_list_stations.py --to-supabase
-python3 scripts/uk_air_sos_list_stations.py --no-filter --output uk_aq_stations_all.json
-python3 scripts/uk_air_sos_list_stations.py --raw-output uk_aq_stations_raw.json
-python3 scripts/uk_air_sos_list_stations.py --service-id-from-timeseries
+python3 scripts/uk_air_sos/uk_air_sos_list_stations.py
+python3 scripts/uk_air_sos/uk_air_sos_list_stations.py --format csv --output uk_stations.csv
+python3 scripts/uk_air_sos/uk_air_sos_list_stations.py --to-supabase
+python3 scripts/uk_air_sos/uk_air_sos_list_stations.py --no-filter --output uk_aq_stations_all.json
+python3 scripts/uk_air_sos/uk_air_sos_list_stations.py --raw-output uk_aq_stations_raw.json
+python3 scripts/uk_air_sos/uk_air_sos_list_stations.py --service-id-from-timeseries
 ```
 
 Default outputs:
@@ -345,7 +345,7 @@ Environment:
 - `DROPBOX_REFRESH_TOKEN`
 - `UK_AQ_STATIONS_DROPBOX_DIR` (optional)
 
-### `scripts/sensorcommunity_list_stations.py`
+### `scripts/sensorcommunity/sensorcommunity_list_stations.py`
 Purpose:
 - Fetch all current Sensor.Community stations for `SCOMM_COUNTRY` (default `GB`).
 - Filter to UK bounding box (keeps stations with missing coordinates; `geometry` will be null in Supabase).
@@ -353,9 +353,9 @@ Purpose:
 
 Common commands:
 ```
-python3 scripts/sensorcommunity_list_stations.py
-python3 scripts/sensorcommunity_list_stations.py --format csv --output uk_sensorcommunity_stations.csv
-python3 scripts/sensorcommunity_list_stations.py --to-supabase
+python3 scripts/sensorcommunity/sensorcommunity_list_stations.py
+python3 scripts/sensorcommunity/sensorcommunity_list_stations.py --format csv --output uk_sensorcommunity_stations.csv
+python3 scripts/sensorcommunity/sensorcommunity_list_stations.py --to-supabase
 ```
 
 Writes to (when `--to-supabase` is set):
@@ -364,7 +364,7 @@ Notes:
 - Uses `SCOMM_SERVICE_REF` (defaults to `SCOMM_CONNECTOR_CODE`) for `stations.service_ref`.
 - Sets `stations.station_exposure` to `indoor`/`outdoor` when `location.indoor` is present.
 
-### `scripts/sensorcommunity_ingest.py`
+### `scripts/sensorcommunity/sensorcommunity_ingest.py`
 Purpose:
 - Fetch recent Sensor.Community values for `SCOMM_COUNTRY` (default `GB`).
 - Upsert connector + station metadata.
@@ -372,9 +372,9 @@ Purpose:
 
 Common commands:
 ```
-python3 scripts/sensorcommunity_ingest.py --refresh-recent
-python3 scripts/sensorcommunity_ingest.py --refresh-recent --raw-output sensorcommunity_raw.json
-python3 scripts/sensorcommunity_ingest.py --refresh-recent --raw-dropbox
+python3 scripts/sensorcommunity/sensorcommunity_ingest.py --refresh-recent
+python3 scripts/sensorcommunity/sensorcommunity_ingest.py --refresh-recent --raw-output sensorcommunity_raw.json
+python3 scripts/sensorcommunity/sensorcommunity_ingest.py --refresh-recent --raw-dropbox
 ```
 
 Writes to:
@@ -389,7 +389,7 @@ Notes:
 - Optional folders: `SCOMM_RAW_DROPBOX_FOLDER`/`SCOMM_ERROR_DROPBOX_FOLDER` (fallback to `UK_AIR_*`).
 - Sets `stations.station_exposure` to `indoor`/`outdoor` when `location.indoor` is present.
 
-### `scripts/uk_aq_defra_compare.py`
+### `scripts/gov_uk_sos_defra_compare.py`
 Purpose:
 - Fetch DEFRA last-hour readings for a station.
 - Compare DEFRA values to the latest Supabase observations for the same station.
@@ -397,9 +397,9 @@ Purpose:
 
 Common commands:
 ```
-python3 scripts/uk_aq_defra_compare.py
-python3 scripts/uk_aq_defra_compare.py --station-id BR11 --tolerance 1.5
-python3 scripts/uk_aq_defra_compare.py --defra-url "https://uk-air.defra.gov.uk/data/site-data?f_site_id=BR11&view=last_hour"
+python3 scripts/gov_uk_sos_defra_compare.py
+python3 scripts/gov_uk_sos_defra_compare.py --station-id BR11 --tolerance 1.5
+python3 scripts/gov_uk_sos_defra_compare.py --defra-url "https://uk-air.defra.gov.uk/data/site-data?f_site_id=BR11&view=last_hour"
 ```
 
 Inputs:
@@ -444,6 +444,60 @@ Environment:
 - `DROPBOX_APP_KEY`, `DROPBOX_APP_SECRET`, `DROPBOX_REFRESH_TOKEN`
 - `SUPABASE_URL` + `UK_AIR_ERROR_DROPBOX_ALLOWED_SUPABASE_URL` (must match to run)
 - Optional `UK_AIR_ERROR_DROPBOX_FOLDER` (defaults to `/error_log`)
+
+### `scripts/gov_uk_waqn/gov_uk_waqn_ingest.py`
+Purpose:
+- Placeholder for the Wales Air Quality Network ingest pipeline.
+
+Common commands:
+```
+python3 scripts/gov_uk_waqn/gov_uk_waqn_ingest.py
+```
+
+### `scripts/gov_uk_waqn/gov_uk_waqn_list_stations.py`
+Purpose:
+- Placeholder for the Wales Air Quality Network station listing.
+
+Common commands:
+```
+python3 scripts/gov_uk_waqn/gov_uk_waqn_list_stations.py
+```
+
+### `scripts/gov_uk_laqn/gov_uk_laqn_ingest.py`
+Purpose:
+- Placeholder for the London Air Quality Network ingest pipeline.
+
+Common commands:
+```
+python3 scripts/gov_uk_laqn/gov_uk_laqn_ingest.py
+```
+
+### `scripts/gov_uk_laqn/gov_uk_laqn_list_stations.py`
+Purpose:
+- Placeholder for the London Air Quality Network station listing.
+
+Common commands:
+```
+python3 scripts/gov_uk_laqn/gov_uk_laqn_list_stations.py
+```
+
+### `scripts/breathelondon/breathelondon_ingest.py`
+Purpose:
+- Placeholder for the Breathe London ingest pipeline.
+
+Common commands:
+```
+python3 scripts/breathelondon/breathelondon_ingest.py
+```
+
+### `scripts/breathelondon/breathelondon_list_stations.py`
+Purpose:
+- Placeholder for the Breathe London station listing.
+
+Common commands:
+```
+python3 scripts/breathelondon/breathelondon_list_stations.py
+```
 
 ## SOS metadata glossary
 - `phenomenon`: The observed property (pollutant/parameter), e.g., NO2, O3, PM2.5.

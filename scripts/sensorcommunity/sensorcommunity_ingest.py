@@ -25,7 +25,7 @@ Environment:
 - SCOMM_ERROR_DROPBOX_FOLDER (optional; defaults to /error_log; falls back to UK_AIR_ERROR_DROPBOX_FOLDER)
 
 Example:
-  python scripts/sensorcommunity_ingest.py --refresh-recent
+  python3 scripts/sensorcommunity/sensorcommunity_ingest.py --refresh-recent
 """
 
 import argparse
@@ -54,7 +54,7 @@ import requests
 from dotenv import load_dotenv
 from supabase import Client, create_client
 
-from ingest_helpers import station_coords, station_in_bbox_or_missing_coords
+from scripts.ingest_helpers import station_coords, station_in_bbox_or_missing_coords
 
 load_dotenv()
 

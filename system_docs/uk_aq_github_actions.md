@@ -21,14 +21,14 @@ This repo uses GitHub Actions for scheduled syncs and deployments.
 ### `uk_aq_raw_dropbox.yml`
 - Trigger: manual dispatch.
 - Purpose: run a Bristol-only ingest with raw Dropbox upload for debugging/testing.
-- Script: `python3 scripts/uk_air_sos_ingest.py --discover --refresh-recent ... --raw-dropbox`.
+- Script: `python3 scripts/uk_air_sos/uk_air_sos_ingest.py --discover --refresh-recent ... --raw-dropbox`.
 - Secrets: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `DROPBOX_APP_KEY`,
   `DROPBOX_APP_SECRET`, `DROPBOX_REFRESH_TOKEN`.
 
 ### `uk_aq_stations_daily.yml`
 - Schedule: daily at 03:00 UTC.
 - Purpose: sync stations to Supabase and export a combined stations snapshot to Dropbox.
-- Script: `python3 scripts/uk_air_sos_list_stations.py --to-supabase`.
+- Script: `python3 scripts/uk_air_sos/uk_air_sos_list_stations.py --to-supabase`.
 - Export: `python3 scripts/uk_aq_export_stations_dropbox.py` (uploads `uk_aq_stations_<timestamp>.json`).
 - Optional: Sensor.Community discovery step (disabled by default).
 - Secrets: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `UK_AIR_SOS_BASE_URL`, `DROPBOX_APP_KEY`,

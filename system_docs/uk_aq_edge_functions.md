@@ -96,6 +96,6 @@ Optional:
 ## Notes
 
 - Edge functions do not discover stations/timeseries. Discovery happens in the
-  Python ingest script (see `scripts/uk_air_sos_ingest.py`).
+  Python ingest script (see `scripts/uk_air_sos/uk_air_sos_ingest.py`).
 - If `timeseries.station_id` is null, joins to stations will not work correctly.
   Run the discovery step to populate station links.

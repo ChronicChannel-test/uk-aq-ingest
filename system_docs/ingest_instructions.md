@@ -22,11 +22,11 @@ python3 -m pip install -r requirements-dev.txt
    - `SCOMM_INGEST_MET_FIELDS` (defaults to `false`; set `true` to ingest temperature/humidity/pressure)
 2) Run the recent refresh:
 ```
-python3 scripts/sensorcommunity_ingest.py --refresh-recent
+python3 scripts/sensorcommunity/sensorcommunity_ingest.py --refresh-recent
 ```
 3) (Optional) Save raw API output:
 ```
-python3 scripts/sensorcommunity_ingest.py --refresh-recent --raw-output sensorcommunity_raw.json
+python3 scripts/sensorcommunity/sensorcommunity_ingest.py --refresh-recent --raw-output sensorcommunity_raw.json
 ```
 
 ## UK-AIR SOS
@@ -35,15 +35,15 @@ python3 scripts/sensorcommunity_ingest.py --refresh-recent --raw-output sensorco
    - `UK_AIR_SOS_SERVICE_LABEL` (defaults to `UK-AIR-SOS`)
 2) Discover services/stations/timeseries and backfill a year:
 ```
-python3 scripts/uk_air_sos_ingest.py --discover --backfill-2025
+python3 scripts/uk_air_sos/uk_air_sos_ingest.py --discover --backfill-2025
 ```
 3) Refresh the last N hours (default 6):
 ```
-python3 scripts/uk_air_sos_ingest.py --refresh-recent --hours 6
+python3 scripts/uk_air_sos/uk_air_sos_ingest.py --refresh-recent --hours 6
 ```
 4) (Optional) Use filters like `--region`, `--station-like`, or `--pollutants`. See:
 ```
-python3 scripts/uk_air_sos_ingest.py --help
+python3 scripts/uk_air_sos/uk_air_sos_ingest.py --help
 ```
 
 ## Troubleshooting
