@@ -101,6 +101,11 @@ def parse_args() -> argparse.Namespace:
         help="Skip boundary uploads (only run update flags).",
     )
     parser.add_argument(
+        "--skip-if-exists",
+        action="store_true",
+        help="Skip boundary uploads if the target PCON version already exists.",
+    )
+    parser.add_argument(
         "--update-stations",
         action="store_true",
         help="Update stations with PCON codes after loading boundaries.",
@@ -147,6 +152,25 @@ def main() -> int:
 
     rows: List[Dict[str, Any]] = []
     skipped = 0
+    skip_due_to_exists = False
+    if args.skip_if_exists and not args.skip_boundaries:
+        try:
+            existing = (
+                client.table("pcon_boundaries")
+                .select("pcon_code")
+                .eq("pcon_version", args.pcon_version)
+                .limit(1)
+                .execute()
+            )
+            existing_rows = getattr(existing, "data", None)
+        except Exception as exc:  # pragma: no cover - defensive logging
+            print(f"Failed to check existing boundaries: {exc}", file=sys.stderr)
+            existing_rows = None
+
+        if existing_rows:
+            print(f"Boundaries already exist for {args.pcon_version}; skipping upload.")
+            args.skip_boundaries = True
+            skip_due_to_exists = True
     if not args.skip_boundaries:
         for feature in features:
             geometry = feature.get("geometry") if isinstance(feature, dict) else None
@@ -202,6 +226,9 @@ def main() -> int:
 
         print(f"Loaded {len(rows)} boundary rows (skipped {skipped}).")
     elif not (args.update_stations or args.update_history):
+        if skip_due_to_exists:
+            print("No boundary upload needed; existing version found.")
+            return 0
         print("Nothing to do: use --update-stations/--update-history or remove --skip-boundaries.", file=sys.stderr)
         return 1
 
