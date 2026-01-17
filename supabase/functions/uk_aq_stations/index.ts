@@ -108,7 +108,7 @@ async function fetchStations({
   const rows: Array<Record<string, unknown>> = [];
   let offset = 0;
   const baseParams: Record<string, string> = {
-    select: "id,station_ref,label,geometry",
+    select: "id,station_ref,label,geometry,network_memberships:station_network_memberships(network_code,network_label,is_primary)",
     geometry: "not.is.null",
   };
   if (connectorId) {

@@ -15,6 +15,8 @@ This document summarizes the schema defined in `supabase/uk_air_quality_schema.s
 - `features`: features of interest with geometry (Point, 4326), per connector + `service_ref`.
 - `procedures`: sensors/methods; optional raw_formats list, per connector + `service_ref`.
 - `stations`: monitoring sites; bigint `id` (internal) with `station_ref` (external) and `service_ref` (remote SOS service id), unique `(connector_id, service_ref, station_ref)`, plus lifecycle fields `first_seen_at`, `last_seen_at`, `removed_at`. Includes `station_name` as a cleaned display name, `station_type` as the service-provided classification, `station_exposure` for indoor/outdoor, and stores `la_code`/`la_version` and `pcon_code`/`pcon_version` for geography lookups.
+- `station_metadata`: per-station JSON attributes for network-specific fields not stored on `stations` (ownership, device, status, siting metadata).
+- `station_network_memberships`: multi-network membership metadata for stations, including a `network_code` (FK to `connectors.connector_code`) and `is_primary` flag for preferred ingest source.
 
 ## Geography mapping tables
 - `la_boundaries`: Local Authority polygons (MultiPolygon, 4326) with `la_code` + `la_version` for assigning stations to LAs.
