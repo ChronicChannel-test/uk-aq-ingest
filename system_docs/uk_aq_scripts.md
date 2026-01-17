@@ -445,6 +445,60 @@ Environment:
 - `SUPABASE_URL` + `UK_AIR_ERROR_DROPBOX_ALLOWED_SUPABASE_URL` (must match to run)
 - Optional `UK_AIR_ERROR_DROPBOX_FOLDER` (defaults to `/error_log`)
 
+### `scripts/gov_uk_waqn/gov_uk_waqn_ingest.py`
+Purpose:
+- Placeholder for the Wales Air Quality Network ingest pipeline.
+
+Common commands:
+```
+python3 scripts/gov_uk_waqn/gov_uk_waqn_ingest.py
+```
+
+### `scripts/gov_uk_waqn/gov_uk_waqn_list_stations.py`
+Purpose:
+- Placeholder for the Wales Air Quality Network station listing.
+
+Common commands:
+```
+python3 scripts/gov_uk_waqn/gov_uk_waqn_list_stations.py
+```
+
+### `scripts/gov_uk_laqn/gov_uk_laqn_ingest.py`
+Purpose:
+- Placeholder for the London Air Quality Network ingest pipeline.
+
+Common commands:
+```
+python3 scripts/gov_uk_laqn/gov_uk_laqn_ingest.py
+```
+
+### `scripts/gov_uk_laqn/gov_uk_laqn_list_stations.py`
+Purpose:
+- Placeholder for the London Air Quality Network station listing.
+
+Common commands:
+```
+python3 scripts/gov_uk_laqn/gov_uk_laqn_list_stations.py
+```
+
+### `scripts/breathelondon/breathelondon_ingest.py`
+Purpose:
+- Placeholder for the Breathe London ingest pipeline.
+
+Common commands:
+```
+python3 scripts/breathelondon/breathelondon_ingest.py
+```
+
+### `scripts/breathelondon/breathelondon_list_stations.py`
+Purpose:
+- Placeholder for the Breathe London station listing.
+
+Common commands:
+```
+python3 scripts/breathelondon/breathelondon_list_stations.py
+```
+
 ## SOS metadata glossary
 - `phenomenon`: The observed property (pollutant/parameter), e.g., NO2, O3, PM2.5.
 - `procedure`: The sensor or measurement method used to produce the observation.
