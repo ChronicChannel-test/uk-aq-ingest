@@ -3,9 +3,9 @@
 Fetch Sensor.Community stations and filter to the UK bounding box.
 
 Examples:
-  python scripts/sensorcommunity_list_stations.py
-  python scripts/sensorcommunity_list_stations.py --format csv --output uk_sensorcommunity_stations.csv
-  python scripts/sensorcommunity_list_stations.py --to-supabase
+  python3 scripts/sensorcommunity/sensorcommunity_list_stations.py
+  python3 scripts/sensorcommunity/sensorcommunity_list_stations.py --format csv --output uk_sensorcommunity_stations.csv
+  python3 scripts/sensorcommunity/sensorcommunity_list_stations.py --to-supabase
 """
 
 import argparse
@@ -29,7 +29,7 @@ import requests
 from dotenv import load_dotenv
 from supabase import Client, create_client
 
-from ingest_helpers import station_coords, station_in_bbox_or_missing_coords
+from scripts.ingest_helpers import station_coords, station_in_bbox_or_missing_coords
 
 load_dotenv()
 

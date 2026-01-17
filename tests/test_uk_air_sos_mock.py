@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from scripts.uk_air_sos_ingest import (
+from scripts.uk_air_sos.uk_air_sos_ingest import (
     SupabaseWriter,
     _parse_datapoints,
 )

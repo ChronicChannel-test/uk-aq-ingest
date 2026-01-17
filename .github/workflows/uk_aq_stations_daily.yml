@@ -36,7 +36,7 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           UK_AIR_SOS_BASE_URL: ${{ secrets.UK_AIR_SOS_BASE_URL }}
         run: |
-          python3 scripts/uk_air_sos_list_stations.py --to-supabase
+          python3 scripts/uk_air_sos/uk_air_sos_list_stations.py --to-supabase
 
       - name: Discover Sensor.Community stations (optional)
         if: env.RUN_SCOMM_STATIONS_EXPORT == '1'
@@ -44,7 +44,7 @@ jobs:
           SCOMM_BASE_URL: ${{ secrets.SCOMM_BASE_URL }}
           SCOMM_COUNTRY: ${{ secrets.SCOMM_COUNTRY }}
         run: |
-          python3 scripts/sensorcommunity_list_stations.py \
+          python3 scripts/sensorcommunity/sensorcommunity_list_stations.py \
             --output "${SCOMM_CONNECTOR_CODE}_stations.json"
 
       - name: Check null station_name

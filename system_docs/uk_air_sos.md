@@ -7,7 +7,7 @@ This network pulls stations from the UK-AIR SOS API with configurable filters.
 - Base URL: `https://uk-air.defra.gov.uk/sos-ukair/api/v1`
 
 ## Filters
-Applied in `scripts/uk_air_sos_ingest.py`:
+Applied in `scripts/uk_air_sos/uk_air_sos_ingest.py`:
 - Bounding box: default is UK bbox (west -11.0, south 49.0, east 2.0, north 61.0)
 - Region label: optional
 - Station type: optional (e.g., `AURN`)
@@ -48,11 +48,11 @@ Applied in `scripts/uk_air_sos_ingest.py`:
 
 ## Commands
 ```
-python3 scripts/uk_air_sos_ingest.py --discover --backfill-2025
-python3 scripts/uk_air_sos_ingest.py --refresh-recent --hours 6
+python3 scripts/uk_air_sos/uk_air_sos_ingest.py --discover --backfill-2025
+python3 scripts/uk_air_sos/uk_air_sos_ingest.py --refresh-recent --hours 6
 
 # Example: AURN stations in Bristol only
-python3 scripts/uk_air_sos_ingest.py --station-type AURN --region Bristol --bbox -2.75,51.30,-2.45,51.55 --discover
+python3 scripts/uk_air_sos/uk_air_sos_ingest.py --station-type AURN --region Bristol --bbox -2.75,51.30,-2.45,51.55 --discover
 ```
 
 ## Edge function polling

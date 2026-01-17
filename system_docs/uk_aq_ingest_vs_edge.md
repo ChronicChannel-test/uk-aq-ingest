@@ -2,7 +2,7 @@
 
 This project uses **two different ingestion paths** that serve different purposes.
 
-## Ingest script (`scripts/uk_air_sos_ingest.py`)
+## Ingest script (`scripts/uk_air_sos/uk_air_sos_ingest.py`)
 
 **Purpose:** full discovery + data refresh.
 
