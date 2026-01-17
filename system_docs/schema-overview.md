@@ -58,7 +58,7 @@ This document summarizes the schema defined in `supabase/uk_air_quality_schema.s
 - `pcon_latest_pm25` (in `supabase/uk_air_quality_views.sql`): constituency-level PM2.5 summaries keyed by `pcon_code` + `pcon_version` with median/mean, station_count, and last update timestamp.
 
 ## RLS (Row Level Security)
-- RLS enabled on all domain tables (not on system tables like spatial_ref_sys).
+- RLS enabled on all domain tables (not on system tables like spatial_ref_sys), including `station_metadata` and `station_network_memberships`.
 - Policies (idempotent via DO block):
   - `select`: allowed for roles `authenticated` and `service_role`.
   - `all` (insert/update/delete): allowed for `service_role` only.

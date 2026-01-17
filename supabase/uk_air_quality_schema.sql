@@ -1045,6 +1045,8 @@ alter table if exists offerings enable row level security;
 alter table if exists features enable row level security;
 alter table if exists procedures enable row level security;
 alter table if exists stations enable row level security;
+alter table if exists station_metadata enable row level security;
+alter table if exists station_network_memberships enable row level security;
 alter table if exists timeseries enable row level security;
 alter table if exists reference_values enable row level security;
 alter table if exists observations enable row level security;
@@ -1067,7 +1069,7 @@ declare
   t text;
 begin
   for t in select unnest(array[
-    'connectors','categories','phenomena','offerings','features','procedures','stations','timeseries','reference_values','observations','pm25_population_exposure','pm25_amct_sites','la_boundaries','pcon_boundaries','station_pcon_history','station_pcon_queue','pcon_current','pcon_legacy','gss_codes','uk_aq_region_names','uk_aq_guidelines'
+    'connectors','categories','phenomena','offerings','features','procedures','stations','station_metadata','station_network_memberships','timeseries','reference_values','observations','pm25_population_exposure','pm25_amct_sites','la_boundaries','pcon_boundaries','station_pcon_history','station_pcon_queue','pcon_current','pcon_legacy','gss_codes','uk_aq_region_names','uk_aq_guidelines'
   ])
   loop
     -- Read policy for authenticated + service_role
