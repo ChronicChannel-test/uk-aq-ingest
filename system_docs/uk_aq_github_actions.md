@@ -32,4 +32,13 @@ This repo uses GitHub Actions for scheduled syncs and deployments.
 - Export: `python3 scripts/uk_aq_export_stations_dropbox.py` (uploads `uk_aq_stations_<timestamp>.json`).
 - Optional: Sensor.Community discovery step (disabled by default).
 - Secrets: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `UK_AIR_SOS_BASE_URL`, `DROPBOX_APP_KEY`,
-  `DROPBOX_APP_SECRET`, `DROPBOX_REFRESH_TOKEN`, `UK_AQ_STATIONS_DROPBOX_DIR`.
+  `DROPBOX_APP_SECRET`, `DROPBOX_REFRESH_TOKEN`, `UK_AQ_DROPBOX_ROOT`, `UK_AQ_STATIONS_DROPBOX_DIR`.
+
+### `uk_air_sos_site_register_monthly.yml`
+- Schedule: monthly on day 1 at 04:15 UTC.
+- Purpose: download the UK-AIR monitoring sites CSV via the search page.
+- Script: `python3 scripts/uk_air_sos/uk_air_sos_site_register.py --output uk_air_sos_site_register.csv`.
+- Output: uploads a timestamped CSV to Dropbox at `network_info/uk_air_sos` and loads it into Supabase.
+- Secrets: `UK_AIR_SOS_SITE_SEARCH_URL`, `UK_AIR_SOS_SITE_SEARCH_USER_AGENT` (optional),
+  `UK_AQ_DROPBOX_ROOT`, `DROPBOX_APP_KEY`, `DROPBOX_APP_SECRET`, `DROPBOX_REFRESH_TOKEN`,
+  `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`.

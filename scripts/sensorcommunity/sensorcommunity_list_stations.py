@@ -13,9 +13,11 @@ import csv
 import json
 import logging
 import os
+import sys
 import time
 import warnings
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 warnings.filterwarnings(
@@ -28,6 +30,12 @@ warnings.filterwarnings(
 import requests
 from dotenv import load_dotenv
 from supabase import Client, create_client
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if PROJECT_ROOT.name == "scripts":
+    PROJECT_ROOT = PROJECT_ROOT.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 from scripts.ingest_helpers import station_coords, station_in_bbox_or_missing_coords
 

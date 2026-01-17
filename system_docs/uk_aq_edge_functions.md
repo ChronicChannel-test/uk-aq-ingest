@@ -82,7 +82,7 @@ Dropbox (raw/log/error uploads):
 - `DROPBOX_REFRESH_TOKEN`
 
 Dropbox folders:
-- `UK_AIR_DROPBOX_ROOT` (e.g., `/CIC-Test` or `/LIVE`)
+  - `UK_AQ_DROPBOX_ROOT` (e.g., `/CIC-Test` or `/LIVE`)
 - `UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL` (required to enable raw uploads)
 - `SCOMM_DROPBOX_ROOT` (optional override for Sensor.Community)
 - `SCOMM_RAW_DROPBOX_ALLOWED_SUPABASE_URL` (optional allowlist override for Sensor.Community)

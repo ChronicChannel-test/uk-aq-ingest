@@ -68,7 +68,7 @@ const DROPBOX_ALLOWED_SUPABASE_URL = Deno.env.get("UK_AIR_RAW_DROPBOX_ALLOWED_SU
 const DROPBOX_ERROR_ALLOWED_SUPABASE_URL =
   Deno.env.get("UK_AIR_ERROR_DROPBOX_ALLOWED_SUPABASE_URL") ?? "";
 const DROPBOX_ROOT_FOLDER = (() => {
-  const raw = Deno.env.get("UK_AIR_DROPBOX_ROOT") ?? "";
+  const raw = Deno.env.get("UK_AQ_DROPBOX_ROOT") ?? "";
   return normalizeDropboxPath(raw);
 })();
 

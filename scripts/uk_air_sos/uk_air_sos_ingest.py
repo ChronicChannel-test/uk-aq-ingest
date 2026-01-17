@@ -28,6 +28,7 @@ import json
 import logging
 import os
 import re
+import sys
 import tempfile
 import time
 import traceback
@@ -40,6 +41,12 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 import requests
 from dotenv import load_dotenv
 from supabase import Client, create_client
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if PROJECT_ROOT.name == "scripts":
+    PROJECT_ROOT = PROJECT_ROOT.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 from scripts.ingest_helpers import station_coords, station_in_bbox, station_in_bbox_or_missing_coords
 load_dotenv()
@@ -379,7 +386,7 @@ def _normalize_dropbox_path(path: str) -> str:
 
 
 def _dropbox_root_folder(folder: str) -> str:
-    env_root = _normalize_dropbox_path(os.getenv("UK_AIR_DROPBOX_ROOT", ""))
+    env_root = _normalize_dropbox_path(os.getenv("UK_AQ_DROPBOX_ROOT", ""))
     cleaned = _normalize_dropbox_path(folder)
     if cleaned.endswith("/raw_data"):
         cleaned = cleaned[: -len("/raw_data")]

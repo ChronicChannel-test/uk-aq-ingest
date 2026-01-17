@@ -102,7 +102,7 @@ def _normalize_dropbox_path(path: str) -> str:
 
 
 def _dropbox_root_folder() -> str:
-    return _normalize_dropbox_path(os.getenv("UK_AIR_DROPBOX_ROOT", ""))
+    return _normalize_dropbox_path(os.getenv("UK_AQ_DROPBOX_ROOT", ""))
 
 
 def _join_dropbox_paths(root: str, subdir: str) -> str:
@@ -212,7 +212,7 @@ def main() -> int:
     output_path = Path(args.output) if args.output else Path(f"uk_aq_stations_{timestamp}.json")
     root = _dropbox_root_folder()
     if not root:
-        raise RuntimeError("UK_AIR_DROPBOX_ROOT must be set for stations export.")
+        raise RuntimeError("UK_AQ_DROPBOX_ROOT must be set for stations export.")
     dropbox_dir = _join_dropbox_paths(root, args.dropbox_dir or "uk_aq_stations")
     dropbox_path = f"{dropbox_dir}/{output_path.name}"
 

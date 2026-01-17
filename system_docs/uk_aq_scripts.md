@@ -294,6 +294,54 @@ Environment:
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
 
+### `scripts/uk_aq_backfill_station_memberships.py`
+Purpose:
+- Backfill `station_network_memberships` from the UK-AIR monitoring sites register (via `uk_air_sos_site_register` + `uk_air_sos_networks`).
+- Store UK-AIR site ids per station in `uk_air_sos_station_refs` for repeatable joins.
+- Populate `stations.station_type` with the primary network code (single network or AURN priority).
+- Set `station_network_memberships.is_primary` for single-network stations and prioritize AURN.
+- Use `--source sos` to fall back to SOS stationType values (legacy path).
+
+Common commands:
+```
+python3 scripts/uk_aq_backfill_station_memberships.py
+python3 scripts/uk_aq_backfill_station_memberships.py --service-ref-from-timeseries
+python3 scripts/uk_aq_backfill_station_memberships.py --no-filter --limit 500
+python3 scripts/uk_aq_backfill_station_memberships.py --source sos
+```
+
+Environment:
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `UK_AIR_SOS_BASE_URL` (optional override)
+Notes:
+- Uses the latest `uk_air_sos_site_register.snapshot_at` by default; use `--snapshot-at` to target a specific snapshot.
+- Adjust match tolerances with `--match-distance-m` and `--match-distance-no-name-m` if needed.
+
+### `scripts/uk_air_sos/uk_air_sos_site_register.py`
+Purpose:
+- Download the UK-AIR "Search for monitoring sites" CSV (all sites).
+- Use the CSV as the authoritative register for site ids, names, coordinates, and network membership.
+
+Common commands:
+```
+python3 scripts/uk_air_sos/uk_air_sos_site_register.py --search-url "<search url>" --output uk_air_sos_site_register.csv
+python3 scripts/uk_air_sos/uk_air_sos_site_register.py --csv-url "<direct csv url>" --output uk_air_sos_site_register.csv
+python3 scripts/uk_air_sos/uk_air_sos_site_register.py --search-url "<search url>" --dropbox-upload
+python3 scripts/uk_air_sos/uk_air_sos_site_register.py --search-url "<search url>" --dropbox-upload --load
+python3 scripts/uk_air_sos/uk_air_sos_site_register.py --load-only --csv-path /path/to/uk-air-search-results.csv
+```
+
+Environment:
+- `UK_AIR_SOS_SITE_SEARCH_URL` (optional; used when `--search-url` is omitted)
+- `UK_AIR_SOS_SITE_SEARCH_USER_AGENT` (optional)
+- `UK_AQ_DROPBOX_ROOT` (required for `--dropbox-upload`)
+- `DROPBOX_APP_KEY`, `DROPBOX_APP_SECRET`, `DROPBOX_REFRESH_TOKEN` (required for `--dropbox-upload`)
+ - `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (required for `--load`/`--load-only`)
+Notes:
+- The script writes a timestamped filename locally and to Dropbox (e.g., `uk_air_sos_site_register_YYYYMMDDTHHMMSSZ.csv`).
+
+
 ### `scripts/uk_air_sos/uk_air_sos_list_stations.py`
 Purpose:
 - Fetch all current stations from UK-AIR SOS.
@@ -323,9 +371,10 @@ Service refs:
 
 Notes:
 - When `--to-supabase` is enabled, station-name backfills include the existing station metadata needed to satisfy NOT NULL constraints.
+- Optional flags: `--skip-station-metadata`, `--skip-network-memberships`, `--skip-station-type-backfill`.
 
 Writes to (when `--to-supabase` is set):
-- `connectors`, `stations`
+- `connectors`, `stations`, `station_metadata`, `station_network_memberships`
 - `phenomena`, `procedures`, `offerings` (unless `--skip-metadata` is used)
   - `stations` lifecycle fields: `first_seen_at`, `last_seen_at`, `removed_at`
   - Stations not seen in the current run are marked with `removed_at`.

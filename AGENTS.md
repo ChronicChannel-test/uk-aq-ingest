@@ -4,6 +4,8 @@
 - Prefer `uk_aq` in filenames, scripts, and docs (avoid `ukair`).
 - `UK-AIR SOS` is a service name and must never be changed to `UK-AQ SOS`.
 - AQ means Air Quality in this project.
+- For SOS-derived UK networks, use `gov_uk_<network>_` prefixes (e.g., `gov_uk_aurn_`) and place them under `scripts/gov_uk_<network>/`.
+- For non-SOS networks, use the network prefix (e.g., `sensorcommunity_`) and place them under a matching `scripts/<network>/` directory.
 
 ## Runtime
 - Use `python3` for all Python scripts and commands.

@@ -14,10 +14,12 @@ import json
 import logging
 import os
 import re
+import sys
 import time
 import warnings
 from datetime import datetime, timezone
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from pathlib import Path
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
 warnings.filterwarnings(
     "ignore",
@@ -28,6 +30,10 @@ warnings.filterwarnings(
 import requests
 from dotenv import load_dotenv
 from supabase import Client, create_client
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 from scripts.ingest_helpers import station_coords, station_in_bbox_or_missing_coords
 load_dotenv()
@@ -53,6 +59,18 @@ UK_BBOX = {
     "south": 49.0,
     "east": 2.0,
     "north": 61.0,
+}
+
+NETWORK_TYPE_MAP = {
+    "AURN": "aurn",
+    "LAQN": "laqn",
+    "WAQN": "waqn",
+}
+
+NETWORK_LABELS = {
+    "aurn": "AURN",
+    "laqn": "LAQN",
+    "waqn": "WAQN",
 }
 
 
@@ -145,6 +163,130 @@ def _derive_station_name(label: Optional[str]) -> Optional[str]:
 
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _station_type_from_payload(station: Dict[str, Any]) -> Optional[str]:
+    props = station.get("properties", {}) if isinstance(station.get("properties"), dict) else {}
+    return props.get("stationType") or station.get("stationType")
+
+
+def _normalize_station_type(value: Optional[str]) -> Optional[str]:
+    if not value:
+        return None
+    cleaned = re.sub(r"[\s/,_-]+", " ", value.strip()).upper()
+    return cleaned or None
+
+
+def _station_network_codes(station_type: Optional[str]) -> List[str]:
+    normalized = _normalize_station_type(station_type)
+    if not normalized:
+        return []
+    codes = []
+    for token, code in NETWORK_TYPE_MAP.items():
+        if token in normalized:
+            codes.append(code)
+    if not codes:
+        return []
+    return sorted(set(codes))
+
+
+def _primary_network_codes(codes: Sequence[str]) -> Set[str]:
+    unique = sorted(set(codes))
+    if len(unique) == 1:
+        return {unique[0]}
+    if "aurn" in unique:
+        return {"aurn"}
+    return set()
+
+
+def _station_metadata_attributes(station: Dict[str, Any]) -> Dict[str, Any]:
+    props = station.get("properties", {}) if isinstance(station.get("properties"), dict) else {}
+    attributes: Dict[str, Any] = {}
+    operator = props.get("operator") or station.get("operator")
+    if operator:
+        attributes["operator"] = operator
+    status = props.get("status") or station.get("status")
+    if status:
+        attributes["status"] = status
+    return attributes
+
+
+def _resolve_station_ref(station: Dict[str, Any]) -> Optional[str]:
+    props = station.get("properties", {}) if isinstance(station.get("properties"), dict) else {}
+    ref = station.get("id") or props.get("id")
+    if ref is None:
+        return None
+    return str(ref)
+
+
+def _resolve_service_ref(
+    station: Dict[str, Any],
+    station_ref: Optional[str],
+    station_service_ref_map: Optional[Dict[str, str]] = None,
+    default_service_ref: Optional[str] = None,
+) -> Optional[str]:
+    props = station.get("properties", {}) if isinstance(station.get("properties"), dict) else {}
+    raw_service = station.get("service") or props.get("service")
+    service_ref = None
+    if isinstance(raw_service, dict):
+        service_ref = raw_service.get("id")
+    elif raw_service is not None:
+        service_ref = str(raw_service)
+    if station_service_ref_map and station_ref:
+        mapped = station_service_ref_map.get(str(station_ref))
+        if mapped:
+            service_ref = mapped
+    if not service_ref and default_service_ref:
+        service_ref = default_service_ref
+    if service_ref is None:
+        return None
+    return str(service_ref)
+
+
+def _index_station_rows(rows: Iterable[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
+    grouped: Dict[str, List[Dict[str, Any]]] = {}
+    for row in rows:
+        station_ref = row.get("station_ref")
+        if station_ref is None:
+            continue
+        grouped.setdefault(str(station_ref), []).append(row)
+    return grouped
+
+
+def _select_station_row(
+    station_ref: str,
+    service_ref: Optional[str],
+    station_rows: Dict[str, List[Dict[str, Any]]],
+) -> Optional[Dict[str, Any]]:
+    candidates = station_rows.get(str(station_ref), [])
+    if service_ref is not None:
+        for row in candidates:
+            if str(row.get("service_ref")) == str(service_ref):
+                return row
+    if len(candidates) == 1:
+        return candidates[0]
+    return None
+
+
+def _build_station_membership_rows(
+    station_id: int,
+    station_type: Optional[str],
+) -> List[Dict[str, Any]]:
+    codes = _station_network_codes(station_type)
+    if not codes:
+        return []
+    primary_codes = _primary_network_codes(codes)
+    rows = []
+    for code in codes:
+        rows.append(
+            {
+                "station_id": station_id,
+                "network_code": code,
+                "network_label": NETWORK_LABELS.get(code, code),
+                "is_primary": code in primary_codes,
+            }
+        )
+    return rows
 
 
 class UkAirClient:
@@ -260,6 +402,172 @@ class SupabaseWriter:
         except (TypeError, ValueError):
             return None
 
+    def ensure_network_connectors(self, networks: Dict[str, str]) -> None:
+        rows = [
+            {"connector_code": code, "label": label}
+            for code, label in networks.items()
+            if code and label
+        ]
+        if rows:
+            self.client.table("connectors").upsert(rows, on_conflict="connector_code").execute()
+
+    def fetch_station_rows(
+        self,
+        connector_id: int,
+        station_refs: Sequence[str],
+    ) -> List[Dict[str, Any]]:
+        rows: List[Dict[str, Any]] = []
+        if not station_refs:
+            return rows
+        for chunk in _chunked(list(station_refs), 200):
+            resp = (
+                self.client.table("stations")
+                .select("id,station_ref,service_ref,station_type")
+                .eq("connector_id", connector_id)
+                .in_("station_ref", list(chunk))
+                .execute()
+            )
+            data = resp.data if hasattr(resp, "data") else resp.get("data")
+            rows.extend(data or [])
+        return rows
+
+    def fetch_latest_site_register_snapshot(self) -> Optional[str]:
+        resp = (
+            self.client.table("uk_air_sos_site_register")
+            .select("snapshot_at")
+            .order("snapshot_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        rows = resp.data if hasattr(resp, "data") else resp.get("data")
+        if not rows:
+            return None
+        row = rows[0] if isinstance(rows, list) else rows
+        snapshot_at = row.get("snapshot_at") if isinstance(row, dict) else None
+        return snapshot_at
+
+    def fetch_site_register_rows(
+        self,
+        snapshot_at: str,
+        page_size: int = 1000,
+    ) -> List[Dict[str, Any]]:
+        rows: List[Dict[str, Any]] = []
+        if not snapshot_at:
+            return rows
+        offset = 0
+        while True:
+            resp = (
+                self.client.table("uk_air_sos_site_register")
+                .select("uk_air_id,site_name,latitude,longitude,networks,snapshot_at")
+                .eq("snapshot_at", snapshot_at)
+                .range(offset, offset + page_size - 1)
+                .execute()
+            )
+            data = resp.data if hasattr(resp, "data") else resp.get("data")
+            batch = data or []
+            rows.extend(batch)
+            if len(batch) < page_size:
+                break
+            offset += page_size
+        return rows
+
+    def fetch_uk_air_sos_networks(self) -> Dict[str, Dict[str, Any]]:
+        resp = (
+            self.client.table("uk_air_sos_networks")
+            .select("network_ref,network_code,network_display_name")
+            .execute()
+        )
+        rows = resp.data if hasattr(resp, "data") else resp.get("data")
+        networks: Dict[str, Dict[str, Any]] = {}
+        for row in rows or []:
+            if not isinstance(row, dict):
+                continue
+            ref = row.get("network_ref")
+            if ref:
+                networks[str(ref)] = row
+        return networks
+
+    def fetch_uk_air_sos_station_refs(
+        self, station_ids: Sequence[int]
+    ) -> Dict[int, Dict[str, Any]]:
+        if not station_ids:
+            return {}
+        refs: Dict[int, Dict[str, Any]] = {}
+        for chunk in _chunked(list(station_ids), 200):
+            resp = (
+                self.client.table("uk_air_sos_station_refs")
+                .select("station_id,uk_air_id,match_method,match_distance_m,source_snapshot_at")
+                .in_("station_id", list(chunk))
+                .execute()
+            )
+            rows = resp.data if hasattr(resp, "data") else resp.get("data")
+            for row in rows or []:
+                try:
+                    station_id = int(row.get("station_id"))
+                except (TypeError, ValueError):
+                    continue
+                refs[station_id] = row
+        return refs
+
+    def fetch_station_metadata(self, station_ids: Sequence[int]) -> Dict[int, Dict[str, Any]]:
+        if not station_ids:
+            return {}
+        metadata: Dict[int, Dict[str, Any]] = {}
+        for chunk in _chunked(list(station_ids), 200):
+            resp = (
+                self.client.table("station_metadata")
+                .select("station_id,attributes")
+                .in_("station_id", list(chunk))
+                .execute()
+            )
+            rows = resp.data if hasattr(resp, "data") else resp.get("data")
+            for row in rows or []:
+                try:
+                    station_id = int(row.get("station_id"))
+                except (TypeError, ValueError):
+                    continue
+                attributes = row.get("attributes") or {}
+                if isinstance(attributes, dict):
+                    metadata[station_id] = attributes
+        return metadata
+
+    def upsert_station_metadata(self, attributes_by_station: Dict[int, Dict[str, Any]]) -> int:
+        if not attributes_by_station:
+            return 0
+        existing = self.fetch_station_metadata(list(attributes_by_station.keys()))
+        rows = []
+        timestamp = utcnow().isoformat()
+        for station_id, attributes in attributes_by_station.items():
+            merged = dict(existing.get(station_id, {}))
+            merged.update(attributes)
+            if not merged:
+                continue
+            rows.append(
+                {
+                    "station_id": station_id,
+                    "attributes": merged,
+                    "updated_at": timestamp,
+                }
+            )
+        if rows:
+            self.client.table("station_metadata").upsert(rows, on_conflict="station_id").execute()
+        return len(rows)
+
+    def upsert_station_network_memberships(self, rows: List[Dict[str, Any]]) -> int:
+        if not rows:
+            return 0
+        self.client.table("station_network_memberships").upsert(
+            rows,
+            on_conflict="station_id,network_code",
+        ).execute()
+        return len(rows)
+
+    def upsert_station_types(self, rows: List[Dict[str, Any]]) -> int:
+        if not rows:
+            return 0
+        self.client.table("stations").upsert(rows, on_conflict="id").execute()
+        return len(rows)
+
     def upsert_reference_table(
         self,
         table: str,
@@ -337,30 +645,24 @@ class SupabaseWriter:
         skipped_limit = 10
         for station in stations:
             props = station.get("properties", {}) if isinstance(station.get("properties"), dict) else {}
-            station_ref = station.get("id") or props.get("id")
+            station_ref = _resolve_station_ref(station)
             if not station_ref:
                 if len(skipped_missing_ref) < skipped_limit:
                     skipped_missing_ref.append(
                         {
-                            "id": station.get("id"),
+                            "id": station.get("id") or props.get("id"),
                             "label": station.get("label") or props.get("label") or station.get("name"),
                             "service": station.get("service") or props.get("service"),
                         }
                     )
                 continue
             lon, lat = station_coords(station, bbox=UK_BBOX)
-            raw_service = station.get("service") or props.get("service")
-            service_ref = None
-            if isinstance(raw_service, dict):
-                service_ref = raw_service.get("id")
-            elif raw_service is not None:
-                service_ref = str(raw_service)
-            if station_service_ref_map:
-                mapped = station_service_ref_map.get(str(station_ref))
-                if mapped:
-                    service_ref = mapped
-            if not service_ref and default_service_ref:
-                service_ref = default_service_ref
+            service_ref = _resolve_service_ref(
+                station,
+                station_ref,
+                station_service_ref_map,
+                default_service_ref,
+            )
             if not service_ref:
                 if len(skipped_missing_service) < skipped_limit:
                     skipped_missing_service.append(
@@ -377,7 +679,7 @@ class SupabaseWriter:
                 "station_ref": str(station_ref),
                 "service_ref": str(service_ref),
                 "label": label,
-                "station_type": props.get("stationType") or station.get("stationType"),
+                "station_type": _station_type_from_payload(station),
                 "region": props.get("region") or station.get("region"),
                 "geometry": f"SRID=4326;POINT({lon} {lat})" if lon is not None and lat is not None else None,
                 "connector_id": connector_id,
@@ -570,21 +872,15 @@ def _normalize_station(
                 timeseries_ids.append(ts_id)
         elif entry is not None:
             timeseries_ids.append(str(entry))
-    station_ref = station.get("id") or props.get("id")
-    service_ref = _item_service_id(station) or _item_service_id(props)
-    if service_ref_map and station_ref:
-        mapped = service_ref_map.get(str(station_ref))
-        if mapped:
-            service_ref = mapped
-    if not service_ref and default_service_ref:
-        service_ref = default_service_ref
+    station_ref = _resolve_station_ref(station)
+    service_ref = _resolve_service_ref(station, station_ref, service_ref_map, default_service_ref)
     label = station.get("label") or props.get("label") or station.get("name")
     station_name = _derive_station_name(label)
     return {
         "station_ref": station_ref,
         "label": label,
         "station_name": station_name,
-        "station_type": props.get("stationType") or station.get("stationType"),
+        "station_type": _station_type_from_payload(station),
         "region": props.get("region") or station.get("region"),
         "longitude": lon,
         "latitude": lat,
@@ -630,6 +926,92 @@ def _write_csv(
             writer.writerow(row)
 
 
+def apply_station_enrichment(
+    writer: SupabaseWriter,
+    stations: Sequence[Dict[str, Any]],
+    connector_id: int,
+    station_service_ref_map: Optional[Dict[str, str]] = None,
+    default_service_ref: Optional[str] = None,
+    update_station_type: bool = True,
+    skip_metadata: bool = False,
+    skip_memberships: bool = False,
+) -> Dict[str, int]:
+    station_refs = sorted(
+        {
+            ref
+            for ref in (
+                _resolve_station_ref(station) for station in stations if isinstance(station, dict)
+            )
+            if ref
+        }
+    )
+    station_rows = writer.fetch_station_rows(connector_id, station_refs)
+    station_rows_map = _index_station_rows(station_rows)
+    missing_station = 0
+    ambiguous_station = 0
+    membership_rows: List[Dict[str, Any]] = []
+    membership_keys = set()
+    metadata_updates: Dict[int, Dict[str, Any]] = {}
+    station_type_updates: List[Dict[str, Any]] = []
+
+    for station in stations:
+        if not isinstance(station, dict):
+            continue
+        station_ref = _resolve_station_ref(station)
+        if not station_ref:
+            continue
+        service_ref = _resolve_service_ref(
+            station,
+            station_ref,
+            station_service_ref_map,
+            default_service_ref,
+        )
+        row = _select_station_row(station_ref, service_ref, station_rows_map)
+        if row is None:
+            if station_ref in station_rows_map and service_ref is None:
+                ambiguous_station += 1
+            else:
+                missing_station += 1
+            continue
+        try:
+            station_id = int(row.get("id"))
+        except (TypeError, ValueError):
+            continue
+        station_type = _station_type_from_payload(station) or row.get("station_type")
+        if update_station_type:
+            if not row.get("station_type") and station_type:
+                station_type_updates.append({"id": station_id, "station_type": station_type})
+        if not skip_metadata:
+            attributes = _station_metadata_attributes(station)
+            if attributes:
+                metadata_updates[station_id] = attributes
+        if not skip_memberships:
+            for membership in _build_station_membership_rows(station_id, station_type):
+                key = (membership["station_id"], membership["network_code"])
+                if key in membership_keys:
+                    continue
+                membership_keys.add(key)
+                membership_rows.append(membership)
+
+    if station_type_updates:
+        writer.upsert_station_types(station_type_updates)
+    if not skip_metadata and metadata_updates:
+        writer.upsert_station_metadata(metadata_updates)
+    if not skip_memberships and membership_rows:
+        writer.ensure_network_connectors(NETWORK_LABELS)
+        writer.upsert_station_network_memberships(membership_rows)
+
+    return {
+        "station_rows": len(station_rows),
+        "station_refs": len(station_refs),
+        "missing_station": missing_station,
+        "ambiguous_station": ambiguous_station,
+        "station_type_updates": len(station_type_updates),
+        "metadata_updates": len(metadata_updates),
+        "membership_rows": len(membership_rows),
+    }
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Fetch UK-AIR SOS stations for the UK.")
     parser.add_argument(
@@ -661,6 +1043,21 @@ def parse_args() -> argparse.Namespace:
         "--skip-metadata",
         action="store_true",
         help="Skip phenomena/procedures/offerings upserts when writing to Supabase.",
+    )
+    parser.add_argument(
+        "--skip-station-metadata",
+        action="store_true",
+        help="Skip station_metadata upserts when writing to Supabase.",
+    )
+    parser.add_argument(
+        "--skip-network-memberships",
+        action="store_true",
+        help="Skip station_network_memberships upserts when writing to Supabase.",
+    )
+    parser.add_argument(
+        "--skip-station-type-backfill",
+        action="store_true",
+        help="Skip station_type updates when writing to Supabase.",
     )
     parser.add_argument(
         "--metadata-batch-size",
@@ -738,6 +1135,35 @@ def main() -> None:
             LOG.info("Backfilled station_name for %s stations.", backfilled)
         else:
             LOG.info("No station_name backfill needed.")
+        enrichment = apply_station_enrichment(
+            writer,
+            filtered,
+            connector_id,
+            station_service_ref_map=station_service_ref_map,
+            default_service_ref=default_service_ref,
+            update_station_type=not args.skip_station_type_backfill,
+            skip_metadata=args.skip_station_metadata,
+            skip_memberships=args.skip_network_memberships,
+        )
+        if not args.skip_station_type_backfill:
+            LOG.info("Backfilled station_type for %s stations.", enrichment["station_type_updates"])
+        if not args.skip_station_metadata:
+            LOG.info("Upserted station_metadata for %s stations.", enrichment["metadata_updates"])
+        if not args.skip_network_memberships:
+            LOG.info(
+                "Upserted %s station_network_memberships rows.",
+                enrichment["membership_rows"],
+            )
+        if enrichment["missing_station"]:
+            LOG.warning(
+                "Station enrichment skipped %s stations missing in DB.",
+                enrichment["missing_station"],
+            )
+        if enrichment["ambiguous_station"]:
+            LOG.warning(
+                "Station enrichment skipped %s stations with ambiguous service_ref.",
+                enrichment["ambiguous_station"],
+            )
         writer.mark_removed(run_at, [connector_id])
 
         if not args.skip_metadata:

@@ -20,6 +20,12 @@ from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 
 from dotenv import load_dotenv
 
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if PROJECT_ROOT.name == "scripts":
+    PROJECT_ROOT = PROJECT_ROOT.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
 from scripts.uk_air_sos.uk_air_sos_ingest import (
     UK_AIR_SOS_BASE_URL,
     UK_BBOX,
