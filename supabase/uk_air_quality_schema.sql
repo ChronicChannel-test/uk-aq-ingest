@@ -549,9 +549,7 @@ create table if not exists station_pcon_queue (
   updated_at timestamptz default now()
 );
 create index if not exists station_pcon_queue_status_idx
-  on station_pcon_queue(status, created_at);
-
-create or replace function uk_aq_enqueue_station_pcon()
+  on station_pcon_queue(status, createenqueue_station_pcon()
 returns trigger
 language plpgsql
 set search_path = public, pg_catalog
@@ -618,12 +616,6 @@ begin
     where q.status = 'pending'
       and st.geometry is not null
       and (st.pcon_code is null or st.pcon_version is distinct from target_version)
-      and exists (
-        select 1
-        from timeseries ts
-        where ts.station_id = st.id
-          and ts.last_value is not null
-      )
     order by q.created_at
     for update skip locked
     limit batch_limit

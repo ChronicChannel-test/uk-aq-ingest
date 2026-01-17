@@ -22,6 +22,7 @@
 - When new tables are added, add a matching doc in `system_docs/table_info/`.
 - When new edge functions are added under `supabase/functions/`, update `.github/workflows/supabase_edge_deploy.yml` to deploy them.
 - When edge functions are modified, update `system_docs/uk_aq_edge_functions.md`.
+- When functions or logic change, update the relevant `system_docs/` pages accordingly.
 
 ## Station Name Enrichment
 - Keep enrichment logic centralized in `scripts/uk_aq_enrich_station_names.py` so report scripts stay in sync.
