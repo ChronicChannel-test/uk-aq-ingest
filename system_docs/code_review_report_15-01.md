@@ -1427,7 +1427,7 @@ in the Software without restriction...
 - uk_aq_error_log_archive.py
 - uk_aq_dropbox_test.py
 - purpleair/purpleair_get_uk_sensors.py
-- gov_uk_sos_defra_compare.py
+- uk_air_sos_compare.py
 - keepalive.mjs
 
 ### TypeScript Edge Functions (8)

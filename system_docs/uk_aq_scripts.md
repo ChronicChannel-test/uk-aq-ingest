@@ -389,7 +389,7 @@ Notes:
 - Optional folders: `SCOMM_RAW_DROPBOX_FOLDER`/`SCOMM_ERROR_DROPBOX_FOLDER` (fallback to `UK_AIR_*`).
 - Sets `stations.station_exposure` to `indoor`/`outdoor` when `location.indoor` is present.
 
-### `scripts/gov_uk_sos_defra_compare.py`
+### `scripts/uk_air_sos/uk_air_sos_compare.py`
 Purpose:
 - Fetch DEFRA last-hour readings for a station.
 - Compare DEFRA values to the latest Supabase observations for the same station.
@@ -397,9 +397,9 @@ Purpose:
 
 Common commands:
 ```
-python3 scripts/gov_uk_sos_defra_compare.py
-python3 scripts/gov_uk_sos_defra_compare.py --station-id BR11 --tolerance 1.5
-python3 scripts/gov_uk_sos_defra_compare.py --defra-url "https://uk-air.defra.gov.uk/data/site-data?f_site_id=BR11&view=last_hour"
+python3 scripts/uk_air_sos/uk_air_sos_compare.py
+python3 scripts/uk_air_sos/uk_air_sos_compare.py --station-id BR11 --tolerance 1.5
+python3 scripts/uk_air_sos/uk_air_sos_compare.py --defra-url "https://uk-air.defra.gov.uk/data/site-data?f_site_id=BR11&view=last_hour"
 ```
 
 Inputs:
