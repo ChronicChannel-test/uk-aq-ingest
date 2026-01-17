@@ -20,6 +20,7 @@ This document summarizes the schema defined in `supabase/uk_air_quality_schema.s
 - `uk_air_sos_networks`: lookup table for network labels from the UK-AIR monitoring sites register (exact `network_ref`, optional `network_code`, and display name).
 - `uk_air_sos_site_register`: snapshot of the UK-AIR monitoring sites CSV, including UK-AIR IDs, coordinates, networks array, and raw payload for audit.
 - `uk_air_sos_station_refs`: mapping of SOS `stations` to UK-AIR site ids (`uk_air_id`) with match metadata for membership backfills.
+- `breathelondon_timeseries_checkpoints`: per-site/species checkpoints for staged Breathe London data pulls.
 
 ## Geography mapping tables
 - `la_boundaries`: Local Authority polygons (MultiPolygon, 4326) with `la_code` + `la_version` for assigning stations to LAs.

@@ -532,21 +532,44 @@ python3 scripts/gov_uk_laqn/gov_uk_laqn_list_stations.py
 
 ### `scripts/breathelondon/breathelondon_ingest.py`
 Purpose:
-- Placeholder for the Breathe London ingest pipeline.
+- Ingest Breathe London Communities observations using staged checkpoints in Supabase.
+- Pulls IPM25 and INO2 data per site and stores checkpoints in `breathelondon_timeseries_checkpoints`.
 
 Common commands:
 ```
 python3 scripts/breathelondon/breathelondon_ingest.py
+python3 scripts/breathelondon/breathelondon_ingest.py --initial-days 30 --window-hours 12
+python3 scripts/breathelondon/breathelondon_ingest.py --limit 5 --dry-run
 ```
+
+Environment:
+- `BREATHELONDON_API_KEY`
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `BREATHELONDON_BASE_URL` (optional override)
+- `BREATHELONDON_CONNECTOR_CODE` / `BREATHELONDON_SERVICE_REF` (optional override)
+- `BREATHELONDON_SERVICE_LABEL` (optional override)
+- `BREATHELONDON_USER_AGENT` (optional override)
 
 ### `scripts/breathelondon/breathelondon_list_stations.py`
 Purpose:
-- Placeholder for the Breathe London station listing.
+- Fetch Breathe London station metadata and optionally upsert stations + metadata in Supabase.
 
 Common commands:
 ```
 python3 scripts/breathelondon/breathelondon_list_stations.py
+python3 scripts/breathelondon/breathelondon_list_stations.py --format csv --output uk_breathelondon_stations.csv
+python3 scripts/breathelondon/breathelondon_list_stations.py --to-supabase
 ```
+
+Environment:
+- `BREATHELONDON_API_KEY`
+- `SUPABASE_URL` (required for `--to-supabase`)
+- `SUPABASE_SERVICE_ROLE_KEY` (required for `--to-supabase`)
+- `BREATHELONDON_BASE_URL` (optional override)
+- `BREATHELONDON_CONNECTOR_CODE` / `BREATHELONDON_SERVICE_REF` (optional override)
+- `BREATHELONDON_SERVICE_LABEL` (optional override)
+- `BREATHELONDON_USER_AGENT` (optional override)
 
 ## SOS metadata glossary
 - `phenomenon`: The observed property (pollutant/parameter), e.g., NO2, O3, PM2.5.

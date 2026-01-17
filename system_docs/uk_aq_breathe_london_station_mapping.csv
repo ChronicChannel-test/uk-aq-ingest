@@ -1,7 +1,7 @@
 source_field,stations_column,transform_or_notes,suggested_storage,example_source_field
 SiteCode,station_ref,Use as unique station identifier (with connector_id/service_ref).,stations.station_ref,SiteCode
-BreatheLondon (connector code),service_ref,Set service_ref to connector_code value for BreatheLondon.,stations.service_ref,N/A
-BreatheLondon connector id,connector_id,Lookup connectors.id for breathe_london connector.,stations.connector_id,N/A
+breathelondon (connector code),service_ref,Set service_ref to connector_code value for breathelondon.,stations.service_ref,N/A
+breathelondon connector id,connector_id,Lookup connectors.id for breathelondon connector.,stations.connector_id,N/A
 SiteName,label,Use as human-friendly label; keep raw as label.,stations.label,SiteName
 SiteName,station_name,Optional duplicate of label (if you keep both for normalization).,stations.station_name,SiteName
 SiteClassification,station_type,Map directly (e.g., Urban Background/Roadside).,stations.station_type,SiteClassification
