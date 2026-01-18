@@ -37,11 +37,11 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
 ### uk_aq_latest
 - Purpose: Serve the latest values across all stations (optionally filtered by region/station/pollutant).
 - Triggered by: Web requests (read-only, no writes).
-- Returns: timeseries rows with station + phenomenon metadata, connector metadata (`connector_id`, `connector_code`, `connector_label`), `display_name`, latest values, and `station_network_memberships` (network_code, network_label, is_primary).
+- Returns: timeseries rows with station + phenomenon metadata, connector metadata (`connector_id`, `connector_code`, `connector_label` from `connectors.display_name`), `display_name`, latest values, and `station_network_memberships` (network_code, network_label, is_primary).
 - Params: `region`, `station_like`, `pollutant`, `connector_id`, `limit`, `pcon_code`.
 - Memberships are returned as-is (no filtering by network membership).
 - `display_name` logic:
-  - Uses `connectors.display_name_template` if present, with tokens `{station_name}`, `{station_label}`, `{station_ref}`.
+  - Uses `connectors.station_display_name_template` if present, with tokens `{station_name}`, `{station_label}`, `{station_ref}`.
   - Fallback is always `{station_name} - {station_ref}` (or `station_label` if `station_name` is missing).
 
 ### uk_aq_bristol_latest

@@ -531,16 +531,10 @@ def main() -> int:
     network_rules = _fetch_network_pollutant_rules(writer)
     if not network_rules:
         LOG.warning("No uk_air_sos_network_pollutants rules found; memberships will be empty.")
-    network_code_labels = {
-        row.get("network_code"): (
-            row.get("network_display_name") or row.get("network_ref") or row.get("network_code")
-        )
-        for row in network_lookup.values()
-        if row.get("network_code")
-    }
-    if network_code_labels:
-        writer.ensure_network_connectors(network_code_labels)
-    else:
+    has_network_codes = any(
+        row.get("network_code") for row in network_lookup.values() if isinstance(row, dict)
+    )
+    if not has_network_codes:
         LOG.warning("No network_code values set in uk_air_sos_networks; memberships will be empty.")
 
     station_refs = sorted(

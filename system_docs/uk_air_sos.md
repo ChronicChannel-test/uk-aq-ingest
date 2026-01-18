@@ -48,7 +48,7 @@ Applied in `scripts/uk_air_sos/uk_air_sos_ingest.py`:
 - The CSV includes network membership fields that can drive `station_network_memberships` backfills.
 - Use `--load` to load the CSV into `uk_air_sos_site_register` and `uk_air_sos_networks` in the same run.
 - Use `--load-only` with `--csv-path` to load a local CSV without downloading.
-- The load step also aligns `uk_air_sos_networks.network_display_name` to Table 3-1 naming and seeds `uk_air_sos_network_pollutants`.
+- The load step keeps existing `uk_air_sos_networks.network_display_name` values and seeds `uk_air_sos_network_pollutants`.
 
 ## Station pollutant coverage
 - Station-to-pollutant coverage is derived from `timeseries` (via `timeseries.phenomenon_id`).

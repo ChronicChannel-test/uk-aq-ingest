@@ -271,6 +271,7 @@ def _select_station_row(
 def _build_station_membership_rows(
     station_id: int,
     station_type: Optional[str],
+    network_labels: Dict[str, str],
 ) -> List[Dict[str, Any]]:
     codes = _station_network_codes(station_type)
     if not codes:
@@ -282,11 +283,26 @@ def _build_station_membership_rows(
             {
                 "station_id": station_id,
                 "network_code": code,
-                "network_label": NETWORK_LABELS.get(code, code),
+                "network_label": network_labels.get(code, code),
                 "is_primary": code in primary_codes,
             }
         )
     return rows
+
+
+def _network_label_lookup_from_register(
+    networks: Dict[str, Dict[str, Any]],
+) -> Dict[str, str]:
+    labels: Dict[str, str] = {}
+    for row in networks.values():
+        if not isinstance(row, dict):
+            continue
+        code = row.get("network_code")
+        if not code:
+            continue
+        label = row.get("network_display_name") or row.get("network_ref") or code
+        labels[str(code)] = str(label)
+    return labels
 
 
 class UkAirClient:
@@ -377,6 +393,9 @@ class SupabaseWriter:
             {
                 "connector_code": UK_AIR_SOS_CONNECTOR_CODE,
                 "label": _normalize_service_label(primary.get("label") or primary.get("name")),
+                "display_name": _normalize_service_label(
+                    primary.get("label") or primary.get("name")
+                ),
                 "service_url": primary.get("serviceUrl") or primary.get("url") or UK_AIR_SOS_BASE_URL,
             }
         ]
@@ -401,15 +420,6 @@ class SupabaseWriter:
             return int(row.get("id"))
         except (TypeError, ValueError):
             return None
-
-    def ensure_network_connectors(self, networks: Dict[str, str]) -> None:
-        rows = [
-            {"connector_code": code, "label": label}
-            for code, label in networks.items()
-            if code and label
-        ]
-        if rows:
-            self.client.table("connectors").upsert(rows, on_conflict="connector_code").execute()
 
     def fetch_station_rows(
         self,
@@ -953,6 +963,13 @@ def apply_station_enrichment(
     membership_keys = set()
     metadata_updates: Dict[int, Dict[str, Any]] = {}
     station_type_updates: List[Dict[str, Any]] = []
+    network_label_lookup: Dict[str, str] = {}
+    if not skip_memberships:
+        network_label_lookup = _network_label_lookup_from_register(
+            writer.fetch_uk_air_sos_networks()
+        )
+        for code, label in NETWORK_LABELS.items():
+            network_label_lookup.setdefault(code, label)
 
     for station in stations:
         if not isinstance(station, dict):
@@ -986,7 +1003,11 @@ def apply_station_enrichment(
             if attributes:
                 metadata_updates[station_id] = attributes
         if not skip_memberships:
-            for membership in _build_station_membership_rows(station_id, station_type):
+            for membership in _build_station_membership_rows(
+                station_id,
+                station_type,
+                network_label_lookup,
+            ):
                 key = (membership["station_id"], membership["network_code"])
                 if key in membership_keys:
                     continue
@@ -998,7 +1019,6 @@ def apply_station_enrichment(
     if not skip_metadata and metadata_updates:
         writer.upsert_station_metadata(metadata_updates)
     if not skip_memberships and membership_rows:
-        writer.ensure_network_connectors(NETWORK_LABELS)
         writer.upsert_station_network_memberships(membership_rows)
 
     return {

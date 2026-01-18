@@ -1192,7 +1192,7 @@ async function loadConnector(
   connectorLabel: string,
 ): Promise<ConnectorRow | null> {
   const select =
-    "id,connector_code,label,service_url,poll_enabled,poll_window_hours,poll_timeseries_batch_size";
+    "id,connector_code,label,display_name,service_url,poll_enabled,poll_window_hours,poll_timeseries_batch_size";
   if (connectorId) {
     const { data } = await postgrestRequest<ConnectorRow[]>("GET", "connectors", {
       select,
@@ -1227,6 +1227,7 @@ async function loadConnector(
       {
         connector_code: connectorCode,
         label: connectorLabel,
+        display_name: connectorLabel,
         service_url: UK_AIR_SOS_BASE_URL,
       },
     ],

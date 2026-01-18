@@ -29,21 +29,6 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 DROPBOX_TOKEN_URL = "https://api.dropbox.com/oauth2/token"
 DROPBOX_UPLOAD_URL = "https://content.dropboxapi.com/2/files/upload"
 
-NETWORK_DISPLAY_NAME_OVERRIDES = {
-    "Automatic Urban and Rural Monitoring Network (AURN)": "Automatic Urban and Rural Network (AURN)",
-    "UK Urban NO2 Network": "UK Urban NO2 Network",
-    "UKEAP: Rural NO2": "UK Eutrophying and Acidifying Pollutants: NO2Net (rural diffusion tubes)",
-    "UKEAP: Acid Gases & Aerosol Network": "UK Eutrophying and Acidifying Pollutants: AGANet",
-    "UKEAP: National Ammonia Monitoring Network": "UK Eutrophying and Acidifying Pollutants: NAMN",
-    "UKEAP: Precip-Net": "UK Eutrophying and Acidifying Pollutants: PrecipNet",
-    "Black Carbon": "Black Carbon Network",
-    "Heavy Metals": "UK Heavy Metals Network",
-    "PAH Digitel (solid phase)": "Polycyclic Aromatic Hydrocarbons (PAH) Network",
-    "TOMPs": "Toxic Organic Micropollutants (TOMPs) Network",
-    "Particle Concentrations and Numbers Network": "Particle Concentrations and Numbers (PCN) Network",
-    "Rural Automatic Mercury network": "Rural Mercury Network",
-}
-
 # Default match_type for pollutant rules is "contains"; use (match_type, value) tuples if needed.
 NETWORK_POLLUTANT_RULES = {
     "Automatic Urban and Rural Monitoring Network (AURN)": [
@@ -611,11 +596,7 @@ def _load_register(
     updated_at = datetime.now(timezone.utc).isoformat()
     for ref in sorted(network_refs):
         existing = existing_networks.get(ref, {})
-        display_name = (
-            NETWORK_DISPLAY_NAME_OVERRIDES.get(ref)
-            or existing.get("network_display_name")
-            or ref
-        )
+        display_name = existing.get("network_display_name") or ref
         payload = {
             "network_ref": ref,
             "network_display_name": display_name,

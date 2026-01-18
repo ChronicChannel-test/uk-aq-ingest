@@ -8,7 +8,7 @@ This document summarizes the schema defined in `supabase/uk_air_quality_schema.s
 
 ## Core reference tables
 - External identifiers that arrive as text (even if numeric) are stored as `*_ref`; all `*_id` columns are internal bigint keys.
-- `connectors`: network connectors with bigint `id` (internal) and `connector_code` for filename prefixes, plus URL and polling fields (`display_name_template`, `overwrite_station_name`, `poll_enabled`, `poll_interval_minutes`, `poll_window_hours`, `poll_timeseries_batch_size`, `stations_bbox_supported`, `timeseries_station_filter_supported`, `last_polled_at`).
+- `connectors`: network connectors with bigint `id` (internal) and `connector_code` for filename prefixes, plus `label` (source label) and `display_name` (UI), URL and polling fields (`station_display_name_template`, `overwrite_station_name`, `poll_enabled`, `poll_interval_minutes`, `poll_window_hours`, `poll_timeseries_batch_size`, `stations_bbox_supported`, `timeseries_station_filter_supported`, `last_polled_at`).
 - `categories`: high-level grouping, per connector.
 - `phenomena`: what is measured (pollutant/parameter), per connector; includes optional `eionet_uri` + `notation`.
 - `offerings`: logical groupings, per connector + `service_ref`.
@@ -16,7 +16,7 @@ This document summarizes the schema defined in `supabase/uk_air_quality_schema.s
 - `procedures`: sensors/methods; optional raw_formats list, per connector + `service_ref`.
 - `stations`: monitoring sites; bigint `id` (internal) with `station_ref` (external) and `service_ref` (remote SOS service id), unique `(connector_id, service_ref, station_ref)`, plus lifecycle fields `first_seen_at`, `last_seen_at`, `removed_at`. Includes `station_name` as a cleaned display name, `station_type` as the service-provided classification, `station_exposure` for indoor/outdoor, and stores `la_code`/`la_version` and `pcon_code`/`pcon_version` for geography lookups.
 - `station_metadata`: per-station JSON attributes for network-specific fields not stored on `stations` (ownership, device, status, siting metadata).
-- `station_network_memberships`: multi-network membership metadata for stations, including a `network_code` (FK to `connectors.connector_code`) and `is_primary` flag for preferred ingest source.
+- `station_network_memberships`: multi-network membership metadata for stations, including a `network_code` (aligned to `uk_air_sos_networks.network_code`) and `is_primary` flag for preferred ingest source.
 - `uk_air_sos_networks`: lookup table for network labels from the UK-AIR monitoring sites register (exact `network_ref`, optional `network_code`, and display name).
 - `uk_air_sos_network_pollutants`: pollutant matching rules used to filter SOS network memberships by pollutant coverage.
 - `uk_air_sos_site_register`: snapshot of the UK-AIR monitoring sites CSV, including UK-AIR IDs, coordinates, networks array, and raw payload for audit.

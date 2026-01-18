@@ -779,6 +779,7 @@ class SupabaseWriter:
         payload = {
             "connector_code": SCOMM_CONNECTOR_CODE,
             "label": SCOMM_SERVICE_LABEL,
+            "display_name": SCOMM_SERVICE_LABEL,
             "service_url": SCOMM_BASE_URL,
             "overwrite_station_name": False,
             "poll_enabled": True,

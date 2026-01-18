@@ -5,7 +5,9 @@ Defines each network connector and its polling configuration.
 ## Fields
 - id: Internal bigint primary key (generated identity).
 - connector_code: Short connector code used as filename prefix for connector outputs.
-- label: Human-readable connector name.
+- label: Source label from the upstream service.
+- display_name: UI-friendly connector name (curated).
+- station_display_name_template: Template for station display names, with tokens `{station_name}`, `{station_label}`, `{station_ref}`.
 - service_url: Base URL for the SOS API (if applicable).
 - overwrite_station_name: Whether station ingests may overwrite existing `stations.station_name` values (default true).
 - poll_enabled: Whether scheduled polling should run for this connector (default true).

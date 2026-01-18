@@ -54,7 +54,7 @@ BREATHELONDON_CONNECTOR_CODE = (
 )
 BREATHELONDON_SERVICE_REF = os.getenv("BREATHELONDON_SERVICE_REF") or BREATHELONDON_CONNECTOR_CODE
 BREATHELONDON_SERVICE_LABEL = (
-    os.getenv("BREATHELONDON_SERVICE_LABEL") or "Breathe London Communities"
+    os.getenv("BREATHELONDON_SERVICE_LABEL") or "Breathe London"
 )
 BREATHELONDON_USER_AGENT = os.getenv("BREATHELONDON_USER_AGENT", "uk-air-quality-networks")
 
@@ -219,6 +219,7 @@ class SupabaseWriter:
         payload = {
             "connector_code": BREATHELONDON_CONNECTOR_CODE,
             "label": BREATHELONDON_SERVICE_LABEL,
+            "display_name": BREATHELONDON_SERVICE_LABEL,
             "service_url": BREATHELONDON_BASE_URL,
             "stations_bbox_supported": False,
             "timeseries_station_filter_supported": False,

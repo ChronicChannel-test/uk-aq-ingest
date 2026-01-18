@@ -114,7 +114,7 @@ async function loadLatest({ region, pconCode, stationLike, connectorId, pollutan
   const phenomenonSelect = pollutantKey
     ? "phenomenon:phenomena!inner(id,label,notation,eionet_uri,pollutant_label)"
     : "phenomenon:phenomena(id,label,notation,eionet_uri,pollutant_label)";
-  const connectorSelect = "connector:connectors(id,connector_code,label,display_name_template)";
+  const connectorSelect = "connector:connectors(id,connector_code,label,display_name,station_display_name_template)";
   const stationSelect =
     "station:stations(id,station_ref,label,station_name,region,pcon_code,pcon_version,connector_id,station_network_memberships(network_code,network_label,is_primary))";
   const stationSelectInner =
@@ -187,11 +187,11 @@ async function loadLatest({ region, pconCode, stationLike, connectorId, pollutan
       ...row,
       connector_id: connector?.id ?? row.connector_id ?? null,
       connector_code: connector?.connector_code ?? null,
-      connector_label: connector?.label ?? null,
+      connector_label: connector?.display_name ?? connector?.label ?? null,
       station_label: resolveStationLabel(row.station?.label, row.station?.station_ref, row.label),
       station_name: row.station?.station_name ?? null,
       display_name: formatDisplayName(
-        connector?.display_name_template,
+        connector?.station_display_name_template,
         row.station?.station_name,
         resolveStationLabel(row.station?.label, row.station?.station_ref, row.label),
         row.station?.station_ref,

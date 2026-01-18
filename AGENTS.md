@@ -6,6 +6,8 @@
 - AQ means Air Quality in this project.
 - For SOS-derived UK networks, use `gov_uk_<network>_` prefixes (e.g., `gov_uk_aurn_`) and place them under `scripts/gov_uk_<network>/`.
 - For non-SOS networks, use the network prefix (e.g., `sensorcommunity_`) and place them under a matching `scripts/<network>/` directory.
+- Connectors represent data sources; SOS networks live in `uk_air_sos_networks` (use `network_display_name` for UI) and must not be added to `connectors`. Non-SOS connectors are 1:1 with their network.
+- Terminology: `*_ref` = source identifier; `*_code` = internal unique code; `label` = raw source label string; `display_name` = UI-friendly name we curate.
 
 ## Runtime
 - Use `python3` for all Python scripts and commands.
@@ -25,6 +27,8 @@
 - When new edge functions are added under `supabase/functions/`, update `.github/workflows/supabase_edge_deploy.yml` to deploy them.
 - When edge functions are modified, update `system_docs/uk_aq_edge_functions.md`.
 - When functions or logic change, update the relevant `system_docs/` pages accordingly.
+- `system_docs/` is markdown-only; store data files under `network_info/` in the relevant network directory.
+- Naming for any file/function: single-network uses the network name prefix; all SOS networks use `uk_air_sos_`; all networks use `uk_aq_`.
 
 ## Station Name Enrichment
 - Keep enrichment logic centralized in `scripts/uk_aq_enrich_station_names.py` so report scripts stay in sync.

@@ -550,7 +550,7 @@ async function loadConnector(
   connectorLabel: string,
   serviceUrl: string,
 ): Promise<ConnectorRow | null> {
-  const select = "id,connector_code,label,service_url,overwrite_station_name";
+  const select = "id,connector_code,label,display_name,service_url,overwrite_station_name";
   if (connectorId) {
     const { data } = await postgrestRequest<ConnectorRow[]>("GET", "connectors", {
       select,
@@ -579,6 +579,7 @@ async function loadConnector(
       {
         connector_code: connectorCode,
         label: connectorLabel,
+        display_name: connectorLabel,
         service_url: serviceUrl,
         overwrite_station_name: false,
         poll_enabled: true,

@@ -862,6 +862,9 @@ class SupabaseWriter:
             {
                 "connector_code": UK_AIR_SOS_CONNECTOR_CODE,
                 "label": _normalize_service_label(primary.get("label") or primary.get("name")),
+                "display_name": _normalize_service_label(
+                    primary.get("label") or primary.get("name")
+                ),
                 "service_url": primary.get("serviceUrl") or primary.get("url") or UK_AIR_SOS_BASE_URL,
             }
         ]
