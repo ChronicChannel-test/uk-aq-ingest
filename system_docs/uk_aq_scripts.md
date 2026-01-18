@@ -396,8 +396,8 @@ Environment:
 - `UK_AQ_STATIONS_DROPBOX_DIR` (optional)
 
 Error logging:
-- Writes JSON error logs to `error_logs/<YYYY-MM-DD>/uk_aq_error_<timestamp>_<uuid>.json`.
-- Uploads the error log to Dropbox under `<UK_AQ_DROPBOX_ROOT>/error_logs/<YYYY-MM-DD>/` when credentials are available.
+- Writes JSON error logs to `error_log/<YYYY-MM-DD>/uk_aq_error_<timestamp>_<uuid>.json`.
+- Uploads the error log to Dropbox under `<UK_AQ_DROPBOX_ROOT>/error_log/<YYYY-MM-DD>/` when credentials are available.
 
 ### `scripts/sensorcommunity/sensorcommunity_list_stations.py`
 Purpose:

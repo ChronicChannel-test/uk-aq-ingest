@@ -28,7 +28,7 @@ DROPBOX_UPLOAD_URL = "https://content.dropboxapi.com/2/files/upload"
 
 DEFAULT_PAGE_SIZE = 1000
 DEFAULT_DROPBOX_DIR = "uk_aq_stations"
-DEFAULT_ERROR_LOG_DIR = "error_logs"
+DEFAULT_ERROR_LOG_DIR = "error_log"
 
 
 def parse_args() -> argparse.Namespace:
