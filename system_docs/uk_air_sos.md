@@ -40,6 +40,7 @@ Applied in `scripts/uk_air_sos/uk_air_sos_ingest.py`:
 - SOS station payloads do not currently expose `stationType`; use the site register CSV for membership backfills.
 - `uk_air_sos_station_refs` stores the resolved UK-AIR site id for each SOS station to join against the site register.
 - `stations.station_type` is backfilled with the primary network code (single network or AURN-priority).
+- `station_network_memberships` is the authoritative source for SOS multi-network membership so the UI can show stations in multiple networks.
 
 ## Site register
 - `scripts/uk_air_sos/uk_air_sos_site_register.py` downloads the UK-AIR monitoring sites CSV.

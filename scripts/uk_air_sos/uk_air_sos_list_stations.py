@@ -62,13 +62,13 @@ UK_BBOX = {
 }
 
 NETWORK_TYPE_MAP = {
-    "AURN": "aurn",
+    "AURN": "gov_uk_aurn",
     "LAQN": "laqn",
     "WAQN": "waqn",
 }
 
 NETWORK_LABELS = {
-    "aurn": "AURN",
+    "gov_uk_aurn": "GOV.UK AURN",
     "laqn": "LAQN",
     "waqn": "WAQN",
 }
@@ -194,8 +194,8 @@ def _primary_network_codes(codes: Sequence[str]) -> Set[str]:
     unique = sorted(set(codes))
     if len(unique) == 1:
         return {unique[0]}
-    if "aurn" in unique:
-        return {"aurn"}
+    if "gov_uk_aurn" in unique:
+        return {"gov_uk_aurn"}
     return set()
 
 

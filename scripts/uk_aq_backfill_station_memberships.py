@@ -220,8 +220,8 @@ def _primary_network_code(codes: Iterable[str]) -> Optional[str]:
     unique = sorted({code for code in codes if code})
     if len(unique) == 1:
         return unique[0]
-    if "aurn" in unique:
-        return "aurn"
+    if "gov_uk_aurn" in unique:
+        return "gov_uk_aurn"
     return None
 
 
@@ -258,6 +258,36 @@ def _upsert_with_progress(
         writer.client.table(table).upsert(chunk, on_conflict=on_conflict).execute()
     print()
     return len(rows)
+
+
+def _update_station_types(
+    writer: SupabaseWriter, rows: List[Dict[str, Any]], batch_size: int
+) -> int:
+    if not rows:
+        return 0
+    grouped: Dict[str, List[int]] = {}
+    for row in rows:
+        station_type = row.get("station_type")
+        if not station_type:
+            continue
+        try:
+            station_id = int(row.get("id"))
+        except (TypeError, ValueError):
+            continue
+        grouped.setdefault(str(station_type), []).append(station_id)
+
+    updated = 0
+    for station_type, station_ids in grouped.items():
+        for idx in range(0, len(station_ids), batch_size):
+            chunk = station_ids[idx : idx + batch_size]
+            print(".", end="", flush=True)
+            writer.client.table("stations").update({"station_type": station_type}).in_(
+                "id", chunk
+            ).execute()
+            updated += len(chunk)
+    if grouped:
+        print()
+    return updated
 
 
 def _resolve_station_ids(stations: List[dict]) -> List[str]:
@@ -530,13 +560,7 @@ def main() -> int:
         )
     if station_type_updates:
         LOG.info("Updating station_type for %s stations...", len(station_type_updates))
-        _upsert_with_progress(
-            writer,
-            "stations",
-            station_type_updates,
-            on_conflict="id",
-            batch_size=args.write_batch_size,
-        )
+        _update_station_types(writer, station_type_updates, batch_size=args.write_batch_size)
     if not args.skip_network_memberships and membership_rows:
         LOG.info("Upserting station_network_memberships...")
         _upsert_with_progress(
