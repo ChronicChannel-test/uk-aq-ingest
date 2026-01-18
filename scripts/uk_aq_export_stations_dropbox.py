@@ -249,7 +249,7 @@ def _iter_stations(page_size: int) -> Iterable[Dict[str, Any]]:
             .select(
                 "id,station_ref,label,station_name,station_type,station_exposure,region,"
                 "la_code,la_version,pcon_code,pcon_version,service_ref,connector_id,geometry,"
-                "connector:connectors!stations_connector_id(connector_code)"
+                "connector:connectors!connector_id(connector_code)"
 
             )
             .range(offset, offset + page_size - 1)
