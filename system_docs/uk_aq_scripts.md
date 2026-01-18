@@ -344,6 +344,25 @@ Notes:
 - The script writes a timestamped filename locally and to Dropbox (e.g., `uk_air_sos_site_register_YYYYMMDDTHHMMSSZ.csv`).
 - When `--load` is used, it preserves existing `uk_air_sos_networks.network_display_name` values and upserts `uk_air_sos_network_pollutants`.
 
+### `scripts/uk_air_sos/uk_air_sos_membership_report.py`
+Purpose:
+- Generate a detailed CSV report for SOS membership backfills (pollutant keys, register networks, allowed/filtered networks, memberships).
+
+Common commands:
+```
+python3 scripts/uk_air_sos/uk_air_sos_membership_report.py
+python3 scripts/uk_air_sos/uk_air_sos_membership_report.py --snapshot-at "<timestamp>"
+python3 scripts/uk_air_sos/uk_air_sos_membership_report.py --output network_info/UK-Air-SOS/uk_air_sos_membership_report.csv
+```
+
+Environment:
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+
+Notes:
+- Defaults to the latest `uk_air_sos_site_register.snapshot_at`.
+- Writes to `network_info/UK-Air-SOS/` with a timestamped filename when `--output` is omitted.
+
 
 ### `scripts/uk_air_sos/uk_air_sos_list_stations.py`
 Purpose:
