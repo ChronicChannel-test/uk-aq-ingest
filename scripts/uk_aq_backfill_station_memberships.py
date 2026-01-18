@@ -4,6 +4,7 @@ Backfill station memberships and station_type from UK-AIR SOS sources.
 
 Default source is the UK-AIR monitoring sites register (uk_air_sos_site_register),
 with optional fallback to SOS stationType values.
+Network memberships from the register are filtered by uk_air_sos_network_pollutants.
 
 Requires:
 - SUPABASE_URL
@@ -18,7 +19,7 @@ import sys
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
 from dotenv import load_dotenv
 
@@ -31,6 +32,7 @@ from scripts.uk_air_sos.uk_air_sos_list_stations import (
     UK_BBOX,
     SupabaseWriter,
     UkAirClient,
+    _chunked,
     _derive_station_name,
     _index_station_rows,
     _resolve_service_ref,
@@ -50,6 +52,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 
 DEFAULT_MATCH_DISTANCE_M = 1000.0
 DEFAULT_MATCH_DISTANCE_NO_NAME_M = 250.0
+_POLLUTANT_PARENS_RE = re.compile(r"\s*\([^)]*\)")
 
 
 def parse_args() -> argparse.Namespace:
@@ -136,6 +139,127 @@ def _normalize_name(value: Optional[str]) -> Optional[str]:
         return None
     cleaned = re.sub(r"[^A-Za-z0-9]+", " ", value).strip().upper()
     return cleaned or None
+
+
+def _normalize_pollutant_key(value: Optional[str]) -> Optional[str]:
+    if not value:
+        return None
+    cleaned = re.sub(r"[^a-z0-9]+", "", str(value).lower()).strip()
+    return cleaned or None
+
+
+def _pollutant_keys_from_text(value: Optional[str]) -> List[str]:
+    if not value:
+        return []
+    raw = str(value).strip()
+    if not raw:
+        return []
+    stripped = _POLLUTANT_PARENS_RE.sub("", raw).strip()
+    keys = {_normalize_pollutant_key(raw), _normalize_pollutant_key(stripped)}
+    return [key for key in keys if key]
+
+
+def _pollutant_keys_from_phenomenon(row: Dict[str, Any]) -> List[str]:
+    keys: List[str] = []
+    for field in ("pollutant_label", "label", "notation"):
+        keys.extend(_pollutant_keys_from_text(row.get(field)))
+    return keys
+
+
+def _fetch_network_pollutant_rules(writer: SupabaseWriter) -> Dict[str, List[Tuple[str, str]]]:
+    resp = (
+        writer.client.table("uk_air_sos_network_pollutants")
+        .select("network_ref,match_type,match_value")
+        .execute()
+    )
+    rows = resp.data if hasattr(resp, "data") else resp.get("data")
+    rules: Dict[str, List[Tuple[str, str]]] = {}
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+        ref = row.get("network_ref")
+        if not ref:
+            continue
+        match_type = (row.get("match_type") or "contains").strip().lower()
+        value = _normalize_pollutant_key(row.get("match_value"))
+        if not value:
+            continue
+        rules.setdefault(str(ref), []).append((match_type, value))
+    return rules
+
+
+def _fetch_station_pollutant_keys(
+    writer: SupabaseWriter, station_ids: Sequence[int], batch_size: int
+) -> Dict[int, Set[str]]:
+    if not station_ids:
+        return {}
+    station_to_phenomena: Dict[int, Set[int]] = {}
+    phenomena_ids: Set[int] = set()
+    for chunk in _chunked([str(val) for val in station_ids], batch_size):
+        resp = (
+            writer.client.table("timeseries")
+            .select("station_id,phenomenon_id")
+            .in_("station_id", list(chunk))
+            .execute()
+        )
+        rows = resp.data if hasattr(resp, "data") else resp.get("data")
+        for row in rows or []:
+            try:
+                station_id = int(row.get("station_id"))
+                phenomenon_id = int(row.get("phenomenon_id"))
+            except (TypeError, ValueError):
+                continue
+            station_to_phenomena.setdefault(station_id, set()).add(phenomenon_id)
+            phenomena_ids.add(phenomenon_id)
+
+    phenomena_labels: Dict[int, List[str]] = {}
+    for chunk in _chunked([str(val) for val in phenomena_ids], batch_size):
+        resp = (
+            writer.client.table("phenomena")
+            .select("id,label,notation,pollutant_label")
+            .in_("id", list(chunk))
+            .execute()
+        )
+        rows = resp.data if hasattr(resp, "data") else resp.get("data")
+        for row in rows or []:
+            try:
+                phen_id = int(row.get("id"))
+            except (TypeError, ValueError):
+                continue
+            phenomena_labels.setdefault(phen_id, []).extend(_pollutant_keys_from_phenomenon(row))
+
+    station_pollutants: Dict[int, Set[str]] = {}
+    for station_id, phen_ids in station_to_phenomena.items():
+        keys: Set[str] = set()
+        for phen_id in phen_ids:
+            for key in phenomena_labels.get(phen_id, []):
+                if key:
+                    keys.add(key)
+        if keys:
+            station_pollutants[station_id] = keys
+    return station_pollutants
+
+
+def _network_allows_pollutants(
+    network_ref: str,
+    pollutant_keys: Set[str],
+    rules: Dict[str, List[Tuple[str, str]]],
+) -> bool:
+    if not network_ref or not pollutant_keys:
+        return False
+    matchers = rules.get(network_ref, [])
+    if not matchers:
+        return False
+    for match_type, value in matchers:
+        if not value:
+            continue
+        if match_type == "exact":
+            if value in pollutant_keys:
+                return True
+            continue
+        if any(value in key for key in pollutant_keys):
+            return True
+    return False
 
 
 def _station_display_name(station: Dict[str, Any]) -> Optional[str]:
@@ -404,6 +528,9 @@ def main() -> int:
         row.get("uk_air_id"): row for row in register_rows if row.get("uk_air_id")
     }
     network_lookup = writer.fetch_uk_air_sos_networks()
+    network_rules = _fetch_network_pollutant_rules(writer)
+    if not network_rules:
+        LOG.warning("No uk_air_sos_network_pollutants rules found; memberships will be empty.")
     network_code_labels = {
         row.get("network_code"): (
             row.get("network_display_name") or row.get("network_ref") or row.get("network_code")
@@ -436,6 +563,10 @@ def main() -> int:
         except (TypeError, ValueError):
             continue
     existing_refs = writer.fetch_uk_air_sos_station_refs(station_ids)
+    pollutant_batch_size = min(args.write_batch_size, 50)
+    station_pollutant_keys = _fetch_station_pollutant_keys(
+        writer, station_ids, batch_size=pollutant_batch_size
+    )
 
     membership_rows: List[Dict[str, Any]] = []
     membership_keys = set()
@@ -448,6 +579,9 @@ def main() -> int:
     ambiguous_match = 0
     unmatched = 0
     skipped_existing = 0
+    missing_pollutants = 0
+    filtered_networks = 0
+    missing_network_rules = set()
     unmapped_network_refs = set()
 
     for station in filtered:
@@ -525,9 +659,27 @@ def main() -> int:
         network_refs = register.get("networks") or []
         if not isinstance(network_refs, list):
             network_refs = []
-        code_labels = _network_codes_for_register(network_refs, network_lookup)
+
+        pollutant_keys = station_pollutant_keys.get(station_id)
+        if not pollutant_keys:
+            missing_pollutants += 1
+            continue
+
+        filtered_refs: List[str] = []
+        for ref in network_refs:
+            if _network_allows_pollutants(ref, pollutant_keys, network_rules):
+                filtered_refs.append(ref)
+                continue
+            filtered_networks += 1
+            if ref not in network_rules:
+                missing_network_rules.add(str(ref))
+
+        if not filtered_refs:
+            continue
+
+        code_labels = _network_codes_for_register(filtered_refs, network_lookup)
         if not code_labels:
-            unmapped_network_refs.update(network_refs)
+            unmapped_network_refs.update(filtered_refs)
             continue
 
         primary_code = _primary_network_code(code_labels.keys())
@@ -574,7 +726,8 @@ def main() -> int:
     LOG.info(
         "Backfill complete: station_refs=%s station_rows=%s membership_rows=%s "
         "station_type_updates=%s station_refs_upserted=%s missing_station=%s ambiguous_station=%s "
-        "missing_coords=%s ambiguous_match=%s unmatched=%s missing_register=%s skipped_existing=%s",
+        "missing_coords=%s ambiguous_match=%s unmatched=%s missing_register=%s skipped_existing=%s "
+        "missing_pollutants=%s filtered_networks=%s",
         len(station_refs),
         len(station_rows),
         len(membership_rows),
@@ -587,11 +740,18 @@ def main() -> int:
         unmatched,
         missing_register,
         skipped_existing,
+        missing_pollutants,
+        filtered_networks,
     )
     if unmapped_network_refs:
         LOG.warning(
             "Unmapped network labels (no network_code set): %s",
             ", ".join(sorted(str(val) for val in unmapped_network_refs)),
+        )
+    if missing_network_rules:
+        LOG.warning(
+            "Networks missing pollutant rules: %s",
+            ", ".join(sorted(str(val) for val in missing_network_rules)),
         )
     return 0
 

@@ -12,3 +12,4 @@ Lookup table for network labels from the UK-AIR monitoring sites register.
 ## Notes
 - Keep `network_ref` stable; it is the authoritative reference from the register.
 - Populate `network_code` before backfilling `station_network_memberships`.
+- `network_display_name` is aligned to Table 3-1 naming during `scripts/uk_air_sos/uk_air_sos_site_register.py --load`.

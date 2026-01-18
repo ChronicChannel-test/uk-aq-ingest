@@ -300,6 +300,7 @@ Purpose:
 - Store UK-AIR site ids per station in `uk_air_sos_station_refs` for repeatable joins.
 - Populate `stations.station_type` with the primary network code (single network or AURN priority).
 - Set `station_network_memberships.is_primary` for single-network stations and prioritize AURN.
+- Filter memberships by `uk_air_sos_network_pollutants` to align networks with pollutant coverage.
 - Use `--source sos` to fall back to SOS stationType values (legacy path).
 
 Common commands:
@@ -317,6 +318,7 @@ Environment:
 Notes:
 - Uses the latest `uk_air_sos_site_register.snapshot_at` by default; use `--snapshot-at` to target a specific snapshot.
 - Adjust match tolerances with `--match-distance-m` and `--match-distance-no-name-m` if needed.
+- Ensure `uk_air_sos_network_pollutants` is populated (via `scripts/uk_air_sos/uk_air_sos_site_register.py --load`).
 
 ### `scripts/uk_air_sos/uk_air_sos_site_register.py`
 Purpose:
@@ -340,6 +342,7 @@ Environment:
  - `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (required for `--load`/`--load-only`)
 Notes:
 - The script writes a timestamped filename locally and to Dropbox (e.g., `uk_air_sos_site_register_YYYYMMDDTHHMMSSZ.csv`).
+- When `--load` is used, it also aligns `uk_air_sos_networks.network_display_name` to Table 3-1 naming and upserts `uk_air_sos_network_pollutants`.
 
 
 ### `scripts/uk_air_sos/uk_air_sos_list_stations.py`

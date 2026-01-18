@@ -41,12 +41,14 @@ Applied in `scripts/uk_air_sos/uk_air_sos_ingest.py`:
 - `uk_air_sos_station_refs` stores the resolved UK-AIR site id for each SOS station to join against the site register.
 - `stations.station_type` is backfilled with the primary network code (single network or AURN-priority).
 - `station_network_memberships` is the authoritative source for SOS multi-network membership so the UI can show stations in multiple networks.
+- Memberships are filtered by `uk_air_sos_network_pollutants` so only pollutant-appropriate networks are assigned.
 
 ## Site register
 - `scripts/uk_air_sos/uk_air_sos_site_register.py` downloads the UK-AIR monitoring sites CSV.
 - The CSV includes network membership fields that can drive `station_network_memberships` backfills.
 - Use `--load` to load the CSV into `uk_air_sos_site_register` and `uk_air_sos_networks` in the same run.
 - Use `--load-only` with `--csv-path` to load a local CSV without downloading.
+- The load step also aligns `uk_air_sos_networks.network_display_name` to Table 3-1 naming and seeds `uk_air_sos_network_pollutants`.
 
 ## Station pollutant coverage
 - Station-to-pollutant coverage is derived from `timeseries` (via `timeseries.phenomenon_id`).

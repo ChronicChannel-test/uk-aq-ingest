@@ -12,5 +12,6 @@ Records network memberships for stations that appear in multiple networks.
 ## Notes
 - Primary key is `(station_id, network_code)`.
 - Use `is_primary` to drive UI selection when deduplicating stations across networks.
-- Current usage: only UK-AIR SOS stations populate this table; single-network connectors rely on `connectors.label` as the UI fallback.
-- Future multi-network connectors can populate memberships to expose multi-network stations in the UI.
+- SOS-derived memberships are filtered by `uk_air_sos_network_pollutants` so stations only join networks that match their pollutant coverage.
+- Current usage: UK-AIR SOS stations populate this table; single-network connectors rely on `connectors.label` as the UI fallback.
+- Other SOS-served networks (e.g., LAQN when exposed via SOS) can also populate memberships.

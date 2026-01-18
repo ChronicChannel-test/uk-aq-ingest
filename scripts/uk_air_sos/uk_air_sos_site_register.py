@@ -29,6 +29,185 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 DROPBOX_TOKEN_URL = "https://api.dropbox.com/oauth2/token"
 DROPBOX_UPLOAD_URL = "https://content.dropboxapi.com/2/files/upload"
 
+NETWORK_DISPLAY_NAME_OVERRIDES = {
+    "Automatic Urban and Rural Monitoring Network (AURN)": "Automatic Urban and Rural Network (AURN)",
+    "UK Urban NO2 Network": "UK Urban NO2 Network",
+    "UKEAP: Rural NO2": "UK Eutrophying and Acidifying Pollutants: NO2Net (rural diffusion tubes)",
+    "UKEAP: Acid Gases & Aerosol Network": "UK Eutrophying and Acidifying Pollutants: AGANet",
+    "UKEAP: National Ammonia Monitoring Network": "UK Eutrophying and Acidifying Pollutants: NAMN",
+    "UKEAP: Precip-Net": "UK Eutrophying and Acidifying Pollutants: PrecipNet",
+    "Black Carbon": "Black Carbon Network",
+    "Heavy Metals": "UK Heavy Metals Network",
+    "PAH Digitel (solid phase)": "Polycyclic Aromatic Hydrocarbons (PAH) Network",
+    "TOMPs": "Toxic Organic Micropollutants (TOMPs) Network",
+    "Particle Concentrations and Numbers Network": "Particle Concentrations and Numbers (PCN) Network",
+    "Rural Automatic Mercury network": "Rural Mercury Network",
+}
+
+# Default match_type for pollutant rules is "contains"; use (match_type, value) tuples if needed.
+NETWORK_POLLUTANT_RULES = {
+    "Automatic Urban and Rural Monitoring Network (AURN)": [
+        "nitrogen dioxide",
+        "nitrogen oxides",
+        "nitrogen monoxide",
+        "ozone",
+        "sulphur dioxide",
+        "sulfur dioxide",
+        "carbon monoxide",
+        "pm10",
+        "pm2.5",
+        "particulate matter less than 10",
+        "particulate matter less than 2.5",
+        "particulate matter under 2.5",
+    ],
+    "UK Urban NO2 Network": ["nitrogen dioxide", "no2"],
+    "UKEAP: Rural NO2": ["nitrogen dioxide", "no2"],
+    "UKEAP: Acid Gases & Aerosol Network": [
+        "nitric acid",
+        "nitrous acid",
+        "hno3",
+        "hono",
+        "sulphur dioxide",
+        "sulfur dioxide",
+        "so2",
+        "nitrogen dioxide",
+        "no2",
+        "nitrate",
+        "no3",
+        "sulphate",
+        "sulfate",
+        "so4",
+        "chloride",
+        "cl",
+        "calcium",
+        "ca",
+        "magnesium",
+        "mg",
+        "sodium",
+        "na",
+    ],
+    "UKEAP: National Ammonia Monitoring Network": ["ammonia", "ammonium", "nh3", "nh4"],
+    "UKEAP: Precip-Net": [
+        "calcium",
+        "ca",
+        "magnesium",
+        "mg",
+        "sodium",
+        "na",
+        "potassium",
+        "k",
+        "ammonium",
+        "nh4",
+        "sulphate",
+        "sulfate",
+        "so4",
+        "chloride",
+        "cl",
+        "nitrate",
+        "no3",
+    ],
+    "Black Carbon": ["black carbon", "black_carbon"],
+    "Heavy Metals": [
+        "arsenic",
+        "cadmium",
+        "cobalt",
+        "chromium",
+        "copper",
+        "iron",
+        "manganese",
+        "nickel",
+        "lead",
+        "selenium",
+        "vanadium",
+        "zinc",
+        "aluminium",
+        "aluminum",
+        "barium",
+        "beryllium",
+        "caesium",
+        "cesium",
+        "lithium",
+        "molybdenum",
+        "rubidium",
+        "antimony",
+        "scandium",
+        "tin",
+        "strontium",
+        "titanium",
+        "uranium",
+        "tungsten",
+        "mercury",
+    ],
+    "Non-Automatic Hydrocarbon Network": ["benzene"],
+    "Automatic Hydrocarbon Network": [
+        "benzene",
+        "toluene",
+        "ethyl benzene",
+        "ethylbenzene",
+        "xylene",
+        "butadiene",
+        "butene",
+        "pentene",
+        "trimethylbenzene",
+        "ethane",
+        "ethene",
+        "ethylene",
+        "propane",
+        "butane",
+        "pentane",
+        "methylbutane",
+        "methylpentane",
+        "methylpropane",
+        "trimethylpentane",
+    ],
+    "PAH Digitel (solid phase)": [
+        "benzo",
+        "pyrene",
+        "fluoranthene",
+        "anthracene",
+        "chrysene",
+        "phenanthrene",
+        "fluorene",
+        "naphthalene",
+        "acenaph",
+        "indeno",
+        "dibenz",
+        "coronene",
+        "perylene",
+    ],
+    "PAH Deposition": [
+        "benzo",
+        "pyrene",
+        "fluoranthene",
+        "anthracene",
+        "chrysene",
+        "phenanthrene",
+        "fluorene",
+        "naphthalene",
+        "acenaph",
+        "indeno",
+        "dibenz",
+        "coronene",
+        "perylene",
+    ],
+    "Particle Concentrations and Numbers Network": [
+        "particle number",
+        "size distribution",
+        "elemental carbon",
+        "organic carbon",
+        "speciation",
+    ],
+    "Particle Size Composition": ["particle size", "size distribution", "speciation"],
+    "TOMPs": ["dioxin", "dibenzofuran", "pcdd", "pcdf", "furan"],
+    "Rural Automatic Mercury network": [
+        "mercury",
+        "reactive mercury",
+        "elemental mercury",
+        "total gaseous mercury",
+    ],
+    "Ozone / UV": ["ozone", "o3", "uv"],
+}
+
 
 class CsvLinkParser(HTMLParser):
     def __init__(self) -> None:
@@ -298,6 +477,31 @@ def _fetch_existing_networks(client) -> Dict[str, Dict[str, Any]]:
     return existing
 
 
+def _build_network_pollutant_rows(network_refs: Iterable[str]) -> Tuple[List[Dict[str, str]], Set[str]]:
+    rows: List[Dict[str, str]] = []
+    missing: Set[str] = set()
+    for ref in network_refs:
+        rules = NETWORK_POLLUTANT_RULES.get(ref)
+        if not rules:
+            missing.add(ref)
+            continue
+        for rule in rules:
+            if isinstance(rule, tuple):
+                match_type, value = rule
+            else:
+                match_type, value = "contains", rule
+            if not value:
+                continue
+            rows.append(
+                {
+                    "network_ref": ref,
+                    "match_type": match_type,
+                    "match_value": str(value),
+                }
+            )
+    return rows, missing
+
+
 def _upsert_batches(
     client,
     table: str,
@@ -312,6 +516,30 @@ def _upsert_batches(
         print(".", end="", flush=True)
         client.table(table).upsert(chunk, on_conflict=on_conflict).execute()
     print()
+
+
+def _upsert_network_pollutants(
+    client,
+    network_refs: Iterable[str],
+    batch_size: int,
+) -> None:
+    rows, missing = _build_network_pollutant_rows(network_refs)
+    if not rows:
+        LOG.warning("No network pollutant rules found for current register.")
+        return
+    _upsert_batches(
+        client,
+        "uk_air_sos_network_pollutants",
+        rows,
+        batch_size=batch_size,
+        on_conflict="network_ref,match_type,match_value",
+    )
+    LOG.info("Upserted network pollutant rules: %s", len(rows))
+    if missing:
+        LOG.warning(
+            "Missing pollutant rules for networks: %s",
+            ", ".join(sorted(missing)),
+        )
 
 
 def _read_csv_rows(csv_path: str) -> Iterable[Dict[str, str]]:
@@ -383,7 +611,11 @@ def _load_register(
     updated_at = datetime.now(timezone.utc).isoformat()
     for ref in sorted(network_refs):
         existing = existing_networks.get(ref, {})
-        display_name = existing.get("network_display_name") or ref
+        display_name = (
+            NETWORK_DISPLAY_NAME_OVERRIDES.get(ref)
+            or existing.get("network_display_name")
+            or ref
+        )
         payload = {
             "network_ref": ref,
             "network_display_name": display_name,
@@ -400,6 +632,7 @@ def _load_register(
         batch_size=batch_size,
         on_conflict="network_ref",
     )
+    _upsert_network_pollutants(client, network_refs, batch_size=batch_size)
     _upsert_batches(
         client,
         "uk_air_sos_site_register",

@@ -18,6 +18,7 @@ This document summarizes the schema defined in `supabase/uk_air_quality_schema.s
 - `station_metadata`: per-station JSON attributes for network-specific fields not stored on `stations` (ownership, device, status, siting metadata).
 - `station_network_memberships`: multi-network membership metadata for stations, including a `network_code` (FK to `connectors.connector_code`) and `is_primary` flag for preferred ingest source.
 - `uk_air_sos_networks`: lookup table for network labels from the UK-AIR monitoring sites register (exact `network_ref`, optional `network_code`, and display name).
+- `uk_air_sos_network_pollutants`: pollutant matching rules used to filter SOS network memberships by pollutant coverage.
 - `uk_air_sos_site_register`: snapshot of the UK-AIR monitoring sites CSV, including UK-AIR IDs, coordinates, networks array, and raw payload for audit.
 - `uk_air_sos_station_refs`: mapping of SOS `stations` to UK-AIR site ids (`uk_air_id`) with match metadata for membership backfills.
 - `breathelondon_timeseries_checkpoints`: per-site/species checkpoints for staged Breathe London data pulls.
