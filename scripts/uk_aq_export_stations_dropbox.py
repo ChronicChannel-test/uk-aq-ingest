@@ -28,6 +28,7 @@ DROPBOX_UPLOAD_URL = "https://content.dropboxapi.com/2/files/upload"
 
 DEFAULT_PAGE_SIZE = 1000
 DEFAULT_DROPBOX_DIR = "uk_aq_stations"
+
 DEFAULT_ERROR_LOG_DIR = "error_log"
 
 
@@ -249,6 +250,7 @@ def _iter_stations(page_size: int) -> Iterable[Dict[str, Any]]:
                 "id,station_ref,label,station_name,station_type,station_exposure,region,"
                 "la_code,la_version,pcon_code,pcon_version,service_ref,connector_id,geometry,"
                 "connector:connectors!stations_connector_id_fkey(connector_code)"
+
             )
             .range(offset, offset + page_size - 1)
             .execute()
