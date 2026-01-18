@@ -11,6 +11,8 @@ import json
 import os
 import re
 import struct
+import traceback
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
@@ -26,6 +28,7 @@ DROPBOX_UPLOAD_URL = "https://content.dropboxapi.com/2/files/upload"
 
 DEFAULT_PAGE_SIZE = 1000
 DEFAULT_DROPBOX_DIR = "uk_aq_stations"
+DEFAULT_ERROR_LOG_DIR = "error_logs"
 
 
 def parse_args() -> argparse.Namespace:
@@ -119,6 +122,60 @@ def _timestamp_utc() -> str:
     return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
 
+def _error_log_date() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+
+def _error_log_dir() -> Path:
+    log_dir = Path(DEFAULT_ERROR_LOG_DIR) / _error_log_date()
+    log_dir.mkdir(parents=True, exist_ok=True)
+    return log_dir
+
+
+def _error_log_payload(
+    exc: BaseException,
+    args: Optional[argparse.Namespace],
+) -> Dict[str, Any]:
+    return {
+        "occurred_at": datetime.now(timezone.utc).isoformat(),
+        "script": Path(__file__).name,
+        "error_type": type(exc).__name__,
+        "message": str(exc),
+        "traceback": traceback.format_exc(),
+        "args": vars(args) if args else {},
+        "env": {
+            "SUPABASE_URL_set": bool(os.getenv("SUPABASE_URL")),
+            "SUPABASE_SERVICE_ROLE_KEY_set": bool(os.getenv("SUPABASE_SERVICE_ROLE_KEY")),
+            "DROPBOX_APP_KEY_set": bool(os.getenv("DROPBOX_APP_KEY")),
+            "DROPBOX_APP_SECRET_set": bool(os.getenv("DROPBOX_APP_SECRET")),
+            "DROPBOX_REFRESH_TOKEN_set": bool(os.getenv("DROPBOX_REFRESH_TOKEN")),
+            "UK_AQ_DROPBOX_ROOT_set": bool(os.getenv("UK_AQ_DROPBOX_ROOT")),
+            "UK_AQ_STATIONS_DROPBOX_DIR_set": bool(os.getenv("UK_AQ_STATIONS_DROPBOX_DIR")),
+        },
+    }
+
+
+def _write_error_log(payload: Dict[str, Any]) -> Path:
+    log_dir = _error_log_dir()
+    filename = f"uk_aq_error_{_timestamp_utc()}_{uuid.uuid4()}.json"
+    log_path = log_dir / filename
+    log_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    return log_path
+
+
+def _upload_error_log(local_path: Path) -> None:
+    root = _dropbox_root_folder()
+    if not root:
+        print("Skipping Dropbox error log upload: UK_AQ_DROPBOX_ROOT not set.")
+        return
+    dropbox_dir = _join_dropbox_paths(root, DEFAULT_ERROR_LOG_DIR)
+    dropbox_dir = _join_dropbox_paths(dropbox_dir, _error_log_date())
+    dropbox_path = f"{dropbox_dir}/{local_path.name}"
+    access_token = _dropbox_refresh_access_token()
+    _dropbox_upload_file(access_token, local_path, dropbox_path)
+    print(f"Uploaded error log to Dropbox: {dropbox_path}")
+
+
 def _normalize_geometry(value: Any) -> Optional[Any]:
     if value is None:
         return None
@@ -191,7 +248,7 @@ def _iter_stations(page_size: int) -> Iterable[Dict[str, Any]]:
             .select(
                 "id,station_ref,label,station_name,station_type,station_exposure,region,"
                 "la_code,la_version,pcon_code,pcon_version,service_ref,connector_id,geometry,"
-                "connector:connectors(connector_code)"
+                "connector:connectors!stations_connector_id_fkey(connector_code)"
             )
             .range(offset, offset + page_size - 1)
             .execute()
@@ -207,57 +264,68 @@ def _iter_stations(page_size: int) -> Iterable[Dict[str, Any]]:
 
 
 def main() -> int:
-    args = parse_args()
-    timestamp = _timestamp_utc()
-    output_path = Path(args.output) if args.output else Path(f"uk_aq_stations_{timestamp}.json")
-    root = _dropbox_root_folder()
-    if not root:
-        raise RuntimeError("UK_AQ_DROPBOX_ROOT must be set for stations export.")
-    dropbox_dir = _join_dropbox_paths(root, args.dropbox_dir or "uk_aq_stations")
-    dropbox_path = f"{dropbox_dir}/{output_path.name}"
+    args: Optional[argparse.Namespace] = None
+    try:
+        args = parse_args()
+        timestamp = _timestamp_utc()
+        output_path = Path(args.output) if args.output else Path(f"uk_aq_stations_{timestamp}.json")
+        root = _dropbox_root_folder()
+        if not root:
+            raise RuntimeError("UK_AQ_DROPBOX_ROOT must be set for stations export.")
+        dropbox_dir = _join_dropbox_paths(root, args.dropbox_dir or "uk_aq_stations")
+        dropbox_path = f"{dropbox_dir}/{output_path.name}"
 
-    stations: List[Dict[str, Any]] = []
-    for row in _iter_stations(args.page_size):
-        geometry = _normalize_geometry(row.get("geometry"))
-        lat, lon = _coords_from_geometry(geometry)
-        coordinates = None
-        if lat is not None and lon is not None:
-            coordinates = f"{lat:.6f} {lon:.6f}"
-        connector = row.get("connector") or {}
-        stations.append(
-            {
-                "id": row.get("id"),
-                "station_ref": row.get("station_ref"),
-                "label": row.get("label"),
-                "station_name": row.get("station_name"),
-                "station_type": row.get("station_type"),
-                "station_exposure": row.get("station_exposure"),
-                "coordinates": coordinates,
-                "region": row.get("region"),
-                "la_code": row.get("la_code"),
-                "la_version": row.get("la_version"),
-                "pcon_code": row.get("pcon_code"),
-                "pcon_version": row.get("pcon_version"),
-                "geometry": geometry,
-                "service_ref": row.get("service_ref"),
-                "connector_id": row.get("connector_id"),
-                "connector_code": connector.get("connector_code"),
-            }
-        )
+        stations: List[Dict[str, Any]] = []
+        for row in _iter_stations(args.page_size):
+            geometry = _normalize_geometry(row.get("geometry"))
+            lat, lon = _coords_from_geometry(geometry)
+            coordinates = None
+            if lat is not None and lon is not None:
+                coordinates = f"{lat:.6f} {lon:.6f}"
+            connector = row.get("connector") or {}
+            stations.append(
+                {
+                    "id": row.get("id"),
+                    "station_ref": row.get("station_ref"),
+                    "label": row.get("label"),
+                    "station_name": row.get("station_name"),
+                    "station_type": row.get("station_type"),
+                    "station_exposure": row.get("station_exposure"),
+                    "coordinates": coordinates,
+                    "region": row.get("region"),
+                    "la_code": row.get("la_code"),
+                    "la_version": row.get("la_version"),
+                    "pcon_code": row.get("pcon_code"),
+                    "pcon_version": row.get("pcon_version"),
+                    "geometry": geometry,
+                    "service_ref": row.get("service_ref"),
+                    "connector_id": row.get("connector_id"),
+                    "connector_code": connector.get("connector_code"),
+                }
+            )
 
-    payload = {
-        "source": "supabase",
-        "fetched_at": datetime.now(timezone.utc).isoformat(),
-        "count": len(stations),
-        "stations": stations,
-    }
+        payload = {
+            "source": "supabase",
+            "fetched_at": datetime.now(timezone.utc).isoformat(),
+            "count": len(stations),
+            "stations": stations,
+        }
 
-    output_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-    access_token = _dropbox_refresh_access_token()
-    _dropbox_upload_file(access_token, output_path, dropbox_path)
-    print(f"Dropbox root: {root}")
-    print(f"Uploaded {output_path.name} to Dropbox: {dropbox_path}")
-    return 0
+        output_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        access_token = _dropbox_refresh_access_token()
+        _dropbox_upload_file(access_token, output_path, dropbox_path)
+        print(f"Dropbox root: {root}")
+        print(f"Uploaded {output_path.name} to Dropbox: {dropbox_path}")
+        return 0
+    except Exception as exc:
+        payload = _error_log_payload(exc, args)
+        log_path = _write_error_log(payload)
+        print(f"Wrote error log to {log_path}")
+        try:
+            _upload_error_log(log_path)
+        except Exception as upload_exc:
+            print(f"Failed to upload error log to Dropbox: {upload_exc}")
+        raise
 
 
 if __name__ == "__main__":
