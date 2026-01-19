@@ -833,16 +833,25 @@ async function upsertObservations(rows: Record<string, unknown>[]): Promise<numb
   return rows.length;
 }
 
-async function updateTimeseriesLastValues(rows: Array<{ id: number; last_value: number; last_value_at: string }>): Promise<number> {
+async function updateTimeseriesLastValues(
+  rows: Array<{ id: number; last_value: number; last_value_at: string }>,
+  errors: string[],
+): Promise<number> {
   let updated = 0;
   for (const row of rows) {
-    await postgrestRequest(
+    const { error } = await postgrestRequest(
       "PATCH",
       "timeseries",
       { id: `eq.${row.id}` },
       { last_value: row.last_value, last_value_at: row.last_value_at },
       "return=minimal",
     );
+    if (error) {
+      const message = `timeseries update failed id=${row.id}: ${error.message}`;
+      errors.push(message);
+      console.warn(message);
+      continue;
+    }
     updated += 1;
   }
   return updated;
@@ -1500,7 +1509,7 @@ serve(async (req) => {
               let checkpointsUpserted = 0;
               if (!dryRun) {
                 if (timeseriesUpdates.length) {
-                  timeseriesUpdated = await updateTimeseriesLastValues(timeseriesUpdates);
+                  timeseriesUpdated = await updateTimeseriesLastValues(timeseriesUpdates, errors);
                 }
                 if (checkpointRows.length) {
                   checkpointsUpserted = await upsertCheckpoints(checkpointRows);
