@@ -1082,7 +1082,6 @@ serve(async (req) => {
           }
         }
       }
-    }
   } catch (error) {
     status = 500;
     responsePayload = {

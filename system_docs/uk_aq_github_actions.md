@@ -18,7 +18,7 @@ This repo uses GitHub Actions for scheduled syncs and deployments.
   `uk_aq_stations`, `uk_aq_timeseries`.
 - Secrets: `SUPABASE_PROJECT_REF`, `SUPABASE_PUBLISHABLE_DEFAULT_KEY`, `SUPABASE_ANON_JWT`,
   `SUPABASE_ACCESS_TOKEN`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`,
-  `SUPABASE_DB_URL`, `UK_AQ_CRON_SECRET`.
+  `SUPABASE_DB_URL`, `SB_UK_AQ_CRON_SECRET`.
 
 ### `uk_aq_raw_dropbox.yml`
 - Trigger: manual dispatch.
