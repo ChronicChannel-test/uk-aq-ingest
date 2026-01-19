@@ -45,6 +45,7 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
   - Supports `skip_stations` to avoid station upserts; when set, stations are loaded from Supabase instead of `ListSensors`.
   - Supports `active_only` to limit polling to stations marked `enabled` or `site_active` in metadata.
   - Supports `station_refs` to limit polling to a specific set of station refs.
+  - Response includes `stations_requested`/`stations_selected` when station refs are supplied.
 - Logs:
   - Writes raw payloads to Dropbox `/raw_data/YYYY-MM-DD/` as ZIP (prefix `uk_aq_raw_edge_breathelondon_`).
   - Writes errors to `error_logs` and `/error_log/YYYY-MM-DD/` when Dropbox error logging is configured.

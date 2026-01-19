@@ -608,7 +608,9 @@ async function fetchStationsFromDb(
         if (row.removed_at) {
           continue;
         }
-        const metadata = row.station_metadata?.[0]?.attributes ?? {};
+        const metadata = Array.isArray(row.station_metadata)
+          ? row.station_metadata?.[0]?.attributes ?? {}
+          : row.station_metadata?.attributes ?? {};
         const enabled = String(metadata?.enabled ?? "").toLowerCase();
         const siteActive = String(metadata?.site_active ?? "").toLowerCase();
         const enabledOk = ["y", "yes", "true", "1"].includes(enabled);
@@ -1428,6 +1430,7 @@ serve(async (req) => {
           }
           let stationRows: Record<string, unknown>[] = [];
           let stationIdMap: Record<string, number> = {};
+          const stationRefsRequested = stationRefs.length ? stationRefs.length : null;
 
           if (skipStations) {
             const stations = await fetchStationsFromDb(
@@ -1495,14 +1498,20 @@ serve(async (req) => {
           }
 
           if (!stationRows.length) {
-            responsePayload = {
-              warning: skipStations
-                ? "No Breathe London stations found in Supabase."
-                : "No sensors returned from Breathe London.",
-            };
+              responsePayload = {
+                warning: skipStations
+                  ? "No Breathe London stations found in Supabase."
+                  : "No sensors returned from Breathe London.",
+                stations_requested: stationRefsRequested,
+                stations_selected: stationRows.length,
+              };
           } else if (skipStations) {
             if (!Object.keys(stationIdMap).length) {
-              responsePayload = { warning: "No station ids resolved for Breathe London." };
+              responsePayload = {
+                warning: "No station ids resolved for Breathe London.",
+                stations_requested: stationRefsRequested,
+                stations_selected: stationRows.length,
+              };
             }
           } else {
             stationIdMap = await fetchStationIdsByRef(
@@ -1514,7 +1523,11 @@ serve(async (req) => {
 
           if (!Object.keys(stationIdMap).length) {
             if (!responsePayload.warning) {
-              responsePayload = { warning: "No station ids resolved for Breathe London." };
+              responsePayload = {
+                warning: "No station ids resolved for Breathe London.",
+                stations_requested: stationRefsRequested,
+                stations_selected: stationRows.length,
+              };
             }
           } else {
               const phenomenonIds = dryRun
@@ -1662,6 +1675,8 @@ serve(async (req) => {
               responsePayload = {
                 connector_id: connector.id,
                 stations: stationRows.length,
+                stations_requested: stationRefsRequested,
+                stations_selected: stationRows.length,
                 species: speciesList,
                 observations_upserted: observationsUpserted,
                 timeseries_updated: timeseriesUpdated,
