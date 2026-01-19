@@ -85,6 +85,7 @@ jobs:
             sudo apt-get install -y postgresql-client
           fi
           CRON_SQL_OUT="$(mktemp)"
+          export CRON_SQL_OUT
           python3 - <<'PY'
           import os
 
