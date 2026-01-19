@@ -112,9 +112,14 @@ jobs:
           host = parsed.hostname
           if not host:
               raise SystemExit("SUPABASE_DB_URL missing host")
-          infos = socket.getaddrinfo(host, parsed.port or 5432, socket.AF_INET, socket.SOCK_STREAM)
+          try:
+              infos = socket.getaddrinfo(host, parsed.port or 5432, socket.AF_INET, socket.SOCK_STREAM)
+          except socket.gaierror as exc:
+              raise SystemExit(
+                  f"Failed to resolve IPv4 for {host}. Consider using the Supabase pooler connection string. ({exc})"
+              )
           if not infos:
-              raise SystemExit("No IPv4 address resolved for host")
+              raise SystemExit(f"No IPv4 address resolved for {host}. Consider using the pooler host.")
           ipv4 = infos[0][4][0]
           query = urllib.parse.parse_qsl(parsed.query, keep_blank_values=True)
           query.append(("hostaddr", ipv4))
