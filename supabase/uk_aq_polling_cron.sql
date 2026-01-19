@@ -38,7 +38,7 @@ select cron.schedule(
 -- Create an hourly Breathe London poll schedule (12 minutes past the hour).
 select cron.schedule(
   'ingest-breathelondon-hourly',
-  '12 * * * *',
+  '30 * * * *',
   $$
     select net.http_post(
       url := 'https://nmgierafoeuxfkkscrln.supabase.co/functions/v1/ingest_breathelondon',
