@@ -1,0 +1,209 @@
+// Subset for connector + SOS network memberships (with timeseries flow)
+// Generated from supabase/uk_aq_schema_extended.dbml
+
+Table connectors [note: 'External data sources. UK-AIR SOS is one connector that exposes many networks.'] {
+  id bigint [pk]
+  connector_code text
+  label text
+  display_name text
+  service_url text
+  station_display_name_template text
+  overwrite_station_name boolean
+  poll_enabled boolean
+  poll_interval_minutes int
+  poll_window_hours int
+  poll_timeseries_batch_size int
+  stations_bbox_supported boolean
+  timeseries_station_filter_supported boolean
+  last_polled_at timestamptz
+  created_at timestamptz
+
+  indexes {
+    (connector_code) [name: 'connectors_connector_code_uidx', unique]
+  }
+}
+
+Table uk_air_sos_networks [note: 'Network lookup from UK-AIR register: network_ref -> network_code + UI display name.'] {
+  network_ref text [pk]
+  network_code text
+  network_display_name text
+  created_at timestamptz
+  updated_at timestamptz
+
+  indexes {
+    // where network_code is not null
+    (network_code) [name: 'uk_air_sos_networks_network_code_uidx', unique]
+  }
+}
+
+Table uk_air_sos_network_pollutants [note: 'Pollutant matching rules used to filter which networks apply to a station.'] {
+  network_ref text
+  match_type text
+  match_value text
+  created_at timestamptz
+
+  indexes {
+    (network_ref, match_type, match_value) [pk]
+  }
+}
+
+Table uk_air_sos_site_register [note: 'Snapshot of UK-AIR site register (uk_air_id + networks list). Used to map SOS stations to UK-AIR sites.'] {
+  id bigint [pk]
+  uk_air_id text
+  eu_site_id text
+  emep_site_id text
+  site_name text
+  environment_type text
+  zone text
+  start_date date
+  end_date date
+  latitude double
+  longitude double
+  northing double
+  easting double
+  altitude_m double
+  networks text[]
+  aurn_pollutants_measured text
+  site_description text
+  source_url text
+  source_file text
+  snapshot_at timestamptz
+  raw_payload jsonb
+  created_at timestamptz
+
+  indexes {
+    (uk_air_id) [name: 'uk_air_sos_site_register_uk_air_id_idx']
+    (snapshot_at) [name: 'uk_air_sos_site_register_snapshot_idx']
+    // using gin
+    (networks) [name: 'uk_air_sos_site_register_networks_gin_idx']
+    (uk_air_id, snapshot_at) [name: 'uk_air_sos_site_register_snapshot_uidx', unique]
+  }
+}
+
+Table stations [note: 'SOS station metadata. station_ref comes from SOS metadata and may be per-phenomenon; use uk_air_sos_station_refs to group by uk_air_id when needed.'] {
+  id bigint [pk]
+  station_ref text
+  service_ref text
+  label text
+  station_name text
+  station_type text
+  station_exposure text
+  region text
+  la_code text
+  la_version text
+  pcon_code text
+  pcon_version text
+  geometry geography(Point, 4326)
+  connector_id bigint
+  category_id bigint
+  first_seen_at timestamptz
+  last_seen_at timestamptz
+  removed_at timestamptz
+  created_at timestamptz
+
+  indexes {
+    (connector_id, service_ref, station_ref) [name: 'stations_connector_ref_uidx', unique]
+    // using gist
+    (geometry) [name: 'stations_geom_idx']
+    // using gist
+    (geometry) [name: 'stations_geom_cast_idx']
+    (la_code) [name: 'stations_la_code_idx']
+    (la_version) [name: 'stations_la_version_idx']
+    (pcon_code) [name: 'stations_pcon_code_idx']
+    (pcon_version) [name: 'stations_pcon_version_idx']
+    // where pcon_code is null
+    (id) [name: 'stations_pcon_code_null_idx']
+  }
+}
+
+Table phenomena [note: 'Pollutant definitions per connector; joined to timeseries to label observations.'] {
+  id bigint [pk]
+  label text
+  eionet_uri text
+  notation text
+  pollutant_label text
+  connector_id bigint
+
+  indexes {
+    (connector_id, eionet_uri) [name: 'phenomena_service_eionet_uidx', unique]
+  }
+}
+
+Table timeseries [note: 'Per-phenomenon time series for a station. timeseries_ref is used for polling/observation ingestion.'] {
+  id bigint [pk]
+  timeseries_ref text
+  label text
+  uom text
+  station_id bigint
+  service_ref text
+  connector_id bigint
+  offering_id bigint
+  feature_id bigint
+  procedure_id bigint
+  phenomenon_id bigint
+  category_id bigint
+  first_value_at timestamptz
+  last_value_at timestamptz
+  last_value numeric
+  extras jsonb
+  rendering_hints jsonb
+  status_intervals jsonb
+  created_at timestamptz
+
+  indexes {
+    (connector_id, service_ref, timeseries_ref) [name: 'timeseries_connector_ref_uidx', unique]
+    (station_id) [name: 'timeseries_station_idx']
+    (phenomenon_id) [name: 'timeseries_phenomenon_idx']
+    (phenomenon_id, station_id) [name: 'timeseries_phenomenon_station_idx']
+  }
+}
+
+Table observations [note: 'Time-value measurements keyed by timeseries_id (resolved from timeseries_ref).'] {
+  timeseries_id bigint
+  observed_at timestamptz
+  value numeric
+  status text
+  created_at timestamptz
+
+  indexes {
+    (timeseries_id, observed_at) [pk]
+    (observed_at) [name: 'observations_time_idx']
+  }
+}
+
+Table uk_air_sos_station_refs [note: 'Maps SOS station_id to uk_air_id (via UK-AIR ID when available, else name+distance).'] {
+  station_id bigint [pk]
+  uk_air_id text
+  match_method text
+  match_distance_m double
+  source_snapshot_at timestamptz
+  created_at timestamptz
+  updated_at timestamptz
+
+  indexes {
+    (uk_air_id) [name: 'uk_air_sos_station_refs_uk_air_id_idx']
+    (source_snapshot_at) [name: 'uk_air_sos_station_refs_snapshot_idx']
+  }
+}
+
+Table station_network_memberships [note: 'Per-station memberships. One row per network_code; is_primary marks the preferred network.'] {
+  station_id bigint
+  network_code text
+  network_label text
+  is_primary boolean
+  created_at timestamptz
+
+  indexes {
+    (station_id, network_code) [pk]
+  }
+}
+
+Ref: phenomena.connector_id > connectors.id
+Ref: stations.connector_id > connectors.id
+Ref: station_network_memberships.station_id > stations.id
+Ref: uk_air_sos_network_pollutants.network_ref > uk_air_sos_networks.network_ref
+Ref: uk_air_sos_station_refs.station_id > stations.id
+Ref: timeseries.station_id > stations.id
+Ref: timeseries.connector_id > connectors.id
+Ref: timeseries.phenomenon_id > phenomena.id
+Ref: observations.timeseries_id > timeseries.id

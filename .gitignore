@@ -5,8 +5,6 @@ __pycache__/
 /.venv
 /supabase/.temp
 CLI-output.txt
-network_info/UK-Air-SOS/air_pollution_uk_2024_issue_1.pdf
 uk_air_sos_site_register*.csv
 gov_uk_aurn_site_register*.csv
-network_info/UK-Air-SOS/uk_air_sos_membership_backfill_report*.*
-network_info/UK-Air-SOS/gov_uk_all_site_register*.numbers
+network_info/UK-Air-SOS/

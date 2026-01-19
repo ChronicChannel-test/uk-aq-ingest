@@ -53,6 +53,7 @@ UK_AIR_SOS_SERVICE_LABEL = (
     or "UK-AIR-SOS"
 )
 UK_AIR_SOS_CONNECTOR_CODE = "uk_air_sos"
+PLACEHOLDER_STATION_REFS = {"9999999999"}
 
 UK_BBOX = {
     "west": -11.0,
@@ -217,6 +218,12 @@ def _resolve_station_ref(station: Dict[str, Any]) -> Optional[str]:
     if ref is None:
         return None
     return str(ref)
+
+
+def _is_placeholder_station_ref(station_ref: Optional[str]) -> bool:
+    if station_ref is None:
+        return False
+    return str(station_ref) in PLACEHOLDER_STATION_REFS
 
 
 def _resolve_service_ref(
@@ -435,6 +442,64 @@ class SupabaseWriter:
                 .select("id,station_ref,service_ref,station_type")
                 .eq("connector_id", connector_id)
                 .in_("station_ref", list(chunk))
+                .execute()
+            )
+            data = resp.data if hasattr(resp, "data") else resp.get("data")
+            rows.extend(data or [])
+        return rows
+
+    def flag_placeholder_stations(self, connector_id: int, station_refs: Sequence[str]) -> int:
+        rows = self.fetch_station_rows(connector_id, station_refs)
+        if not rows:
+            return 0
+        attributes_by_station = {}
+        for row in rows:
+            station_id = row.get("id")
+            if station_id is None:
+                continue
+            attributes_by_station[int(station_id)] = {
+                "is_placeholder": True,
+                "exclude_from_ui": True,
+                "placeholder_source": "uk_air_sos",
+            }
+        return self.upsert_station_metadata(attributes_by_station)
+
+    def fetch_station_rows_by_id(self, station_ids: Sequence[int]) -> Dict[int, str]:
+        if not station_ids:
+            return {}
+        mapping: Dict[int, str] = {}
+        for chunk in _chunked(list(station_ids), 200):
+            resp = (
+                self.client.table("stations")
+                .select("id,station_ref")
+                .in_("id", list(chunk))
+                .execute()
+            )
+            rows = resp.data if hasattr(resp, "data") else resp.get("data")
+            for row in rows or []:
+                try:
+                    station_id = int(row.get("id"))
+                except (TypeError, ValueError):
+                    continue
+                station_ref = row.get("station_ref")
+                if station_ref is not None:
+                    mapping[station_id] = str(station_ref)
+        return mapping
+
+    def fetch_timeseries_rows(
+        self,
+        connector_id: int,
+        timeseries_refs: Sequence[str],
+    ) -> List[Dict[str, Any]]:
+        rows: List[Dict[str, Any]] = []
+        if not timeseries_refs:
+            return rows
+        for chunk in _chunked(list(timeseries_refs), 200):
+            resp = (
+                self.client.table("timeseries")
+                .select("id,timeseries_ref,station_id,service_ref")
+                .eq("connector_id", connector_id)
+                .in_("timeseries_ref", list(chunk))
                 .execute()
             )
             data = resp.data if hasattr(resp, "data") else resp.get("data")
@@ -899,6 +964,205 @@ def _normalize_station(
     }
 
 
+def _extract_timeseries_refs(station: Dict[str, Any]) -> List[str]:
+    props = station.get("properties", {}) if isinstance(station.get("properties"), dict) else {}
+    raw = props.get("timeseries")
+    timeseries_refs: List[str] = []
+    if isinstance(raw, list):
+        for entry in raw:
+            if isinstance(entry, dict):
+                ts_id = entry.get("id")
+                if ts_id is not None:
+                    timeseries_refs.append(str(ts_id))
+            elif entry is not None:
+                timeseries_refs.append(str(entry))
+    elif isinstance(raw, dict):
+        for key, value in raw.items():
+            if isinstance(value, dict) and value.get("id") is not None:
+                timeseries_refs.append(str(value.get("id")))
+            elif key is not None:
+                timeseries_refs.append(str(key))
+    return timeseries_refs
+
+
+def _select_timeseries_row(
+    rows: List[Dict[str, Any]],
+    service_ref: Optional[str],
+) -> Optional[Dict[str, Any]]:
+    if service_ref is not None:
+        for row in rows:
+            if str(row.get("service_ref")) == str(service_ref):
+                return row
+    if len(rows) == 1:
+        return rows[0]
+    return None
+
+
+def _write_timeseries_link_check(output: str, rows: List[Dict[str, Any]]) -> None:
+    fieldnames = [
+        "station_ref",
+        "station_label",
+        "service_ref",
+        "timeseries_ref",
+        "expected_station_id",
+        "actual_station_id",
+        "actual_station_ref",
+        "actual_service_ref",
+        "issue",
+    ]
+    with open(output, "w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow(row)
+
+
+def check_timeseries_links(
+    stations: List[Dict[str, Any]],
+    writer: "SupabaseWriter",
+    connector_id: int,
+    station_service_ref_map: Optional[Dict[str, str]],
+    default_service_ref: Optional[str],
+    output: str,
+) -> int:
+    expected_rows: List[Dict[str, Any]] = []
+    for station in stations:
+        station_ref = _resolve_station_ref(station)
+        if _is_placeholder_station_ref(station_ref):
+            continue
+        if not station_ref:
+            continue
+        service_ref = _resolve_service_ref(
+            station,
+            station_ref,
+            station_service_ref_map,
+            default_service_ref,
+        )
+        label = station.get("label") or (station.get("properties") or {}).get("label") or station.get("name")
+        timeseries_refs = _extract_timeseries_refs(station)
+        for ts_ref in timeseries_refs:
+            expected_rows.append(
+                {
+                    "station_ref": station_ref,
+                    "station_label": label,
+                    "service_ref": service_ref,
+                    "timeseries_ref": ts_ref,
+                }
+            )
+
+    if not expected_rows:
+        LOG.warning("No timeseries refs found in station payload; check skipped.")
+        _write_timeseries_link_check(output, [])
+        return 0
+
+    station_refs = sorted({row["station_ref"] for row in expected_rows})
+    station_rows = writer.fetch_station_rows(connector_id, station_refs)
+    station_index = _index_station_rows(station_rows)
+    expected_station_ids: Dict[str, Optional[int]] = {}
+    for row in expected_rows:
+        station_ref = row["station_ref"]
+        service_ref = row.get("service_ref")
+        station_row = _select_station_row(station_ref, service_ref, station_index)
+        expected_station_ids[station_ref] = (
+            int(station_row.get("id")) if station_row and station_row.get("id") is not None else None
+        )
+
+    timeseries_refs = sorted({row["timeseries_ref"] for row in expected_rows})
+    timeseries_rows = writer.fetch_timeseries_rows(connector_id, timeseries_refs)
+    timeseries_by_ref: Dict[str, List[Dict[str, Any]]] = {}
+    for row in timeseries_rows:
+        ts_ref = row.get("timeseries_ref")
+        if ts_ref is None:
+            continue
+        timeseries_by_ref.setdefault(str(ts_ref), []).append(row)
+
+    station_ids = sorted(
+        {int(row["station_id"]) for row in timeseries_rows if row.get("station_id") is not None}
+    )
+    station_by_id = writer.fetch_station_rows_by_id(station_ids)
+
+    issues: List[Dict[str, Any]] = []
+    for row in expected_rows:
+        station_ref = row["station_ref"]
+        service_ref = row.get("service_ref")
+        ts_ref = row["timeseries_ref"]
+        expected_station_id = expected_station_ids.get(station_ref)
+        if expected_station_id is None:
+            issues.append(
+                {
+                    **row,
+                    "expected_station_id": None,
+                    "actual_station_id": None,
+                    "actual_station_ref": None,
+                    "actual_service_ref": None,
+                    "issue": "missing_station_row",
+                }
+            )
+            continue
+
+        ts_candidates = timeseries_by_ref.get(str(ts_ref), [])
+        if not ts_candidates:
+            issues.append(
+                {
+                    **row,
+                    "expected_station_id": expected_station_id,
+                    "actual_station_id": None,
+                    "actual_station_ref": None,
+                    "actual_service_ref": None,
+                    "issue": "missing_timeseries",
+                }
+            )
+            continue
+
+        selected = _select_timeseries_row(ts_candidates, service_ref)
+        if not selected:
+            issues.append(
+                {
+                    **row,
+                    "expected_station_id": expected_station_id,
+                    "actual_station_id": None,
+                    "actual_station_ref": None,
+                    "actual_service_ref": None,
+                    "issue": "ambiguous_timeseries",
+                }
+            )
+            continue
+
+        actual_station_id = selected.get("station_id")
+        actual_station_ref = None
+        if actual_station_id is not None:
+            actual_station_ref = station_by_id.get(int(actual_station_id))
+
+        if actual_station_id is None:
+            issues.append(
+                {
+                    **row,
+                    "expected_station_id": expected_station_id,
+                    "actual_station_id": None,
+                    "actual_station_ref": actual_station_ref,
+                    "actual_service_ref": selected.get("service_ref"),
+                    "issue": "missing_timeseries_station_id",
+                }
+            )
+            continue
+
+        if str(actual_station_id) != str(expected_station_id):
+            issues.append(
+                {
+                    **row,
+                    "expected_station_id": expected_station_id,
+                    "actual_station_id": actual_station_id,
+                    "actual_station_ref": actual_station_ref,
+                    "actual_service_ref": selected.get("service_ref"),
+                    "issue": "station_ref_mismatch",
+                }
+            )
+
+    _write_timeseries_link_check(output, issues)
+    LOG.info("Timeseries link check complete: %s issues written to %s", len(issues), output)
+    return len(issues)
+
+
 def _write_json(output: str, payload: Dict[str, Any]) -> None:
     with open(output, "w", encoding="utf-8") as handle:
         json.dump(payload, handle, indent=2)
@@ -1091,6 +1355,16 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Resolve service_ref using timeseries metadata instead of defaulting to a single service.",
     )
+    parser.add_argument(
+        "--check-timeseries-links",
+        action="store_true",
+        help="Compare payload station_ref + timeseries_ref links against Supabase timeseries rows.",
+    )
+    parser.add_argument(
+        "--check-output",
+        default="uk_air_sos_timeseries_link_check.csv",
+        help="CSV output path for --check-timeseries-links results.",
+    )
     return parser.parse_args()
 
 
@@ -1112,6 +1386,20 @@ def main() -> None:
         if args.no_filter
         else [s for s in stations if station_in_bbox_or_missing_coords(s, UK_BBOX)]
     )
+    placeholder_stations = [
+        station for station in filtered if _is_placeholder_station_ref(_resolve_station_ref(station))
+    ]
+    if placeholder_stations:
+        LOG.warning(
+            "Skipping %s placeholder station(s) with refs=%s",
+            len(placeholder_stations),
+            ", ".join(sorted({str(_resolve_station_ref(station)) for station in placeholder_stations})),
+        )
+        filtered = [
+            station
+            for station in filtered
+            if not _is_placeholder_station_ref(_resolve_station_ref(station))
+        ]
     missing_coords = sum(
         1
         for station in filtered
@@ -1137,11 +1425,24 @@ def main() -> None:
         )
         LOG.info("Resolved service ref from timeseries for %s stations.", len(station_service_ref_map))
 
+    writer: Optional[SupabaseWriter] = None
     if args.to_supabase:
         writer = SupabaseWriter()
         connector_id = writer.upsert_connectors(services)
         if connector_id is None:
             raise RuntimeError("Failed to resolve connector id for UK-AIR SOS.")
+        if placeholder_stations:
+            placeholder_refs = sorted(
+                {
+                    str(_resolve_station_ref(station))
+                    for station in placeholder_stations
+                    if _resolve_station_ref(station)
+                }
+            )
+            if placeholder_refs:
+                flagged = writer.flag_placeholder_stations(connector_id, placeholder_refs)
+                if flagged:
+                    LOG.info("Flagged %s placeholder station_metadata rows.", flagged)
         inserted = writer.upsert_stations(
             filtered,
             connector_id,
@@ -1222,6 +1523,23 @@ def main() -> None:
                     connector_id,
                     default_service_ref,
                 )
+
+    if args.check_timeseries_links:
+        if writer is None:
+            writer = SupabaseWriter()
+        connector_id = writer.get_connector_id()
+        if connector_id is None:
+            raise RuntimeError(
+                "Missing connector id for UK-AIR SOS. Run with --to-supabase at least once."
+            )
+        check_timeseries_links(
+            filtered,
+            writer,
+            connector_id,
+            station_service_ref_map,
+            default_service_ref,
+            args.check_output,
+        )
 
     if args.format == "csv":
         _write_csv(

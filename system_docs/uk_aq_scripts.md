@@ -378,6 +378,7 @@ python3 scripts/uk_air_sos/uk_air_sos_list_stations.py --to-supabase
 python3 scripts/uk_air_sos/uk_air_sos_list_stations.py --no-filter --output uk_aq_stations_all.json
 python3 scripts/uk_air_sos/uk_air_sos_list_stations.py --raw-output uk_aq_stations_raw.json
 python3 scripts/uk_air_sos/uk_air_sos_list_stations.py --service-id-from-timeseries
+python3 scripts/uk_air_sos/uk_air_sos_list_stations.py --check-timeseries-links --check-output uk_air_sos_timeseries_link_check.csv
 ```
 
 Default outputs:
@@ -394,6 +395,8 @@ Service refs:
 Notes:
 - When `--to-supabase` is enabled, station-name backfills include the existing station metadata needed to satisfy NOT NULL constraints.
 - Optional flags: `--skip-station-metadata`, `--skip-network-memberships`, `--skip-station-type-backfill`.
+- `--check-timeseries-links` compares payload station_ref/timeseries_ref links against Supabase and writes a CSV report (no data is changed).
+- Placeholder SOS station refs (e.g., `9999999999`) are skipped from outputs/upserts and flagged in `station_metadata` with `exclude_from_ui=true`.
 
 Writes to (when `--to-supabase` is set):
 - `connectors`, `stations`, `station_metadata`, `station_network_memberships`
