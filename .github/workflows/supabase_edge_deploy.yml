@@ -103,5 +103,5 @@ jobs:
           with open(out, "w", encoding="utf-8") as handle:
               handle.write(sql)
           PY
-          psql "$SUPABASE_DB_URL" -f "$CRON_SQL_OUT"
+          psql -4 "$SUPABASE_DB_URL" -f "$CRON_SQL_OUT"
           rm -f "$CRON_SQL_OUT"
