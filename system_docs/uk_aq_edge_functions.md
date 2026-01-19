@@ -44,6 +44,8 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
   - Uses `BREATHELONDON_API_KEY` for every request.
   - Supports `skip_stations` to avoid station upserts; when set, stations are loaded from Supabase instead of `ListSensors`.
   - Supports `active_only` to limit polling to stations marked `enabled` or `site_active` in metadata.
+- Logs:
+  - Writes raw payloads to Dropbox `/raw_data/YYYY-MM-DD/` as ZIP (prefix `uk_aq_raw_edge_breathelondon_`).
 
 ### uk_aq_latest
 - Purpose: Serve the latest values across all stations (optionally filtered by region/station/pollutant).
@@ -97,6 +99,8 @@ Dropbox (raw/log/error uploads):
 Dropbox folders:
   - `UK_AQ_DROPBOX_ROOT` (e.g., `/CIC-Test` or `/LIVE`)
 - `UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL` (required to enable raw uploads)
+- `BREATHELONDON_DROPBOX_ROOT` (optional override for Breathe London)
+- `BREATHELONDON_RAW_DROPBOX_ALLOWED_SUPABASE_URL` (optional allowlist override for Breathe London)
 - `SCOMM_DROPBOX_ROOT` (optional override for Sensor.Community)
 - `SCOMM_RAW_DROPBOX_ALLOWED_SUPABASE_URL` (optional allowlist override for Sensor.Community)
 

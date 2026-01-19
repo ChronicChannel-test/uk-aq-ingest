@@ -27,6 +27,24 @@ type ConnectorRow = {
   service_url: string | null;
 };
 
+type DropboxConfig = {
+  appKey: string;
+  appSecret: string;
+  refreshToken: string;
+};
+
+type RawRecorder = {
+  lines: string[];
+  responseCount: number;
+  recordEvent: (name: string, payload: Record<string, unknown>) => void;
+  recordResponse: (
+    path: string,
+    params: Record<string, string>,
+    statusCode: number,
+    payload: unknown,
+  ) => void;
+};
+
 const DEFAULT_BASE_URL = "https://api.breathelondon-communities.org/api";
 const DEFAULT_CONNECTOR_CODE = "breathelondon";
 const DEFAULT_SERVICE_LABEL = "Breathe London";
@@ -86,6 +104,22 @@ const BREATHELONDON_SERVICE_LABEL = Deno.env.get("BREATHELONDON_SERVICE_LABEL")
 const BREATHELONDON_USER_AGENT = Deno.env.get("BREATHELONDON_USER_AGENT")
   ?? DEFAULT_USER_AGENT;
 const SB_UK_AQ_CRON_SECRET = Deno.env.get("SB_UK_AQ_CRON_SECRET") ?? "";
+const DROPBOX_APP_KEY = Deno.env.get("DROPBOX_APP_KEY") ?? "";
+const DROPBOX_APP_SECRET = Deno.env.get("DROPBOX_APP_SECRET") ?? "";
+const DROPBOX_REFRESH_TOKEN = Deno.env.get("DROPBOX_REFRESH_TOKEN") ?? "";
+const DROPBOX_ALLOWED_SUPABASE_URL = Deno.env.get("BREATHELONDON_RAW_DROPBOX_ALLOWED_SUPABASE_URL")
+  ?? Deno.env.get("UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL")
+  ?? "";
+const DROPBOX_ROOT_FOLDER = (() => {
+  const raw = Deno.env.get("BREATHELONDON_DROPBOX_ROOT")
+    ?? Deno.env.get("UK_AQ_DROPBOX_ROOT")
+    ?? "";
+  return normalizeDropboxPath(raw);
+})();
+
+const DROPBOX_RAW_FOLDER = dropboxWithRoot("/raw_data");
+const DROPBOX_TOKEN_URL = "https://api.dropbox.com/oauth2/token";
+const DROPBOX_UPLOAD_URL = "https://content.dropboxapi.com/2/files/upload";
 
 const REST_BASE_URL = SUPABASE_URL
   ? `${SUPABASE_URL.replace(/\/$/, "")}/rest/v1`
@@ -355,7 +389,11 @@ async function sleep(ms: number): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function fetchJson(url: string, headers: Record<string, string>): Promise<unknown> {
+async function fetchJson(
+  url: string,
+  headers: Record<string, string>,
+  rawRecorder?: RawRecorder | null,
+): Promise<unknown> {
   for (let attempt = 1; attempt <= 3; attempt += 1) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
@@ -369,7 +407,17 @@ async function fetchJson(url: string, headers: Record<string, string>): Promise<
         const text = await resp.text();
         throw new Error(`HTTP ${resp.status}: ${text}`);
       }
-      return await resp.json();
+      const payload = await resp.json();
+      if (rawRecorder) {
+        const parsed = new URL(url);
+        const params: Record<string, string> = {};
+        parsed.searchParams.forEach((value, key) => {
+          const normalized = key.trim().toLowerCase();
+          params[key] = (normalized === "key" || normalized === "api_key") ? "redacted" : value;
+        });
+        rawRecorder.recordResponse(parsed.pathname, params, resp.status, payload);
+      }
+      return payload;
     } finally {
       clearTimeout(timeout);
     }
@@ -377,10 +425,14 @@ async function fetchJson(url: string, headers: Record<string, string>): Promise<
   return [];
 }
 
-async function listSensors(baseUrl: string, apiKey: string): Promise<Record<string, unknown>[]> {
+async function listSensors(
+  baseUrl: string,
+  apiKey: string,
+  rawRecorder?: RawRecorder | null,
+): Promise<Record<string, unknown>[]> {
   const url = new URL(`${baseUrl}/ListSensors`);
   url.searchParams.set("key", apiKey);
-  const payload = await fetchJson(url.toString(), { "User-Agent": BREATHELONDON_USER_AGENT });
+  const payload = await fetchJson(url.toString(), { "User-Agent": BREATHELONDON_USER_AGENT }, rawRecorder);
   return normalizeListSensors(payload);
 }
 
@@ -391,6 +443,7 @@ async function getClarityData(
   species: string,
   startTime: Date,
   endTime: Date,
+  rawRecorder?: RawRecorder | null,
 ): Promise<unknown> {
   const start = encodeURIComponent(formatClarityTimestamp(startTime));
   const end = encodeURIComponent(formatClarityTimestamp(endTime));
@@ -398,7 +451,7 @@ async function getClarityData(
     `${baseUrl}/getClarityData/${siteCode}/${species}/${start}/${end}/Hourly`,
   );
   url.searchParams.set("key", apiKey);
-  return await fetchJson(url.toString(), { "User-Agent": BREATHELONDON_USER_AGENT });
+  return await fetchJson(url.toString(), { "User-Agent": BREATHELONDON_USER_AGENT }, rawRecorder);
 }
 
 async function loadConnector(
@@ -826,6 +879,329 @@ function extractObservations(
   return { rows, lastObserved, lastValue };
 }
 
+function createRawRecorder(): RawRecorder {
+  const lines: string[] = [];
+  const write = (entry: Record<string, unknown>) => {
+    lines.push(JSON.stringify(entry));
+  };
+  const recorder: RawRecorder = {
+    lines,
+    responseCount: 0,
+    recordEvent: (name, payload) => {
+      write({
+        type: name,
+        recorded_at: new Date().toISOString(),
+        payload,
+      });
+    },
+    recordResponse: (path, params, statusCode, payload) => {
+      recorder.responseCount += 1;
+      write({
+        type: "response",
+        fetched_at: new Date().toISOString(),
+        path,
+        params,
+        status_code: statusCode,
+        payload,
+      });
+    },
+  };
+  write({ type: "meta", created_at: new Date().toISOString() });
+  return recorder;
+}
+
+function loadDropboxConfig(): DropboxConfig | null {
+  if (!DROPBOX_APP_KEY || !DROPBOX_APP_SECRET || !DROPBOX_REFRESH_TOKEN) {
+    return null;
+  }
+  if (!DROPBOX_ALLOWED_SUPABASE_URL || DROPBOX_ALLOWED_SUPABASE_URL !== SUPABASE_URL) {
+    return null;
+  }
+  return {
+    appKey: DROPBOX_APP_KEY,
+    appSecret: DROPBOX_APP_SECRET,
+    refreshToken: DROPBOX_REFRESH_TOKEN,
+  };
+}
+
+function normalizeDropboxPath(raw: string): string {
+  const cleaned = raw.trim();
+  if (!cleaned) {
+    return "";
+  }
+  const rooted = cleaned.startsWith("/") ? cleaned : `/${cleaned}`;
+  return rooted.replace(/\/$/, "");
+}
+
+function dropboxWithRoot(path: string): string {
+  const cleaned = normalizeDropboxPath(path);
+  if (!DROPBOX_ROOT_FOLDER) {
+    return cleaned;
+  }
+  if (!cleaned) {
+    return DROPBOX_ROOT_FOLDER;
+  }
+  if (cleaned === DROPBOX_ROOT_FOLDER || cleaned.startsWith(`${DROPBOX_ROOT_FOLDER}/`)) {
+    return cleaned;
+  }
+  return `${DROPBOX_ROOT_FOLDER}${cleaned}`;
+}
+
+function normalizeConnectorPrefix(connectorCode: string | null): string {
+  const cleaned = (connectorCode ?? "").trim().toLowerCase();
+  const normalized = cleaned.replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+  return normalized || "breathelondon";
+}
+
+function buildDropboxRawPath(
+  connectorCode: string | null,
+  timestamp: Date,
+): string {
+  const stamp = formatCompactTimestamp(timestamp);
+  const dateFolder = formatDateYmd(timestamp);
+  const prefix = normalizeConnectorPrefix(connectorCode);
+  return `${DROPBOX_RAW_FOLDER}/${dateFolder}/uk_aq_raw_edge_${prefix}_${stamp}.zip`;
+}
+
+function formatCompactTimestamp(timestamp: Date): string {
+  return timestamp.toISOString().replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z");
+}
+
+function formatDateYmd(timestamp: Date): string {
+  return timestamp.toISOString().slice(0, 10);
+}
+
+class DropboxHttpError extends Error {
+  status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+  }
+}
+
+async function dropboxRefreshAccessToken(config: DropboxConfig): Promise<string> {
+  const payload = new URLSearchParams({
+    grant_type: "refresh_token",
+    refresh_token: config.refreshToken,
+    client_id: config.appKey,
+    client_secret: config.appSecret,
+  });
+  const resp = await fetch(DROPBOX_TOKEN_URL, {
+    method: "POST",
+    body: payload,
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+  });
+  if (!resp.ok) {
+    throw new Error(`Dropbox token request failed (${resp.status})`);
+  }
+  const data = await resp.json();
+  const token = data?.access_token;
+  if (!token) {
+    throw new Error("Dropbox token response missing access_token.");
+  }
+  return token;
+}
+
+async function dropboxUploadFile(
+  accessToken: string,
+  path: string,
+  contents: string | Uint8Array,
+): Promise<void> {
+  const body = typeof contents === "string" ? new TextEncoder().encode(contents) : contents;
+  const resp = await fetch(DROPBOX_UPLOAD_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Dropbox-API-Arg": JSON.stringify({
+        path,
+        mode: "add",
+        autorename: true,
+        mute: false,
+      }),
+      "Content-Type": "application/octet-stream",
+    },
+    body,
+  });
+  if (!resp.ok) {
+    throw new DropboxHttpError(`Dropbox upload failed (${resp.status})`, resp.status);
+  }
+}
+
+async function dropboxUploadFileWithRetry(
+  accessToken: string,
+  path: string,
+  contents: string | Uint8Array,
+  refreshToken?: () => Promise<string>,
+): Promise<string> {
+  try {
+    await dropboxUploadFile(accessToken, path, contents);
+    return accessToken;
+  } catch (err) {
+    if (err instanceof DropboxHttpError && err.status === 401 && refreshToken) {
+      const refreshed = await refreshToken();
+      await dropboxUploadFile(refreshed, path, contents);
+      return refreshed;
+    }
+    throw err;
+  }
+}
+
+const CRC_TABLE = (() => {
+  const table = new Uint32Array(256);
+  for (let i = 0; i < table.length; i += 1) {
+    let c = i;
+    for (let k = 0; k < 8; k += 1) {
+      c = (c & 1) ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    }
+    table[i] = c >>> 0;
+  }
+  return table;
+})();
+
+function crc32(data: Uint8Array): number {
+  let crc = 0xffffffff;
+  for (const byte of data) {
+    const idx = (crc ^ byte) & 0xff;
+    crc = CRC_TABLE[idx] ^ (crc >>> 8);
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function toDosDateTime(date: Date): { dosTime: number; dosDate: number } {
+  const year = Math.max(1980, date.getUTCFullYear());
+  const month = date.getUTCMonth() + 1;
+  const day = date.getUTCDate();
+  const hour = date.getUTCHours();
+  const minute = date.getUTCMinutes();
+  const second = date.getUTCSeconds();
+  const dosTime = (hour << 11) | (minute << 5) | Math.floor(second / 2);
+  const dosDate = ((year - 1980) << 9) | (month << 5) | day;
+  return { dosTime, dosDate };
+}
+
+async function zipTextCompressed(filename: string, content: string): Promise<Uint8Array> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(content);
+  const nameBytes = encoder.encode(filename);
+  const crc = crc32(data);
+  const fileSize = data.length;
+  const compressed = await deflateRaw(data);
+  const compressedSize = compressed.length;
+  const { dosTime, dosDate } = toDosDateTime(new Date());
+
+  const header: number[] = [];
+  const push16 = (value: number) => {
+    header.push(value & 0xff, (value >>> 8) & 0xff);
+  };
+  const push32 = (value: number) => {
+    header.push(value & 0xff, (value >>> 8) & 0xff, (value >>> 16) & 0xff, (value >>> 24) & 0xff);
+  };
+
+  push32(0x04034b50);
+  push16(20);
+  push16(0);
+  push16(8);
+  push16(dosTime);
+  push16(dosDate);
+  push32(crc);
+  push32(compressedSize);
+  push32(fileSize);
+  push16(nameBytes.length);
+  push16(0);
+
+  const localHeader = new Uint8Array([...header, ...nameBytes]);
+  const localOffset = 0;
+  const centralOffset = localHeader.length + compressedSize;
+
+  const central: number[] = [];
+  const c16 = (value: number) => {
+    central.push(value & 0xff, (value >>> 8) & 0xff);
+  };
+  const c32 = (value: number) => {
+    central.push(value & 0xff, (value >>> 8) & 0xff, (value >>> 16) & 0xff, (value >>> 24) & 0xff);
+  };
+
+  c32(0x02014b50);
+  c16(20);
+  c16(20);
+  c16(0);
+  c16(8);
+  c16(dosTime);
+  c16(dosDate);
+  c32(crc);
+  c32(compressedSize);
+  c32(fileSize);
+  c16(nameBytes.length);
+  c16(0);
+  c16(0);
+  c16(0);
+  c16(0);
+  c32(0);
+  c32(localOffset);
+
+  const centralHeader = new Uint8Array([...central, ...nameBytes]);
+  const centralSize = centralHeader.length;
+
+  const end: number[] = [];
+  const e16 = (value: number) => {
+    end.push(value & 0xff, (value >>> 8) & 0xff);
+  };
+  const e32 = (value: number) => {
+    end.push(value & 0xff, (value >>> 8) & 0xff, (value >>> 16) & 0xff, (value >>> 24) & 0xff);
+  };
+
+  e32(0x06054b50);
+  e16(0);
+  e16(0);
+  e16(1);
+  e16(1);
+  e32(centralSize);
+  e32(centralOffset);
+  e16(0);
+
+  const endHeader = new Uint8Array(end);
+  const output = new Uint8Array(
+    localHeader.length + compressedSize + centralHeader.length + endHeader.length,
+  );
+  output.set(localHeader, 0);
+  output.set(compressed, localHeader.length);
+  output.set(centralHeader, localHeader.length + compressedSize);
+  output.set(endHeader, localHeader.length + compressedSize + centralHeader.length);
+  return output;
+}
+
+async function deflateRaw(data: Uint8Array): Promise<Uint8Array> {
+  const stream = new Blob([data]).stream().pipeThrough(new CompressionStream("deflate-raw"));
+  const buffer = await new Response(stream).arrayBuffer();
+  return new Uint8Array(buffer);
+}
+
+async function uploadDropboxRaw(
+  accessToken: string,
+  recorder: RawRecorder | null,
+  connectorCode: string | null,
+  refreshToken?: () => Promise<string>,
+): Promise<string> {
+  if (!accessToken || !recorder || recorder.responseCount === 0) {
+    return accessToken;
+  }
+  const content = recorder.lines.join("\n") + "\n";
+  if (!content.trim()) {
+    return accessToken;
+  }
+  try {
+    const rawPath = buildDropboxRawPath(connectorCode, new Date());
+    const filename = rawPath.split("/").pop() ?? "uk_aq_raw_edge.jsonl";
+    const jsonlName = filename.replace(/\.zip$/i, ".jsonl");
+    const zipped = await zipTextCompressed(jsonlName, content);
+    return await dropboxUploadFileWithRetry(accessToken, rawPath, zipped, refreshToken);
+  } catch (err) {
+    console.warn("Dropbox raw upload failed:", err);
+  }
+  return accessToken;
+}
+
 function chunk<T>(values: T[], size: number): T[][] {
   if (size <= 0) {
     return [values];
@@ -846,9 +1222,14 @@ serve(async (req) => {
     return authResponse;
   }
 
+  const dropboxConfig = loadDropboxConfig();
+  const rawRecorder = dropboxConfig ? createRawRecorder() : null;
+
   const errors: string[] = [];
   let status = 200;
   let responsePayload: Record<string, unknown> = {};
+  let connector: ConnectorRow | null = null;
+  let resolvedConnectorCode: string | null = null;
 
   try {
     if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
@@ -882,11 +1263,26 @@ serve(async (req) => {
         status = 400;
         responsePayload = { error: "No valid species specified." };
       } else {
-        const connector = await loadConnector(connectorId, connectorCode, connectorLabel, baseUrl);
+        connector = await loadConnector(connectorId, connectorCode, connectorLabel, baseUrl);
+        resolvedConnectorCode = connector?.connector_code ?? connectorCode;
         if (!connector) {
           status = 500;
           responsePayload = { error: "Failed to resolve connector id." };
         } else {
+          if (rawRecorder) {
+            rawRecorder.recordEvent("context", {
+              connector_id: connector.id,
+              connector_code: connector.connector_code,
+              connector_label: connector.label,
+              base_url: baseUrl,
+              skip_stations: skipStations,
+              active_only: activeOnly,
+              species: speciesList,
+              window_hours: windowHours,
+              initial_days: initialDays,
+              start_date: startDateOverride ? startDateOverride.toISOString() : null,
+            });
+          }
           let stationRows: Record<string, unknown>[] = [];
           let stationIdMap: Record<string, number> = {};
 
@@ -908,7 +1304,7 @@ serve(async (req) => {
               }
             }
           } else {
-            const sensors = await listSensors(baseUrl, apiKey);
+            const sensors = await listSensors(baseUrl, apiKey, rawRecorder);
             const trimmedSensors = limit ? sensors.slice(0, Math.max(0, limit)) : sensors;
             if (!trimmedSensors.length) {
               responsePayload = { warning: "No sensors returned from Breathe London." };
@@ -1050,7 +1446,15 @@ serve(async (req) => {
                   while (cursor < now) {
                     const endTime = new Date(Math.min(cursor.getTime() + windowMs, now.getTime()));
                     try {
-                      const payload = await getClarityData(baseUrl, apiKey, stationRef, species, cursor, endTime);
+                      const payload = await getClarityData(
+                        baseUrl,
+                        apiKey,
+                        stationRef,
+                        species,
+                        cursor,
+                        endTime,
+                        rawRecorder,
+                      );
                       const { rows, lastObserved: windowLast, lastValue: windowValue } = extractObservations(
                         payload,
                         timeseriesId,
@@ -1122,6 +1526,22 @@ serve(async (req) => {
     responsePayload = {
       error: error instanceof Error ? error.message : String(error),
     };
+  }
+
+  if (dropboxConfig) {
+    let accessToken: string | null = null;
+    const refreshDropbox = () => dropboxRefreshAccessToken(dropboxConfig);
+    try {
+      accessToken = await dropboxRefreshAccessToken(dropboxConfig);
+    } catch (err) {
+      console.warn("Dropbox token request failed:", err);
+    }
+    if (accessToken) {
+      const rawConnectorCode = resolvedConnectorCode
+        ?? connector?.connector_code
+        ?? BREATHELONDON_CONNECTOR_CODE;
+      await uploadDropboxRaw(accessToken, rawRecorder, rawConnectorCode, refreshDropbox);
+    }
   }
 
   return new Response(JSON.stringify(responsePayload, null, 2), {
