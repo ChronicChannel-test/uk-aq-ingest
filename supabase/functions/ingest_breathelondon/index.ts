@@ -9,6 +9,7 @@ type PollRequest = {
   service_ref?: string;
   base_url?: string;
   species?: string[] | string;
+  station_refs?: string[] | string;
   initial_days?: number;
   start_date?: string;
   window_hours?: number;
@@ -31,6 +32,18 @@ type DropboxConfig = {
   appKey: string;
   appSecret: string;
   refreshToken: string;
+};
+
+type ErrorLogEntry = {
+  source: string;
+  severity: string;
+  message: string;
+  stack?: string | null;
+  context?: Record<string, unknown> | null;
+  connector_code?: string | null;
+  connector_id?: string | number | null;
+  station_id?: string | number | null;
+  timeseries_id?: string | number | null;
 };
 
 type RawRecorder = {
@@ -110,6 +123,9 @@ const DROPBOX_REFRESH_TOKEN = Deno.env.get("DROPBOX_REFRESH_TOKEN") ?? "";
 const DROPBOX_ALLOWED_SUPABASE_URL = Deno.env.get("BREATHELONDON_RAW_DROPBOX_ALLOWED_SUPABASE_URL")
   ?? Deno.env.get("UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL")
   ?? "";
+const DROPBOX_ERROR_ALLOWED_SUPABASE_URL = Deno.env.get("BREATHELONDON_ERROR_DROPBOX_ALLOWED_SUPABASE_URL")
+  ?? Deno.env.get("UK_AIR_ERROR_DROPBOX_ALLOWED_SUPABASE_URL")
+  ?? "";
 const DROPBOX_ROOT_FOLDER = (() => {
   const raw = Deno.env.get("BREATHELONDON_DROPBOX_ROOT")
     ?? Deno.env.get("UK_AQ_DROPBOX_ROOT")
@@ -118,6 +134,11 @@ const DROPBOX_ROOT_FOLDER = (() => {
 })();
 
 const DROPBOX_RAW_FOLDER = dropboxWithRoot("/raw_data");
+const DROPBOX_ERROR_FOLDER = dropboxWithRoot(
+  Deno.env.get("BREATHELONDON_ERROR_DROPBOX_FOLDER")
+    ?? Deno.env.get("UK_AIR_ERROR_DROPBOX_FOLDER")
+    ?? "error_log",
+);
 const DROPBOX_TOKEN_URL = "https://api.dropbox.com/oauth2/token";
 const DROPBOX_UPLOAD_URL = "https://content.dropboxapi.com/2/files/upload";
 
@@ -319,6 +340,11 @@ function parseSpeciesList(value: string | string[] | undefined | null): string[]
   const raw = Array.isArray(value) ? value.join(",") : (value ?? "");
   const items = raw.split(",").map((item) => item.trim().toUpperCase()).filter(Boolean);
   return items.filter((item) => Object.hasOwn(SPECIES_CONFIG, item));
+}
+
+function parseStationRefs(value: string | string[] | undefined | null): string[] {
+  const raw = Array.isArray(value) ? value.join(",") : (value ?? "");
+  return raw.split(",").map((item) => item.trim().toUpperCase()).filter(Boolean);
 }
 
 function parseStartDate(value: string | undefined | null): Date | null {
@@ -526,6 +552,7 @@ async function fetchStationsFromDb(
   serviceRef: string,
   limit?: number,
   activeOnly = false,
+  stationRefs: string[] = [],
 ): Promise<Array<{ id: number; station_ref: string; station_name: string | null; label: string | null }>> {
   const rows: Array<{ id: number; station_ref: string; station_name: string | null; label: string | null }> = [];
   const pageSize = 1000;
@@ -533,11 +560,17 @@ async function fetchStationsFromDb(
   let offset = 0;
 
   while (true) {
+    const refFilter = stationRefs.length ? postgrestIn(stationRefs) : null;
+    if (refFilter && offset > 0) {
+      break;
+    }
     if (maxRows !== null && rows.length >= maxRows) {
       break;
     }
     const remaining = maxRows !== null ? maxRows - rows.length : pageSize;
-    const pageLimit = Math.min(pageSize, remaining);
+    const pageLimit = refFilter
+      ? Math.min(pageSize, remaining, stationRefs.length)
+      : Math.min(pageSize, remaining);
     if (pageLimit <= 0) {
       break;
     }
@@ -560,6 +593,7 @@ async function fetchStationsFromDb(
         select,
         connector_id: `eq.${connectorId}`,
         service_ref: `eq.${serviceRef}`,
+        station_ref: refFilter ?? undefined,
         order: "station_ref.asc",
         limit: String(pageLimit),
         offset: String(offset),
@@ -933,6 +967,20 @@ function loadDropboxConfig(): DropboxConfig | null {
   };
 }
 
+function loadErrorDropboxConfig(): DropboxConfig | null {
+  if (!DROPBOX_APP_KEY || !DROPBOX_APP_SECRET || !DROPBOX_REFRESH_TOKEN) {
+    return null;
+  }
+  if (DROPBOX_ERROR_ALLOWED_SUPABASE_URL && DROPBOX_ERROR_ALLOWED_SUPABASE_URL !== SUPABASE_URL) {
+    return null;
+  }
+  return {
+    appKey: DROPBOX_APP_KEY,
+    appSecret: DROPBOX_APP_SECRET,
+    refreshToken: DROPBOX_REFRESH_TOKEN,
+  };
+}
+
 function normalizeDropboxPath(raw: string): string {
   const cleaned = raw.trim();
   if (!cleaned) {
@@ -970,6 +1018,17 @@ function buildDropboxRawPath(
   const dateFolder = formatDateYmd(timestamp);
   const prefix = normalizeConnectorPrefix(connectorCode);
   return `${DROPBOX_RAW_FOLDER}/${dateFolder}/uk_aq_raw_edge_${prefix}_${stamp}.zip`;
+}
+
+function buildDropboxErrorPath(
+  errorId: string,
+  createdAt: string,
+  connectorCode: string | null,
+): string {
+  const dateFolder = createdAt.slice(0, 10);
+  const stamp = formatCompactTimestamp(new Date(createdAt));
+  const prefix = normalizeConnectorPrefix(connectorCode);
+  return `${DROPBOX_ERROR_FOLDER}/${dateFolder}/uk_aq_error_edge_${prefix}_${stamp}_${errorId}.json`;
 }
 
 function formatCompactTimestamp(timestamp: Date): string {
@@ -1211,6 +1270,75 @@ async function uploadDropboxRaw(
   return accessToken;
 }
 
+function createErrorLogger(config: DropboxConfig | null, enabled: boolean) {
+  let accessToken: string | null = null;
+  return {
+    async logError(entry: ErrorLogEntry): Promise<void> {
+      if (!enabled) {
+        return;
+      }
+      const errorId = crypto.randomUUID();
+      const createdAt = new Date().toISOString();
+      const row = {
+        id: errorId,
+        source: entry.source,
+        severity: entry.severity,
+        message: entry.message,
+        stack: entry.stack ?? null,
+        context: entry.context ?? null,
+        connector_id: entry.connector_id ?? null,
+        station_id: entry.station_id ?? null,
+        timeseries_id: entry.timeseries_id ?? null,
+      };
+      const { error } = await postgrestRequest(
+        "POST",
+        "error_logs",
+        undefined,
+        row,
+        "return=minimal",
+      );
+      if (error) {
+        console.warn("error_logs insert failed:", error.message);
+        return;
+      }
+      if (!config) {
+        return;
+      }
+      try {
+        if (!accessToken) {
+          accessToken = await dropboxRefreshAccessToken(config);
+        }
+        const dropboxPath = buildDropboxErrorPath(
+          errorId,
+          createdAt,
+          entry.connector_code ?? BREATHELONDON_CONNECTOR_CODE,
+        );
+        const payload = {
+          ...row,
+          connector_code: entry.connector_code ?? null,
+          created_at: createdAt,
+          dropbox_path: dropboxPath,
+        };
+        accessToken = await dropboxUploadFileWithRetry(
+          accessToken,
+          dropboxPath,
+          JSON.stringify(payload, null, 2),
+          () => dropboxRefreshAccessToken(config),
+        );
+        await postgrestRequest(
+          "PATCH",
+          "error_logs",
+          { id: `eq.${errorId}` },
+          { dropbox_path: dropboxPath },
+          "return=minimal",
+        );
+      } catch (err) {
+        console.warn("Dropbox error log upload failed:", err);
+      }
+    },
+  };
+}
+
 function chunk<T>(values: T[], size: number): T[][] {
   if (size <= 0) {
     return [values];
@@ -1233,6 +1361,10 @@ serve(async (req) => {
 
   const dropboxConfig = loadDropboxConfig();
   const rawRecorder = dropboxConfig ? createRawRecorder() : null;
+  const errorLogger = createErrorLogger(
+    loadErrorDropboxConfig(),
+    Boolean(SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY),
+  );
 
   const errors: string[] = [];
   let status = 200;
@@ -1257,6 +1389,7 @@ serve(async (req) => {
       const serviceRef = asString(request.service_ref) ?? BREATHELONDON_SERVICE_REF;
       const baseUrl = asString(request.base_url) ?? BREATHELONDON_BASE_URL;
       const speciesList = parseSpeciesList(request.species ?? "IPM25,INO2");
+      const stationRefs = parseStationRefs(request.station_refs ?? []);
       const initialDays = asNumber(request.initial_days, DEFAULT_INITIAL_DAYS) ?? DEFAULT_INITIAL_DAYS;
       const windowHours = asNumber(request.window_hours, DEFAULT_WINDOW_HOURS) ?? DEFAULT_WINDOW_HOURS;
       const sleepSeconds = asNumber(request.sleep_seconds, DEFAULT_SLEEP_SECONDS) ?? DEFAULT_SLEEP_SECONDS;
@@ -1286,6 +1419,7 @@ serve(async (req) => {
               base_url: baseUrl,
               skip_stations: skipStations,
               active_only: activeOnly,
+              station_refs: stationRefs,
               species: speciesList,
               window_hours: windowHours,
               initial_days: initialDays,
@@ -1296,7 +1430,13 @@ serve(async (req) => {
           let stationIdMap: Record<string, number> = {};
 
           if (skipStations) {
-            const stations = await fetchStationsFromDb(connector.id, serviceRef, limit, activeOnly);
+            const stations = await fetchStationsFromDb(
+              connector.id,
+              serviceRef,
+              limit,
+              activeOnly,
+              stationRefs,
+            );
             for (const station of stations) {
               const stationRef = asString(station.station_ref);
               if (!stationRef) {
@@ -1322,6 +1462,9 @@ serve(async (req) => {
               for (const sensor of trimmedSensors) {
                 const { row, metadata } = normalizeStationPayload(sensor, connector.id, serviceRef);
                 if (!row.station_ref) {
+                  continue;
+                }
+                if (stationRefs.length && !stationRefs.includes(String(row.station_ref).toUpperCase())) {
                   continue;
                 }
                 stationRows.push(row);
@@ -1532,9 +1675,30 @@ serve(async (req) => {
       }
   } catch (error) {
     status = 500;
-    responsePayload = {
-      error: error instanceof Error ? error.message : String(error),
-    };
+    const message = error instanceof Error ? error.message : String(error);
+    responsePayload = { error: message };
+    await errorLogger.logError({
+      source: "edge",
+      severity: "error",
+      message: "Breathe London ingest failed.",
+      stack: error instanceof Error ? error.stack : undefined,
+      context: {
+        error: message,
+      },
+      connector_code: connector?.connector_code ?? BREATHELONDON_CONNECTOR_CODE,
+      connector_id: connector?.id ?? null,
+    });
+  }
+
+  if (errors.length) {
+    await errorLogger.logError({
+      source: "edge",
+      severity: "warn",
+      message: "Breathe London ingest warnings.",
+      context: { warnings: errors },
+      connector_code: connector?.connector_code ?? BREATHELONDON_CONNECTOR_CODE,
+      connector_id: connector?.id ?? null,
+    });
   }
 
   if (dropboxConfig) {

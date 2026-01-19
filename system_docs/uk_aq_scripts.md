@@ -587,6 +587,10 @@ Common commands:
 python3 scripts/breathelondon/breathelondon_ingest.py
 python3 scripts/breathelondon/breathelondon_ingest.py --initial-days 30 --window-hours 12
 python3 scripts/breathelondon/breathelondon_ingest.py --limit 5 --dry-run
+python3 scripts/breathelondon/breathelondon_ingest.py --skip-stations --limit 5 --dry-run --window-hours 1
+python3 scripts/breathelondon/breathelondon_ingest.py --limit 5 --dry-run --output-timeseries network_info/breathelondon_timeseries.json --output-observations network_info/breathelondon_observations.json --output-checkpoints network_info/breathelondon_checkpoints.json
+python3 scripts/breathelondon/breathelondon_ingest.py --skip-stations --limit 5 --dry-run --ignore-checkpoints --start-date 2026-01-19T01:00:00Z --window-hours 12
+python3 scripts/breathelondon/breathelondon_ingest.py --skip-stations --recent-stations --limit 5 --dry-run
 ```
 
 Environment:
@@ -597,6 +601,13 @@ Environment:
 - `BREATHELONDON_CONNECTOR_CODE` / `BREATHELONDON_SERVICE_REF` (optional override)
 - `BREATHELONDON_SERVICE_LABEL` (optional override)
 - `BREATHELONDON_USER_AGENT` (optional override)
+
+Notes:
+- `--skip-stations` skips `ListSensors` and loads station refs from Supabase instead.
+- `--output-timeseries` / `--output-observations` write JSON snapshots (best paired with `--limit`).
+- `--output-checkpoints` writes the checkpoint rows pulled from Supabase.
+- `--ignore-checkpoints` forces backfill even when checkpoints already exist (use for dry-run testing).
+- `--recent-stations` picks stations with the most recent `timeseries.last_value_at` when used with `--skip-stations` (falls back to `observations` if needed).
 
 ### `scripts/breathelondon/breathelondon_list_stations.py`
 Purpose:
@@ -617,6 +628,22 @@ Environment:
 - `BREATHELONDON_CONNECTOR_CODE` / `BREATHELONDON_SERVICE_REF` (optional override)
 - `BREATHELONDON_SERVICE_LABEL` (optional override)
 - `BREATHELONDON_USER_AGENT` (optional override)
+
+### `scripts/uk_aq_invoke_edge.py`
+Purpose:
+- Invoke Supabase Edge Functions (one at a time) for ad-hoc testing.
+
+Common commands:
+```
+python3 scripts/uk_aq_invoke_edge.py --function ingest_breathelondon --connector-code breathelondon
+python3 scripts/uk_aq_invoke_edge.py --function ingest_sensorcommunity --connector-code sensorcommunity --payload '{"dry_run":true}'
+python3 scripts/uk_aq_invoke_edge.py --function uk_aq_latest --connector-code breathelondon --method GET --params '{"limit":5}'
+```
+
+Environment:
+- `SUPABASE_URL`
+- `SUPABASE_ANON_JWT` (or `SUPABASE_ANON_KEY`)
+- `SB_UK_AQ_CRON_SECRET` (required for ingest functions when set in Supabase)
 
 ## SOS metadata glossary
 - `phenomenon`: The observed property (pollutant/parameter), e.g., NO2, O3, PM2.5.

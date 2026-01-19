@@ -9,6 +9,7 @@ Examples:
 """
 
 import argparse
+import json
 import logging
 import os
 import sys
@@ -156,6 +157,15 @@ def _chunked(values: List[Dict[str, Any]], size: int) -> Iterable[List[Dict[str,
         yield values[idx : idx + size]
 
 
+def _write_json(output: Optional[str], payload: Any) -> None:
+    if not output:
+        return
+    path = Path(output)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as handle:
+        json.dump(payload, handle, indent=2)
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Ingest Breathe London Communities observations with checkpoints."
@@ -212,39 +222,88 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Fetch data but do not write to Supabase.",
     )
+    parser.add_argument(
+        "--output-timeseries",
+        help="Write timeseries rows to this JSON file (best with --limit).",
+    )
+    parser.add_argument(
+        "--output-observations",
+        help="Write observation rows to this JSON file (best with --limit).",
+    )
+    parser.add_argument(
+        "--output-checkpoints",
+        help="Write checkpoint rows to this JSON file (best with --limit).",
+    )
+    parser.add_argument(
+        "--ignore-checkpoints",
+        action="store_true",
+        help="Ignore checkpoint last_observed_at when fetching observations.",
+    )
+    parser.add_argument(
+        "--recent-stations",
+        action="store_true",
+        help="When combined with --skip-stations, pick stations with recent observations.",
+    )
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
+    LOG.info("Running with recent_stations=%s limit=%s", args.recent_stations, args.limit)
     species_list = _parse_species_list(args.species)
     if not species_list:
         raise SystemExit("No valid species specified.")
 
     api_key = load_api_key(args.api_key)
     client = BreatheLondonClient(api_key)
-    sensors = client.list_sensors()
-    if args.limit is not None:
-        sensors = sensors[: args.limit]
-
-    if not sensors:
-        LOG.warning("No sensors returned from Breathe London.")
-        return 0
-
     writer = SupabaseWriter()
     connector_id = writer.upsert_connector()
 
-    station_rows = []
+    station_rows: List[Dict[str, Any]] = []
     metadata_by_ref: Dict[str, Dict[str, Any]] = {}
-    for sensor in sensors:
-        row, metadata = normalize_station_payload(sensor, connector_id)
-        if not row.get("station_ref"):
-            continue
-        station_rows.append(row)
-        if metadata:
-            metadata_by_ref[str(row["station_ref"])] = metadata
 
-    if not args.skip_stations:
+    if args.skip_stations:
+        if args.recent_stations:
+            station_limit = args.limit or 5
+            station_rows = writer.fetch_recent_stations(
+                connector_id,
+                BREATHELONDON_SERVICE_REF,
+                station_limit,
+            )
+            LOG.info(
+                "Loaded %s recent stations from Supabase (skip-stations).",
+                len(station_rows),
+            )
+        else:
+            station_rows = writer.fetch_stations(
+                connector_id,
+                BREATHELONDON_SERVICE_REF,
+                args.limit,
+            )
+            LOG.info(
+                "Loaded %s stations from Supabase (skip-stations).",
+                len(station_rows),
+            )
+        if not station_rows:
+            LOG.warning("No stations returned from Supabase for Breathe London.")
+            return 0
+    else:
+        sensors = client.list_sensors()
+        if args.limit is not None:
+            sensors = sensors[: args.limit]
+
+        if not sensors:
+            LOG.warning("No sensors returned from Breathe London.")
+            return 0
+
+        for sensor in sensors:
+            row, metadata = normalize_station_payload(sensor, connector_id)
+            if not row.get("station_ref"):
+                continue
+            station_rows.append(row)
+            if metadata:
+                metadata_by_ref[str(row["station_ref"])] = metadata
+
         if not args.dry_run:
             upserted = writer.upsert_stations(station_rows)
             LOG.info("Upserted %s stations.", upserted)
@@ -263,9 +322,21 @@ def main() -> int:
         else:
             LOG.info("Dry run: skipping station upserts.")
 
-    station_id_map = writer.fetch_station_ids_by_ref(
-        connector_id, BREATHELONDON_SERVICE_REF, [row["station_ref"] for row in station_rows]
-    )
+    if args.skip_stations:
+        station_id_map: Dict[str, int] = {}
+        for row in station_rows:
+            ref = row.get("station_ref")
+            station_id = row.get("id")
+            if not ref or station_id is None:
+                continue
+            try:
+                station_id_map[str(ref)] = int(station_id)
+            except (TypeError, ValueError):
+                continue
+    else:
+        station_id_map = writer.fetch_station_ids_by_ref(
+            connector_id, BREATHELONDON_SERVICE_REF, [row["station_ref"] for row in station_rows]
+        )
     if not station_id_map:
         LOG.warning("No station ids resolved for Breathe London.")
         return 0
@@ -311,12 +382,30 @@ def main() -> int:
             )
     if not args.dry_run:
         writer.upsert_timeseries(timeseries_rows)
+    timeseries_output = [] if args.output_timeseries else None
+    if timeseries_output is not None:
+        timeseries_output.extend(timeseries_rows)
     timeseries_id_map = writer.fetch_timeseries_ids(
         connector_id, BREATHELONDON_SERVICE_REF, [row["timeseries_ref"] for row in timeseries_rows]
     )
+    station_ref_by_id = {station_id: ref for ref, station_id in station_id_map.items()}
 
     station_ids = list({station_id_map[ref] for ref in station_id_map})
     checkpoints = writer.fetch_checkpoints(station_ids, species_list)
+    checkpoints_output = [] if args.output_checkpoints else None
+    if checkpoints_output is not None:
+        timeseries_ref_by_id = {val: key for key, val in timeseries_id_map.items()}
+        for key, row in checkpoints.items():
+            station_id, _species = key
+            entry = dict(row)
+            entry["station_ref"] = station_ref_by_id.get(station_id)
+            timeseries_id = entry.get("timeseries_id")
+            try:
+                timeseries_id = int(timeseries_id) if timeseries_id is not None else None
+            except (TypeError, ValueError):
+                timeseries_id = None
+            entry["timeseries_ref"] = timeseries_ref_by_id.get(timeseries_id)
+            checkpoints_output.append(entry)
 
     now = _floor_to_hour(utcnow())
     initial_start = _parse_start_date(args.start_date)
@@ -324,6 +413,7 @@ def main() -> int:
         initial_start = _floor_to_hour(initial_start)
 
     observation_total = 0
+    observations_output = [] if args.output_observations else None
     checkpoint_rows = []
     timeseries_updates = []
 
@@ -341,7 +431,9 @@ def main() -> int:
 
             key = (station_id, species)
             checkpoint = checkpoints.get(key, {})
-            last_observed = _parse_iso_datetime(checkpoint.get("last_observed_at"))
+            last_observed = None if args.ignore_checkpoints else _parse_iso_datetime(
+                checkpoint.get("last_observed_at")
+            )
             last_error = None
 
             if last_observed:
@@ -375,6 +467,16 @@ def main() -> int:
                     break
 
                 obs_rows, obs_last, obs_value = _extract_observations(payload, timeseries_id)
+                if observations_output is not None and obs_rows:
+                    for row in obs_rows:
+                        observations_output.append(
+                            {
+                                **row,
+                                "timeseries_ref": timeseries_ref,
+                                "station_ref": station_ref,
+                                "species": species,
+                            }
+                        )
                 if obs_rows and not args.dry_run:
                     for chunk in _chunked(obs_rows, args.batch_size):
                         writer.upsert_observations(chunk)
@@ -420,6 +522,9 @@ def main() -> int:
         observation_total,
         len(checkpoint_rows),
     )
+    _write_json(args.output_timeseries, timeseries_output or [])
+    _write_json(args.output_observations, observations_output or [])
+    _write_json(args.output_checkpoints, checkpoints_output or [])
     return 0
 
 

@@ -44,8 +44,10 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
   - Uses `BREATHELONDON_API_KEY` for every request.
   - Supports `skip_stations` to avoid station upserts; when set, stations are loaded from Supabase instead of `ListSensors`.
   - Supports `active_only` to limit polling to stations marked `enabled` or `site_active` in metadata.
+  - Supports `station_refs` to limit polling to a specific set of station refs.
 - Logs:
   - Writes raw payloads to Dropbox `/raw_data/YYYY-MM-DD/` as ZIP (prefix `uk_aq_raw_edge_breathelondon_`).
+  - Writes errors to `error_logs` and `/error_log/YYYY-MM-DD/` when Dropbox error logging is configured.
 
 ### uk_aq_latest
 - Purpose: Serve the latest values across all stations (optionally filtered by region/station/pollutant).
@@ -101,11 +103,13 @@ Dropbox folders:
 - `UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL` (required to enable raw uploads)
 - `BREATHELONDON_DROPBOX_ROOT` (optional override for Breathe London)
 - `BREATHELONDON_RAW_DROPBOX_ALLOWED_SUPABASE_URL` (optional allowlist override for Breathe London)
+- `BREATHELONDON_ERROR_DROPBOX_ALLOWED_SUPABASE_URL` (optional allowlist override for Breathe London error uploads)
 - `SCOMM_DROPBOX_ROOT` (optional override for Sensor.Community)
 - `SCOMM_RAW_DROPBOX_ALLOWED_SUPABASE_URL` (optional allowlist override for Sensor.Community)
 
 Optional:
 - `UK_AIR_ERROR_DROPBOX_FOLDER` (defaults to `error_log`)
+- `BREATHELONDON_ERROR_DROPBOX_FOLDER` (optional override for Breathe London)
 - `SCOMM_ERROR_DROPBOX_FOLDER` (optional override for Sensor.Community)
 - `SCOMM_ERROR_DROPBOX_ALLOWED_SUPABASE_URL` (optional allowlist for Sensor.Community error uploads)
 - `SCOMM_INGEST_MET_FIELDS` (defaults to `false`; set `true` to ingest temperature/humidity/pressure)

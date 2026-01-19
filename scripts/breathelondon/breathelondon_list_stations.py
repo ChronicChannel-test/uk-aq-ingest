@@ -271,6 +271,150 @@ class SupabaseWriter:
                 mapping[str(row["station_ref"])] = int(row["id"])
         return mapping
 
+    def fetch_stations(
+        self,
+        connector_id: int,
+        service_ref: str,
+        limit: Optional[int] = None,
+    ) -> List[Dict[str, Any]]:
+        rows: List[Dict[str, Any]] = []
+        page_size = 1000
+        offset = 0
+        max_rows = max(0, int(limit)) if limit is not None else None
+        while True:
+            if max_rows is not None and len(rows) >= max_rows:
+                break
+            remaining = max_rows - len(rows) if max_rows is not None else page_size
+            page_limit = min(page_size, remaining) if max_rows is not None else page_size
+            if page_limit <= 0:
+                break
+            resp = (
+                self.client.table("stations")
+                .select("id,station_ref,station_name,label")
+                .eq("connector_id", connector_id)
+                .eq("service_ref", str(service_ref))
+                .order("station_ref")
+                .range(offset, offset + page_limit - 1)
+                .execute()
+            )
+            batch = resp.data if hasattr(resp, "data") else resp.get("data")
+            if not batch:
+                break
+            rows.extend(batch)
+            offset += page_limit
+            if len(batch) < page_limit:
+                break
+        return rows
+
+    def fetch_recent_stations(
+        self,
+        connector_id: int,
+        service_ref: str,
+        limit: int,
+    ) -> List[Dict[str, Any]]:
+        if limit <= 0:
+            return []
+        def _fetch_rows(include_service_ref: bool) -> List[Dict[str, Any]]:
+            query = (
+                self.client.table("timeseries")
+                .select("station_id,last_value_at")
+                .eq("connector_id", connector_id)
+                .filter("station_id", "not.is", "null")
+                .filter("last_value_at", "not.is", "null")
+                .order("last_value_at", desc=True)
+                .limit(max(50, limit * 5))
+            )
+            if include_service_ref:
+                query = query.eq("service_ref", str(service_ref))
+            resp = query.execute()
+            return resp.data if hasattr(resp, "data") else resp.get("data") or []
+
+        station_ids: List[int] = []
+        seen: set[int] = set()
+        for include_service_ref in (True, False):
+            rows = _fetch_rows(include_service_ref)
+            LOG.info(
+                "Recent station query include_service_ref=%s rows=%s",
+                include_service_ref,
+                len(rows),
+            )
+            for row in rows or []:
+                station_id = row.get("station_id")
+                last_value_at = row.get("last_value_at")
+                if not station_id or not last_value_at:
+                    continue
+                try:
+                    station_id = int(station_id)
+                except (TypeError, ValueError):
+                    continue
+                if station_id in seen:
+                    continue
+                seen.add(station_id)
+                station_ids.append(station_id)
+                if len(station_ids) >= limit:
+                    break
+            if len(station_ids) >= limit:
+                break
+        if not station_ids:
+            resp = (
+                self.client.table("observations")
+                .select("timeseries_id,observed_at")
+                .order("observed_at", desc=True)
+                .limit(max(200, limit * 20))
+                .execute()
+            )
+            obs_rows = resp.data if hasattr(resp, "data") else resp.get("data") or []
+            timeseries_ids = []
+            seen_ts = set()
+            for row in obs_rows:
+                ts_id = row.get("timeseries_id")
+                if ts_id is None:
+                    continue
+                try:
+                    ts_id = int(ts_id)
+                except (TypeError, ValueError):
+                    continue
+                if ts_id in seen_ts:
+                    continue
+                seen_ts.add(ts_id)
+                timeseries_ids.append(ts_id)
+                if len(timeseries_ids) >= limit * 10:
+                    break
+            if not timeseries_ids:
+                return []
+            ts_resp = (
+                self.client.table("timeseries")
+                .select("id,station_id")
+                .eq("connector_id", connector_id)
+                .in_("id", timeseries_ids)
+                .execute()
+            )
+            ts_rows = ts_resp.data if hasattr(ts_resp, "data") else ts_resp.get("data") or []
+            ts_station = {
+                int(row["id"]): int(row["station_id"])
+                for row in ts_rows
+                if row.get("id") is not None and row.get("station_id") is not None
+            }
+            for ts_id in timeseries_ids:
+                station_id = ts_station.get(ts_id)
+                if station_id is None or station_id in seen:
+                    continue
+                seen.add(station_id)
+                station_ids.append(station_id)
+                if len(station_ids) >= limit:
+                    break
+        if not station_ids:
+            return []
+        station_resp = (
+            self.client.table("stations")
+            .select("id,station_ref,station_name,label")
+            .in_("id", station_ids)
+            .execute()
+        )
+        station_rows = station_resp.data if hasattr(station_resp, "data") else station_resp.get("data")
+        station_by_id = {int(row["id"]): row for row in station_rows or [] if row.get("id") is not None}
+        return [station_by_id[station_id] for station_id in station_ids if station_id in station_by_id]
+
     def fetch_station_metadata(self, station_ids: Sequence[int]) -> Dict[int, Dict[str, Any]]:
         if not station_ids:
             return {}
