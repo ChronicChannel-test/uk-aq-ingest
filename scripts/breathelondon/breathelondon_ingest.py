@@ -249,7 +249,6 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-    LOG.info("Running with recent_stations=%s limit=%s", args.recent_stations, args.limit)
     species_list = _parse_species_list(args.species)
     if not species_list:
         raise SystemExit("No valid species specified.")
