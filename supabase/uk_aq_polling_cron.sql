@@ -7,7 +7,6 @@
 select cron.unschedule('ingest-uk-air-sos-15m');
 select cron.unschedule('ingest-sensorcommunity-15m');
 select cron.unschedule('ingest-breathelondon-hourly');
-select cron.unschedule('ingest-breathelondon-15m');
 
 -- Create a 15-minute poll schedule (5 minutes past the quarter-hour).
 -- CONNECTOR_ID should come from the `connectors` table (internal bigint id).
@@ -52,5 +51,4 @@ select cron.schedule(
 -- To disable the schedule:
 -- select cron.unschedule('ingest-uk-air-sos-15m');
 -- select cron.unschedule('ingest-sensorcommunity-15m');
--- select cron.unschedule('ingest-breathelondon-15m');
 -- select cron.unschedule('ingest-breathelondon-hourly');
