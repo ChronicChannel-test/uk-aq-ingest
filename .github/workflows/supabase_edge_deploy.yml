@@ -86,53 +86,58 @@ jobs:
           fi
           CRON_SQL_OUT="$(mktemp)"
           export CRON_SQL_OUT
-          python3 - <<'PY'
-          import os
-          import socket
-          import urllib.parse
+          SUPABASE_DB_URL_IPV4="$(
+            python3 - <<'PY'
+            import os
+            import socket
+            import urllib.parse
 
-          path = "supabase/uk_aq_polling_cron.sql"
-          with open(path, "r", encoding="utf-8") as handle:
-              sql = handle.read()
-          for key in ("SUPABASE_ANON_JWT", "SB_UK_AQ_CRON_SECRET"):
-              value = os.environ.get(key)
-              if not value:
-                  raise SystemExit(f"Missing {key}")
-              sql = sql.replace(f"{{{{{key}}}}}", value)
-          out = os.environ.get("CRON_SQL_OUT")
-          if not out:
-              raise SystemExit("Missing CRON_SQL_OUT")
-          with open(out, "w", encoding="utf-8") as handle:
-              handle.write(sql)
+            path = "supabase/uk_aq_polling_cron.sql"
+            with open(path, "r", encoding="utf-8") as handle:
+                sql = handle.read()
+            for key in ("SUPABASE_ANON_JWT", "SB_UK_AQ_CRON_SECRET"):
+                value = os.environ.get(key)
+                if not value:
+                    raise SystemExit(f"Missing {key}")
+                sql = sql.replace(f"{{{{{key}}}}}", value)
+            out = os.environ.get("CRON_SQL_OUT")
+            if not out:
+                raise SystemExit("Missing CRON_SQL_OUT")
+            with open(out, "w", encoding="utf-8") as handle:
+                handle.write(sql)
 
-          db_url = os.environ.get("SUPABASE_DB_URL")
-          if not db_url:
-              raise SystemExit("Missing SUPABASE_DB_URL")
-          parsed = urllib.parse.urlsplit(db_url)
-          host = parsed.hostname
-          if not host:
-              raise SystemExit("SUPABASE_DB_URL missing host")
-          try:
-              infos = socket.getaddrinfo(host, parsed.port or 5432, socket.AF_INET, socket.SOCK_STREAM)
-          except socket.gaierror as exc:
-              raise SystemExit(
-                  f"Failed to resolve IPv4 for {host}. Consider using the Supabase pooler connection string. ({exc})"
-              )
-          if not infos:
-              raise SystemExit(f"No IPv4 address resolved for {host}. Consider using the pooler host.")
-          ipv4 = infos[0][4][0]
-          query = urllib.parse.parse_qsl(parsed.query, keep_blank_values=True)
-          query.append(("hostaddr", ipv4))
-          new_query = urllib.parse.urlencode(query)
-          rebuilt = urllib.parse.urlunsplit((
-              parsed.scheme,
-              parsed.netloc,
-              parsed.path,
-              new_query,
-              parsed.fragment,
-          ))
-          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as handle:
-              handle.write(f"SUPABASE_DB_URL_IPV4={rebuilt}\n")
-          PY
+            db_url = os.environ.get("SUPABASE_DB_URL")
+            if not db_url:
+                raise SystemExit("Missing SUPABASE_DB_URL")
+            parsed = urllib.parse.urlsplit(db_url)
+            host = parsed.hostname
+            if not host:
+                raise SystemExit("SUPABASE_DB_URL missing host")
+            try:
+                infos = socket.getaddrinfo(host, parsed.port or 5432, socket.AF_INET, socket.SOCK_STREAM)
+            except socket.gaierror as exc:
+                raise SystemExit(
+                    f"Failed to resolve IPv4 for {host}. Consider using the Supabase pooler connection string. ({exc})"
+                )
+            if not infos:
+                raise SystemExit(f"No IPv4 address resolved for {host}. Consider using the pooler host.")
+            ipv4 = infos[0][4][0]
+            query = urllib.parse.parse_qsl(parsed.query, keep_blank_values=True)
+            query.append(("hostaddr", ipv4))
+            new_query = urllib.parse.urlencode(query)
+            rebuilt = urllib.parse.urlunsplit((
+                parsed.scheme,
+                parsed.netloc,
+                parsed.path,
+                new_query,
+                parsed.fragment,
+            ))
+            print(rebuilt)
+            PY
+          )"
+          if [ -z "$SUPABASE_DB_URL_IPV4" ]; then
+            echo "SUPABASE_DB_URL_IPV4 is empty."
+            exit 1
+          fi
           psql "$SUPABASE_DB_URL_IPV4" -f "$CRON_SQL_OUT"
           rm -f "$CRON_SQL_OUT"
