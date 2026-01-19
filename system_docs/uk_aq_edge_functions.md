@@ -34,6 +34,16 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
   - Writes raw payloads to Dropbox `/raw_data/YYYY-MM-DD/` as ZIP (prefix `uk_aq_raw_edge_scomm_`).
   - Writes errors to `error_logs` and `/error_log/YYYY-MM-DD/`.
 
+### ingest_breathelondon
+- Purpose: Poll Breathe London Communities for hourly observations with checkpointing.
+- Triggered by: Supabase cron (see `supabase/uk_aq_polling_cron.sql`).
+- Writes:
+  - `connectors`, `stations`, `phenomena`, `timeseries`, `observations`
+  - `breathelondon_timeseries_checkpoints` (per-station/species checkpoints)
+- Notes:
+  - Uses `BREATHELONDON_API_KEY` for every request.
+  - Supports `skip_stations` to avoid station upserts; when set, stations are loaded from Supabase instead of `ListSensors`.
+
 ### uk_aq_latest
 - Purpose: Serve the latest values across all stations (optionally filtered by region/station/pollutant).
 - Triggered by: Web requests (read-only, no writes).
@@ -76,6 +86,7 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
 Required:
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
+- `BREATHELONDON_API_KEY` (required for `ingest_breathelondon`)
 
 Dropbox (raw/log/error uploads):
 - `DROPBOX_APP_KEY`
@@ -93,10 +104,19 @@ Optional:
 - `SCOMM_ERROR_DROPBOX_FOLDER` (optional override for Sensor.Community)
 - `SCOMM_ERROR_DROPBOX_ALLOWED_SUPABASE_URL` (optional allowlist for Sensor.Community error uploads)
 - `SCOMM_INGEST_MET_FIELDS` (defaults to `false`; set `true` to ingest temperature/humidity/pressure)
+- `BREATHELONDON_BASE_URL` (optional override for Breathe London API base URL)
+- `BREATHELONDON_CONNECTOR_CODE` / `BREATHELONDON_SERVICE_REF` (optional override)
+- `BREATHELONDON_SERVICE_LABEL` (optional override)
+- `BREATHELONDON_USER_AGENT` (optional override)
+- `SB_UK_AQ_CRON_SECRET` (when set, ingest functions require `X-Cron-Secret`)
 
 ## Notes
 
-- Edge functions do not discover stations/timeseries. Discovery happens in the
-  Python ingest script (see `scripts/uk_air_sos/uk_air_sos_ingest.py`).
+- `ingest_uk_air_sos` does not discover stations/timeseries; discovery happens in
+  the Python ingest script (see `scripts/uk_air_sos/uk_air_sos_ingest.py`).
+- `ingest_sensorcommunity` and `ingest_breathelondon` both upsert stations and
+  timeseries as part of the poll.
+- When `SB_UK_AQ_CRON_SECRET` is set, ingest functions require an `X-Cron-Secret`
+  header that matches the secret.
 - If `timeseries.station_id` is null, joins to stations will not work correctly.
   Run the discovery step to populate station links.

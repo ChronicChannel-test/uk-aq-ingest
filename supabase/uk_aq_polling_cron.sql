@@ -1,5 +1,13 @@
 -- Schedule UK-AIR SOS polling via Supabase Edge Function.
--- Replace placeholders before running.
+-- Replace placeholders before running:
+--   - {{SUPABASE_ANON_JWT}}
+--   - {{SB_UK_AQ_CRON_SECRET}}
+
+-- Reset schedules so this script can be re-applied safely.
+select cron.unschedule('ingest-uk-air-sos-15m');
+select cron.unschedule('ingest-sensorcommunity-15m');
+select cron.unschedule('ingest-breathelondon-hourly');
+select cron.unschedule('ingest-breathelondon-15m');
 
 -- Create a 15-minute poll schedule (5 minutes past the quarter-hour).
 -- CONNECTOR_ID should come from the `connectors` table (internal bigint id).
@@ -9,7 +17,7 @@ select cron.schedule(
   $$
     select net.http_post(
       url := 'https://nmgierafoeuxfkkscrln.supabase.co/functions/v1/ingest_uk_air_sos',
-      headers := '{"Content-Type":"application/json","Authorization":"Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5tZ2llcmFmb2V1eGZra3NjcmxuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUzMjIzMDMsImV4cCI6MjA4MDg5ODMwM30.x6rKhvMTFRyJCZNlaFG-5tUiSuwehCLLu3qbulNTe7A","apikey":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5tZ2llcmFmb2V1eGZra3NjcmxuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUzMjIzMDMsImV4cCI6MjA4MDg5ODMwM30.x6rKhvMTFRyJCZNlaFG-5tUiSuwehCLLu3qbulNTe7A"}'::jsonb,
+      headers := '{"Content-Type":"application/json","Authorization":"Bearer {{SUPABASE_ANON_JWT}}","apikey":"{{SUPABASE_ANON_JWT}}","X-Cron-Secret":"{{SB_UK_AQ_CRON_SECRET}}"}'::jsonb,
       body := '{"connector_id":"1","window_hours": 3}'::jsonb
     );
   $$
@@ -22,8 +30,21 @@ select cron.schedule(
   $$
     select net.http_post(
       url := 'https://nmgierafoeuxfkkscrln.supabase.co/functions/v1/ingest_sensorcommunity',
-      headers := '{"Content-Type":"application/json","Authorization":"Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5tZ2llcmFmb2V1eGZra3NjcmxuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUzMjIzMDMsImV4cCI6MjA4MDg5ODMwM30.x6rKhvMTFRyJCZNlaFG-5tUiSuwehCLLu3qbulNTe7A","apikey":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5tZ2llcmFmb2V1eGZra3NjcmxuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUzMjIzMDMsImV4cCI6MjA4MDg5ODMwM30.x6rKhvMTFRyJCZNlaFG-5tUiSuwehCLLu3qbulNTe7A"}'::jsonb,
+      headers := '{"Content-Type":"application/json","Authorization":"Bearer {{SUPABASE_ANON_JWT}}","apikey":"{{SUPABASE_ANON_JWT}}","X-Cron-Secret":"{{SB_UK_AQ_CRON_SECRET}}"}'::jsonb,
       body := '{"connector_code":"sensorcommunity","country":"GB"}'::jsonb
+    );
+  $$
+);
+
+-- Create an hourly Breathe London poll schedule (12 minutes past the hour).
+select cron.schedule(
+  'ingest-breathelondon-hourly',
+  '12 * * * *',
+  $$
+    select net.http_post(
+      url := 'https://nmgierafoeuxfkkscrln.supabase.co/functions/v1/ingest_breathelondon',
+      headers := '{"Content-Type":"application/json","Authorization":"Bearer {{SUPABASE_ANON_JWT}}","apikey":"{{SUPABASE_ANON_JWT}}","X-Cron-Secret":"{{SB_UK_AQ_CRON_SECRET}}"}'::jsonb,
+      body := '{"connector_code":"breathelondon","skip_stations":true}'::jsonb
     );
   $$
 );
@@ -31,3 +52,5 @@ select cron.schedule(
 -- To disable the schedule:
 -- select cron.unschedule('ingest-uk-air-sos-15m');
 -- select cron.unschedule('ingest-sensorcommunity-15m');
+-- select cron.unschedule('ingest-breathelondon-15m');
+-- select cron.unschedule('ingest-breathelondon-hourly');

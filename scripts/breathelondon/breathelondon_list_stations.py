@@ -420,8 +420,18 @@ class SupabaseWriter:
         payload = [row for row in rows if row.get("id")]
         if not payload:
             return 0
-        self.client.table("timeseries").upsert(payload, on_conflict="id").execute()
-        return len(payload)
+        updated = 0
+        for row in payload:
+            update_payload = {}
+            if "last_value" in row:
+                update_payload["last_value"] = row["last_value"]
+            if "last_value_at" in row:
+                update_payload["last_value_at"] = row["last_value_at"]
+            if not update_payload:
+                continue
+            self.client.table("timeseries").update(update_payload).eq("id", row["id"]).execute()
+            updated += 1
+        return updated
 
 
 def chunked(values: List[str], size: int) -> Iterable[List[str]]:

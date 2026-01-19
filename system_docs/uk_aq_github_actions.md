@@ -12,11 +12,13 @@ This repo uses GitHub Actions for scheduled syncs and deployments.
 
 ### `supabase_edge_deploy.yml`
 - Trigger: push to `main` affecting `supabase/functions/**`, or manual dispatch.
-- Purpose: inject Supabase project ref into the web page, set Supabase secrets, deploy edge functions.
-- Deployed functions: `ingest_uk_air_sos`, `ingest_sensorcommunity`, `uk_aq_latest`,
-  `uk_aq_bristol_latest`, `uk_aq_la_hex`, `uk_aq_pcon_hex`, `uk_aq_stations`, `uk_aq_timeseries`.
+- Purpose: inject Supabase project ref into the web page, set Supabase secrets, deploy edge functions, apply cron schedules.
+- Deployed functions: `ingest_uk_air_sos`, `ingest_breathelondon`, `ingest_sensorcommunity`,
+  `uk_aq_latest`, `uk_aq_bristol_latest`, `uk_aq_la_hex`, `uk_aq_pcon_hex`,
+  `uk_aq_stations`, `uk_aq_timeseries`.
 - Secrets: `SUPABASE_PROJECT_REF`, `SUPABASE_PUBLISHABLE_DEFAULT_KEY`, `SUPABASE_ANON_JWT`,
-  `SUPABASE_ACCESS_TOKEN`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`.
+  `SUPABASE_ACCESS_TOKEN`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`,
+  `SUPABASE_DB_URL`, `UK_AQ_CRON_SECRET`.
 
 ### `uk_aq_raw_dropbox.yml`
 - Trigger: manual dispatch.
@@ -27,11 +29,13 @@ This repo uses GitHub Actions for scheduled syncs and deployments.
 
 ### `uk_aq_stations_daily.yml`
 - Schedule: daily at 03:00 UTC.
-- Purpose: sync stations to Supabase and export a combined stations snapshot to Dropbox.
+- Purpose: sync stations to Supabase (UK-AIR SOS + Breathe London) and export a combined stations snapshot to Dropbox.
 - Script: `python3 scripts/uk_air_sos/uk_air_sos_list_stations.py --to-supabase`.
+- Script: `python3 scripts/breathelondon/breathelondon_list_stations.py --to-supabase`.
 - Export: `python3 scripts/uk_aq_export_stations_dropbox.py` (uploads `uk_aq_stations_<timestamp>.json`).
 - Optional: Sensor.Community discovery step (disabled by default).
-- Secrets: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `UK_AIR_SOS_BASE_URL`, `DROPBOX_APP_KEY`,
+- Secrets: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `UK_AIR_SOS_BASE_URL`,
+  `BREATHELONDON_API_KEY`, `BREATHELONDON_BASE_URL` (optional), `DROPBOX_APP_KEY`,
   `DROPBOX_APP_SECRET`, `DROPBOX_REFRESH_TOKEN`, `UK_AQ_DROPBOX_ROOT`, `UK_AQ_STATIONS_DROPBOX_DIR`.
 
 ### `uk_air_sos_site_register_monthly.yml`

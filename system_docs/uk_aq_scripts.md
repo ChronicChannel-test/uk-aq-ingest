@@ -401,6 +401,21 @@ Notes:
 Writes to (when `--to-supabase` is set):
 - `connectors`, `stations`, `station_metadata`, `station_network_memberships`
 - `phenomena`, `procedures`, `offerings` (unless `--skip-metadata` is used)
+
+### `scripts/uk_air_sos/uk_air_sos_timeseries_metadata_sample.py`
+Purpose:
+- Sample SOS timeseries metadata for a small set of stations and highlight matches for keywords (e.g., modelled wind/temp).
+
+Common commands:
+```
+python3 scripts/uk_air_sos/uk_air_sos_timeseries_metadata_sample.py
+python3 scripts/uk_air_sos/uk_air_sos_timeseries_metadata_sample.py --station-limit 50
+python3 scripts/uk_air_sos/uk_air_sos_timeseries_metadata_sample.py --match-terms "model,wind,temperature"
+python3 scripts/uk_air_sos/uk_air_sos_timeseries_metadata_sample.py --output network_info/UK-Air-SOS/uk_air_sos_timeseries_metadata_sample.json
+```
+
+Default output:
+- `network_info/UK-Air-SOS/uk_air_sos_timeseries_metadata_sample_<timestamp>.json`
   - `stations` lifecycle fields: `first_seen_at`, `last_seen_at`, `removed_at`
   - Stations not seen in the current run are marked with `removed_at`.
 

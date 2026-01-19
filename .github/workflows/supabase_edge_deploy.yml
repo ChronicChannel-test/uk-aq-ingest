@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - "supabase/functions/**"
+      - "supabase/uk_aq_polling_cron.sql"
   workflow_dispatch:
 
 jobs:
@@ -35,6 +36,7 @@ jobs:
           supabase secrets set \
             SB_SUPABASE_URL="${{ secrets.SUPABASE_URL }}" \
             SB_SERVICE_ROLE_KEY="${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
+            SB_UK_AQ_CRON_SECRET="${{ secrets.SB_UK_AQ_CRON_SECRET }}" \
             --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"
 
       - name: Deploy function
@@ -42,6 +44,8 @@ jobs:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: |
           supabase functions deploy ingest_uk_air_sos \
+            --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"
+          supabase functions deploy ingest_breathelondon \
             --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"
           supabase functions deploy ingest_sensorcommunity \
             --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"
@@ -57,3 +61,46 @@ jobs:
             --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"
           supabase functions deploy uk_aq_timeseries \
             --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"
+
+      - name: Apply cron schedules
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          SUPABASE_ANON_JWT: ${{ secrets.SUPABASE_ANON_JWT }}
+          SB_UK_AQ_CRON_SECRET: ${{ secrets.SB_UK_AQ_CRON_SECRET }}
+        run: |
+          if [ -z "$SUPABASE_DB_URL" ]; then
+            echo "SUPABASE_DB_URL is required to apply cron schedules."
+            exit 1
+          fi
+          if [ -z "$SUPABASE_ANON_JWT" ]; then
+            echo "SUPABASE_ANON_JWT is required to apply cron schedules."
+            exit 1
+          fi
+          if [ -z "$SB_UK_AQ_CRON_SECRET" ]; then
+            echo "SB_UK_AQ_CRON_SECRET is required to apply cron schedules."
+            exit 1
+          fi
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y postgresql-client
+          fi
+          CRON_SQL_OUT="$(mktemp)"
+          python3 - <<'PY'
+          import os
+
+          path = "supabase/uk_aq_polling_cron.sql"
+          with open(path, "r", encoding="utf-8") as handle:
+              sql = handle.read()
+          for key in ("SUPABASE_ANON_JWT", "SB_UK_AQ_CRON_SECRET"):
+              value = os.environ.get(key)
+              if not value:
+                  raise SystemExit(f"Missing {key}")
+              sql = sql.replace(f"{{{{{key}}}}}", value)
+          out = os.environ.get("CRON_SQL_OUT")
+          if not out:
+              raise SystemExit("Missing CRON_SQL_OUT")
+          with open(out, "w", encoding="utf-8") as handle:
+              handle.write(sql)
+          PY
+          psql "$SUPABASE_DB_URL" -f "$CRON_SQL_OUT"
+          rm -f "$CRON_SQL_OUT"

@@ -91,6 +91,7 @@ const SCOMM_SERVICE_LABEL = Deno.env.get("SCOMM_SERVICE_LABEL")
 const SCOMM_COUNTRY = Deno.env.get("SCOMM_COUNTRY") ?? DEFAULT_COUNTRY;
 const SCOMM_USER_AGENT = Deno.env.get("SCOMM_USER_AGENT") ?? DEFAULT_USER_AGENT;
 const SCOMM_INGEST_MET_FIELDS = parseBool(Deno.env.get("SCOMM_INGEST_MET_FIELDS"), false);
+const SB_UK_AQ_CRON_SECRET = Deno.env.get("SB_UK_AQ_CRON_SECRET") ?? "";
 
 const VALUE_TYPE_MAP: Record<string, { pollutant: string; label: string; uom: string }> = {
   ...BASE_VALUE_TYPE_MAP,
@@ -184,6 +185,17 @@ function postgrestHeaders(prefer?: string): Record<string, string> {
     headers.Prefer = prefer;
   }
   return headers;
+}
+
+function requireCronSecret(req: Request): Response | null {
+  if (!SB_UK_AQ_CRON_SECRET) {
+    return null;
+  }
+  const header = req.headers.get("x-cron-secret");
+  if (!header || header !== SB_UK_AQ_CRON_SECRET) {
+    return new Response("Unauthorized", { status: 401 });
+  }
+  return null;
 }
 
 async function postgrestRequest<T>(
@@ -1456,6 +1468,10 @@ const ERROR_LOGGER = createErrorLogger(
 serve(async (req) => {
   if (req.method !== "POST") {
     return new Response("Method not allowed", { status: 405 });
+  }
+  const authResponse = requireCronSecret(req);
+  if (authResponse) {
+    return authResponse;
   }
   const log = createLogBuffer();
   const dropboxConfig = loadDropboxConfig();

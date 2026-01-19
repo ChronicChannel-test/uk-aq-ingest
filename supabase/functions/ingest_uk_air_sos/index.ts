@@ -53,6 +53,7 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")
   ?? Deno.env.get("SB_SERVICE_ROLE_KEY")
   ?? "";
+const SB_UK_AQ_CRON_SECRET = Deno.env.get("SB_UK_AQ_CRON_SECRET") ?? "";
 const UK_AIR_SOS_BASE_URL = (Deno.env.get("UK_AIR_SOS_BASE_URL")
   ?? Deno.env.get("UK_AIR_BASE_URL")
   ?? DEFAULT_BASE_URL).replace(/\/$/, "");
@@ -97,6 +98,17 @@ function postgrestHeaders(prefer?: string): Record<string, string> {
     headers.Prefer = prefer;
   }
   return headers;
+}
+
+function requireCronSecret(req: Request): Response | null {
+  if (!SB_UK_AQ_CRON_SECRET) {
+    return null;
+  }
+  const header = req.headers.get("x-cron-secret");
+  if (!header || header !== SB_UK_AQ_CRON_SECRET) {
+    return new Response("Unauthorized", { status: 401 });
+  }
+  return null;
 }
 
 async function postgrestRequest<T>(
@@ -188,6 +200,10 @@ addEventListener("unhandledrejection", (event) => {
 serve(async (req) => {
   if (req.method !== "POST") {
     return new Response("Method not allowed", { status: 405 });
+  }
+  const authResponse = requireCronSecret(req);
+  if (authResponse) {
+    return authResponse;
   }
   const log = createLogBuffer();
   const dropboxConfig = loadDropboxConfig();
