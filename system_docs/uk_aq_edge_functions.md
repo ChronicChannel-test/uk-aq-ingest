@@ -43,6 +43,7 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
 - Notes:
   - Uses `BREATHELONDON_API_KEY` for every request.
   - Supports `skip_stations` to avoid station upserts; when set, stations are loaded from Supabase instead of `ListSensors`.
+  - Supports `active_only` to limit polling to stations marked `enabled` or `site_active` in metadata.
 
 ### uk_aq_latest
 - Purpose: Serve the latest values across all stations (optionally filtered by region/station/pollutant).

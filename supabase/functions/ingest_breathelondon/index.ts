@@ -16,6 +16,7 @@ type PollRequest = {
   batch_size?: number;
   limit?: number;
   skip_stations?: boolean;
+  active_only?: boolean;
   dry_run?: boolean;
 };
 
@@ -471,6 +472,7 @@ async function fetchStationsFromDb(
   connectorId: string,
   serviceRef: string,
   limit?: number,
+  activeOnly = false,
 ): Promise<Array<{ id: number; station_ref: string; station_name: string | null; label: string | null }>> {
   const rows: Array<{ id: number; station_ref: string; station_name: string | null; label: string | null }> = [];
   const pageSize = 1000;
@@ -486,13 +488,23 @@ async function fetchStationsFromDb(
     if (pageLimit <= 0) {
       break;
     }
+    const select = activeOnly
+      ? "id,station_ref,station_name,label,removed_at,station_metadata(attributes)"
+      : "id,station_ref,station_name,label";
     const { data, error } = await postgrestRequest<
-      Array<{ id: number; station_ref: string; station_name: string | null; label: string | null }>
+      Array<{
+        id: number;
+        station_ref: string;
+        station_name: string | null;
+        label: string | null;
+        removed_at?: string | null;
+        station_metadata?: { attributes?: Record<string, unknown> | null }[] | null;
+      }>
     >(
       "GET",
       "stations",
       {
-        select: "id,station_ref,station_name,label",
+        select,
         connector_id: `eq.${connectorId}`,
         service_ref: `eq.${serviceRef}`,
         order: "station_ref.asc",
@@ -504,7 +516,29 @@ async function fetchStationsFromDb(
       throw new Error(`Failed to load stations from Supabase: ${error.message}`);
     }
     const batch = data ?? [];
-    rows.push(...batch);
+    if (activeOnly) {
+      for (const row of batch) {
+        if (row.removed_at) {
+          continue;
+        }
+        const metadata = row.station_metadata?.[0]?.attributes ?? {};
+        const enabled = String(metadata?.enabled ?? "").toLowerCase();
+        const siteActive = String(metadata?.site_active ?? "").toLowerCase();
+        const enabledOk = ["y", "yes", "true", "1"].includes(enabled);
+        const activeOk = ["y", "yes", "true", "1"].includes(siteActive);
+        if (!enabledOk && !activeOk) {
+          continue;
+        }
+        rows.push({
+          id: row.id,
+          station_ref: row.station_ref,
+          station_name: row.station_name ?? null,
+          label: row.label ?? null,
+        });
+      }
+    } else {
+      rows.push(...batch);
+    }
     if (batch.length < pageLimit) {
       break;
     }
@@ -839,6 +873,7 @@ serve(async (req) => {
       const batchSize = asNumber(request.batch_size, DEFAULT_BATCH_SIZE) ?? DEFAULT_BATCH_SIZE;
       const limit = asNumber(request.limit);
       const skipStations = asBoolean(request.skip_stations, false) ?? false;
+      const activeOnly = asBoolean(request.active_only, false) ?? false;
       const dryRun = asBoolean(request.dry_run, false) ?? false;
       const apiKey = asString(request.api_key) ?? BREATHELONDON_API_KEY;
       const startDateOverride = parseStartDate(asString(request.start_date));
@@ -856,7 +891,7 @@ serve(async (req) => {
           let stationIdMap: Record<string, number> = {};
 
           if (skipStations) {
-            const stations = await fetchStationsFromDb(connector.id, serviceRef, limit);
+            const stations = await fetchStationsFromDb(connector.id, serviceRef, limit, activeOnly);
             for (const station of stations) {
               const stationRef = asString(station.station_ref);
               if (!stationRef) {

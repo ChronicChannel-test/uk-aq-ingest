@@ -43,7 +43,7 @@ select cron.schedule(
     select net.http_post(
       url := 'https://nmgierafoeuxfkkscrln.supabase.co/functions/v1/ingest_breathelondon',
       headers := '{"Content-Type":"application/json","Authorization":"Bearer {{SUPABASE_ANON_JWT}}","apikey":"{{SUPABASE_ANON_JWT}}","X-Cron-Secret":"{{SB_UK_AQ_CRON_SECRET}}"}'::jsonb,
-      body := '{"connector_code":"breathelondon","skip_stations":true}'::jsonb
+      body := '{"connector_code":"breathelondon","skip_stations":true,"active_only":true}'::jsonb
     );
   $$
 );
