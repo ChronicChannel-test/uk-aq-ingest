@@ -631,6 +631,7 @@ Environment:
 Notes:
 - `--active-only` honors `station_metadata.attributes.enabled` or `station_metadata.attributes.site_active`.
 - `--skip-stations` avoids `ListSensors` and uses the Supabase station list instead.
+- Stations are ordered by oldest `breathelondon_timeseries_checkpoints.last_fetch_at` (nulls first).
 
 ### `scripts/breathelondon/breathelondon_list_stations.py`
 Purpose:

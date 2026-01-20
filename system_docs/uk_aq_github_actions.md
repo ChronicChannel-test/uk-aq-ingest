@@ -28,9 +28,10 @@ This repo uses GitHub Actions for scheduled syncs and deployments.
   `DROPBOX_APP_SECRET`, `DROPBOX_REFRESH_TOKEN`.
 
 ### `uk_aq_breathelondon_batch.yml`
-- Schedule: hourly at 30 minutes past the hour.
+- Schedule: hourly at 10 minutes past the hour.
 - Purpose: batch station refs and invoke `ingest_breathelondon` per chunk to avoid edge timeouts.
 - Script: `python3 scripts/breathelondon/uk_aq_breathelondon_batch.py --connector-code breathelondon --batch-size 10 --active-only --skip-stations`.
+- Order: oldest `breathelondon_timeseries_checkpoints.last_fetch_at` first (nulls first).
 - Secrets: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_ANON_JWT`, `SB_UK_AQ_CRON_SECRET`.
 
 ### `uk_aq_stations_daily.yml`

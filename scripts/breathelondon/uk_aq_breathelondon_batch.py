@@ -15,6 +15,7 @@ import argparse
 import os
 import sys
 import time
+from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Optional
 
 import requests
@@ -119,6 +120,23 @@ def _station_is_active(row: Dict[str, Any]) -> bool:
     return enabled in TRUTHY or site_active in TRUTHY
 
 
+def _parse_timestamp(value: Optional[str]) -> Optional[datetime]:
+    if not value:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    if text.endswith("Z"):
+        text = f"{text[:-1]}+00:00"
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed
+
+
 def _iter_station_rows(
     client,
     connector_id: int,
@@ -127,7 +145,11 @@ def _iter_station_rows(
     page_size: int = 1000,
 ) -> Iterable[Dict[str, Any]]:
     offset = 0
-    select = "station_ref,removed_at,station_metadata(attributes)" if active_only else "station_ref"
+    select = (
+        "id,station_ref,removed_at,station_metadata(attributes)"
+        if active_only
+        else "id,station_ref"
+    )
     while True:
         resp = (
             client.table("stations")
@@ -148,9 +170,35 @@ def _iter_station_rows(
         offset += page_size
 
 
-def _chunk(values: List[str], size: int) -> Iterable[List[str]]:
+def _chunk(values: List[Any], size: int) -> Iterable[List[Any]]:
     for idx in range(0, len(values), size):
         yield values[idx : idx + size]
+
+
+def _load_oldest_fetch_map(client, station_ids: List[int]) -> Dict[int, Optional[datetime]]:
+    fetch_map: Dict[int, Optional[datetime]] = {station_id: None for station_id in station_ids}
+    if not station_ids:
+        return fetch_map
+    for chunk in _chunk(station_ids, 500):
+        resp = (
+            client.table("breathelondon_timeseries_checkpoints")
+            .select("station_id,last_fetch_at")
+            .in_("station_id", list(chunk))
+            .execute()
+        )
+        rows = _response_data(resp) or []
+        for row in rows:
+            station_id = row.get("station_id")
+            if station_id is None:
+                continue
+            parsed = _parse_timestamp(row.get("last_fetch_at"))
+            if not parsed:
+                continue
+            station_key = int(station_id)
+            existing = fetch_map.get(station_key)
+            if existing is None or parsed < existing:
+                fetch_map[station_key] = parsed
+    return fetch_map
 
 
 def main() -> int:
@@ -183,20 +231,33 @@ def main() -> int:
         raise SystemExit(f"Connector not found: {connector_code}")
     connector_id = connector_rows[0]["id"]
 
-    station_refs: List[str] = []
+    station_rows: List[Dict[str, Any]] = []
     for row in _iter_station_rows(client, connector_id, service_ref, args.active_only):
         station_ref = row.get("station_ref")
         if not station_ref:
             continue
         if args.active_only and not _station_is_active(row):
             continue
-        station_refs.append(str(station_ref))
-        if args.limit and len(station_refs) >= args.limit:
-            break
+        station_rows.append(row)
 
-    if not station_refs:
+    if not station_rows:
         print("No station refs found to ingest.")
         return 0
+
+    station_ids = [int(row["id"]) for row in station_rows if row.get("id") is not None]
+    fetch_map = _load_oldest_fetch_map(client, station_ids)
+    min_stamp = datetime.min.replace(tzinfo=timezone.utc)
+    station_rows.sort(
+        key=lambda row: (
+            0 if fetch_map.get(int(row["id"])) is None else 1,
+            fetch_map.get(int(row["id"])) or min_stamp,
+            str(row.get("station_ref") or ""),
+        )
+    )
+
+    station_refs = [str(row["station_ref"]) for row in station_rows if row.get("station_ref")]
+    if args.limit:
+        station_refs = station_refs[: args.limit]
 
     total = len(station_refs)
     print(f"Loaded {total} station refs (connector={connector_code}, service_ref={service_ref}).")
