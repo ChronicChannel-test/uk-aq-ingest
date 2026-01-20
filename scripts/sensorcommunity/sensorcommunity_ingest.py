@@ -21,7 +21,7 @@ Environment:
 - SCOMM_FILE_LOG_LEVEL (optional; defaults to INFO)
 - DROPBOX_APP_KEY, DROPBOX_APP_SECRET, DROPBOX_REFRESH_TOKEN (for Dropbox logging)
 - SCOMM_RAW_DROPBOX_ALLOWED_SUPABASE_URL (optional; gates raw Dropbox uploads)
-- SCOMM_RAW_DROPBOX_FOLDER (optional; defaults to /raw_data; falls back to UK_AIR_RAW_DROPBOX_FOLDER)
+- SCOMM_RAW_DROPBOX_FOLDER (optional; defaults to /connectors/sensorcommunity/raw_data; falls back to UK_AIR_RAW_DROPBOX_FOLDER)
 - SCOMM_ERROR_DROPBOX_FOLDER (optional; defaults to /error_log; falls back to UK_AIR_ERROR_DROPBOX_FOLDER)
 
 Example:
@@ -94,7 +94,7 @@ SCOMM_INGEST_MET_FIELDS = (
     os.getenv("SCOMM_INGEST_MET_FIELDS", "false").strip().lower() in {"1", "true", "yes", "y", "on"}
 )
 
-DEFAULT_RAW_DROPBOX_FOLDER = "/raw_data"
+DEFAULT_RAW_DROPBOX_FOLDER = "/connectors/sensorcommunity/raw_data"
 DEFAULT_ERROR_DROPBOX_FOLDER = "/error_log"
 DROPBOX_LOG_RETENTION_DAYS = 31
 DROPBOX_TOKEN_URL = "https://api.dropbox.com/oauth2/token"

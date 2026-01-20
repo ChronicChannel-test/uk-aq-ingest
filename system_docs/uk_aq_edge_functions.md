@@ -14,8 +14,8 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
   - `observations` (upsert by timeseries_id + observed_at)
   - `timeseries.last_value` and `timeseries.last_value_at` (update by id)
 - Logs:
-  - Writes a log file to Dropbox `/log/YYYY-MM-DD/`
-  - Writes raw payloads to Dropbox `/raw_data/YYYY-MM-DD/` as ZIP
+  - Writes a log file to Dropbox `/connectors/uk_air_sos/log/YYYY-MM-DD/`
+  - Writes raw payloads to Dropbox `/connectors/uk_air_sos/raw_data/YYYY-MM-DD/` as ZIP
   - Writes errors to `error_logs` and `/error_log/YYYY-MM-DD/`
 
 ### ingest_sensorcommunity
@@ -30,8 +30,8 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
   - Sets `stations.station_exposure` to `indoor`/`outdoor` when `location.indoor` is present (0/1 or boolean).
   - Honors `connectors.overwrite_station_name` to decide when `stations.station_name` can be overwritten (false keeps existing non-null names).
 - Logs:
-  - Writes a log file to Dropbox `/log/YYYY-MM-DD/` (prefix `uk_aq_log_edge_scomm_`).
-  - Writes raw payloads to Dropbox `/raw_data/YYYY-MM-DD/` as ZIP (prefix `uk_aq_raw_edge_scomm_`).
+  - Writes a log file to Dropbox `/connectors/sensorcommunity/log/YYYY-MM-DD/` (prefix `uk_aq_log_edge_scomm_`).
+  - Writes raw payloads to Dropbox `/connectors/sensorcommunity/raw_data/YYYY-MM-DD/` as ZIP (prefix `uk_aq_raw_edge_scomm_`).
   - Writes errors to `error_logs` and `/error_log/YYYY-MM-DD/`.
 
 ### ingest_breathelondon
@@ -47,7 +47,8 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
   - Supports `station_refs` to limit polling to a specific set of station refs.
   - Response includes `stations_requested`/`stations_selected` when station refs are supplied.
 - Logs:
-  - Writes raw payloads to Dropbox `/raw_data/YYYY-MM-DD/` as ZIP (prefix `uk_aq_raw_edge_breathelondon_`).
+  - Writes a log file to Dropbox `/connectors/breathelondon/log/YYYY-MM-DD/` (prefix `uk_aq_log_edge_breathelondon_`).
+  - Writes raw payloads to Dropbox `/connectors/breathelondon/raw_data/YYYY-MM-DD/` as ZIP (prefix `uk_aq_raw_edge_breathelondon_`).
   - Writes errors to `error_logs` and `/error_log/YYYY-MM-DD/` when Dropbox error logging is configured.
 
 ### uk_aq_latest

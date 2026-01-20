@@ -64,7 +64,7 @@ Key flags:
 - `--service-ref` (alias `--service-id`) or `--service-label` to target a specific SOS service
 - `--sample-timeseries 1` to log a short summary of the first N timeseries objects
 - `--raw-dropbox` to write raw payloads to Dropbox (testing only; guarded by `UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL`)
-- `--raw-dropbox-folder /raw_data` to override the Dropbox folder
+- `--raw-dropbox-folder /connectors/uk_air_sos/raw_data` to override the Dropbox folder
 - `--log-level WARNING` to reduce logging output
   - Default output prints only station count, error count, and Dropbox upload info.
 Batching:
@@ -80,9 +80,9 @@ Raw payloads (testing only):
 - Raw payload uploads are disabled unless `SUPABASE_URL` matches `UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL`.
 - Dropbox credentials required: `DROPBOX_APP_KEY`, `DROPBOX_APP_SECRET`, `DROPBOX_REFRESH_TOKEN`.
 - The raw capture writes all SOS responses fetched during the run into a single gzipped JSONL file and uploads it to Dropbox.
-- Uploads are organized under `raw_data/YYYY-MM-DD` within the configured Dropbox folder (for scoped apps, do not include `/Apps/<app>` in the path).
-- Each run also uploads a log file to `/log/YYYY-MM-DD/` (Dropbox app root).
-- Logs older than 31 days are zipped into `/log/archive/YYYY-MM-DD.zip`; archive files older than 1 year are removed.
+- Uploads are organized under `connectors/uk_air_sos/raw_data/YYYY-MM-DD` within the configured Dropbox folder (for scoped apps, do not include `/Apps/<app>` in the path).
+- Each run also uploads a log file to `/connectors/uk_air_sos/log/YYYY-MM-DD/` (Dropbox app root).
+- Logs older than 31 days are zipped into `/connectors/uk_air_sos/log/archive/YYYY-MM-DD.zip`; archive files older than 1 year are removed.
 - If `UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL` is unset in live environments, the upload never runs (even if `--raw-dropbox` is passed).
 
 ### `scripts/uk_aq_load_la_boundaries.py`
@@ -482,7 +482,8 @@ Notes:
 - `SCOMM_FILE_LOG_LEVEL` controls file log verbosity when raw Dropbox capture is enabled.
 - Raw Dropbox uploads are gated by `SCOMM_RAW_DROPBOX_ALLOWED_SUPABASE_URL` (or `UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL`).
 - Dropbox credentials required: `DROPBOX_APP_KEY`, `DROPBOX_APP_SECRET`, `DROPBOX_REFRESH_TOKEN`.
-- Optional folders: `SCOMM_RAW_DROPBOX_FOLDER`/`SCOMM_ERROR_DROPBOX_FOLDER` (fallback to `UK_AIR_*`).
+- Optional folders: `SCOMM_RAW_DROPBOX_FOLDER` (defaults to `/connectors/sensorcommunity/raw_data`) and
+  `SCOMM_ERROR_DROPBOX_FOLDER` (defaults to `/error_log`), with `UK_AIR_*` fallbacks.
 - Sets `stations.station_exposure` to `indoor`/`outdoor` when `location.indoor` is present.
 
 ### `scripts/uk_air_sos/uk_air_sos_compare.py`

@@ -149,8 +149,8 @@ const DROPBOX_ROOT_FOLDER = (() => {
   return normalizeDropboxPath(raw);
 })();
 
-const DROPBOX_LOG_FOLDER = dropboxWithRoot("/log");
-const DROPBOX_RAW_FOLDER = dropboxWithRoot("/raw_data");
+const DROPBOX_LOG_FOLDER = dropboxWithRoot("/connectors/sensorcommunity/log");
+const DROPBOX_RAW_FOLDER = dropboxWithRoot("/connectors/sensorcommunity/raw_data");
 const DROPBOX_ERROR_FOLDER = dropboxWithRoot(
   Deno.env.get("SCOMM_ERROR_DROPBOX_FOLDER")
     ?? Deno.env.get("UK_AIR_ERROR_DROPBOX_FOLDER")

@@ -46,6 +46,13 @@ type ErrorLogEntry = {
   timeseries_id?: string | number | null;
 };
 
+type LogBuffer = {
+  lines: string[];
+  info: (message: string, context?: Record<string, unknown>) => void;
+  warn: (message: string, context?: Record<string, unknown>) => void;
+  error: (message: string, context?: Record<string, unknown>) => void;
+};
+
 type RawRecorder = {
   lines: string[];
   responseCount: number;
@@ -133,7 +140,8 @@ const DROPBOX_ROOT_FOLDER = (() => {
   return normalizeDropboxPath(raw);
 })();
 
-const DROPBOX_RAW_FOLDER = dropboxWithRoot("/raw_data");
+const DROPBOX_LOG_FOLDER = dropboxWithRoot("/connectors/breathelondon/log");
+const DROPBOX_RAW_FOLDER = dropboxWithRoot("/connectors/breathelondon/raw_data");
 const DROPBOX_ERROR_FOLDER = dropboxWithRoot(
   Deno.env.get("BREATHELONDON_ERROR_DROPBOX_FOLDER")
     ?? Deno.env.get("UK_AIR_ERROR_DROPBOX_FOLDER")
@@ -924,6 +932,40 @@ function extractObservations(
   return { rows, lastObserved, lastValue };
 }
 
+function createLogBuffer(): LogBuffer {
+  const lines: string[] = [];
+  const push = (level: string, message: string, context?: Record<string, unknown>) => {
+    const timestamp = new Date().toISOString();
+    const base = `${timestamp} ${level} ${message}`;
+    lines.push(context ? `${base} ${formatContext(context)}` : base);
+  };
+  return {
+    lines,
+    info: (message, context) => push("INFO", message, context),
+    warn: (message, context) => push("WARN", message, context),
+    error: (message, context) => push("ERROR", message, context),
+  };
+}
+
+function formatContext(context: Record<string, unknown>): string {
+  return Object.entries(context)
+    .map(([key, value]) => `${key}=${formatLogValue(value)}`)
+    .join(" ");
+}
+
+function formatLogValue(value: unknown): string {
+  if (value === null || value === undefined) {
+    return "null";
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map((entry) => formatLogValue(entry)).join(",")}]`;
+  }
+  if (typeof value === "object") {
+    return JSON.stringify(value);
+  }
+  return String(value);
+}
+
 function createRawRecorder(): RawRecorder {
   const lines: string[] = [];
   const write = (entry: Record<string, unknown>) => {
@@ -1010,6 +1052,16 @@ function normalizeConnectorPrefix(connectorCode: string | null): string {
   const cleaned = (connectorCode ?? "").trim().toLowerCase();
   const normalized = cleaned.replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
   return normalized || "breathelondon";
+}
+
+function buildDropboxLogPath(
+  connectorCode: string | null,
+  timestamp: Date,
+): string {
+  const stamp = formatCompactTimestamp(timestamp);
+  const dateFolder = formatDateYmd(timestamp);
+  const prefix = normalizeConnectorPrefix(connectorCode);
+  return `${DROPBOX_LOG_FOLDER}/${dateFolder}/uk_aq_log_edge_${prefix}_${stamp}.log`;
 }
 
 function buildDropboxRawPath(
@@ -1247,6 +1299,43 @@ async function deflateRaw(data: Uint8Array): Promise<Uint8Array> {
   return new Uint8Array(buffer);
 }
 
+async function uploadDropboxLog(
+  accessToken: string,
+  log: LogBuffer,
+  connectorId: string | null,
+  connectorCode: string | null,
+  errorLogger: { logError: (entry: ErrorLogEntry) => Promise<void> },
+  refreshToken?: () => Promise<string>,
+): Promise<string> {
+  if (!accessToken || log.lines.length === 0) {
+    return accessToken;
+  }
+  const content = log.lines.join("\n") + "\n";
+  if (!content.trim()) {
+    return accessToken;
+  }
+  try {
+    const logPath = buildDropboxLogPath(connectorCode, new Date());
+    return await dropboxUploadFileWithRetry(accessToken, logPath, content, refreshToken);
+  } catch (err) {
+    console.warn("Dropbox log upload failed:", err);
+    await errorLogger.logError({
+      source: "edge",
+      severity: "error",
+      message: "Dropbox log upload failed.",
+      stack: err instanceof Error ? err.stack : undefined,
+      context: {
+        connector_id: connectorId,
+        connector_code: connectorCode,
+        error: err instanceof Error ? err.message : String(err),
+      },
+      connector_code: connectorCode ?? null,
+      connector_id: connectorId ?? null,
+    });
+  }
+  return accessToken;
+}
+
 async function uploadDropboxRaw(
   accessToken: string,
   recorder: RawRecorder | null,
@@ -1361,6 +1450,7 @@ serve(async (req) => {
     return authResponse;
   }
 
+  const log = createLogBuffer();
   const dropboxConfig = loadDropboxConfig();
   const rawRecorder = dropboxConfig ? createRawRecorder() : null;
   const errorLogger = createErrorLogger(
@@ -1373,14 +1463,21 @@ serve(async (req) => {
   let responsePayload: Record<string, unknown> = {};
   let connector: ConnectorRow | null = null;
   let resolvedConnectorCode: string | null = null;
+  let observationsUpserted = 0;
+  let timeseriesUpdated = 0;
+  let checkpointsUpserted = 0;
+  let stationsSelected = 0;
+  let stationsRequested: number | null = null;
 
   try {
     if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
       status = 500;
       responsePayload = { error: "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY." };
+      log.error("Missing Supabase configuration.");
     } else if (!BREATHELONDON_API_KEY) {
       status = 500;
       responsePayload = { error: "Missing BREATHELONDON_API_KEY." };
+      log.error("Missing Breathe London API key.");
     } else {
       const payload = await req.json().catch(() => ({}));
       const request = payload as PollRequest;
@@ -1403,15 +1500,35 @@ serve(async (req) => {
       const apiKey = asString(request.api_key) ?? BREATHELONDON_API_KEY;
       const startDateOverride = parseStartDate(asString(request.start_date));
 
+      log.info("Poll request", {
+        connector_id: connectorId ?? null,
+        connector_code: connectorCode,
+        connector_label: connectorLabel,
+        service_ref: serviceRef,
+        skip_stations: skipStations,
+        active_only: activeOnly,
+        station_refs: stationRefs.length || null,
+        species: speciesList,
+        window_hours: windowHours,
+        initial_days: initialDays,
+        start_date: startDateOverride ? startDateOverride.toISOString() : null,
+        dry_run: dryRun,
+      });
+
       if (!speciesList.length) {
         status = 400;
         responsePayload = { error: "No valid species specified." };
+        log.warn("No valid species specified.");
       } else {
         connector = await loadConnector(connectorId, connectorCode, connectorLabel, baseUrl);
         resolvedConnectorCode = connector?.connector_code ?? connectorCode;
         if (!connector) {
           status = 500;
           responsePayload = { error: "Failed to resolve connector id." };
+          log.warn("Failed to resolve connector.", {
+            connector_id: connectorId ?? null,
+            connector_code: connectorCode,
+          });
         } else {
           if (rawRecorder) {
             rawRecorder.recordEvent("context", {
@@ -1430,7 +1547,7 @@ serve(async (req) => {
           }
           let stationRows: Record<string, unknown>[] = [];
           let stationIdMap: Record<string, number> = {};
-          const stationRefsRequested = stationRefs.length ? stationRefs.length : null;
+          stationsRequested = stationRefs.length ? stationRefs.length : null;
 
           if (skipStations) {
             const stations = await fetchStationsFromDb(
@@ -1460,6 +1577,7 @@ serve(async (req) => {
             const trimmedSensors = limit ? sensors.slice(0, Math.max(0, limit)) : sensors;
             if (!trimmedSensors.length) {
               responsePayload = { warning: "No sensors returned from Breathe London." };
+              log.warn("No sensors returned from Breathe London.");
             } else {
               const metadataByRef: Record<string, Record<string, unknown>> = {};
               for (const sensor of trimmedSensors) {
@@ -1497,19 +1615,24 @@ serve(async (req) => {
             }
           }
 
+          stationsSelected = stationRows.length;
           if (!stationRows.length) {
-              responsePayload = {
-                warning: skipStations
-                  ? "No Breathe London stations found in Supabase."
-                  : "No sensors returned from Breathe London.",
-                stations_requested: stationRefsRequested,
-                stations_selected: stationRows.length,
-              };
+            responsePayload = {
+              warning: skipStations
+                ? "No Breathe London stations found in Supabase."
+                : "No sensors returned from Breathe London.",
+              stations_requested: stationsRequested,
+              stations_selected: stationRows.length,
+            };
+            log.warn("No Breathe London stations available after filtering.", {
+              skip_stations: skipStations,
+              stations_selected: stationRows.length,
+            });
           } else if (skipStations) {
             if (!Object.keys(stationIdMap).length) {
               responsePayload = {
                 warning: "No station ids resolved for Breathe London.",
-                stations_requested: stationRefsRequested,
+                stations_requested: stationsRequested,
                 stations_selected: stationRows.length,
               };
             }
@@ -1525,7 +1648,7 @@ serve(async (req) => {
             if (!responsePayload.warning) {
               responsePayload = {
                 warning: "No station ids resolved for Breathe London.",
-                stations_requested: stationRefsRequested,
+                stations_requested: stationsRequested,
                 stations_selected: stationRows.length,
               };
             }
@@ -1571,7 +1694,7 @@ serve(async (req) => {
               const now = floorToHour(new Date());
               const timeseriesUpdates: Array<{ id: number; last_value: number; last_value_at: string }> = [];
               const checkpointRows: Record<string, unknown>[] = [];
-              let observationsUpserted = 0;
+              observationsUpserted = 0;
 
               for (const row of stationRows) {
                 const stationRef = String(row.station_ref);
@@ -1661,8 +1784,8 @@ serve(async (req) => {
                 }
               }
 
-              let timeseriesUpdated = 0;
-              let checkpointsUpserted = 0;
+              timeseriesUpdated = 0;
+              checkpointsUpserted = 0;
               if (!dryRun) {
                 if (timeseriesUpdates.length) {
                   timeseriesUpdated = await updateTimeseriesLastValues(timeseriesUpdates, errors);
@@ -1675,8 +1798,8 @@ serve(async (req) => {
               responsePayload = {
                 connector_id: connector.id,
                 stations: stationRows.length,
-                stations_requested: stationRefsRequested,
-                stations_selected: stationRows.length,
+                stations_requested: stationsRequested,
+                stations_selected: stationsSelected,
                 species: speciesList,
                 observations_upserted: observationsUpserted,
                 timeseries_updated: timeseriesUpdated,
@@ -1692,6 +1815,7 @@ serve(async (req) => {
     status = 500;
     const message = error instanceof Error ? error.message : String(error);
     responsePayload = { error: message };
+    log.error("Breathe London ingest failed.", { error: message });
     await errorLogger.logError({
       source: "edge",
       severity: "error",
@@ -1703,6 +1827,18 @@ serve(async (req) => {
       connector_code: connector?.connector_code ?? BREATHELONDON_CONNECTOR_CODE,
       connector_id: connector?.id ?? null,
     });
+  }
+
+  log.info("Poll summary", {
+    connector_id: connector?.id ?? null,
+    stations_selected: stationsSelected,
+    observations_upserted: observationsUpserted,
+    timeseries_updated: timeseriesUpdated,
+    checkpoints_upserted: checkpointsUpserted,
+    errors: errors.length,
+  });
+  if (errors.length) {
+    log.warn("Poll warnings", { sample: errors.slice(0, 25) });
   }
 
   if (errors.length) {
@@ -1728,6 +1864,15 @@ serve(async (req) => {
       const rawConnectorCode = resolvedConnectorCode
         ?? connector?.connector_code
         ?? BREATHELONDON_CONNECTOR_CODE;
+      const connectorId = connector?.id ?? null;
+      accessToken = await uploadDropboxLog(
+        accessToken,
+        log,
+        connectorId,
+        rawConnectorCode,
+        errorLogger,
+        refreshDropbox,
+      );
       await uploadDropboxRaw(accessToken, rawRecorder, rawConnectorCode, refreshDropbox);
     }
   }
