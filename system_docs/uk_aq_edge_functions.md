@@ -36,7 +36,7 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
 
 ### ingest_breathelondon
 - Purpose: Poll Breathe London Communities for hourly observations with checkpointing.
-- Triggered by: Supabase cron (see `supabase/uk_aq_polling_cron.sql`).
+- Triggered by: GitHub Actions batch runner (`.github/workflows/uk_aq_breathelondon_batch.yml`).
 - Writes:
   - `connectors`, `stations`, `phenomena`, `timeseries`, `observations`
   - `breathelondon_timeseries_checkpoints` (per-station/species checkpoints)

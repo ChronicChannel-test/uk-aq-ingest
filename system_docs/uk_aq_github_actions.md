@@ -27,6 +27,12 @@ This repo uses GitHub Actions for scheduled syncs and deployments.
 - Secrets: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `DROPBOX_APP_KEY`,
   `DROPBOX_APP_SECRET`, `DROPBOX_REFRESH_TOKEN`.
 
+### `uk_aq_breathelondon_batch.yml`
+- Schedule: hourly at 30 minutes past the hour.
+- Purpose: batch station refs and invoke `ingest_breathelondon` per chunk to avoid edge timeouts.
+- Script: `python3 scripts/breathelondon/uk_aq_breathelondon_batch.py --connector-code breathelondon --batch-size 10 --active-only --skip-stations`.
+- Secrets: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_ANON_JWT`, `SB_UK_AQ_CRON_SECRET`.
+
 ### `uk_aq_stations_daily.yml`
 - Schedule: daily at 03:00 UTC.
 - Purpose: sync stations to Supabase (UK-AIR SOS + Breathe London) and export a combined stations snapshot to Dropbox.

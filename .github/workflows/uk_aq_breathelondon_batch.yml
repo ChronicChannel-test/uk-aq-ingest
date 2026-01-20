@@ -1,0 +1,37 @@
+name: UK-AQ Breathe London Batch Ingest
+
+on:
+  schedule:
+    - cron: "10 * * * *" # hourly at :10 (UTC)
+  workflow_dispatch:
+
+jobs:
+  breathelondon-batch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install requests supabase
+
+      - name: Batch ingest Breathe London
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_ANON_JWT: ${{ secrets.SUPABASE_ANON_JWT }}
+          SB_UK_AQ_CRON_SECRET: ${{ secrets.SB_UK_AQ_CRON_SECRET }}
+        run: |
+          python3 scripts/breathelondon/uk_aq_breathelondon_batch.py \
+            --connector-code breathelondon \
+            --service-ref breathelondon \
+            --batch-size 10 \
+            --active-only \
+            --skip-stations

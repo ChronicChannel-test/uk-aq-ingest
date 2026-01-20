@@ -610,6 +610,28 @@ Notes:
 - `--ignore-checkpoints` forces backfill even when checkpoints already exist (use for dry-run testing).
 - `--recent-stations` picks stations with the most recent `timeseries.last_value_at` when used with `--skip-stations` (falls back to `observations` if needed).
 
+### `scripts/breathelondon/uk_aq_breathelondon_batch.py`
+Purpose:
+- Batch station refs from Supabase and invoke `ingest_breathelondon` per chunk.
+- Used by GitHub Actions to avoid edge runtime limits.
+
+Common commands:
+```
+python3 scripts/breathelondon/uk_aq_breathelondon_batch.py --connector-code breathelondon --batch-size 10 --active-only --skip-stations
+```
+
+Environment:
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `SUPABASE_ANON_JWT` (or `SUPABASE_ANON_KEY`)
+- `SB_UK_AQ_CRON_SECRET` (optional)
+- `BREATHELONDON_CONNECTOR_CODE` (optional override)
+- `BREATHELONDON_SERVICE_REF` (optional override)
+
+Notes:
+- `--active-only` honors `station_metadata.attributes.enabled` or `station_metadata.attributes.site_active`.
+- `--skip-stations` avoids `ListSensors` and uses the Supabase station list instead.
+
 ### `scripts/breathelondon/breathelondon_list_stations.py`
 Purpose:
 - Fetch Breathe London station metadata and optionally upsert stations + metadata in Supabase.
