@@ -19,6 +19,20 @@
 - Checkpoints live in `breathelondon_timeseries_checkpoints` to avoid re-fetching history.
 - Set a modest polling cadence and window sizes to comply with the fair-use terms.
 
+## Field glossary
+- `connectors.connector_code`: internal code for the data source (here `breathelondon`).
+- `stations.station_ref`: source identifier (SiteCode from Breathe London).
+- `stations.label`: raw source label string.
+- `stations.station_name`: curated display-friendly name (may be null until set).
+- `stations.removed_at`: set when a station is deactivated/removed; `active_only` skips these.
+- `station_metadata.attributes.enabled` / `station_metadata.attributes.site_active`: source activity flags; `active_only` treats either truthy value as active.
+- `timeseries.timeseries_ref`: internal ref (`<station_ref>:<species>`).
+- `timeseries.last_value_at`: timestamp of the most recent observation stored for that timeseries.
+- `observations.observed_at`: timestamp of each observation row.
+- `breathelondon_timeseries_checkpoints.last_fetch_at`: when the ingest last attempted to fetch for a station/species (written even if no data).
+- `breathelondon_timeseries_checkpoints.last_observed_at`: newest observation timestamp successfully fetched for that station/species.
+- `breathelondon_timeseries_checkpoints.last_error`: most recent error message during fetch (if any).
+
 ## Terms highlights
 - Attribution required: "Powered by Breathe London Communities" linked to `https://breathelondon-communities.org`.
 - Non-commercial use allowed; commercial use requires written approval.
