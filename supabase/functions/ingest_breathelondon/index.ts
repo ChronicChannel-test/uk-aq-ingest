@@ -19,6 +19,7 @@ type PollRequest = {
   skip_stations?: boolean;
   active_only?: boolean;
   dry_run?: boolean;
+  debug?: boolean;
 };
 
 type ConnectorRow = {
@@ -32,6 +33,20 @@ type DropboxConfig = {
   appKey: string;
   appSecret: string;
   refreshToken: string;
+};
+
+type DropboxDiagnostics = {
+  enabled: boolean;
+  reason: string | null;
+  has_app_key: boolean;
+  has_app_secret: boolean;
+  has_refresh_token: boolean;
+  supabase_url: string | null;
+  raw_allowed_supabase_url: string | null;
+  raw_allowed_match: boolean;
+  error_allowed_supabase_url: string | null;
+  error_allowed_match: boolean;
+  dropbox_root: string | null;
 };
 
 type ErrorLogEntry = {
@@ -1048,6 +1063,42 @@ function dropboxWithRoot(path: string): string {
   return `${DROPBOX_ROOT_FOLDER}${cleaned}`;
 }
 
+function buildDropboxDiagnostics(): DropboxDiagnostics {
+  const hasAppKey = Boolean(DROPBOX_APP_KEY);
+  const hasAppSecret = Boolean(DROPBOX_APP_SECRET);
+  const hasRefreshToken = Boolean(DROPBOX_REFRESH_TOKEN);
+  const supabaseUrl = SUPABASE_URL || null;
+  const rawAllowed = DROPBOX_ALLOWED_SUPABASE_URL || null;
+  const errorAllowed = DROPBOX_ERROR_ALLOWED_SUPABASE_URL || null;
+  const rawAllowedMatch = Boolean(rawAllowed) && rawAllowed === SUPABASE_URL;
+  const errorAllowedMatch = !errorAllowed || errorAllowed === SUPABASE_URL;
+
+  let reason: string | null = null;
+  if (!SUPABASE_URL) {
+    reason = "missing_supabase_url";
+  } else if (!hasAppKey || !hasAppSecret || !hasRefreshToken) {
+    reason = "missing_dropbox_credentials";
+  } else if (!rawAllowed) {
+    reason = "missing_dropbox_allowed_supabase_url";
+  } else if (!rawAllowedMatch) {
+    reason = "dropbox_allowed_supabase_url_mismatch";
+  }
+
+  return {
+    enabled: reason === null,
+    reason,
+    has_app_key: hasAppKey,
+    has_app_secret: hasAppSecret,
+    has_refresh_token: hasRefreshToken,
+    supabase_url: supabaseUrl,
+    raw_allowed_supabase_url: rawAllowed,
+    raw_allowed_match: rawAllowedMatch,
+    error_allowed_supabase_url: errorAllowed,
+    error_allowed_match: errorAllowedMatch,
+    dropbox_root: DROPBOX_ROOT_FOLDER || null,
+  };
+}
+
 function normalizeConnectorPrefix(connectorCode: string | null): string {
   const cleaned = (connectorCode ?? "").trim().toLowerCase();
   const normalized = cleaned.replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
@@ -1314,8 +1365,8 @@ async function uploadDropboxLog(
   if (!content.trim()) {
     return accessToken;
   }
+  const logPath = buildDropboxLogPath(connectorCode, new Date());
   try {
-    const logPath = buildDropboxLogPath(connectorCode, new Date());
     return await dropboxUploadFileWithRetry(accessToken, logPath, content, refreshToken);
   } catch (err) {
     console.warn("Dropbox log upload failed:", err);
@@ -1327,6 +1378,8 @@ async function uploadDropboxLog(
       context: {
         connector_id: connectorId,
         connector_code: connectorCode,
+        dropbox_path: logPath,
+        dropbox_status: err instanceof DropboxHttpError ? err.status : null,
         error: err instanceof Error ? err.message : String(err),
       },
       connector_code: connectorCode ?? null,
@@ -1339,7 +1392,9 @@ async function uploadDropboxLog(
 async function uploadDropboxRaw(
   accessToken: string,
   recorder: RawRecorder | null,
+  connectorId: string | null,
   connectorCode: string | null,
+  errorLogger: { logError: (entry: ErrorLogEntry) => Promise<void> },
   refreshToken?: () => Promise<string>,
 ): Promise<string> {
   if (!accessToken || !recorder || recorder.responseCount === 0) {
@@ -1349,14 +1404,29 @@ async function uploadDropboxRaw(
   if (!content.trim()) {
     return accessToken;
   }
+  const rawPath = buildDropboxRawPath(connectorCode, new Date());
   try {
-    const rawPath = buildDropboxRawPath(connectorCode, new Date());
     const filename = rawPath.split("/").pop() ?? "uk_aq_raw_edge.jsonl";
     const jsonlName = filename.replace(/\.zip$/i, ".jsonl");
     const zipped = await zipTextCompressed(jsonlName, content);
     return await dropboxUploadFileWithRetry(accessToken, rawPath, zipped, refreshToken);
   } catch (err) {
     console.warn("Dropbox raw upload failed:", err);
+    await errorLogger.logError({
+      source: "edge",
+      severity: "error",
+      message: "Dropbox raw upload failed.",
+      stack: err instanceof Error ? err.stack : undefined,
+      context: {
+        connector_id: connectorId,
+        connector_code: connectorCode,
+        dropbox_path: rawPath,
+        dropbox_status: err instanceof DropboxHttpError ? err.status : null,
+        error: err instanceof Error ? err.message : String(err),
+      },
+      connector_code: connectorCode ?? null,
+      connector_id: connectorId ?? null,
+    });
   }
   return accessToken;
 }
@@ -1452,6 +1522,7 @@ serve(async (req) => {
 
   const log = createLogBuffer();
   const dropboxConfig = loadDropboxConfig();
+  const dropboxDiagnostics = buildDropboxDiagnostics();
   const rawRecorder = dropboxConfig ? createRawRecorder() : null;
   const errorLogger = createErrorLogger(
     loadErrorDropboxConfig(),
@@ -1461,6 +1532,8 @@ serve(async (req) => {
   const errors: string[] = [];
   let status = 200;
   let responsePayload: Record<string, unknown> = {};
+  let debug = false;
+  let debugInfo: Record<string, unknown> | null = null;
   let connector: ConnectorRow | null = null;
   let resolvedConnectorCode: string | null = null;
   let observationsUpserted = 0;
@@ -1497,6 +1570,7 @@ serve(async (req) => {
       const skipStations = asBoolean(request.skip_stations, false) ?? false;
       const activeOnly = asBoolean(request.active_only, false) ?? false;
       const dryRun = asBoolean(request.dry_run, false) ?? false;
+      debug = asBoolean(request.debug, false) ?? false;
       const apiKey = asString(request.api_key) ?? BREATHELONDON_API_KEY;
       const startDateOverride = parseStartDate(asString(request.start_date));
 
@@ -1513,7 +1587,41 @@ serve(async (req) => {
         initial_days: initialDays,
         start_date: startDateOverride ? startDateOverride.toISOString() : null,
         dry_run: dryRun,
+        debug,
       });
+      if (!dropboxConfig && dropboxDiagnostics.reason) {
+        await errorLogger.logError({
+          source: "edge",
+          severity: "warn",
+          message: "Dropbox log/raw uploads disabled.",
+          context: {
+            reason: dropboxDiagnostics.reason,
+            dropbox: dropboxDiagnostics,
+          },
+          connector_code: connectorCode,
+          connector_id: connectorId ?? null,
+        });
+      }
+      if (debug) {
+        debugInfo = {
+          request: {
+            connector_id: connectorId ?? null,
+            connector_code: connectorCode,
+            connector_label: connectorLabel,
+            service_ref: serviceRef,
+            base_url: baseUrl,
+            skip_stations: skipStations,
+            active_only: activeOnly,
+            station_refs: stationRefs.length ? stationRefs : null,
+            species: speciesList,
+            window_hours: windowHours,
+            initial_days: initialDays,
+            start_date: startDateOverride ? startDateOverride.toISOString() : null,
+            dry_run: dryRun,
+          },
+          dropbox: dropboxDiagnostics,
+        };
+      }
 
       if (!speciesList.length) {
         status = 400;
@@ -1859,6 +1967,18 @@ serve(async (req) => {
       accessToken = await dropboxRefreshAccessToken(dropboxConfig);
     } catch (err) {
       console.warn("Dropbox token request failed:", err);
+      await errorLogger.logError({
+        source: "edge",
+        severity: "error",
+        message: "Dropbox token request failed.",
+        stack: err instanceof Error ? err.stack : undefined,
+        context: {
+          error: err instanceof Error ? err.message : String(err),
+          dropbox: dropboxDiagnostics,
+        },
+        connector_code: resolvedConnectorCode ?? BREATHELONDON_CONNECTOR_CODE,
+        connector_id: connector?.id ?? null,
+      });
     }
     if (accessToken) {
       const rawConnectorCode = resolvedConnectorCode
@@ -1873,10 +1993,23 @@ serve(async (req) => {
         errorLogger,
         refreshDropbox,
       );
-      await uploadDropboxRaw(accessToken, rawRecorder, rawConnectorCode, refreshDropbox);
+      await uploadDropboxRaw(
+        accessToken,
+        rawRecorder,
+        connectorId,
+        rawConnectorCode,
+        errorLogger,
+        refreshDropbox,
+      );
     }
   }
 
+  if (debug) {
+    responsePayload = {
+      ...responsePayload,
+      debug: debugInfo ?? { dropbox: dropboxDiagnostics },
+    };
+  }
   return new Response(JSON.stringify(responsePayload, null, 2), {
     status,
     headers: { "Content-Type": "application/json" },
