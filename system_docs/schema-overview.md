@@ -5,6 +5,7 @@ This document summarizes the schema defined in `supabase/uk_air_quality_schema.s
 ## Extensions
 - `postgis` for spatial columns (geography Point).
 - `pgcrypto` for UUID generation (gen_random_uuid).
+- TODO: When we refactor schemas, move extensions (postgis/pgcrypto) out of `public` into a dedicated schema (e.g. `extensions`) and update function search_path entries accordingly.
 
 ## Core reference tables
 - External identifiers that arrive as text (even if numeric) are stored as `*_ref`; all `*_id` columns are internal bigint keys.
