@@ -18,6 +18,7 @@ create or replace function uk_aq_breathelondon_dispatch_batch(
 )
 returns void
 language plpgsql
+set search_path = public, pg_catalog
 as $$
 declare
   v_connector_id bigint;
