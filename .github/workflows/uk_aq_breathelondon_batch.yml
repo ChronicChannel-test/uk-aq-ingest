@@ -1,8 +1,6 @@
 name: UK-AQ Breathe London Batch Ingest
 
 on:
-  schedule:
-    - cron: "*/30 * * * *" # every 30 minutes
   workflow_dispatch:
 
 concurrency:

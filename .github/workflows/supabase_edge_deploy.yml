@@ -65,11 +65,16 @@ jobs:
       - name: Apply cron schedules
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_JWT: ${{ secrets.SUPABASE_ANON_JWT }}
           SB_UK_AQ_CRON_SECRET: ${{ secrets.SB_UK_AQ_CRON_SECRET }}
         run: |
           if [ -z "$SUPABASE_DB_URL" ]; then
             echo "SUPABASE_DB_URL is required to apply cron schedules."
+            exit 1
+          fi
+          if [ -z "$SUPABASE_URL" ]; then
+            echo "SUPABASE_URL is required to apply cron schedules."
             exit 1
           fi
           if [ -z "$SUPABASE_ANON_JWT" ]; then
@@ -95,10 +100,12 @@ jobs:
           path = "supabase/uk_aq_polling_cron.sql"
           with open(path, "r", encoding="utf-8") as handle:
               sql = handle.read()
-          for key in ("SUPABASE_ANON_JWT", "SB_UK_AQ_CRON_SECRET"):
+          for key in ("SUPABASE_URL", "SUPABASE_ANON_JWT", "SB_UK_AQ_CRON_SECRET"):
               value = os.environ.get(key)
               if not value:
                   raise SystemExit(f"Missing {key}")
+              if key == "SUPABASE_URL":
+                  value = value.rstrip("/")
               sql = sql.replace(f"{{{{{key}}}}}", value)
           out = os.environ.get("CRON_SQL_OUT")
           if not out:
