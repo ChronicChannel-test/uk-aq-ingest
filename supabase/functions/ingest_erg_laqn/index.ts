@@ -377,6 +377,20 @@ function parseDate(value?: string | null): Date | null {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
+function normalizeTimestampValue(value: unknown): string | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed ? trimmed : null;
+  }
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+  return null;
+}
+
 function pickValue(payload: Record<string, unknown>, keys: string[]): unknown {
   for (const key of keys) {
     if (key in payload) {
@@ -460,11 +474,15 @@ function normalizeStation(
     region: pickValue(station, ["LocalAuthority", "Borough", "Region", "LocalAuthorityName"]) ??
       null,
     geometry,
-    first_seen_at: pickValue(station, ["StartDate", "SiteStartDate", "SiteSetupDate"]) ??
-      null,
-    last_seen_at: pickValue(station, ["LastUpdated", "LastCommunication", "LastSeen"]) ??
-      null,
-    removed_at: pickValue(station, ["EndDate", "SiteEndDate", "DateClosed"]) ?? null,
+    first_seen_at: normalizeTimestampValue(
+      pickValue(station, ["StartDate", "SiteStartDate", "SiteSetupDate"]),
+    ),
+    last_seen_at: normalizeTimestampValue(
+      pickValue(station, ["LastUpdated", "LastCommunication", "LastSeen"]),
+    ),
+    removed_at: normalizeTimestampValue(
+      pickValue(station, ["EndDate", "SiteEndDate", "DateClosed"]),
+    ),
     connector_id: connectorId,
   };
 }
