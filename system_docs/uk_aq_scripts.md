@@ -85,6 +85,61 @@ Raw payloads (testing only):
 - Logs older than 31 days are zipped into `/connectors/uk_air_sos/log/archive/YYYY-MM-DD.zip`; archive files older than 1 year are removed.
 - If `UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL` is unset in live environments, the upload never runs (even if `--raw-dropbox` is passed).
 
+### `scripts/gov_uk_laqn/gov_uk_laqn_list_stations.py`
+Purpose:
+- Fetch LAQN monitoring sites from the ERG AirQuality API.
+- Optionally upsert LAQN stations and station_metadata into Supabase.
+
+Common commands:
+```
+python3 scripts/gov_uk_laqn/gov_uk_laqn_list_stations.py
+python3 scripts/gov_uk_laqn/gov_uk_laqn_list_stations.py --format csv --output laqn_stations.csv
+python3 scripts/gov_uk_laqn/gov_uk_laqn_list_stations.py --to-supabase
+```
+
+Key flags:
+- `--group` to pass a GroupName filter to the API (optional).
+- `--no-filter` to skip UK bounding box filtering.
+- `--skip-station-metadata` to avoid station_metadata updates.
+
+Environment:
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `LAQN_BASE_URL` (optional; defaults to `https://api.erg.ic.ac.uk/AirQuality`)
+- `LAQN_MONITORING_SITES_PATHS` (optional; comma-separated API paths to try)
+- `LAQN_CONNECTOR_CODE` (optional; defaults to `gov_uk_laqn`)
+- `LAQN_SERVICE_REF` (optional; defaults to `LAQN_CONNECTOR_CODE`)
+- `LAQN_SERVICE_LABEL` (optional; defaults to `London Air Quality Network`)
+- `LAQN_USER_AGENT` (optional)
+
+### `scripts/gov_uk_laqn/gov_uk_laqn_ingest.py`
+Purpose:
+- Ingest LAQN observations from the ERG AirQuality API into Supabase.
+
+Common commands:
+```
+python3 scripts/gov_uk_laqn/gov_uk_laqn_ingest.py --species NO2,PM10
+python3 scripts/gov_uk_laqn/gov_uk_laqn_ingest.py --days 3 --limit 5 --dry-run
+```
+
+Key flags:
+- `--species` to set pollutant species codes (default: NO2,PM10,PM25,O3).
+- `--days` or `--start-date`/`--end-date` to control the ingest window.
+- `--index-days` to use the IndexDays API variant.
+- `--site-codes` to ingest a subset of station refs.
+- `--skip-stations` to avoid station upserts.
+- `--dry-run` to skip Supabase writes.
+
+Environment:
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `LAQN_BASE_URL` (optional; defaults to `https://api.erg.ic.ac.uk/AirQuality`)
+- `LAQN_RAW_DATA_URL_TEMPLATE` (optional; overrides the raw data endpoint URL template)
+- `LAQN_CONNECTOR_CODE` (optional; defaults to `gov_uk_laqn`)
+- `LAQN_SERVICE_REF` (optional; defaults to `LAQN_CONNECTOR_CODE`)
+- `LAQN_SERVICE_LABEL` (optional; defaults to `London Air Quality Network`)
+- `LAQN_USER_AGENT` (optional)
+
 ### `scripts/uk_aq_load_la_boundaries.py`
 Purpose:
 - Load Local Authority boundary GeoJSON into `la_boundaries`.
