@@ -1,38 +1,654 @@
 #!/usr/bin/env python3
 """
-Ingest LAQN data via the UK-AIR SOS pipeline.
-
-This is a thin wrapper around the UK-AIR SOS ingest script that defaults the
-station type filter to LAQN.
+Ingest LAQN observations from the ERG AirQuality API.
 
 Examples:
-  python3 scripts/gov_uk_laqn/gov_uk_laqn_ingest.py --discover --backfill-2025
-  python3 scripts/gov_uk_laqn/gov_uk_laqn_ingest.py --refresh-recent --hours 6
+  python3 scripts/gov_uk_laqn/gov_uk_laqn_ingest.py --species NO2,PM10
+  python3 scripts/gov_uk_laqn/gov_uk_laqn_ingest.py --days 3 --limit 5 --dry-run
 """
 
+import argparse
+import json
+import logging
+import os
 import sys
+import time
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+import requests
+from dotenv import load_dotenv
+from supabase import Client, create_client
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if PROJECT_ROOT.name == "scripts":
+    PROJECT_ROOT = PROJECT_ROOT.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from scripts.uk_air_sos import uk_air_sos_ingest
+from scripts.gov_uk_laqn.gov_uk_laqn_list_stations import (
+    LAQN_BASE_URL,
+    LAQN_CONNECTOR_CODE,
+    LAQN_SERVICE_LABEL,
+    LAQN_SERVICE_REF,
+    LAQN_USER_AGENT,
+    LaqnClient,
+    _normalize_station_payload,
+)
+
+load_dotenv()
+
+LOG = logging.getLogger("gov_uk_laqn_ingest")
+DEFAULT_LOG_LEVEL = os.getenv("LAQN_LOG_LEVEL", "INFO").upper()
+logging.basicConfig(
+    level=getattr(logging, DEFAULT_LOG_LEVEL, logging.INFO),
+    format="%(asctime)s %(levelname)s %(message)s",
+)
+logging.getLogger("httpx").setLevel(getattr(logging, DEFAULT_LOG_LEVEL, logging.INFO))
+logging.getLogger("postgrest").setLevel(getattr(logging, DEFAULT_LOG_LEVEL, logging.INFO))
+
+DEFAULT_DAYS = 7
+DEFAULT_SLEEP_SECONDS = 0.2
+DEFAULT_BATCH_SIZE = 500
+
+LAQN_RAW_DATA_URL_TEMPLATE = os.getenv("LAQN_RAW_DATA_URL_TEMPLATE")
+
+SPECIES_CONFIG = {
+    "NO2": {"label": "NO2", "uom": "ug/m3", "pollutant_label": "no2"},
+    "PM10": {"label": "PM10", "uom": "ug/m3", "pollutant_label": "pm10"},
+    "PM25": {"label": "PM2.5", "uom": "ug/m3", "pollutant_label": "pm2.5"},
+    "O3": {"label": "O3", "uom": "ug/m3", "pollutant_label": "o3"},
+    "SO2": {"label": "SO2", "uom": "ug/m3", "pollutant_label": "so2"},
+    "CO": {"label": "CO", "uom": "mg/m3", "pollutant_label": "co"},
+}
 
 
-def _station_type_flag_present(args: list[str]) -> bool:
-    for arg in args:
-        if arg == "--station-type" or arg.startswith("--station-type="):
-            return True
-    return False
+def utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _clean_text(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _coerce_float(value: Any) -> Optional[float]:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _parse_datetime(value: Any) -> Optional[datetime]:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    for fmt in (
+        "%Y-%m-%dT%H:%M:%S%z",
+        "%Y-%m-%dT%H:%M:%S",
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%d %H:%M",
+        "%d/%m/%Y %H:%M:%S",
+        "%d/%m/%Y %H:%M",
+        "%Y-%m-%d",
+    ):
+        try:
+            parsed = datetime.strptime(text, fmt)
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            return parsed
+        except ValueError:
+            continue
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed
+    except ValueError:
+        return None
+
+
+def _normalize_species(value: str) -> Optional[str]:
+    if not value:
+        return None
+    cleaned = value.strip().upper().replace(".", "").replace(" ", "")
+    if cleaned in {"PM2_5", "PM2-5", "PM25"}:
+        return "PM25"
+    return cleaned
+
+
+def _parse_species_list(value: str) -> List[str]:
+    items = [item.strip() for item in value.split(",") if item.strip()]
+    normalized = []
+    for item in items:
+        key = _normalize_species(item)
+        if key:
+            normalized.append(key)
+    return normalized
+
+
+def _build_timeseries_ref(station_ref: str, species: str) -> str:
+    return f"{station_ref}:{species}"
+
+
+def _extract_observations(payload: Any) -> List[Dict[str, Any]]:
+    if isinstance(payload, list):
+        return [row for row in payload if isinstance(row, dict)]
+    if isinstance(payload, dict):
+        for key in ("RawData", "rawData", "Data", "data", "Measurements", "measurements"):
+            value = payload.get(key)
+            if isinstance(value, list):
+                return [row for row in value if isinstance(row, dict)]
+    return []
+
+
+def _parse_observations(
+    payload: Any, timeseries_id: int
+) -> Tuple[List[Dict[str, Any]], Optional[datetime], Optional[float]]:
+    rows: List[Dict[str, Any]] = []
+    last_observed: Optional[datetime] = None
+    last_value: Optional[float] = None
+    for entry in _extract_observations(payload):
+        observed_at = _parse_datetime(
+            entry.get("DateTime")
+            or entry.get("DateTimeGMT")
+            or entry.get("Date")
+            or entry.get("MeasurementDate")
+        )
+        value = _coerce_float(entry.get("Value") or entry.get("ScaledValue") or entry.get("RawValue"))
+        if observed_at is None or value is None:
+            continue
+        rows.append(
+            {
+                "timeseries_id": timeseries_id,
+                "observed_at": observed_at.isoformat(),
+                "value": value,
+            }
+        )
+        if last_observed is None or observed_at > last_observed:
+            last_observed = observed_at
+            last_value = value
+    return rows, last_observed, last_value
+
+
+def _chunked(values: List[Dict[str, Any]], size: int) -> Iterable[List[Dict[str, Any]]]:
+    if size <= 0:
+        size = DEFAULT_BATCH_SIZE
+    for idx in range(0, len(values), size):
+        yield values[idx : idx + size]
+
+
+def _chunked_values(values: List[str], size: int) -> Iterable[List[str]]:
+    if size <= 0:
+        size = 200
+    for idx in range(0, len(values), size):
+        yield values[idx : idx + size]
+
+
+class SupabaseWriter:
+    def __init__(self) -> None:
+        supabase_url = os.getenv("SUPABASE_URL")
+        supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+        if not supabase_url or not supabase_key:
+            raise RuntimeError("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required.")
+        self.client: Client = create_client(supabase_url, supabase_key)
+
+    def upsert_connector(self) -> int:
+        payload = {
+            "connector_code": LAQN_CONNECTOR_CODE,
+            "label": LAQN_SERVICE_LABEL,
+            "display_name": LAQN_SERVICE_LABEL,
+            "service_url": LAQN_BASE_URL,
+            "stations_bbox_supported": False,
+            "timeseries_station_filter_supported": False,
+        }
+        self.client.table("connectors").upsert(payload, on_conflict="connector_code").execute()
+        row = (
+            self.client.table("connectors")
+            .select("id")
+            .eq("connector_code", LAQN_CONNECTOR_CODE)
+            .single()
+            .execute()
+        )
+        data = row.data if hasattr(row, "data") else row.get("data")
+        if not data:
+            raise RuntimeError("Failed to resolve connector id for LAQN.")
+        return int(data["id"])
+
+    def upsert_stations(self, rows: Iterable[Dict[str, Any]]) -> int:
+        payload = [row for row in rows if row.get("station_ref")]
+        if not payload:
+            return 0
+        self.client.table("stations").upsert(
+            payload, on_conflict="connector_id,service_ref,station_ref"
+        ).execute()
+        return len(payload)
+
+    def fetch_station_ids_by_ref(
+        self, connector_id: int, service_ref: str, station_refs: Iterable[str]
+    ) -> Dict[str, int]:
+        refs = [str(ref) for ref in station_refs if ref]
+        if not refs:
+            return {}
+        mapping: Dict[str, int] = {}
+        for chunk in _chunked_values(refs, 200):
+            resp = (
+                self.client.table("stations")
+                .select("id,station_ref")
+                .eq("connector_id", connector_id)
+                .eq("service_ref", str(service_ref))
+                .in_("station_ref", list(chunk))
+                .execute()
+            )
+            rows = resp.data if hasattr(resp, "data") else resp.get("data")
+            for row in rows or []:
+                mapping[str(row["station_ref"])] = int(row["id"])
+        return mapping
+
+    def upsert_phenomena(self, rows: Iterable[Dict[str, Any]]) -> int:
+        payload = list(rows)
+        if not payload:
+            return 0
+        self.client.table("phenomena").upsert(
+            payload, on_conflict="connector_id,eionet_uri"
+        ).execute()
+        return len(payload)
+
+    def fetch_phenomena_ids(
+        self, connector_id: int, eionet_uris: Iterable[str]
+    ) -> Dict[str, int]:
+        refs = [str(ref) for ref in eionet_uris if ref]
+        if not refs:
+            return {}
+        mapping: Dict[str, int] = {}
+        for chunk in _chunked_values(refs, 200):
+            resp = (
+                self.client.table("phenomena")
+                .select("id,eionet_uri")
+                .eq("connector_id", connector_id)
+                .in_("eionet_uri", list(chunk))
+                .execute()
+            )
+            rows = resp.data if hasattr(resp, "data") else resp.get("data")
+            for row in rows or []:
+                mapping[str(row["eionet_uri"])] = int(row["id"])
+        return mapping
+
+    def upsert_timeseries(self, rows: Iterable[Dict[str, Any]]) -> int:
+        payload = list(rows)
+        if not payload:
+            return 0
+        self.client.table("timeseries").upsert(
+            payload, on_conflict="connector_id,service_ref,timeseries_ref"
+        ).execute()
+        return len(payload)
+
+    def fetch_timeseries_ids(
+        self, connector_id: int, service_ref: str, timeseries_refs: Iterable[str]
+    ) -> Dict[str, int]:
+        refs = [str(ref) for ref in timeseries_refs if ref]
+        if not refs:
+            return {}
+        mapping: Dict[str, int] = {}
+        for chunk in _chunked_values(refs, 200):
+            resp = (
+                self.client.table("timeseries")
+                .select("id,timeseries_ref")
+                .eq("connector_id", connector_id)
+                .eq("service_ref", str(service_ref))
+                .in_("timeseries_ref", list(chunk))
+                .execute()
+            )
+            rows = resp.data if hasattr(resp, "data") else resp.get("data")
+            for row in rows or []:
+                mapping[str(row["timeseries_ref"])] = int(row["id"])
+        return mapping
+
+    def upsert_observations(self, rows: Iterable[Dict[str, Any]]) -> int:
+        payload = list(rows)
+        if not payload:
+            return 0
+        self.client.table("observations").upsert(
+            payload, on_conflict="timeseries_id,observed_at"
+        ).execute()
+        return len(payload)
+
+    def update_timeseries_last_values(self, rows: Iterable[Dict[str, Any]]) -> int:
+        payload = list(rows)
+        if not payload:
+            return 0
+        self.client.table("timeseries").upsert(payload, on_conflict="id").execute()
+        return len(payload)
+
+
+class LaqnIngestClient:
+    def __init__(self, base_url: str = LAQN_BASE_URL, timeout: int = 60, retries: int = 3):
+        self.base_url = base_url
+        self.timeout = timeout
+        self.retries = retries
+        self.session = requests.Session()
+        self.session.headers.update({"User-Agent": LAQN_USER_AGENT})
+
+    def get(self, url: str, params: Optional[Dict[str, Any]] = None) -> Any:
+        for attempt in range(1, self.retries + 1):
+            try:
+                resp = self.session.get(url, params=params, timeout=self.timeout)
+                if resp.status_code in (429, 500, 502, 503, 504):
+                    self._sleep(attempt)
+                    continue
+                resp.raise_for_status()
+                return resp.json()
+            except requests.RequestException as exc:
+                LOG.warning("Request failed (attempt %s/%s): %s", attempt, self.retries, exc)
+                if attempt == self.retries:
+                    raise
+                self._sleep(attempt)
+        return []
+
+    def _sleep(self, attempt: int) -> None:
+        time.sleep(min(30, 2**attempt))
+
+    def raw_data(
+        self,
+        site_code: str,
+        species: str,
+        start: datetime,
+        end: datetime,
+        index_days: int,
+    ) -> Any:
+        if LAQN_RAW_DATA_URL_TEMPLATE:
+            url = LAQN_RAW_DATA_URL_TEMPLATE.format(
+                site_code=site_code,
+                species=species,
+                start=start.date().isoformat(),
+                end=end.date().isoformat(),
+                index_days=index_days,
+            )
+            return self.get(url)
+        templates = [
+            (
+                f"{self.base_url}/GetRawDataSiteSpeciesIndexDaysJSON",
+                {
+                    "SiteCode": site_code,
+                    "Species": species,
+                    "IndexDays": index_days,
+                },
+            ),
+            (
+                f"{self.base_url}/GetRawDataSiteSpeciesJSON",
+                {
+                    "SiteCode": site_code,
+                    "Species": species,
+                    "StartDate": start.date().isoformat(),
+                    "EndDate": end.date().isoformat(),
+                },
+            ),
+            (
+                f"{self.base_url}/GetRawDataSiteSpeciesJSON",
+                {
+                    "sitecode": site_code,
+                    "species": species,
+                    "startdate": start.date().isoformat(),
+                    "enddate": end.date().isoformat(),
+                },
+            ),
+        ]
+        last_error: Optional[Exception] = None
+        for url, params in templates:
+            try:
+                return self.get(url, params=params)
+            except requests.RequestException as exc:
+                last_error = exc
+                LOG.warning("Raw data fetch failed for %s (%s): %s", site_code, url, exc)
+                continue
+        if last_error:
+            raise last_error
+        return []
+
+
+def _collect_station_rows(
+    stations: List[Dict[str, Any]], connector_id: int
+) -> List[Dict[str, Any]]:
+    rows = []
+    for station in stations:
+        row, _ = _normalize_station_payload(station, connector_id)
+        if row.get("station_ref"):
+            rows.append(row)
+    return rows
+
+
+def _select_stations(
+    stations: List[Dict[str, Any]],
+    site_codes: Optional[List[str]],
+    limit: Optional[int],
+) -> List[Dict[str, Any]]:
+    filtered = stations
+    if site_codes:
+        allowed = {code.strip().upper() for code in site_codes if code.strip()}
+        filtered = [
+            station
+            for station in stations
+            if (
+                _clean_text(station.get("SiteCode") or station.get("sitecode"))
+                or ""
+            ).upper()
+            in allowed
+        ]
+    if limit is not None and limit > 0:
+        filtered = filtered[:limit]
+    return filtered
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Ingest LAQN observations from ERG API.")
+    parser.add_argument(
+        "--species",
+        default="NO2,PM10,PM25,O3",
+        help="Comma-separated species list (default: NO2,PM10,PM25,O3).",
+    )
+    parser.add_argument(
+        "--days",
+        type=int,
+        default=DEFAULT_DAYS,
+        help="Days of history to fetch (default: 7).",
+    )
+    parser.add_argument(
+        "--start-date",
+        help="Override start date (YYYY-MM-DD).",
+    )
+    parser.add_argument(
+        "--end-date",
+        help="Override end date (YYYY-MM-DD).",
+    )
+    parser.add_argument(
+        "--index-days",
+        type=int,
+        default=0,
+        help="Use GetRawDataSiteSpeciesIndexDaysJSON with this index days value.",
+    )
+    parser.add_argument(
+        "--site-codes",
+        help="Comma-separated site codes to ingest (optional).",
+    )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        help="Limit number of stations to ingest (optional).",
+    )
+    parser.add_argument(
+        "--sleep-seconds",
+        type=float,
+        default=DEFAULT_SLEEP_SECONDS,
+        help="Sleep between API calls (default: 0.2).",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Skip Supabase writes and only log fetched data.",
+    )
+    parser.add_argument(
+        "--skip-stations",
+        action="store_true",
+        help="Skip station upserts (assumes stations already exist).",
+    )
+    parser.add_argument(
+        "--output-observations",
+        help="Optional JSON file to write observations payloads.",
+    )
+    return parser.parse_args()
+
+
+def _parse_date_arg(value: Optional[str], fallback: datetime) -> datetime:
+    if not value:
+        return fallback
+    parsed = _parse_datetime(value)
+    if parsed is None:
+        return fallback
+    return parsed
 
 
 def main() -> int:
-    argv = sys.argv[1:]
-    if not _station_type_flag_present(argv):
-        argv = ["--station-type", "LAQN", *argv]
-    sys.argv = [sys.argv[0], *argv]
-    uk_air_sos_ingest.main()
+    args = parse_args()
+    species_list = _parse_species_list(args.species)
+    if not species_list:
+        raise RuntimeError("No species specified.")
+
+    now = utcnow()
+    end_date = _parse_date_arg(args.end_date, now)
+    start_date = _parse_date_arg(args.start_date, end_date - timedelta(days=max(args.days, 1)))
+    if start_date > end_date:
+        start_date, end_date = end_date, start_date
+
+    stations_client = LaqnClient()
+    stations = stations_client.monitoring_sites()
+    if not stations:
+        LOG.warning("No LAQN stations returned from monitoring sites API.")
+        return 0
+
+    site_codes = [code.strip() for code in args.site_codes.split(",") if code.strip()] if args.site_codes else None
+    selected = _select_stations(stations, site_codes, args.limit)
+    if not selected:
+        LOG.warning("No stations selected for ingest.")
+        return 0
+
+    writer = SupabaseWriter()
+    connector_id = writer.upsert_connector()
+
+    station_rows = _collect_station_rows(selected, connector_id)
+    if not args.skip_stations and not args.dry_run:
+        station_count = writer.upsert_stations(station_rows)
+        LOG.info("Upserted %s stations.", station_count)
+    elif args.skip_stations:
+        LOG.info("Skipping station upserts.")
+
+    station_id_map = writer.fetch_station_ids_by_ref(
+        connector_id, LAQN_SERVICE_REF, [row["station_ref"] for row in station_rows]
+    )
+    if not station_id_map:
+        LOG.warning("No station ids resolved for LAQN.")
+        return 0
+
+    phenomena_rows = []
+    for species in species_list:
+        config = SPECIES_CONFIG.get(species, {"label": species, "uom": None, "pollutant_label": species.lower()})
+        phenomena_rows.append(
+            {
+                "connector_id": connector_id,
+                "label": config["label"],
+                "eionet_uri": f"laqn:{species}",
+                "notation": species,
+                "pollutant_label": config["pollutant_label"],
+            }
+        )
+    if not args.dry_run:
+        writer.upsert_phenomena(phenomena_rows)
+    phenomenon_ids = writer.fetch_phenomena_ids(
+        connector_id, [row["eionet_uri"] for row in phenomena_rows]
+    )
+
+    timeseries_rows = []
+    for row in station_rows:
+        station_ref = str(row["station_ref"])
+        station_id = station_id_map.get(station_ref)
+        if station_id is None:
+            continue
+        station_name = row.get("station_name") or row.get("label") or station_ref
+        for species in species_list:
+            config = SPECIES_CONFIG.get(species, {"label": species, "uom": None})
+            timeseries_rows.append(
+                {
+                    "timeseries_ref": _build_timeseries_ref(station_ref, species),
+                    "label": f"{station_name} {config['label']}",
+                    "uom": config.get("uom"),
+                    "station_id": station_id,
+                    "service_ref": LAQN_SERVICE_REF,
+                    "connector_id": connector_id,
+                    "phenomenon_id": phenomenon_ids.get(f"laqn:{species}"),
+                    "extras": {"site_code": station_ref, "species": species},
+                }
+            )
+    if not args.dry_run:
+        writer.upsert_timeseries(timeseries_rows)
+    timeseries_id_map = writer.fetch_timeseries_ids(
+        connector_id, LAQN_SERVICE_REF, [row["timeseries_ref"] for row in timeseries_rows]
+    )
+
+    ingest_client = LaqnIngestClient()
+    observations_output = [] if args.output_observations else None
+    observation_total = 0
+    timeseries_updates: List[Dict[str, Any]] = []
+
+    for row in station_rows:
+        station_ref = str(row["station_ref"])
+        for species in species_list:
+            timeseries_ref = _build_timeseries_ref(station_ref, species)
+            timeseries_id = timeseries_id_map.get(timeseries_ref)
+            if timeseries_id is None:
+                continue
+            payload = ingest_client.raw_data(
+                station_ref,
+                species,
+                start=start_date,
+                end=end_date,
+                index_days=max(args.index_days, 0),
+            )
+            rows, last_observed, last_value = _parse_observations(payload, timeseries_id)
+            if observations_output is not None:
+                observations_output.append(
+                    {
+                        "station_ref": station_ref,
+                        "species": species,
+                        "observations": rows,
+                    }
+                )
+            if rows and not args.dry_run:
+                for chunk in _chunked(rows, DEFAULT_BATCH_SIZE):
+                    observation_total += writer.upsert_observations(chunk)
+            if last_observed and last_value is not None and not args.dry_run:
+                timeseries_updates.append(
+                    {
+                        "id": timeseries_id,
+                        "last_value": last_value,
+                        "last_value_at": last_observed.isoformat(),
+                    }
+                )
+            time.sleep(max(args.sleep_seconds, 0))
+
+    if timeseries_updates and not args.dry_run:
+        writer.update_timeseries_last_values(timeseries_updates)
+
+    if observations_output is not None:
+        with open(args.output_observations, "w", encoding="utf-8") as handle:
+            json.dump(observations_output, handle, indent=2)
+
+    LOG.info("Ingested %s observations.", observation_total)
     return 0
 
 

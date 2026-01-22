@@ -87,8 +87,8 @@ Raw payloads (testing only):
 
 ### `scripts/gov_uk_laqn/gov_uk_laqn_list_stations.py`
 Purpose:
-- Fetch LAQN stations from the UK-AIR SOS API (filtered to LAQN station types).
-- Optionally upsert LAQN stations + memberships into Supabase via the UK-AIR SOS connector.
+- Fetch LAQN monitoring sites from the ERG AirQuality API.
+- Optionally upsert LAQN stations and station_metadata into Supabase.
 
 Common commands:
 ```
@@ -98,30 +98,47 @@ python3 scripts/gov_uk_laqn/gov_uk_laqn_list_stations.py --to-supabase
 ```
 
 Key flags:
+- `--group` to pass a GroupName filter to the API (optional).
 - `--no-filter` to skip UK bounding box filtering.
-- `--service-ref-from-timeseries` to resolve station service refs via timeseries metadata.
 - `--skip-station-metadata` to avoid station_metadata updates.
-- `--skip-network-memberships` to avoid station_network_memberships updates.
-- `--skip-station-type-backfill` to avoid station_type updates.
 
 Environment:
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
-- `UK_AIR_SOS_BASE_URL` (optional; defaults to `https://uk-air.defra.gov.uk/sos-ukair/api/v1`)
+- `LAQN_BASE_URL` (optional; defaults to `https://api.erg.ic.ac.uk/AirQuality`)
+- `LAQN_MONITORING_SITES_PATHS` (optional; comma-separated API paths to try)
+- `LAQN_CONNECTOR_CODE` (optional; defaults to `gov_uk_laqn`)
+- `LAQN_SERVICE_REF` (optional; defaults to `LAQN_CONNECTOR_CODE`)
+- `LAQN_SERVICE_LABEL` (optional; defaults to `London Air Quality Network`)
+- `LAQN_USER_AGENT` (optional)
 
 ### `scripts/gov_uk_laqn/gov_uk_laqn_ingest.py`
 Purpose:
-- Wrapper around `uk_air_sos_ingest.py` that defaults the station type filter to LAQN.
+- Ingest LAQN observations from the ERG AirQuality API into Supabase.
 
 Common commands:
 ```
-python3 scripts/gov_uk_laqn/gov_uk_laqn_ingest.py --discover --backfill-2025
-python3 scripts/gov_uk_laqn/gov_uk_laqn_ingest.py --refresh-recent --hours 6
+python3 scripts/gov_uk_laqn/gov_uk_laqn_ingest.py --species NO2,PM10
+python3 scripts/gov_uk_laqn/gov_uk_laqn_ingest.py --days 3 --limit 5 --dry-run
 ```
 
-Notes:
-- Any flags supported by `uk_air_sos_ingest.py` can be passed through.
-- Use `--station-type` to override the default LAQN filter.
+Key flags:
+- `--species` to set pollutant species codes (default: NO2,PM10,PM25,O3).
+- `--days` or `--start-date`/`--end-date` to control the ingest window.
+- `--index-days` to use the IndexDays API variant.
+- `--site-codes` to ingest a subset of station refs.
+- `--skip-stations` to avoid station upserts.
+- `--dry-run` to skip Supabase writes.
+
+Environment:
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `LAQN_BASE_URL` (optional; defaults to `https://api.erg.ic.ac.uk/AirQuality`)
+- `LAQN_RAW_DATA_URL_TEMPLATE` (optional; overrides the raw data endpoint URL template)
+- `LAQN_CONNECTOR_CODE` (optional; defaults to `gov_uk_laqn`)
+- `LAQN_SERVICE_REF` (optional; defaults to `LAQN_CONNECTOR_CODE`)
+- `LAQN_SERVICE_LABEL` (optional; defaults to `London Air Quality Network`)
+- `LAQN_USER_AGENT` (optional)
 
 ### `scripts/uk_aq_load_la_boundaries.py`
 Purpose:
