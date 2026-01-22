@@ -161,6 +161,53 @@ jobs:
                       break
               return year, month
 
+          def entry_version(entry):
+              path = entry.get("path_display") or entry.get("path_lower") or entry.get("name") or ""
+              best = None
+              for part in Path(path).parts:
+                  parsed = parse_version_tag(part)
+                  if parsed and (not best or parsed > best):
+                      best = parsed
+              return best
+
+          def choose_geojson(entries, target_year):
+              candidates = [(entry_version(entry), entry) for entry in entries]
+              if target_year:
+                  filtered = [
+                      (version, entry)
+                      for version, entry in candidates
+                      if version and version[0] == target_year
+                  ]
+                  if filtered:
+                      candidates = filtered
+                  else:
+                      print(
+                          f"No GeoJSON matched PCON_VERSION={target_year}; using latest available."
+                      )
+
+              if not candidates:
+                  return None
+
+              def sort_key(item):
+                  version, entry = item
+                  path = entry.get("path_display") or entry.get("path_lower") or entry.get("name") or ""
+                  if version:
+                      return (version[0], version[1], path)
+                  return (0, 0, path)
+
+              chosen = sorted(candidates, key=sort_key)[-1][1]
+              if len(candidates) > 1:
+                  chosen_path = (
+                      chosen.get("path_display")
+                      or chosen.get("path_lower")
+                      or chosen.get("name")
+                  )
+                  print(f"Multiple GeoJSON files found; selecting {chosen_path}.")
+              return chosen
+
+          def parse_year(value):
+              return int(value) if value and value.isdigit() else None
+
           print(f"Raw PCON base path: {base_path}")
           base_path = normalize_path(base_path)
           print(f"Normalized PCON base path: {base_path}")
@@ -196,20 +243,17 @@ jobs:
                       files.append(entry)
 
               if files:
-                  if len(files) != 1:
-                      names = ", ".join(
-                          sorted(entry.get("name", "") for entry in files)
-                      )
-                      raise SystemExit(
-                          f"Expected 1 GeoJSON file in {base_path}, found {len(files)}: {names}"
-                      )
-                  file_path = files[0]["path_display"] or files[0]["path_lower"]
+                  target_year = parse_year(pcon_version)
+                  choice = choose_geojson(files, target_year)
+                  if not choice:
+                      raise SystemExit(f"No GeoJSON files found in {base_path}.")
+                  file_path = choice.get("path_display") or choice.get("path_lower")
                   if not pcon_version:
                       match = re.search(r"(20\\d{2})", file_path or "")
                       if match:
                           pcon_version = match.group(1)
               else:
-                  target_year = int(pcon_version) if pcon_version and pcon_version.isdigit() else None
+                  target_year = parse_year(pcon_version)
                   if folders:
                       if target_year:
                           matching = [folder for folder in folders if folder[0] == target_year]
@@ -242,19 +286,10 @@ jobs:
                   ]
                   if not geojson_files:
                       raise SystemExit(f"No GeoJSON files found under {year_path}.")
-                  if len(geojson_files) != 1:
-                      names = ", ".join(
-                          sorted(
-                              entry.get("path_display")
-                              or entry.get("path_lower")
-                              or entry.get("name", "")
-                              for entry in geojson_files
-                          )
-                      )
-                      raise SystemExit(
-                          f"Expected 1 GeoJSON file under {year_path}, found {len(geojson_files)}: {names}"
-                      )
-                  file_path = geojson_files[0]["path_display"] or geojson_files[0]["path_lower"]
+                  choice = choose_geojson(geojson_files, target_year)
+                  if not choice:
+                      raise SystemExit(f"No GeoJSON files found under {year_path}.")
+                  file_path = choice.get("path_display") or choice.get("path_lower")
 
           if not pcon_version:
               raise SystemExit(
