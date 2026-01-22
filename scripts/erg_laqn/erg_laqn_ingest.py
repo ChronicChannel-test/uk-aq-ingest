@@ -3,8 +3,8 @@
 Ingest LAQN observations from the ERG AirQuality API.
 
 Examples:
-  python3 scripts/gov_uk_laqn/gov_uk_laqn_ingest.py --species NO2,PM10
-  python3 scripts/gov_uk_laqn/gov_uk_laqn_ingest.py --days 3 --limit 5 --dry-run
+  python3 scripts/erg_laqn/erg_laqn_ingest.py --species NO2,PM10
+  python3 scripts/erg_laqn/erg_laqn_ingest.py --days 3 --limit 5 --dry-run
 """
 
 import argparse
@@ -27,10 +27,11 @@ if PROJECT_ROOT.name == "scripts":
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from scripts.gov_uk_laqn.gov_uk_laqn_list_stations import (
+from scripts.erg_laqn.erg_laqn_list_stations import (
     LAQN_BASE_URL,
+    LAQN_CONNECTOR_DISPLAY_NAME,
+    LAQN_CONNECTOR_LABEL,
     LAQN_CONNECTOR_CODE,
-    LAQN_SERVICE_LABEL,
     LAQN_SERVICE_REF,
     LAQN_USER_AGENT,
     LaqnClient,
@@ -39,7 +40,7 @@ from scripts.gov_uk_laqn.gov_uk_laqn_list_stations import (
 
 load_dotenv()
 
-LOG = logging.getLogger("gov_uk_laqn_ingest")
+LOG = logging.getLogger("erg_laqn_ingest")
 DEFAULT_LOG_LEVEL = os.getenv("LAQN_LOG_LEVEL", "INFO").upper()
 logging.basicConfig(
     level=getattr(logging, DEFAULT_LOG_LEVEL, logging.INFO),
@@ -142,8 +143,14 @@ def _extract_observations(payload: Any) -> List[Dict[str, Any]]:
     if isinstance(payload, list):
         return [row for row in payload if isinstance(row, dict)]
     if isinstance(payload, dict):
-        for key in ("RawData", "rawData", "Data", "data", "Measurements", "measurements"):
+        nested = payload
+        for key in ("RawAQData", "rawAQData"):
             value = payload.get(key)
+            if isinstance(value, dict):
+                nested = value
+                break
+        for key in ("RawData", "rawData", "Data", "data", "Measurements", "measurements"):
+            value = nested.get(key)
             if isinstance(value, list):
                 return [row for row in value if isinstance(row, dict)]
     return []
@@ -161,8 +168,17 @@ def _parse_observations(
             or entry.get("DateTimeGMT")
             or entry.get("Date")
             or entry.get("MeasurementDate")
+            or entry.get("@MeasurementDateGMT")
+            or entry.get("@MeasurementDate")
+            or entry.get("@DateTimeGMT")
+            or entry.get("@DateTime")
         )
-        value = _coerce_float(entry.get("Value") or entry.get("ScaledValue") or entry.get("RawValue"))
+        value = _coerce_float(
+            entry.get("Value")
+            or entry.get("ScaledValue")
+            or entry.get("RawValue")
+            or entry.get("@Value")
+        )
         if observed_at is None or value is None:
             continue
         rows.append(
@@ -203,8 +219,8 @@ class SupabaseWriter:
     def upsert_connector(self) -> int:
         payload = {
             "connector_code": LAQN_CONNECTOR_CODE,
-            "label": LAQN_SERVICE_LABEL,
-            "display_name": LAQN_SERVICE_LABEL,
+            "label": LAQN_CONNECTOR_LABEL,
+            "display_name": LAQN_CONNECTOR_DISPLAY_NAME,
             "service_url": LAQN_BASE_URL,
             "stations_bbox_supported": False,
             "timeseries_station_filter_supported": False,
@@ -372,32 +388,24 @@ class LaqnIngestClient:
                 index_days=index_days,
             )
             return self.get(url)
+        if index_days > 0:
+            LOG.warning("Index-days requests are unsupported for LAQN raw data; using date range.")
+        start_date = start.date().isoformat()
+        end_date = end.date().isoformat()
         templates = [
             (
-                f"{self.base_url}/GetRawDataSiteSpeciesIndexDaysJSON",
-                {
-                    "SiteCode": site_code,
-                    "Species": species,
-                    "IndexDays": index_days,
-                },
+                (
+                    f"{self.base_url}/Data/SiteSpecies/SiteCode={site_code}"
+                    f"/SpeciesCode={species}/StartDate={start_date}/EndDate={end_date}/Json"
+                ),
+                None,
             ),
             (
-                f"{self.base_url}/GetRawDataSiteSpeciesJSON",
-                {
-                    "SiteCode": site_code,
-                    "Species": species,
-                    "StartDate": start.date().isoformat(),
-                    "EndDate": end.date().isoformat(),
-                },
-            ),
-            (
-                f"{self.base_url}/GetRawDataSiteSpeciesJSON",
-                {
-                    "sitecode": site_code,
-                    "species": species,
-                    "startdate": start.date().isoformat(),
-                    "enddate": end.date().isoformat(),
-                },
+                (
+                    f"{self.base_url}/Data/Site/SiteCode={site_code}"
+                    f"/StartDate={start_date}/EndDate={end_date}/Json"
+                ),
+                None,
             ),
         ]
         last_error: Optional[Exception] = None
@@ -418,10 +426,31 @@ def _collect_station_rows(
 ) -> List[Dict[str, Any]]:
     rows = []
     for station in stations:
-        row, _ = _normalize_station_payload(station, connector_id)
+        row, _ = _normalize_station_record(station, connector_id)
         if row.get("station_ref"):
             rows.append(row)
     return rows
+
+
+def _station_ref_from_payload(station: Dict[str, Any]) -> Optional[str]:
+    return _clean_text(
+        station.get("station_ref")
+        or station.get("SiteCode")
+        or station.get("sitecode")
+    )
+
+
+def _normalize_station_record(
+    station: Dict[str, Any], connector_id: int
+) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    if station.get("station_ref"):
+        row = dict(station)
+        row["connector_id"] = connector_id
+        row.setdefault("service_ref", LAQN_SERVICE_REF)
+        row.setdefault("label", row.get("station_name") or row.get("station_ref"))
+        row.setdefault("station_name", row.get("label") or row.get("station_ref"))
+        return row, {}
+    return _normalize_station_payload(station, connector_id)
 
 
 def _select_stations(
@@ -436,8 +465,7 @@ def _select_stations(
             station
             for station in stations
             if (
-                _clean_text(station.get("SiteCode") or station.get("sitecode"))
-                or ""
+                _station_ref_from_payload(station) or ""
             ).upper()
             in allowed
         ]
@@ -478,6 +506,10 @@ def parse_args() -> argparse.Namespace:
         help="Comma-separated site codes to ingest (optional).",
     )
     parser.add_argument(
+        "--stations-json",
+        help="Optional JSON snapshot of LAQN stations to use instead of the live API.",
+    )
+    parser.add_argument(
         "--limit",
         type=int,
         help="Limit number of stations to ingest (optional).",
@@ -502,6 +534,10 @@ def parse_args() -> argparse.Namespace:
         "--output-observations",
         help="Optional JSON file to write observations payloads.",
     )
+    parser.add_argument(
+        "--output-raw-responses",
+        help="Optional JSON file to write raw API responses for each station/species.",
+    )
     return parser.parse_args()
 
 
@@ -512,6 +548,18 @@ def _parse_date_arg(value: Optional[str], fallback: datetime) -> datetime:
     if parsed is None:
         return fallback
     return parsed
+
+
+def _load_stations_snapshot(path: str) -> List[Dict[str, Any]]:
+    with open(path, "r", encoding="utf-8") as handle:
+        payload = json.load(handle)
+    if isinstance(payload, dict):
+        stations = payload.get("stations")
+        if isinstance(stations, list):
+            return [row for row in stations if isinstance(row, dict)]
+    if isinstance(payload, list):
+        return [row for row in payload if isinstance(row, dict)]
+    raise ValueError(f"Unsupported stations snapshot format: {path}")
 
 
 def main() -> int:
@@ -526,8 +574,12 @@ def main() -> int:
     if start_date > end_date:
         start_date, end_date = end_date, start_date
 
-    stations_client = LaqnClient()
-    stations = stations_client.monitoring_sites()
+    if args.stations_json:
+        stations = _load_stations_snapshot(args.stations_json)
+        LOG.info("Loaded %s stations from %s", len(stations), args.stations_json)
+    else:
+        stations_client = LaqnClient()
+        stations = stations_client.monitoring_sites()
     if not stations:
         LOG.warning("No LAQN stations returned from monitoring sites API.")
         return 0
@@ -538,11 +590,69 @@ def main() -> int:
         LOG.warning("No stations selected for ingest.")
         return 0
 
+    ingest_client = LaqnIngestClient()
+    observations_output = [] if args.output_observations else None
+    raw_output = [] if args.output_raw_responses else None
+    observation_total = 0
+    timeseries_updates: List[Dict[str, Any]] = []
+
+    if args.dry_run:
+        station_rows = _collect_station_rows(selected, connector_id=0)
+        for row in station_rows:
+            station_ref = str(row["station_ref"])
+            for species in species_list:
+                try:
+                    payload = ingest_client.raw_data(
+                        station_ref,
+                        species,
+                        start=start_date,
+                        end=end_date,
+                        index_days=max(args.index_days, 0),
+                    )
+                except requests.RequestException as exc:
+                    LOG.warning(
+                        "Raw data fetch failed for %s (%s): %s", station_ref, species, exc
+                    )
+                    if raw_output is not None:
+                        raw_output.append(
+                            {
+                                "station_ref": station_ref,
+                                "species": species,
+                                "error": str(exc),
+                            }
+                        )
+                    continue
+                if raw_output is not None:
+                    raw_output.append(
+                        {"station_ref": station_ref, "species": species, "payload": payload}
+                    )
+                rows, _, _ = _parse_observations(payload, 0)
+                if observations_output is not None:
+                    observations_output.append(
+                        {
+                            "station_ref": station_ref,
+                            "species": species,
+                            "observations": rows,
+                        }
+                    )
+                observation_total += len(rows)
+                time.sleep(max(args.sleep_seconds, 0))
+
+        if observations_output is not None:
+            with open(args.output_observations, "w", encoding="utf-8") as handle:
+                json.dump(observations_output, handle, indent=2)
+        if raw_output is not None:
+            with open(args.output_raw_responses, "w", encoding="utf-8") as handle:
+                json.dump(raw_output, handle, indent=2)
+
+        LOG.info("Dry-run fetched %s observations.", observation_total)
+        return 0
+
     writer = SupabaseWriter()
     connector_id = writer.upsert_connector()
 
     station_rows = _collect_station_rows(selected, connector_id)
-    if not args.skip_stations and not args.dry_run:
+    if not args.skip_stations:
         station_count = writer.upsert_stations(station_rows)
         LOG.info("Upserted %s stations.", station_count)
     elif args.skip_stations:
@@ -557,7 +667,9 @@ def main() -> int:
 
     phenomena_rows = []
     for species in species_list:
-        config = SPECIES_CONFIG.get(species, {"label": species, "uom": None, "pollutant_label": species.lower()})
+        config = SPECIES_CONFIG.get(
+            species, {"label": species, "uom": None, "pollutant_label": species.lower()}
+        )
         phenomena_rows.append(
             {
                 "connector_id": connector_id,
@@ -567,8 +679,7 @@ def main() -> int:
                 "pollutant_label": config["pollutant_label"],
             }
         )
-    if not args.dry_run:
-        writer.upsert_phenomena(phenomena_rows)
+    writer.upsert_phenomena(phenomena_rows)
     phenomenon_ids = writer.fetch_phenomena_ids(
         connector_id, [row["eionet_uri"] for row in phenomena_rows]
     )
@@ -594,16 +705,10 @@ def main() -> int:
                     "extras": {"site_code": station_ref, "species": species},
                 }
             )
-    if not args.dry_run:
-        writer.upsert_timeseries(timeseries_rows)
+    writer.upsert_timeseries(timeseries_rows)
     timeseries_id_map = writer.fetch_timeseries_ids(
         connector_id, LAQN_SERVICE_REF, [row["timeseries_ref"] for row in timeseries_rows]
     )
-
-    ingest_client = LaqnIngestClient()
-    observations_output = [] if args.output_observations else None
-    observation_total = 0
-    timeseries_updates: List[Dict[str, Any]] = []
 
     for row in station_rows:
         station_ref = str(row["station_ref"])
@@ -612,13 +717,27 @@ def main() -> int:
             timeseries_id = timeseries_id_map.get(timeseries_ref)
             if timeseries_id is None:
                 continue
-            payload = ingest_client.raw_data(
-                station_ref,
-                species,
-                start=start_date,
-                end=end_date,
-                index_days=max(args.index_days, 0),
-            )
+            try:
+                payload = ingest_client.raw_data(
+                    station_ref,
+                    species,
+                    start=start_date,
+                    end=end_date,
+                    index_days=max(args.index_days, 0),
+                )
+            except requests.RequestException as exc:
+                LOG.warning(
+                    "Raw data fetch failed for %s (%s): %s", station_ref, species, exc
+                )
+                if raw_output is not None:
+                    raw_output.append(
+                        {"station_ref": station_ref, "species": species, "error": str(exc)}
+                    )
+                continue
+            if raw_output is not None:
+                raw_output.append(
+                    {"station_ref": station_ref, "species": species, "payload": payload}
+                )
             rows, last_observed, last_value = _parse_observations(payload, timeseries_id)
             if observations_output is not None:
                 observations_output.append(
@@ -647,6 +766,9 @@ def main() -> int:
     if observations_output is not None:
         with open(args.output_observations, "w", encoding="utf-8") as handle:
             json.dump(observations_output, handle, indent=2)
+    if raw_output is not None:
+        with open(args.output_raw_responses, "w", encoding="utf-8") as handle:
+            json.dump(raw_output, handle, indent=2)
 
     LOG.info("Ingested %s observations.", observation_total)
     return 0

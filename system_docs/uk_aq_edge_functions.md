@@ -47,6 +47,7 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
   - Supports `station_refs` to limit polling to a specific set of station refs.
   - Supports `debug=true` to include a debug block in the response (Dropbox config status, no secrets).
   - Response includes `stations_requested`/`stations_selected` when station refs are supplied.
+  - Updates `connectors.last_polled_at` on successful non-dry runs.
 - Logs:
   - Writes a log file to Dropbox `/connectors/breathelondon/log/YYYY-MM-DD/` (prefix `uk_aq_log_edge_breathelondon_`).
   - Writes raw payloads to Dropbox `/connectors/breathelondon/raw_data/YYYY-MM-DD/` as ZIP (prefix `uk_aq_raw_edge_breathelondon_`).

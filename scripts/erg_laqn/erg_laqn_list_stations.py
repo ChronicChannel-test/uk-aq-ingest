@@ -3,9 +3,9 @@
 Fetch LAQN monitoring sites from the ERG AirQuality API.
 
 Examples:
-  python3 scripts/gov_uk_laqn/gov_uk_laqn_list_stations.py
-  python3 scripts/gov_uk_laqn/gov_uk_laqn_list_stations.py --format csv --output laqn_stations.csv
-  python3 scripts/gov_uk_laqn/gov_uk_laqn_list_stations.py --to-supabase
+  python3 scripts/erg_laqn/erg_laqn_list_stations.py
+  python3 scripts/erg_laqn/erg_laqn_list_stations.py --format csv --output laqn_stations.csv
+  python3 scripts/erg_laqn/erg_laqn_list_stations.py --to-supabase
 """
 
 import argparse
@@ -33,7 +33,7 @@ from scripts.ingest_helpers import station_in_bbox_or_missing_coords
 
 load_dotenv()
 
-LOG = logging.getLogger("gov_uk_laqn_stations")
+LOG = logging.getLogger("erg_laqn_stations")
 DEFAULT_LOG_LEVEL = os.getenv("LAQN_LOG_LEVEL", "INFO").upper()
 logging.basicConfig(
     level=getattr(logging, DEFAULT_LOG_LEVEL, logging.INFO),
@@ -43,9 +43,17 @@ logging.getLogger("httpx").setLevel(getattr(logging, DEFAULT_LOG_LEVEL, logging.
 logging.getLogger("postgrest").setLevel(getattr(logging, DEFAULT_LOG_LEVEL, logging.INFO))
 
 LAQN_BASE_URL = (os.getenv("LAQN_BASE_URL") or "https://api.erg.ic.ac.uk/AirQuality").rstrip("/")
-LAQN_CONNECTOR_CODE = os.getenv("LAQN_CONNECTOR_CODE") or "gov_uk_laqn"
+LAQN_CONNECTOR_CODE = os.getenv("LAQN_CONNECTOR_CODE") or "erg_laqn"
 LAQN_SERVICE_REF = os.getenv("LAQN_SERVICE_REF") or LAQN_CONNECTOR_CODE
-LAQN_SERVICE_LABEL = os.getenv("LAQN_SERVICE_LABEL") or "London Air Quality Network"
+LAQN_CONNECTOR_LABEL = (
+    os.getenv("LAQN_CONNECTOR_LABEL")
+    or os.getenv("LAQN_SERVICE_LABEL")
+    or "ERG London Air"
+)
+LAQN_CONNECTOR_DISPLAY_NAME = (
+    os.getenv("LAQN_CONNECTOR_DISPLAY_NAME") or "London Air LAQN"
+)
+LAQN_SERVICE_LABEL = LAQN_CONNECTOR_LABEL
 LAQN_USER_AGENT = os.getenv("LAQN_USER_AGENT", "uk-air-quality-networks")
 LAQN_MONITORING_SITES_PATHS = os.getenv("LAQN_MONITORING_SITES_PATHS")
 LAQN_DEFAULT_GROUP = os.getenv("LAQN_DEFAULT_GROUP") or "London"
@@ -316,8 +324,8 @@ class SupabaseWriter:
     def upsert_connector(self) -> int:
         payload = {
             "connector_code": LAQN_CONNECTOR_CODE,
-            "label": LAQN_SERVICE_LABEL,
-            "display_name": LAQN_SERVICE_LABEL,
+            "label": LAQN_CONNECTOR_LABEL,
+            "display_name": LAQN_CONNECTOR_DISPLAY_NAME,
             "service_url": LAQN_BASE_URL,
             "stations_bbox_supported": False,
             "timeseries_station_filter_supported": False,
@@ -444,8 +452,8 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Fetch LAQN monitoring sites from ERG API.")
     parser.add_argument(
         "--output",
-        default="gov_uk_laqn_stations.json",
-        help="Output file path (default: gov_uk_laqn_stations.json).",
+        default="erg_laqn_stations.json",
+        help="Output file path (default: erg_laqn_stations.json).",
     )
     parser.add_argument(
         "--format",

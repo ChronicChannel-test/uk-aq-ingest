@@ -8,6 +8,9 @@
 - For non-SOS networks, use the network prefix (e.g., `sensorcommunity_`) and place them under a matching `scripts/<network>/` directory.
 - Connectors represent data sources; SOS networks live in `uk_air_sos_networks` (use `network_display_name` for UI) and must not be added to `connectors`. Non-SOS connectors are 1:1 with their network.
 - Terminology: `*_ref` = source identifier; `*_code` = internal unique code; `label` = raw source label string; `display_name` = UI-friendly name we curate.
+- LAQN is sourced from ERG (London Air), not GOV.UK; use connector code `erg_laqn` with connector-facing prefixes `erg_laqn_` under `scripts/erg_laqn/`.
+- For LAQN connectors, use `label` = `ERG London Air` and `display_name` = `London Air LAQN`.
+- Use the `laqn_` prefix when referring to the network (not the connector).
 
 ## Runtime
 - Use `python3` for all Python scripts and commands.

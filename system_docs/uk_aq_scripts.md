@@ -85,16 +85,16 @@ Raw payloads (testing only):
 - Logs older than 31 days are zipped into `/connectors/uk_air_sos/log/archive/YYYY-MM-DD.zip`; archive files older than 1 year are removed.
 - If `UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL` is unset in live environments, the upload never runs (even if `--raw-dropbox` is passed).
 
-### `scripts/gov_uk_laqn/gov_uk_laqn_list_stations.py`
+### `scripts/erg_laqn/erg_laqn_list_stations.py`
 Purpose:
 - Fetch LAQN monitoring sites from the ERG AirQuality API.
 - Optionally upsert LAQN stations and station_metadata into Supabase.
 
 Common commands:
 ```
-python3 scripts/gov_uk_laqn/gov_uk_laqn_list_stations.py
-python3 scripts/gov_uk_laqn/gov_uk_laqn_list_stations.py --format csv --output laqn_stations.csv
-python3 scripts/gov_uk_laqn/gov_uk_laqn_list_stations.py --to-supabase
+python3 scripts/erg_laqn/erg_laqn_list_stations.py
+python3 scripts/erg_laqn/erg_laqn_list_stations.py --format csv --output laqn_stations.csv
+python3 scripts/erg_laqn/erg_laqn_list_stations.py --to-supabase
 ```
 
 Key flags:
@@ -108,37 +108,41 @@ Environment:
 - `LAQN_BASE_URL` (optional; defaults to `https://api.erg.ic.ac.uk/AirQuality`)
 - `LAQN_DEFAULT_GROUP` (optional; defaults to `London`)
 - `LAQN_MONITORING_SITES_PATHS` (optional; comma-separated API paths to try)
-- `LAQN_CONNECTOR_CODE` (optional; defaults to `gov_uk_laqn`)
+- `LAQN_CONNECTOR_CODE` (optional; defaults to `erg_laqn`)
+- `LAQN_CONNECTOR_LABEL` (optional; defaults to `ERG London Air`, falls back to `LAQN_SERVICE_LABEL`)
+- `LAQN_CONNECTOR_DISPLAY_NAME` (optional; defaults to `London Air LAQN`)
 - `LAQN_SERVICE_REF` (optional; defaults to `LAQN_CONNECTOR_CODE`)
-- `LAQN_SERVICE_LABEL` (optional; defaults to `London Air Quality Network`)
 - `LAQN_USER_AGENT` (optional)
 
-### `scripts/gov_uk_laqn/gov_uk_laqn_ingest.py`
+### `scripts/erg_laqn/erg_laqn_ingest.py`
 Purpose:
 - Ingest LAQN observations from the ERG AirQuality API into Supabase.
 
 Common commands:
 ```
-python3 scripts/gov_uk_laqn/gov_uk_laqn_ingest.py --species NO2,PM10
-python3 scripts/gov_uk_laqn/gov_uk_laqn_ingest.py --days 3 --limit 5 --dry-run
+python3 scripts/erg_laqn/erg_laqn_ingest.py --species NO2,PM10
+python3 scripts/erg_laqn/erg_laqn_ingest.py --days 3 --limit 5 --dry-run
 ```
 
 Key flags:
 - `--species` to set pollutant species codes (default: NO2,PM10,PM25,O3).
 - `--days` or `--start-date`/`--end-date` to control the ingest window.
-- `--index-days` to use the IndexDays API variant.
+- `--index-days` is not supported by LAQN raw data endpoints; the script logs a warning and uses the date range.
 - `--site-codes` to ingest a subset of station refs.
+- `--stations-json` to use a local LAQN stations snapshot instead of the live API.
 - `--skip-stations` to avoid station upserts.
-- `--dry-run` to skip Supabase writes.
+- `--dry-run` to skip Supabase writes while still fetching observations (outputs use a `timeseries_id` of `0`).
+- `--output-raw-responses` to write raw API responses per station/species.
 
 Environment:
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `LAQN_BASE_URL` (optional; defaults to `https://api.erg.ic.ac.uk/AirQuality`)
 - `LAQN_RAW_DATA_URL_TEMPLATE` (optional; overrides the raw data endpoint URL template)
-- `LAQN_CONNECTOR_CODE` (optional; defaults to `gov_uk_laqn`)
+- `LAQN_CONNECTOR_CODE` (optional; defaults to `erg_laqn`)
+- `LAQN_CONNECTOR_LABEL` (optional; defaults to `ERG London Air`, falls back to `LAQN_SERVICE_LABEL`)
+- `LAQN_CONNECTOR_DISPLAY_NAME` (optional; defaults to `London Air LAQN`)
 - `LAQN_SERVICE_REF` (optional; defaults to `LAQN_CONNECTOR_CODE`)
-- `LAQN_SERVICE_LABEL` (optional; defaults to `London Air Quality Network`)
 - `LAQN_USER_AGENT` (optional)
 
 ### `scripts/uk_aq_load_la_boundaries.py`
@@ -616,22 +620,22 @@ Common commands:
 python3 scripts/gov_uk_waqn/gov_uk_waqn_list_stations.py
 ```
 
-### `scripts/gov_uk_laqn/gov_uk_laqn_ingest.py`
+### `scripts/erg_laqn/erg_laqn_ingest.py`
 Purpose:
 - Placeholder for the London Air Quality Network ingest pipeline.
 
 Common commands:
 ```
-python3 scripts/gov_uk_laqn/gov_uk_laqn_ingest.py
+python3 scripts/erg_laqn/erg_laqn_ingest.py
 ```
 
-### `scripts/gov_uk_laqn/gov_uk_laqn_list_stations.py`
+### `scripts/erg_laqn/erg_laqn_list_stations.py`
 Purpose:
 - Placeholder for the London Air Quality Network station listing.
 
 Common commands:
 ```
-python3 scripts/gov_uk_laqn/gov_uk_laqn_list_stations.py
+python3 scripts/erg_laqn/erg_laqn_list_stations.py
 ```
 
 ### `scripts/breathelondon/breathelondon_ingest.py`
@@ -665,6 +669,7 @@ Notes:
 - `--output-checkpoints` writes the checkpoint rows pulled from Supabase.
 - `--ignore-checkpoints` forces backfill even when checkpoints already exist (use for dry-run testing).
 - `--recent-stations` picks stations with the most recent `timeseries.last_value_at` when used with `--skip-stations` (falls back to `observations` if needed).
+- Updates `connectors.last_polled_at` on successful non-dry runs.
 
 ### `scripts/breathelondon/uk_aq_breathelondon_batch.py`
 Purpose:

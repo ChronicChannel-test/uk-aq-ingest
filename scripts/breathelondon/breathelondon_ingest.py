@@ -511,6 +511,10 @@ def main() -> int:
             writer.update_timeseries_last_values(timeseries_updates)
         if checkpoint_rows:
             writer.upsert_checkpoints(checkpoint_rows)
+        try:
+            writer.update_connector_last_polled(connector_id)
+        except Exception as exc:
+            LOG.warning("Failed to update connectors.last_polled_at: %s", exc)
     else:
         LOG.info("Dry run: skipping observation, timeseries, and checkpoint writes.")
 

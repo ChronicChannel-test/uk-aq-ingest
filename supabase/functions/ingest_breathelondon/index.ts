@@ -1915,6 +1915,31 @@ serve(async (req) => {
                 dry_run: dryRun,
                 errors,
               };
+              if (!dryRun) {
+                const { error: pollUpdateError } = await postgrestRequest(
+                  "PATCH",
+                  "connectors",
+                  { id: `eq.${connector.id}` },
+                  { last_polled_at: new Date().toISOString() },
+                  "return=minimal",
+                );
+                if (pollUpdateError) {
+                  log.warn("Failed to update connectors.last_polled_at.", {
+                    error: pollUpdateError.message,
+                  });
+                  await errorLogger.logError({
+                    source: "edge",
+                    severity: "error",
+                    message: "Failed to update connectors.last_polled_at.",
+                    context: {
+                      connector_id: connector.id,
+                      error: pollUpdateError.message,
+                    },
+                    connector_code: connector.connector_code ?? connectorCode,
+                    connector_id: connector.id,
+                  });
+                }
+              }
             }
           }
         }

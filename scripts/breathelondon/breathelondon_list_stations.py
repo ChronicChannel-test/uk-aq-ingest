@@ -237,6 +237,12 @@ class SupabaseWriter:
             raise RuntimeError("Failed to resolve connector id for Breathe London.")
         return int(data["id"])
 
+    def update_connector_last_polled(self, connector_id: int) -> None:
+        timestamp = datetime.now(timezone.utc).isoformat()
+        self.client.table("connectors").update(
+            {"last_polled_at": timestamp}
+        ).eq("id", connector_id).execute()
+
     def upsert_stations(self, rows: Iterable[Dict[str, Any]]) -> int:
         payload = [row for row in rows if row.get("station_ref")]
         if not payload:

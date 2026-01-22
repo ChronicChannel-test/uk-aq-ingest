@@ -17,10 +17,13 @@ This document summarizes the schema defined in `supabase/uk_air_quality_schema.s
 - `procedures`: sensors/methods; optional raw_formats list, per connector + `service_ref`.
 - `stations`: monitoring sites; bigint `id` (internal) with `station_ref` (external) and `service_ref` (remote SOS service id), unique `(connector_id, service_ref, station_ref)`, plus lifecycle fields `first_seen_at`, `last_seen_at`, `removed_at`. Includes `station_name` as a cleaned display name, `station_type` as the service-provided classification, `station_exposure` for indoor/outdoor, and stores `la_code`/`la_version` and `pcon_code`/`pcon_version` for geography lookups.
 - `station_metadata`: per-station JSON attributes for network-specific fields not stored on `stations` (ownership, device, status, siting metadata).
-- `station_network_memberships`: multi-network membership metadata for stations, including a `network_code` (aligned to `uk_air_sos_networks.network_code`) and `is_primary` flag for preferred ingest source.
+- `station_network_memberships`: multi-network membership metadata for stations, including a `network_code` (aligned to `uk_aq_networks.network_code`) and `is_primary` flag for preferred ingest source.
+- `uk_aq_networks`: curated network catalog with `network_code`, `display_name`, and `connector_code` (use `uk_air_sos` for SOS-derived networks).
+- Seed networks live in `supabase/uk_aq_networks_seed.sql`.
 - `uk_air_sos_networks`: lookup table for network labels from the UK-AIR monitoring sites register (exact `network_ref`, optional `network_code`, and display name).
 - `uk_air_sos_network_pollutants`: pollutant matching rules used to filter SOS network memberships by pollutant coverage.
 - `uk_air_sos_site_register`: snapshot of the UK-AIR monitoring sites CSV, including UK-AIR IDs, coordinates, networks array, and raw payload for audit.
+- `laqn_site_register`: snapshot of the LAQN site list (e.g., LondonAir or ERG API), including LAQN site refs, coordinates, network flags, and raw payload for audit.
 - `uk_air_sos_station_refs`: mapping of SOS `stations` to UK-AIR site ids (`uk_air_id`) with match metadata for membership backfills.
 - `breathelondon_timeseries_checkpoints`: per-site/species checkpoints for staged Breathe London data pulls.
 
