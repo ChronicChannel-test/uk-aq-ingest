@@ -57,6 +57,7 @@ const DEFAULT_BATCH_SIZE = 500;
 const DEFAULT_SLEEP_SECONDS = 0.2;
 const DEFAULT_TIMEOUT_MS = 30_000;
 const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
+const UPSERT_PREFER = "resolution=merge-duplicates,return=minimal";
 
 const SPECIES_CONFIG: Record<
   string,
@@ -535,7 +536,7 @@ async function upsertConnector(
     "connectors",
     { on_conflict: "connector_code" },
     payload,
-    "return=minimal",
+    UPSERT_PREFER,
   );
   if (upsertError) {
     throw new Error(`Connector upsert failed: ${upsertError.message}`);
@@ -560,7 +561,7 @@ async function upsertStations(rows: Record<string, unknown>[]): Promise<void> {
     "stations",
     { on_conflict: "connector_id,service_ref,station_ref" },
     rows,
-    "return=minimal",
+    UPSERT_PREFER,
   );
   if (error) {
     throw new Error(`Stations upsert failed: ${error.message}`);
@@ -616,7 +617,7 @@ async function upsertPhenomena(
     "phenomena",
     { on_conflict: "connector_id,eionet_uri" },
     payload,
-    "return=minimal",
+    UPSERT_PREFER,
   );
   if (error) {
     throw new Error(`Phenomena upsert failed: ${error.message}`);
@@ -658,7 +659,7 @@ async function upsertTimeseries(
     "timeseries",
     { on_conflict: "connector_id,service_ref,timeseries_ref" },
     rows,
-    "return=minimal",
+    UPSERT_PREFER,
   );
   if (error) {
     throw new Error(`Timeseries upsert failed: ${error.message}`);
@@ -701,7 +702,7 @@ async function upsertObservations(rows: Record<string, unknown>[]): Promise<numb
     "observations",
     { on_conflict: "timeseries_id,observed_at" },
     rows,
-    "return=minimal",
+    UPSERT_PREFER,
   );
   if (error) {
     throw new Error(`Observations upsert failed: ${error.message}`);
