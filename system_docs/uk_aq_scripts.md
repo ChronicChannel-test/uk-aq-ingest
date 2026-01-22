@@ -85,6 +85,44 @@ Raw payloads (testing only):
 - Logs older than 31 days are zipped into `/connectors/uk_air_sos/log/archive/YYYY-MM-DD.zip`; archive files older than 1 year are removed.
 - If `UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL` is unset in live environments, the upload never runs (even if `--raw-dropbox` is passed).
 
+### `scripts/gov_uk_laqn/gov_uk_laqn_list_stations.py`
+Purpose:
+- Fetch LAQN stations from the UK-AIR SOS API (filtered to LAQN station types).
+- Optionally upsert LAQN stations + memberships into Supabase via the UK-AIR SOS connector.
+
+Common commands:
+```
+python3 scripts/gov_uk_laqn/gov_uk_laqn_list_stations.py
+python3 scripts/gov_uk_laqn/gov_uk_laqn_list_stations.py --format csv --output laqn_stations.csv
+python3 scripts/gov_uk_laqn/gov_uk_laqn_list_stations.py --to-supabase
+```
+
+Key flags:
+- `--no-filter` to skip UK bounding box filtering.
+- `--service-ref-from-timeseries` to resolve station service refs via timeseries metadata.
+- `--skip-station-metadata` to avoid station_metadata updates.
+- `--skip-network-memberships` to avoid station_network_memberships updates.
+- `--skip-station-type-backfill` to avoid station_type updates.
+
+Environment:
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `UK_AIR_SOS_BASE_URL` (optional; defaults to `https://uk-air.defra.gov.uk/sos-ukair/api/v1`)
+
+### `scripts/gov_uk_laqn/gov_uk_laqn_ingest.py`
+Purpose:
+- Wrapper around `uk_air_sos_ingest.py` that defaults the station type filter to LAQN.
+
+Common commands:
+```
+python3 scripts/gov_uk_laqn/gov_uk_laqn_ingest.py --discover --backfill-2025
+python3 scripts/gov_uk_laqn/gov_uk_laqn_ingest.py --refresh-recent --hours 6
+```
+
+Notes:
+- Any flags supported by `uk_air_sos_ingest.py` can be passed through.
+- Use `--station-type` to override the default LAQN filter.
+
 ### `scripts/uk_aq_load_la_boundaries.py`
 Purpose:
 - Load Local Authority boundary GeoJSON into `la_boundaries`.
