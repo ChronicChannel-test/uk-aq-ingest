@@ -249,9 +249,13 @@ jobs:
                       raise SystemExit(f"No GeoJSON files found in {base_path}.")
                   file_path = choice.get("path_display") or choice.get("path_lower")
                   if not pcon_version:
-                      match = re.search(r"(20\\d{2})", file_path or "")
-                      if match:
-                          pcon_version = match.group(1)
+                      version = entry_version(choice)
+                      if version:
+                          pcon_version = str(version[0])
+                      else:
+                          match = re.search(r"(20\\d{2})", file_path or "")
+                          if match:
+                              pcon_version = match.group(1)
               else:
                   target_year = parse_year(pcon_version)
                   if folders:
@@ -290,6 +294,14 @@ jobs:
                   if not choice:
                       raise SystemExit(f"No GeoJSON files found under {year_path}.")
                   file_path = choice.get("path_display") or choice.get("path_lower")
+                  if not pcon_version:
+                      version = entry_version(choice)
+                      if version:
+                          pcon_version = str(version[0])
+                      else:
+                          match = re.search(r"(20\\d{2})", file_path or "")
+                          if match:
+                              pcon_version = match.group(1)
 
           if not pcon_version:
               raise SystemExit(
