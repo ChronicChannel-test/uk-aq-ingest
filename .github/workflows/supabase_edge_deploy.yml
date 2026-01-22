@@ -47,6 +47,8 @@ jobs:
             --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"
           supabase functions deploy ingest_breathelondon \
             --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"
+          supabase functions deploy ingest_erg_laqn \
+            --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"
           supabase functions deploy ingest_sensorcommunity \
             --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"
           supabase functions deploy uk_aq_latest \

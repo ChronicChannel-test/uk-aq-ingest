@@ -19,3 +19,6 @@ Source: `network_info/LAQN/Operations at https___api.erg.ic.ac.uk_AirQuality.csv
 ## Local snapshots
 - `scripts/erg_laqn/erg_laqn_ingest.py` supports `--stations-json` for using a local stations snapshot (for example `network_info/LAQN/erg_laqn_stations.json`).
 - `--output-raw-responses` writes raw API responses for troubleshooting payload parsing.
+
+## Utilities
+- `scripts/erg_laqn/erg_laqn_list_groups.py` lists available ERG group names.

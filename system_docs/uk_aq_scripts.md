@@ -638,6 +638,20 @@ Common commands:
 python3 scripts/erg_laqn/erg_laqn_list_stations.py
 ```
 
+### `scripts/erg_laqn/erg_laqn_list_groups.py`
+Purpose:
+- List available ERG LAQN group names.
+
+Common commands:
+```
+python3 scripts/erg_laqn/erg_laqn_list_groups.py
+python3 scripts/erg_laqn/erg_laqn_list_groups.py --format json
+```
+
+Environment:
+- `LAQN_BASE_URL` (optional; defaults to `https://api.erg.ic.ac.uk/AirQuality`)
+- `LAQN_USER_AGENT` (optional)
+
 ### `scripts/breathelondon/breathelondon_ingest.py`
 Purpose:
 - Ingest Breathe London Communities observations using staged checkpoints in Supabase.

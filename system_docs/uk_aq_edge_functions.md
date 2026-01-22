@@ -54,6 +54,18 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
   - Writes errors to `error_logs` and `/error_log/YYYY-MM-DD/` when Dropbox error logging is configured.
   - Writes diagnostic entries to `error_logs` when Dropbox config is missing/mismatched or log/raw uploads fail.
 
+### ingest_erg_laqn
+- Purpose: Poll ERG LAQN (configurable group, default London) and write observations.
+- Triggered by: Supabase cron (optional; not scheduled by default).
+- Writes:
+  - `connectors`, `stations`, `phenomena`, `timeseries`, `observations`
+  - `timeseries.last_value` and `timeseries.last_value_at` (update by id)
+  - `connectors.last_polled_at` (update by id)
+- Notes:
+  - Request body supports `group`, `station_refs`, `species`, `days`, `start_date`, `end_date`, `batch_size`, `sleep_seconds`, and `dry_run`.
+  - Uses `/Information/MonitoringSites/GroupName={group}/Json` for stations.
+  - Uses `/Data/SiteSpecies/SiteCode={code}/SpeciesCode={species}/StartDate={YYYY-MM-DD}/EndDate={YYYY-MM-DD}/Json` for raw data.
+
 ### uk_aq_latest
 - Purpose: Serve the latest values across all stations (optionally filtered by region/station/pollutant).
 - Triggered by: Web requests (read-only, no writes).
@@ -122,6 +134,12 @@ Optional:
 - `BREATHELONDON_CONNECTOR_CODE` / `BREATHELONDON_SERVICE_REF` (optional override)
 - `BREATHELONDON_SERVICE_LABEL` (optional override)
 - `BREATHELONDON_USER_AGENT` (optional override)
+- `LAQN_BASE_URL` (optional override for ERG LAQN API base URL)
+- `LAQN_CONNECTOR_CODE` / `LAQN_SERVICE_REF` (optional override)
+- `LAQN_CONNECTOR_LABEL` (optional override, `LAQN_SERVICE_LABEL` also accepted)
+- `LAQN_CONNECTOR_DISPLAY_NAME` (optional override)
+- `LAQN_USER_AGENT` (optional override)
+- `LAQN_DEFAULT_GROUP` (optional override, default `London`)
 - `SB_UK_AQ_CRON_SECRET` (when set, ingest functions require `X-Cron-Secret`)
 
 ## Notes

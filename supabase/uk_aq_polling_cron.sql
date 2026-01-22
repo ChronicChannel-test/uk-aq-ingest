@@ -7,6 +7,7 @@
 -- Reset schedules so this script can be re-applied safely.
 select cron.unschedule('ingest-uk-air-sos-15m');
 select cron.unschedule('ingest-sensorcommunity-15m');
+select cron.unschedule('ingest-erg-laqn-15m');
 select cron.unschedule('ingest-breathelondon-hourly'); -- Legacy cleanup.
 select cron.unschedule('ingest-breathelondon-batch-3m-a');
 select cron.unschedule('ingest-breathelondon-batch-3m-b');
@@ -120,6 +121,19 @@ select cron.schedule(
   $$
 );
 
+-- Create a 15-minute ERG LAQN poll schedule (on the quarter-hour).
+select cron.schedule(
+  'ingest-erg-laqn-15m',
+  '0,15,30,45 * * * *', -- Every 15 minutes at :00, :15, :30, :45.
+  $$
+    select net.http_post(
+      url := '{{SUPABASE_URL}}/functions/v1/ingest_erg_laqn',
+      headers := '{"Content-Type":"application/json","Authorization":"Bearer {{SUPABASE_ANON_JWT}}","apikey":"{{SUPABASE_ANON_JWT}}","X-Cron-Secret":"{{SB_UK_AQ_CRON_SECRET}}"}'::jsonb,
+      body := '{"connector_code":"erg_laqn","service_ref":"erg_laqn","group":"London","days":1}'::jsonb
+    );
+  $$
+);
+
 -- Breathe London batcher via cron (approx. 1m30s cadence using two 3-minute schedules).
 select cron.schedule(
   'ingest-breathelondon-batch-3m-a',
@@ -140,6 +154,7 @@ select cron.schedule(
 -- To disable the schedule:
 -- select cron.unschedule('ingest-uk-air-sos-15m');
 -- select cron.unschedule('ingest-sensorcommunity-15m');
+-- select cron.unschedule('ingest-erg-laqn-15m');
 -- select cron.unschedule('ingest-breathelondon-hourly'); -- Legacy cleanup.
 -- select cron.unschedule('ingest-breathelondon-batch-3m-a');
 -- select cron.unschedule('ingest-breathelondon-batch-3m-b');

@@ -340,8 +340,19 @@ class SupabaseWriter:
         payload = list(rows)
         if not payload:
             return 0
-        self.client.table("timeseries").upsert(payload, on_conflict="id").execute()
-        return len(payload)
+        updated = 0
+        for row in payload:
+            timeseries_id = row.get("id")
+            if timeseries_id is None:
+                continue
+            self.client.table("timeseries").update(
+                {
+                    "last_value": row.get("last_value"),
+                    "last_value_at": row.get("last_value_at"),
+                }
+            ).eq("id", int(timeseries_id)).execute()
+            updated += 1
+        return updated
 
 
 class LaqnIngestClient:
