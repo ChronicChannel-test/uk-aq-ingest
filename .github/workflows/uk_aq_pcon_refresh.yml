@@ -149,7 +149,7 @@ jobs:
           }
 
           def parse_version_tag(name):
-              match = re.search(r"(20\\d{2})", name)
+              match = re.search(r"(20\d{2})", name)
               if not match:
                   return None
               year = int(match.group(1))
@@ -214,13 +214,13 @@ jobs:
           raw_pcon_version = (os.environ.get("PCON_VERSION") or "").strip()
           pcon_version = None
           if raw_pcon_version:
-              version_match = re.search(r"(20\\d{2})", raw_pcon_version)
+              version_match = re.search(r"(20\d{2})", raw_pcon_version)
               pcon_version = version_match.group(1) if version_match else raw_pcon_version
           if base_path.lower().endswith(".geojson"):
               file_path = base_path
               if not pcon_version:
                   for part in Path(file_path).parts:
-                      match = re.search(r"(20\\d{2})", part)
+                      match = re.search(r"(20\d{2})", part)
                       if match:
                           pcon_version = match.group(1)
                           break
@@ -253,7 +253,7 @@ jobs:
                       if version:
                           pcon_version = str(version[0])
                       else:
-                          match = re.search(r"(20\\d{2})", file_path or "")
+                          match = re.search(r"(20\d{2})", file_path or "")
                           if match:
                               pcon_version = match.group(1)
               else:
@@ -277,7 +277,7 @@ jobs:
                   else:
                       year_path = base_path
                       if not pcon_version:
-                          match = re.search(r"(20\\d{2})", year_path)
+                          match = re.search(r"(20\d{2})", year_path)
                           if match:
                               pcon_version = match.group(1)
 
@@ -299,7 +299,7 @@ jobs:
                       if version:
                           pcon_version = str(version[0])
                       else:
-                          match = re.search(r"(20\\d{2})", file_path or "")
+                          match = re.search(r"(20\d{2})", file_path or "")
                           if match:
                               pcon_version = match.group(1)
 
