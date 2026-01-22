@@ -65,6 +65,10 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
   - Request body supports `group`, `station_refs`, `species`, `days`, `start_date`, `end_date`, `batch_size`, `sleep_seconds`, and `dry_run`.
   - Uses `/Information/MonitoringSites/GroupName={group}/Json` for stations.
   - Uses `/Data/SiteSpecies/SiteCode={code}/SpeciesCode={species}/StartDate={YYYY-MM-DD}/EndDate={YYYY-MM-DD}/Json` for raw data.
+- Logs:
+  - Writes a log file to Dropbox `/connectors/erg_laqn/log/YYYY-MM-DD/` (prefix `uk_aq_log_edge_erg_laqn_`).
+  - Writes raw payloads to Dropbox `/connectors/erg_laqn/raw_data/YYYY-MM-DD/` as ZIP (prefix `uk_aq_raw_edge_erg_laqn_`).
+  - Writes errors to `error_logs` and `/error_log/YYYY-MM-DD/` when Dropbox error logging is configured.
 
 ### uk_aq_latest
 - Purpose: Serve the latest values across all stations (optionally filtered by region/station/pollutant).
@@ -140,6 +144,9 @@ Optional:
 - `LAQN_CONNECTOR_DISPLAY_NAME` (optional override)
 - `LAQN_USER_AGENT` (optional override)
 - `LAQN_DEFAULT_GROUP` (optional override, default `London`)
+- `LAQN_RAW_DROPBOX_ALLOWED_SUPABASE_URL` (optional allowlist override for ERG LAQN raw uploads)
+- `LAQN_ERROR_DROPBOX_ALLOWED_SUPABASE_URL` (optional allowlist override for ERG LAQN error uploads)
+- `LAQN_ERROR_DROPBOX_FOLDER` (optional override for ERG LAQN error folder)
 - `SB_UK_AQ_CRON_SECRET` (when set, ingest functions require `X-Cron-Secret`)
 
 ## Notes

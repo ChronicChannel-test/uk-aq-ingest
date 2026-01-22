@@ -27,6 +27,24 @@ type ConnectorRow = {
   service_url: string | null;
 };
 
+type DropboxConfig = {
+  appKey: string;
+  appSecret: string;
+  refreshToken: string;
+};
+
+type ErrorLogEntry = {
+  source: string;
+  severity: string;
+  message: string;
+  stack?: string | null;
+  context?: Record<string, unknown> | null;
+  connector_code?: string | null;
+  connector_id?: string | number | null;
+  station_id?: string | number | null;
+  timeseries_id?: string | number | null;
+};
+
 const DEFAULT_BASE_URL = "https://api.erg.ic.ac.uk/AirQuality";
 const DEFAULT_CONNECTOR_CODE = "erg_laqn";
 const DEFAULT_CONNECTOR_LABEL = "ERG London Air";
@@ -74,6 +92,35 @@ const LAQN_CONNECTOR_DISPLAY_NAME = Deno.env.get("LAQN_CONNECTOR_DISPLAY_NAME")
 const LAQN_USER_AGENT = Deno.env.get("LAQN_USER_AGENT")
   ?? DEFAULT_USER_AGENT;
 const LAQN_DEFAULT_GROUP = Deno.env.get("LAQN_DEFAULT_GROUP") ?? DEFAULT_GROUP;
+
+const DROPBOX_APP_KEY = Deno.env.get("DROPBOX_APP_KEY") ?? "";
+const DROPBOX_APP_SECRET = Deno.env.get("DROPBOX_APP_SECRET") ?? "";
+const DROPBOX_REFRESH_TOKEN = Deno.env.get("DROPBOX_REFRESH_TOKEN") ?? "";
+const DROPBOX_ALLOWED_SUPABASE_URL = Deno.env.get("LAQN_RAW_DROPBOX_ALLOWED_SUPABASE_URL")
+  ?? Deno.env.get("UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL")
+  ?? "";
+const DROPBOX_ERROR_ALLOWED_SUPABASE_URL =
+  Deno.env.get("LAQN_ERROR_DROPBOX_ALLOWED_SUPABASE_URL")
+    ?? Deno.env.get("UK_AIR_ERROR_DROPBOX_ALLOWED_SUPABASE_URL")
+    ?? "";
+const DROPBOX_ROOT_FOLDER = (() => {
+  const raw = Deno.env.get("UK_AQ_DROPBOX_ROOT") ?? "";
+  return normalizeDropboxPath(raw);
+})();
+
+const DROPBOX_LOG_FOLDER = dropboxWithRoot("/connectors/erg_laqn/log");
+const DROPBOX_RAW_FOLDER = dropboxWithRoot("/connectors/erg_laqn/raw_data");
+const DROPBOX_ERROR_FOLDER = dropboxWithRoot(
+  Deno.env.get("LAQN_ERROR_DROPBOX_FOLDER")
+    ?? Deno.env.get("UK_AIR_ERROR_DROPBOX_FOLDER")
+    ?? "error_log",
+);
+const DROPBOX_LOG_RETENTION_DAYS = 31;
+const DROPBOX_TOKEN_URL = "https://api.dropbox.com/oauth2/token";
+const DROPBOX_UPLOAD_URL = "https://content.dropboxapi.com/2/files/upload";
+const DROPBOX_LIST_FOLDER_URL = "https://api.dropboxapi.com/2/files/list_folder";
+const DROPBOX_DOWNLOAD_ZIP_URL = "https://content.dropboxapi.com/2/files/download_zip";
+const DROPBOX_DELETE_URL = "https://api.dropboxapi.com/2/files/delete_v2";
 
 const REST_BASE_URL = SUPABASE_URL
   ? `${SUPABASE_URL.replace(/\/$/, "")}/rest/v1`
@@ -140,9 +187,100 @@ async function postgrestRequest<T>(
   return { data, error: null };
 }
 
+type LogBuffer = {
+  lines: string[];
+  info: (message: string, context?: Record<string, unknown>) => void;
+  warn: (message: string, context?: Record<string, unknown>) => void;
+  error: (message: string, context?: Record<string, unknown>) => void;
+};
+
+type RawRecorder = {
+  lines: string[];
+  responseCount: number;
+  recordEvent: (name: string, payload: Record<string, unknown>) => void;
+  recordResponse: (
+    path: string,
+    params: Record<string, string>,
+    statusCode: number,
+    payload: unknown,
+  ) => void;
+};
+
+function createLogBuffer(): LogBuffer {
+  const lines: string[] = [];
+  const push = (level: string, message: string, context?: Record<string, unknown>) => {
+    const timestamp = new Date().toISOString();
+    const base = `${timestamp} ${level} ${message}`;
+    lines.push(context ? `${base} ${formatContext(context)}` : base);
+  };
+  return {
+    lines,
+    info: (message, context) => push("INFO", message, context),
+    warn: (message, context) => push("WARN", message, context),
+    error: (message, context) => push("ERROR", message, context),
+  };
+}
+
+function formatContext(context: Record<string, unknown>): string {
+  return Object.entries(context)
+    .map(([key, value]) => `${key}=${formatLogValue(value)}`)
+    .join(" ");
+}
+
+function formatLogValue(value: unknown): string {
+  if (value === null || value === undefined) {
+    return "null";
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map((entry) => formatLogValue(entry)).join(",")}]`;
+  }
+  if (typeof value === "object") {
+    return JSON.stringify(value);
+  }
+  return String(value);
+}
+
+function createRawRecorder(): RawRecorder {
+  const lines: string[] = [];
+  const write = (entry: Record<string, unknown>) => {
+    lines.push(JSON.stringify(entry));
+  };
+  const recorder: RawRecorder = {
+    lines,
+    responseCount: 0,
+    recordEvent: (name, payload) => {
+      write({
+        type: name,
+        recorded_at: new Date().toISOString(),
+        payload,
+      });
+    },
+    recordResponse: (path, params, statusCode, payload) => {
+      recorder.responseCount += 1;
+      write({
+        type: "response",
+        fetched_at: new Date().toISOString(),
+        path,
+        params,
+        status_code: statusCode,
+        payload,
+      });
+    },
+  };
+  write({ type: "meta", created_at: new Date().toISOString() });
+  return recorder;
+}
+
+const ERROR_LOGGER = createErrorLogger(
+  loadErrorDropboxConfig(),
+  Boolean(SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY),
+);
+
 async function fetchJson(
   url: string,
   params?: Record<string, string>,
+  log?: LogBuffer,
+  rawRecorder?: RawRecorder,
 ): Promise<unknown> {
   const requestUrl = new URL(url);
   if (params) {
@@ -159,17 +297,32 @@ async function fetchJson(
         signal: controller.signal,
       });
       clearTimeout(timeoutId);
+      const contentType = resp.headers.get("content-type") ?? "";
+      const payload = resp.status === 204
+        ? null
+        : (contentType.includes("application/json") ? await resp.json() : await resp.text());
+      rawRecorder?.recordResponse(
+        requestUrl.pathname,
+        Object.fromEntries(requestUrl.searchParams.entries()),
+        resp.status,
+        payload,
+      );
       if (resp.status === 404) {
         throw new Error(`HTTP 404 for ${requestUrl}`);
       }
       if (RETRYABLE_STATUS.has(resp.status)) {
+        log?.warn("Retryable response received.", {
+          attempt,
+          status: resp.status,
+          url: requestUrl.toString(),
+        });
         await sleep(2 ** attempt);
         continue;
       }
       if (!resp.ok) {
         throw new Error(`HTTP ${resp.status} for ${requestUrl}`);
       }
-      return await resp.json();
+      return payload;
     } catch (err) {
       clearTimeout(timeoutId);
       if (attempt === 3) {
@@ -588,6 +741,570 @@ async function updateConnectorLastPolled(connectorId: string): Promise<void> {
   }
 }
 
+function loadDropboxConfig(): DropboxConfig | null {
+  if (!DROPBOX_APP_KEY || !DROPBOX_APP_SECRET || !DROPBOX_REFRESH_TOKEN) {
+    return null;
+  }
+  if (!DROPBOX_ALLOWED_SUPABASE_URL || DROPBOX_ALLOWED_SUPABASE_URL !== SUPABASE_URL) {
+    return null;
+  }
+  return {
+    appKey: DROPBOX_APP_KEY,
+    appSecret: DROPBOX_APP_SECRET,
+    refreshToken: DROPBOX_REFRESH_TOKEN,
+  };
+}
+
+function loadErrorDropboxConfig(): DropboxConfig | null {
+  if (!DROPBOX_APP_KEY || !DROPBOX_APP_SECRET || !DROPBOX_REFRESH_TOKEN) {
+    return null;
+  }
+  if (DROPBOX_ERROR_ALLOWED_SUPABASE_URL && DROPBOX_ERROR_ALLOWED_SUPABASE_URL !== SUPABASE_URL) {
+    return null;
+  }
+  return {
+    appKey: DROPBOX_APP_KEY,
+    appSecret: DROPBOX_APP_SECRET,
+    refreshToken: DROPBOX_REFRESH_TOKEN,
+  };
+}
+
+function normalizeDropboxPath(raw: string): string {
+  const cleaned = raw.trim();
+  if (!cleaned) {
+    return "";
+  }
+  const rooted = cleaned.startsWith("/") ? cleaned : `/${cleaned}`;
+  return rooted.replace(/\/$/, "");
+}
+
+function dropboxWithRoot(path: string): string {
+  const cleaned = normalizeDropboxPath(path);
+  if (!DROPBOX_ROOT_FOLDER) {
+    return cleaned;
+  }
+  if (!cleaned) {
+    return DROPBOX_ROOT_FOLDER;
+  }
+  if (cleaned === DROPBOX_ROOT_FOLDER || cleaned.startsWith(`${DROPBOX_ROOT_FOLDER}/`)) {
+    return cleaned;
+  }
+  return `${DROPBOX_ROOT_FOLDER}${cleaned}`;
+}
+
+function normalizeConnectorPrefix(connectorCode: string | null): string {
+  const cleaned = (connectorCode ?? "").trim().toLowerCase();
+  const normalized = cleaned.replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+  return normalized || "unknown";
+}
+
+function buildDropboxLogPath(
+  connectorCode: string | null,
+  timestamp: Date,
+): string {
+  const stamp = formatCompactTimestamp(timestamp);
+  const dateFolder = formatDateYmd(timestamp);
+  const prefix = normalizeConnectorPrefix(connectorCode);
+  return `${DROPBOX_LOG_FOLDER}/${dateFolder}/uk_aq_log_edge_${prefix}_${stamp}.log`;
+}
+
+function buildDropboxRawPath(
+  connectorCode: string | null,
+  timestamp: Date,
+): string {
+  const stamp = formatCompactTimestamp(timestamp);
+  const dateFolder = formatDateYmd(timestamp);
+  const prefix = normalizeConnectorPrefix(connectorCode);
+  return `${DROPBOX_RAW_FOLDER}/${dateFolder}/uk_aq_raw_edge_${prefix}_${stamp}.zip`;
+}
+
+function buildDropboxErrorPath(
+  errorId: string,
+  createdAt: string,
+  connectorCode: string | null,
+): string {
+  const dateFolder = createdAt.slice(0, 10);
+  const stamp = formatCompactTimestamp(new Date(createdAt));
+  const prefix = normalizeConnectorPrefix(connectorCode);
+  return `${DROPBOX_ERROR_FOLDER}/${dateFolder}/uk_aq_error_edge_${prefix}_${stamp}_${errorId}.json`;
+}
+
+function formatCompactTimestamp(timestamp: Date): string {
+  return timestamp.toISOString().replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z");
+}
+
+function formatDateYmd(timestamp: Date): string {
+  return timestamp.toISOString().slice(0, 10);
+}
+
+async function uploadDropboxLog(
+  accessToken: string,
+  log: LogBuffer,
+  connectorId: string | null,
+  connectorCode: string | null,
+  errorLogger: { logError: (entry: ErrorLogEntry) => Promise<void> },
+  refreshToken?: () => Promise<string>,
+): Promise<string> {
+  if (!accessToken) {
+    return accessToken;
+  }
+  const content = log.lines.join("\n") + "\n";
+  if (!content.trim()) {
+    return accessToken;
+  }
+  try {
+    const logPath = buildDropboxLogPath(connectorCode, new Date());
+    accessToken = await dropboxUploadFileWithRetry(
+      accessToken,
+      logPath,
+      content,
+      refreshToken,
+    );
+    await dropboxArchiveLogs(accessToken, DROPBOX_LOG_FOLDER, DROPBOX_LOG_RETENTION_DAYS, 365);
+  } catch (err) {
+    console.warn("Dropbox log upload failed:", err);
+    await errorLogger.logError({
+      source: "edge",
+      severity: "error",
+      message: "Dropbox log upload failed.",
+      stack: err instanceof Error ? err.stack : undefined,
+      context: {
+        connector_id: connectorId,
+        connector_code: connectorCode,
+        error: err instanceof Error ? err.message : String(err),
+      },
+      connector_code: connectorCode ?? null,
+      connector_id: connectorId ?? null,
+    });
+  }
+  return accessToken;
+}
+
+async function uploadDropboxRaw(
+  accessToken: string,
+  recorder: RawRecorder | null,
+  connectorId: string | null,
+  connectorCode: string | null,
+  errorLogger: { logError: (entry: ErrorLogEntry) => Promise<void> },
+  refreshToken?: () => Promise<string>,
+): Promise<string> {
+  if (!accessToken || !recorder || recorder.responseCount === 0) {
+    return accessToken;
+  }
+  const content = recorder.lines.join("\n") + "\n";
+  if (!content.trim()) {
+    return accessToken;
+  }
+  try {
+    const rawPath = buildDropboxRawPath(connectorCode, new Date());
+    const filename = rawPath.split("/").pop() ?? "uk_aq_raw_edge.jsonl";
+    const jsonlName = filename.replace(/\.zip$/i, ".jsonl");
+    const zipped = await zipTextCompressed(jsonlName, content);
+    accessToken = await dropboxUploadFileWithRetry(
+      accessToken,
+      rawPath,
+      zipped,
+      refreshToken,
+    );
+  } catch (err) {
+    console.warn("Dropbox raw upload failed:", err);
+    await errorLogger.logError({
+      source: "edge",
+      severity: "error",
+      message: "Dropbox raw upload failed.",
+      stack: err instanceof Error ? err.stack : undefined,
+      context: {
+        connector_id: connectorId,
+        connector_code: connectorCode,
+        error: err instanceof Error ? err.message : String(err),
+      },
+      connector_code: connectorCode ?? null,
+      connector_id: connectorId ?? null,
+    });
+  }
+  return accessToken;
+}
+
+function createErrorLogger(config: DropboxConfig | null, enabled: boolean) {
+  let accessToken: string | null = null;
+  return {
+    async logError(entry: ErrorLogEntry): Promise<void> {
+      if (!enabled) {
+        return;
+      }
+      const errorId = crypto.randomUUID();
+      const createdAt = new Date().toISOString();
+      const row = {
+        id: errorId,
+        source: entry.source,
+        severity: entry.severity,
+        message: entry.message,
+        stack: entry.stack ?? null,
+        context: entry.context ?? null,
+        connector_id: entry.connector_id ?? null,
+        station_id: entry.station_id ?? null,
+        timeseries_id: entry.timeseries_id ?? null,
+      };
+      const { error } = await postgrestRequest(
+        "POST",
+        "error_logs",
+        undefined,
+        row,
+        "return=minimal",
+      );
+      if (error) {
+        console.warn("error_logs insert failed:", error.message);
+        return;
+      }
+      if (!config) {
+        return;
+      }
+      try {
+        if (!accessToken) {
+          accessToken = await dropboxRefreshAccessToken(config);
+        }
+        const dropboxPath = buildDropboxErrorPath(
+          errorId,
+          createdAt,
+          entry.connector_code ?? LAQN_CONNECTOR_CODE,
+        );
+        const payload = {
+          ...row,
+          connector_code: entry.connector_code ?? null,
+          created_at: createdAt,
+          dropbox_path: dropboxPath,
+        };
+        accessToken = await dropboxUploadFileWithRetry(
+          accessToken,
+          dropboxPath,
+          JSON.stringify(payload, null, 2),
+          () => dropboxRefreshAccessToken(config),
+        );
+        await postgrestRequest(
+          "PATCH",
+          "error_logs",
+          { id: `eq.${errorId}` },
+          { dropbox_path: dropboxPath },
+          "return=minimal",
+        );
+      } catch (err) {
+        console.warn("Dropbox error log upload failed:", err);
+      }
+    },
+  };
+}
+
+class DropboxHttpError extends Error {
+  status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+  }
+}
+
+async function dropboxRefreshAccessToken(config: DropboxConfig): Promise<string> {
+  const payload = new URLSearchParams({
+    grant_type: "refresh_token",
+    refresh_token: config.refreshToken,
+    client_id: config.appKey,
+    client_secret: config.appSecret,
+  });
+  const resp = await fetch(DROPBOX_TOKEN_URL, {
+    method: "POST",
+    body: payload,
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+  });
+  if (!resp.ok) {
+    throw new Error(`Dropbox token request failed (${resp.status})`);
+  }
+  const data = await resp.json();
+  const token = data?.access_token;
+  if (!token) {
+    throw new Error("Dropbox token response missing access_token.");
+  }
+  return token;
+}
+
+async function dropboxUploadFile(
+  accessToken: string,
+  path: string,
+  contents: string | Uint8Array,
+): Promise<void> {
+  const body = typeof contents === "string" ? new TextEncoder().encode(contents) : contents;
+  const resp = await fetch(DROPBOX_UPLOAD_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Dropbox-API-Arg": JSON.stringify({
+        path,
+        mode: "add",
+        autorename: true,
+        mute: false,
+      }),
+      "Content-Type": "application/octet-stream",
+    },
+    body,
+  });
+  if (!resp.ok) {
+    throw new DropboxHttpError(`Dropbox upload failed (${resp.status})`, resp.status);
+  }
+}
+
+async function dropboxUploadFileWithRetry(
+  accessToken: string,
+  path: string,
+  contents: string | Uint8Array,
+  refreshToken?: () => Promise<string>,
+): Promise<string> {
+  try {
+    await dropboxUploadFile(accessToken, path, contents);
+    return accessToken;
+  } catch (err) {
+    if (err instanceof DropboxHttpError && err.status === 401 && refreshToken) {
+      const refreshed = await refreshToken();
+      await dropboxUploadFile(refreshed, path, contents);
+      return refreshed;
+    }
+    throw err;
+  }
+}
+
+const CRC_TABLE = (() => {
+  const table = new Uint32Array(256);
+  for (let i = 0; i < table.length; i += 1) {
+    let c = i;
+    for (let k = 0; k < 8; k += 1) {
+      c = (c & 1) ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    }
+    table[i] = c >>> 0;
+  }
+  return table;
+})();
+
+function crc32(data: Uint8Array): number {
+  let crc = 0xffffffff;
+  for (const byte of data) {
+    const idx = (crc ^ byte) & 0xff;
+    crc = CRC_TABLE[idx] ^ (crc >>> 8);
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function toDosDateTime(date: Date): { dosTime: number; dosDate: number } {
+  const year = Math.max(1980, date.getUTCFullYear());
+  const month = date.getUTCMonth() + 1;
+  const day = date.getUTCDate();
+  const hour = date.getUTCHours();
+  const minute = date.getUTCMinutes();
+  const second = date.getUTCSeconds();
+  const dosTime = (hour << 11) | (minute << 5) | Math.floor(second / 2);
+  const dosDate = ((year - 1980) << 9) | (month << 5) | day;
+  return { dosTime, dosDate };
+}
+
+async function zipTextCompressed(filename: string, content: string): Promise<Uint8Array> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(content);
+  const nameBytes = encoder.encode(filename);
+  const crc = crc32(data);
+  const fileSize = data.length;
+  const compressed = await deflateRaw(data);
+  const compressedSize = compressed.length;
+  const { dosTime, dosDate } = toDosDateTime(new Date());
+
+  const header: number[] = [];
+  const push16 = (value: number) => {
+    header.push(value & 0xff, (value >>> 8) & 0xff);
+  };
+  const push32 = (value: number) => {
+    header.push(value & 0xff, (value >>> 8) & 0xff, (value >>> 16) & 0xff, (value >>> 24) & 0xff);
+  };
+
+  // Local file header.
+  push32(0x04034b50);
+  push16(20);
+  push16(0);
+  push16(8);
+  push16(dosTime);
+  push16(dosDate);
+  push32(crc);
+  push32(compressedSize);
+  push32(fileSize);
+  push16(nameBytes.length);
+  push16(0);
+
+  const localHeader = new Uint8Array([...header, ...nameBytes]);
+  const localOffset = 0;
+  const centralOffset = localHeader.length + compressedSize;
+
+  const central: number[] = [];
+  const c16 = (value: number) => {
+    central.push(value & 0xff, (value >>> 8) & 0xff);
+  };
+  const c32 = (value: number) => {
+    central.push(value & 0xff, (value >>> 8) & 0xff, (value >>> 16) & 0xff, (value >>> 24) & 0xff);
+  };
+
+  // Central directory header.
+  c32(0x02014b50);
+  c16(20);
+  c16(20);
+  c16(0);
+  c16(8);
+  c16(dosTime);
+  c16(dosDate);
+  c32(crc);
+  c32(compressedSize);
+  c32(fileSize);
+  c16(nameBytes.length);
+  c16(0);
+  c16(0);
+  c16(0);
+  c16(0);
+  c32(0);
+  c32(localOffset);
+
+  const centralHeader = new Uint8Array([...central, ...nameBytes]);
+
+  const end: number[] = [];
+  const e16 = (value: number) => {
+    end.push(value & 0xff, (value >>> 8) & 0xff);
+  };
+  const e32 = (value: number) => {
+    end.push(value & 0xff, (value >>> 8) & 0xff, (value >>> 16) & 0xff, (value >>> 24) & 0xff);
+  };
+  e32(0x06054b50);
+  e16(0);
+  e16(0);
+  e16(1);
+  e16(1);
+  e32(centralHeader.length);
+  e32(centralOffset);
+  e16(0);
+
+  const endHeader = new Uint8Array(end);
+  const output = new Uint8Array(
+    localHeader.length + compressedSize + centralHeader.length + endHeader.length,
+  );
+  output.set(localHeader, 0);
+  output.set(compressed, localHeader.length);
+  output.set(centralHeader, localHeader.length + compressedSize);
+  output.set(endHeader, localHeader.length + compressedSize + centralHeader.length);
+  return output;
+}
+
+async function deflateRaw(data: Uint8Array): Promise<Uint8Array> {
+  const stream = new Blob([data]).stream().pipeThrough(new CompressionStream("deflate-raw"));
+  const buffer = await new Response(stream).arrayBuffer();
+  return new Uint8Array(buffer);
+}
+
+async function dropboxArchiveLogs(
+  accessToken: string,
+  folder: string,
+  days: number,
+  archiveDays: number,
+): Promise<void> {
+  const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+  const archiveCutoff = Date.now() - archiveDays * 24 * 60 * 60 * 1000;
+  const archiveFolder = `${folder}/archive`;
+  const listFolder = async (path: string): Promise<Array<Record<string, unknown>>> => {
+    let payload: Record<string, unknown> = { path };
+    const entries: Array<Record<string, unknown>> = [];
+    while (true) {
+      const resp = await fetch(DROPBOX_LIST_FOLDER_URL, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+      if (resp.status === 409) {
+        return [];
+      }
+      if (!resp.ok) {
+        throw new Error(`Dropbox list_folder failed (${resp.status})`);
+      }
+      const data = await resp.json();
+      entries.push(...(Array.isArray(data?.entries) ? data.entries : []));
+      if (!data?.has_more) {
+        return entries;
+      }
+      payload = { cursor: data.cursor };
+    }
+  };
+
+  const [rootEntries, archiveEntries] = await Promise.all([
+    listFolder(folder),
+    listFolder(archiveFolder),
+  ]);
+  const archiveNames = new Set(
+    archiveEntries
+      .filter((entry) => entry?.[".tag"] === "file")
+      .map((entry) => String(entry?.name ?? "")),
+  );
+
+  for (const entry of rootEntries) {
+    if (entry?.[".tag"] !== "folder") {
+      continue;
+    }
+    const folderName = String(entry?.name ?? "");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(folderName)) {
+      continue;
+    }
+    const timestamp = Date.parse(`${folderName}T00:00:00Z`);
+    if (!Number.isFinite(timestamp)) {
+      continue;
+    }
+    if (timestamp > cutoff) {
+      continue;
+    }
+    const folderPath = `${folder}/${folderName}`;
+    if (timestamp < archiveCutoff) {
+      await dropboxDeletePath(accessToken, folderPath);
+      continue;
+    }
+    const archiveName = `${folderName}.zip`;
+    if (archiveNames.has(archiveName)) {
+      await dropboxDeletePath(accessToken, folderPath);
+      continue;
+    }
+    const zipPayload = await dropboxDownloadZip(accessToken, folderPath);
+    await dropboxUploadFile(accessToken, `${archiveFolder}/${archiveName}`, new Uint8Array(zipPayload));
+    await dropboxDeletePath(accessToken, folderPath);
+  }
+}
+
+async function dropboxDownloadZip(accessToken: string, path: string): Promise<ArrayBuffer> {
+  const resp = await fetch(DROPBOX_DOWNLOAD_ZIP_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Dropbox-API-Arg": JSON.stringify({ path }),
+    },
+  });
+  if (!resp.ok) {
+    throw new Error(`Dropbox download_zip failed (${resp.status})`);
+  }
+  return await resp.arrayBuffer();
+}
+
+async function dropboxDeletePath(accessToken: string, path: string): Promise<void> {
+  const resp = await fetch(DROPBOX_DELETE_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ path }),
+  });
+  if (!resp.ok) {
+    throw new Error(`Dropbox delete failed (${resp.status})`);
+  }
+}
+
 serve(async (req) => {
   if (req.method !== "POST") {
     return new Response("Method not allowed", { status: 405 });
@@ -597,12 +1314,14 @@ serve(async (req) => {
     return authResponse;
   }
 
-  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-    return new Response(
-      JSON.stringify({ error: "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY." }),
-      { status: 500, headers: { "Content-Type": "application/json" } },
-    );
-  }
+  const log = createLogBuffer();
+  const dropboxConfig = loadDropboxConfig();
+  const errorLogger = ERROR_LOGGER;
+  const rawRecorder = dropboxConfig ? createRawRecorder() : null;
+  let status = 200;
+  let responsePayload: Record<string, unknown> = {};
+  let connectorId: string | null = null;
+  let connectorCodeForLog = LAQN_CONNECTOR_CODE;
 
   let payload: PollRequest = {};
   try {
@@ -623,6 +1342,7 @@ serve(async (req) => {
   const batchSize = payload.batch_size ?? DEFAULT_BATCH_SIZE;
   const sleepSeconds = payload.sleep_seconds ?? DEFAULT_SLEEP_SECONDS;
   const dryRun = Boolean(payload.dry_run);
+  connectorCodeForLog = connectorCode;
 
   const now = new Date();
   const endDate = parseDate(payload.end_date) ?? now;
@@ -636,27 +1356,60 @@ serve(async (req) => {
   const startStr = startDate.toISOString().slice(0, 10);
   const endStr = endDate.toISOString().slice(0, 10);
 
-  if (!speciesList.length) {
-    return new Response(JSON.stringify({ error: "No species specified." }), {
-      status: 400,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
-
   try {
+    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+      status = 500;
+      responsePayload = { error: "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY." };
+      log.error("Missing Supabase configuration.");
+    } else if (!speciesList.length) {
+      status = 400;
+      responsePayload = { error: "No species specified." };
+      log.warn("No species specified.");
+    } else {
+      log.info("Poll request", {
+        connector_code: connectorCode,
+        connector_label: connectorLabel,
+        connector_display_name: connectorDisplayName,
+        service_ref: serviceRef,
+        group: groupName,
+        days,
+        start_date: startStr,
+        end_date: endStr,
+        station_refs: stationRefs.length ? stationRefs : null,
+        species: speciesList,
+        dry_run: dryRun,
+      });
+      if (rawRecorder) {
+        rawRecorder.recordEvent("context", {
+          connector_code: connectorCode,
+          connector_label: connectorLabel,
+          connector_display_name: connectorDisplayName,
+          service_ref: serviceRef,
+          group: groupName,
+          days,
+          start_date: startStr,
+          end_date: endStr,
+          station_refs: stationRefs.length ? stationRefs : null,
+          species: speciesList,
+          dry_run: dryRun,
+        });
+      }
     const connector = await upsertConnector(
       connectorCode,
       connectorLabel,
       connectorDisplayName,
       baseUrl,
     );
-    const connectorId = connector?.id;
+    connectorId = connector?.id ?? null;
     if (!connectorId) {
       throw new Error("Connector id missing after upsert.");
     }
 
     const stationsPayload = await fetchJson(
       `${baseUrl}/Information/MonitoringSites/GroupName=${groupName}/Json`,
+      undefined,
+      log,
+      rawRecorder,
     );
     const rawStations = extractStations(stationsPayload);
     const filteredStations = stationRefs.length
@@ -672,150 +1425,214 @@ serve(async (req) => {
       normalizeStation(station, Number(connectorId))
     ).filter((row) => row) as Record<string, unknown>[];
     if (!stationRows.length) {
-      return new Response(JSON.stringify({ warning: "No stations selected." }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-
-    if (!dryRun) {
-      await upsertStations(stationRows);
-    }
-    const stationIdMap = await fetchStationIds(
-      Number(connectorId),
-      stationRows.map((row) => String(row.station_ref)),
-    );
-    if (!Object.keys(stationIdMap).length) {
-      return new Response(JSON.stringify({ warning: "No station ids resolved." }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-
-    if (!dryRun) {
-      await upsertPhenomena(Number(connectorId), speciesList);
-    }
-    const phenomenonIds = await fetchPhenomenaIds(Number(connectorId), speciesList);
-
-    const timeseriesRows: Record<string, unknown>[] = [];
-    for (const row of stationRows) {
-      const stationRef = String(row.station_ref);
-      const stationId = stationIdMap[stationRef];
-      if (!stationId) {
-        continue;
+      status = 200;
+      responsePayload = { warning: "No stations selected." };
+      log.warn("No stations selected.");
+    } else {
+      if (!dryRun) {
+        await upsertStations(stationRows);
       }
-      const stationName = String(row.station_name ?? row.label ?? stationRef);
-      for (const species of speciesList) {
-        const config = SPECIES_CONFIG[species] ?? { label: species, uom: null };
-        timeseriesRows.push({
-          timeseries_ref: `${stationRef}:${species}`,
-          label: `${stationName} ${config.label}`,
-          uom: config.uom ?? null,
-          station_id: stationId,
-          service_ref: serviceRef,
-          connector_id: Number(connectorId),
-          phenomenon_id: phenomenonIds[`laqn:${species}`] ?? null,
-          extras: { site_code: stationRef, species },
-        });
-      }
-    }
-    if (!dryRun) {
-      await upsertTimeseries(timeseriesRows);
-    }
-    const timeseriesIdMap = await fetchTimeseriesIds(
-      Number(connectorId),
-      timeseriesRows.map((row) => String(row.timeseries_ref)),
-    );
-
-    let observationsUpserted = 0;
-    const timeseriesUpdates: Array<{ id: number; last_value: number; last_value_at: string }> = [];
-
-    for (const row of stationRows) {
-      const stationRef = String(row.station_ref);
-      for (const species of speciesList) {
-        const timeseriesRef = `${stationRef}:${species}`;
-        const timeseriesId = timeseriesIdMap[timeseriesRef];
-        if (!timeseriesId) {
-          continue;
+      const stationIdMap = await fetchStationIds(
+        Number(connectorId),
+        stationRows.map((row) => String(row.station_ref)),
+      );
+      if (!Object.keys(stationIdMap).length) {
+        status = 200;
+        responsePayload = { warning: "No station ids resolved." };
+        log.warn("No station ids resolved.");
+      } else {
+        if (!dryRun) {
+          await upsertPhenomena(Number(connectorId), speciesList);
         }
-        const url = `${baseUrl}/Data/SiteSpecies/SiteCode=${stationRef}/SpeciesCode=${species}` +
-          `/StartDate=${startStr}/EndDate=${endStr}/Json`;
-        const payloadData = await fetchJson(url);
-        const rawRows = extractObservations(payloadData);
-        const observations: Record<string, unknown>[] = [];
-        let lastObserved: Date | null = null;
-        let lastValue: number | null = null;
-        for (const entry of rawRows) {
-          const observedAt = parseObservationDate(
-            entry["@MeasurementDateGMT"]
-              ?? entry["@MeasurementDate"]
-              ?? entry["DateTimeGMT"]
-              ?? entry["DateTime"]
-              ?? entry["Date"]
-          );
-          const value = Number(
-            entry["@Value"] ?? entry["Value"] ?? entry["ScaledValue"] ?? entry["RawValue"]
-          );
-          if (!observedAt || Number.isNaN(value)) {
+        const phenomenonIds = await fetchPhenomenaIds(Number(connectorId), speciesList);
+
+        const timeseriesRows: Record<string, unknown>[] = [];
+        for (const row of stationRows) {
+          const stationRef = String(row.station_ref);
+          const stationId = stationIdMap[stationRef];
+          if (!stationId) {
             continue;
           }
-          observations.push({
-            timeseries_id: timeseriesId,
-            observed_at: observedAt.toISOString(),
-            value,
-          });
-          if (!lastObserved || observedAt > lastObserved) {
-            lastObserved = observedAt;
-            lastValue = value;
+          const stationName = String(row.station_name ?? row.label ?? stationRef);
+          for (const species of speciesList) {
+            const config = SPECIES_CONFIG[species] ?? { label: species, uom: null };
+            timeseriesRows.push({
+              timeseries_ref: `${stationRef}:${species}`,
+              label: `${stationName} ${config.label}`,
+              uom: config.uom ?? null,
+              station_id: stationId,
+              service_ref: serviceRef,
+              connector_id: Number(connectorId),
+              phenomenon_id: phenomenonIds[`laqn:${species}`] ?? null,
+              extras: { site_code: stationRef, species },
+            });
           }
         }
-        if (observations.length && !dryRun) {
-          for (const batch of chunk(observations, batchSize)) {
-            observationsUpserted += await upsertObservations(batch);
+        if (!dryRun) {
+          await upsertTimeseries(timeseriesRows);
+        }
+        const timeseriesIdMap = await fetchTimeseriesIds(
+          Number(connectorId),
+          timeseriesRows.map((row) => String(row.timeseries_ref)),
+        );
+
+        let observationsUpserted = 0;
+        const latestObservedSummary: Record<string, Record<string, string | null>> = {};
+        const timeseriesUpdates: Array<{ id: number; last_value: number; last_value_at: string }> = [];
+
+        for (const row of stationRows) {
+          const stationRef = String(row.station_ref);
+          for (const species of speciesList) {
+            const timeseriesRef = `${stationRef}:${species}`;
+            const timeseriesId = timeseriesIdMap[timeseriesRef];
+            if (!timeseriesId) {
+              continue;
+            }
+            const url =
+              `${baseUrl}/Data/SiteSpecies/SiteCode=${stationRef}/SpeciesCode=${species}` +
+              `/StartDate=${startStr}/EndDate=${endStr}/Json`;
+            const payloadData = await fetchJson(url, undefined, log, rawRecorder);
+            const rawRows = extractObservations(payloadData);
+            const observations: Record<string, unknown>[] = [];
+            let lastObserved: Date | null = null;
+            let lastValue: number | null = null;
+            for (const entry of rawRows) {
+              const observedAt = parseObservationDate(
+                entry["@MeasurementDateGMT"]
+                  ?? entry["@MeasurementDate"]
+                  ?? entry["DateTimeGMT"]
+                  ?? entry["DateTime"]
+                  ?? entry["Date"]
+              );
+              const value = Number(
+                entry["@Value"] ?? entry["Value"] ?? entry["ScaledValue"] ?? entry["RawValue"]
+              );
+              if (!observedAt || Number.isNaN(value)) {
+                continue;
+              }
+              observations.push({
+                timeseries_id: timeseriesId,
+                observed_at: observedAt.toISOString(),
+                value,
+              });
+              if (!lastObserved || observedAt > lastObserved) {
+                lastObserved = observedAt;
+                lastValue = value;
+              }
+            }
+            if (observations.length && !dryRun) {
+              for (const batch of chunk(observations, batchSize)) {
+                observationsUpserted += await upsertObservations(batch);
+              }
+            }
+            if (lastObserved && lastValue !== null) {
+              timeseriesUpdates.push({
+                id: timeseriesId,
+                last_value: lastValue,
+                last_value_at: lastObserved.toISOString(),
+              });
+            }
+            if (!latestObservedSummary[stationRef]) {
+              latestObservedSummary[stationRef] = {};
+            }
+            latestObservedSummary[stationRef][species] = lastObserved
+              ? lastObserved.toISOString()
+              : null;
+            if (sleepSeconds) {
+              await sleep(sleepSeconds);
+            }
           }
         }
-        if (lastObserved && lastValue !== null) {
-          timeseriesUpdates.push({
-            id: timeseriesId,
-            last_value: lastValue,
-            last_value_at: lastObserved.toISOString(),
-          });
-        }
-        if (sleepSeconds) {
-          await sleep(sleepSeconds);
-        }
-      }
-    }
 
-    let timeseriesUpdated = 0;
-    if (!dryRun && timeseriesUpdates.length) {
-      timeseriesUpdated = await updateTimeseriesLastValues(timeseriesUpdates);
-    }
-    if (!dryRun) {
-      await updateConnectorLastPolled(connectorId);
-    }
+        let timeseriesUpdated = 0;
+        if (!dryRun && timeseriesUpdates.length) {
+          timeseriesUpdated = await updateTimeseriesLastValues(timeseriesUpdates);
+        }
+        if (!dryRun) {
+          await updateConnectorLastPolled(connectorId);
+        }
 
-    return new Response(
-      JSON.stringify(
-        {
+        responsePayload = {
           connector_id: connectorId,
           group: groupName,
           stations: stationRows.length,
           species: speciesList,
           observations_upserted: observationsUpserted,
           timeseries_updated: timeseriesUpdated,
+          latest_observed_by_station_species: latestObservedSummary,
           dry_run: dryRun,
-        },
-        null,
-        2,
-      ),
-      { status: 200, headers: { "Content-Type": "application/json" } },
-    );
+        };
+        log.info("Poll complete.", {
+          connector_id: connectorId,
+          stations: stationRows.length,
+          observations_upserted: observationsUpserted,
+          timeseries_updated: timeseriesUpdated,
+          dry_run: dryRun,
+        });
+      }
+    }
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    return new Response(JSON.stringify({ error: message }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" },
+    status = 500;
+    responsePayload = { error: message };
+    log.error("Poll failed.", { error: message });
+    await errorLogger.logError({
+      source: "edge",
+      severity: "error",
+      message: "ERG LAQN ingest failed.",
+      stack: err instanceof Error ? err.stack : undefined,
+      context: {
+        connector_code: connectorCodeForLog,
+        group: groupName,
+        error: message,
+      },
+      connector_code: connectorCodeForLog,
+      connector_id: connectorId ?? null,
     });
   }
+
+  if (dropboxConfig) {
+    const refreshDropbox = () => dropboxRefreshAccessToken(dropboxConfig);
+    try {
+      let accessToken = await dropboxRefreshAccessToken(dropboxConfig);
+      accessToken = await uploadDropboxLog(
+        accessToken,
+        log,
+        connectorId,
+        connectorCodeForLog,
+        errorLogger,
+        refreshDropbox,
+      );
+      await uploadDropboxRaw(
+        accessToken,
+        rawRecorder,
+        connectorId,
+        connectorCodeForLog,
+        errorLogger,
+        refreshDropbox,
+      );
+    } catch (err) {
+      log.warn("Dropbox logging skipped due to token error.", {
+        error: err instanceof Error ? err.message : String(err),
+      });
+      await errorLogger.logError({
+        source: "edge",
+        severity: "error",
+        message: "Dropbox token request failed.",
+        stack: err instanceof Error ? err.stack : undefined,
+        context: {
+          connector_id: connectorId,
+          connector_code: connectorCodeForLog,
+        },
+        connector_code: connectorCodeForLog,
+        connector_id: connectorId ?? null,
+      });
+    }
+  }
+
+  return new Response(JSON.stringify(responsePayload, null, 2), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
 });
