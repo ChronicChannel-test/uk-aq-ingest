@@ -30,7 +30,7 @@ This repo uses GitHub Actions for scheduled syncs and deployments.
 ### `uk_aq_breathelondon_batch.yml`
 - Schedule: manual only (cron handles production batch polling).
 - Purpose: batch station refs and invoke `ingest_breathelondon` per chunk for manual runs.
-- Script: `python3 scripts/breathelondon/uk_aq_breathelondon_batch.py --connector-code breathelondon --batch-size 10 --active-only --skip-stations`.
+- Script: `python3 scripts/breathelondon/breathelondon_batch.py --connector-code breathelondon --batch-size 10 --active-only --skip-stations`.
 - Order: oldest `breathelondon_timeseries_checkpoints.last_fetch_at` first (nulls first).
 - Secrets: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_ANON_JWT`, `SB_UK_AQ_CRON_SECRET`.
 

@@ -31,7 +31,7 @@ jobs:
           SUPABASE_ANON_JWT: ${{ secrets.SUPABASE_ANON_JWT }}
           SB_UK_AQ_CRON_SECRET: ${{ secrets.SB_UK_AQ_CRON_SECRET }}
         run: |
-          python3 scripts/breathelondon/uk_aq_breathelondon_batch.py \
+          python3 scripts/breathelondon/breathelondon_batch.py \
             --connector-code breathelondon \
             --service-ref breathelondon \
             --batch-size 10 \

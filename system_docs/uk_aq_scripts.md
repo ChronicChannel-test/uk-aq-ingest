@@ -685,14 +685,14 @@ Notes:
 - `--recent-stations` picks stations with the most recent `timeseries.last_value_at` when used with `--skip-stations` (falls back to `observations` if needed).
 - Updates `connectors.last_polled_at` on successful non-dry runs.
 
-### `scripts/breathelondon/uk_aq_breathelondon_batch.py`
+### `scripts/breathelondon/breathelondon_batch.py`
 Purpose:
 - Batch station refs from Supabase and invoke `ingest_breathelondon` per chunk.
 - Used by GitHub Actions to avoid edge runtime limits.
 
 Common commands:
 ```
-python3 scripts/breathelondon/uk_aq_breathelondon_batch.py --connector-code breathelondon --batch-size 10 --active-only --skip-stations
+python3 scripts/breathelondon/breathelondon_batch.py --connector-code breathelondon --batch-size 10 --active-only --skip-stations
 ```
 
 Environment:

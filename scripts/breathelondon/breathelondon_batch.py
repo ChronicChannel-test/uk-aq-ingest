@@ -3,7 +3,7 @@
 Batch Breathe London ingest by station refs via the Supabase Edge Function.
 
 Example:
-  python3 scripts/breathelondon/uk_aq_breathelondon_batch.py \
+  python3 scripts/breathelondon/breathelondon_batch.py \
     --connector-code breathelondon \
     --batch-size 10 \
     --active-only

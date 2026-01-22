@@ -8,11 +8,12 @@
 select cron.unschedule('ingest-uk-air-sos-15m');
 select cron.unschedule('ingest-sensorcommunity-15m');
 select cron.unschedule('ingest-erg-laqn-15m');
+select cron.unschedule('ingest-erg-laqn-batch-5m');
 select cron.unschedule('ingest-breathelondon-hourly'); -- Legacy cleanup.
 select cron.unschedule('ingest-breathelondon-batch-3m-a');
 select cron.unschedule('ingest-breathelondon-batch-3m-b');
 
-create or replace function uk_aq_breathelondon_dispatch_batch(
+create or replace function breathelondon_dispatch_batch(
   batch_limit integer default 10,
   initial_days integer default 2,
   active_only boolean default true
@@ -24,10 +25,10 @@ as $$
 declare
   v_connector_id bigint;
   station_refs text[];
-  lock_key bigint := hashtext('uk_aq_breathelondon_dispatch_batch')::bigint;
+  lock_key bigint := hashtext('breathelondon_dispatch_batch')::bigint;
 begin
   if not pg_try_advisory_lock(lock_key) then
-    raise notice 'uk_aq_breathelondon_dispatch_batch skipped (lock held)';
+    raise notice 'breathelondon_dispatch_batch skipped (lock held)';
     return;
   end if;
 
@@ -67,9 +68,9 @@ begin
     from candidates;
 
     if v_connector_id is null then
-      raise notice 'uk_aq_breathelondon_dispatch_batch skipped (missing connector)';
+      raise notice 'breathelondon_dispatch_batch skipped (missing connector)';
     elsif station_refs is null or array_length(station_refs, 1) is null then
-      raise notice 'uk_aq_breathelondon_dispatch_batch skipped (no stations)';
+      raise notice 'breathelondon_dispatch_batch skipped (no stations)';
     else
       perform net.http_post(
         url := '{{SUPABASE_URL}}/functions/v1/ingest_breathelondon',
@@ -81,6 +82,85 @@ begin
           'skip_stations', true,
           'active_only', active_only,
           'initial_days', initial_days
+        )
+      );
+    end if;
+  exception
+    when others then
+      perform pg_advisory_unlock(lock_key);
+      raise;
+  end;
+
+  perform pg_advisory_unlock(lock_key);
+end;
+$$;
+
+create or replace function erg_laqn_dispatch_batch(
+  batch_limit integer default 10,
+  days integer default 1,
+  group_name text default 'London',
+  active_only boolean default true
+)
+returns void
+language plpgsql
+set search_path = public, pg_catalog
+as $$
+declare
+  v_connector_id bigint;
+  station_refs text[];
+  lock_key bigint := hashtext('erg_laqn_dispatch_batch')::bigint;
+begin
+  if not pg_try_advisory_lock(lock_key) then
+    raise notice 'erg_laqn_dispatch_batch skipped (lock held)';
+    return;
+  end if;
+
+  begin
+    select id into v_connector_id
+    from connectors
+    where connector_code = 'erg_laqn'
+    limit 1;
+
+    with latest_obs as (
+      select
+        t.station_id,
+        max(o.observed_at) as latest_observed_at
+      from timeseries t
+      join observations o on o.timeseries_id = t.id
+      where t.connector_id = v_connector_id
+        and t.service_ref = 'erg_laqn'
+      group by t.station_id
+    ),
+    candidates as (
+      select
+        stn.station_ref,
+        lo.latest_observed_at
+      from stations stn
+      left join latest_obs lo on lo.station_id = stn.id
+      where stn.connector_id = v_connector_id
+        and stn.service_ref = 'erg_laqn'
+        and stn.station_ref is not null
+        and (not active_only or stn.removed_at is null)
+      order by lo.latest_observed_at nulls first, stn.station_ref
+      limit batch_limit
+    )
+    select array_agg(station_ref) into station_refs
+    from candidates;
+
+    if v_connector_id is null then
+      raise notice 'erg_laqn_dispatch_batch skipped (missing connector)';
+    elsif station_refs is null or array_length(station_refs, 1) is null then
+      raise notice 'erg_laqn_dispatch_batch skipped (no stations)';
+    else
+      perform net.http_post(
+        url := '{{SUPABASE_URL}}/functions/v1/ingest_erg_laqn',
+        headers := '{"Content-Type":"application/json","Authorization":"Bearer {{SUPABASE_ANON_JWT}}","apikey":"{{SUPABASE_ANON_JWT}}","X-Cron-Secret":"{{SB_UK_AQ_CRON_SECRET}}"}'::jsonb,
+        body := jsonb_build_object(
+          'connector_code', 'erg_laqn',
+          'service_ref', 'erg_laqn',
+          'group', group_name,
+          'days', days,
+          'station_refs', station_refs
         )
       );
     end if;
@@ -121,16 +201,12 @@ select cron.schedule(
   $$
 );
 
--- Create a 15-minute ERG LAQN poll schedule (on the quarter-hour).
+-- ERG LAQN batcher via cron (every 5 minutes).
 select cron.schedule(
-  'ingest-erg-laqn-15m',
-  '0,15,30,45 * * * *', -- Every 15 minutes at :00, :15, :30, :45.
+  'ingest-erg-laqn-batch-5m',
+  '*/5 * * * *',
   $$
-    select net.http_post(
-      url := '{{SUPABASE_URL}}/functions/v1/ingest_erg_laqn',
-      headers := '{"Content-Type":"application/json","Authorization":"Bearer {{SUPABASE_ANON_JWT}}","apikey":"{{SUPABASE_ANON_JWT}}","X-Cron-Secret":"{{SB_UK_AQ_CRON_SECRET}}"}'::jsonb,
-      body := '{"connector_code":"erg_laqn","service_ref":"erg_laqn","group":"London","days":1}'::jsonb
-    );
+    select erg_laqn_dispatch_batch(10, 1, 'London', true);
   $$
 );
 
@@ -139,7 +215,7 @@ select cron.schedule(
   'ingest-breathelondon-batch-3m-a',
   '*/3 * * * *', -- Every 3 minutes on the minute (:00, :03, :06, ...).
   $$
-    select uk_aq_breathelondon_dispatch_batch(10, 2, true);
+    select breathelondon_dispatch_batch(10, 2, true);
   $$
 );
 
@@ -147,7 +223,7 @@ select cron.schedule(
   'ingest-breathelondon-batch-3m-b',
   '1-59/3 * * * *', -- Every 3 minutes offset by 1 minute (:01, :04, :07, ...).
   $$
-    select uk_aq_breathelondon_dispatch_batch(10, 2, true);
+    select breathelondon_dispatch_batch(10, 2, true);
   $$
 );
 
@@ -155,6 +231,7 @@ select cron.schedule(
 -- select cron.unschedule('ingest-uk-air-sos-15m');
 -- select cron.unschedule('ingest-sensorcommunity-15m');
 -- select cron.unschedule('ingest-erg-laqn-15m');
+-- select cron.unschedule('ingest-erg-laqn-batch-5m');
 -- select cron.unschedule('ingest-breathelondon-hourly'); -- Legacy cleanup.
 -- select cron.unschedule('ingest-breathelondon-batch-3m-a');
 -- select cron.unschedule('ingest-breathelondon-batch-3m-b');
