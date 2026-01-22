@@ -98,7 +98,7 @@ python3 scripts/gov_uk_laqn/gov_uk_laqn_list_stations.py --to-supabase
 ```
 
 Key flags:
-- `--group` to pass a GroupName filter to the API (optional).
+- `--group` to override the GroupName filter (default: London).
 - `--no-filter` to skip UK bounding box filtering.
 - `--skip-station-metadata` to avoid station_metadata updates.
 
@@ -106,6 +106,7 @@ Environment:
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `LAQN_BASE_URL` (optional; defaults to `https://api.erg.ic.ac.uk/AirQuality`)
+- `LAQN_DEFAULT_GROUP` (optional; defaults to `London`)
 - `LAQN_MONITORING_SITES_PATHS` (optional; comma-separated API paths to try)
 - `LAQN_CONNECTOR_CODE` (optional; defaults to `gov_uk_laqn`)
 - `LAQN_SERVICE_REF` (optional; defaults to `LAQN_CONNECTOR_CODE`)

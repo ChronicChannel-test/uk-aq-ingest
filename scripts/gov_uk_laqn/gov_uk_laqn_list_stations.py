@@ -48,6 +48,7 @@ LAQN_SERVICE_REF = os.getenv("LAQN_SERVICE_REF") or LAQN_CONNECTOR_CODE
 LAQN_SERVICE_LABEL = os.getenv("LAQN_SERVICE_LABEL") or "London Air Quality Network"
 LAQN_USER_AGENT = os.getenv("LAQN_USER_AGENT", "uk-air-quality-networks")
 LAQN_MONITORING_SITES_PATHS = os.getenv("LAQN_MONITORING_SITES_PATHS")
+LAQN_DEFAULT_GROUP = os.getenv("LAQN_DEFAULT_GROUP") or "London"
 
 UK_BBOX = {
     "west": -11.0,
@@ -86,8 +87,15 @@ def _parse_date(value: Any) -> Optional[str]:
     return text
 
 
+def _normalize_key(key: Any) -> str:
+    text = str(key)
+    if text.startswith("@"):
+        text = text[1:]
+    return text.lower()
+
+
 def _lowered_keys(payload: Dict[str, Any]) -> Dict[str, Any]:
-    return {str(key).lower(): value for key, value in payload.items()}
+    return {_normalize_key(key): value for key, value in payload.items()}
 
 
 def _pick_value(payload: Dict[str, Any], keys: Sequence[str]) -> Optional[Any]:
@@ -97,7 +105,10 @@ def _pick_value(payload: Dict[str, Any], keys: Sequence[str]) -> Optional[Any]:
     for key in keys:
         if key in payload:
             return payload.get(key)
-        lowered_key = key.lower()
+        at_key = f"@{key}"
+        if at_key in payload:
+            return payload.get(at_key)
+        lowered_key = _normalize_key(key)
         if lowered_key in lowered:
             return lowered.get(lowered_key)
     return None
@@ -178,6 +189,17 @@ def _extract_station_list(payload: Any) -> List[Dict[str, Any]]:
             value = payload.get(key)
             if isinstance(value, list):
                 return [row for row in value if isinstance(row, dict)]
+            if isinstance(value, dict):
+                sites = value.get("Site") or value.get("site")
+                if isinstance(sites, list):
+                    return [row for row in sites if isinstance(row, dict)]
+                if isinstance(sites, dict):
+                    return [sites]
+        sites = payload.get("Site") or payload.get("site")
+        if isinstance(sites, list):
+            return [row for row in sites if isinstance(row, dict)]
+        if isinstance(sites, dict):
+            return [sites]
     return []
 
 
@@ -193,7 +215,9 @@ class LaqnClient:
         self.timeout = timeout
         self.retries = retries
         self.session = requests.Session()
-        self.session.headers.update({"User-Agent": LAQN_USER_AGENT})
+        self.session.headers.update(
+            {"User-Agent": LAQN_USER_AGENT, "Accept": "application/json"}
+        )
         self.monitoring_sites_paths = _parse_paths(
             LAQN_MONITORING_SITES_PATHS,
             (
@@ -218,7 +242,15 @@ class LaqnClient:
                     self._sleep(attempt)
                     continue
                 resp.raise_for_status()
-                return resp.json()
+                try:
+                    return resp.json()
+                except ValueError as exc:
+                    snippet = " ".join((resp.text or "").split())
+                    snippet = snippet[:200]
+                    message = f"Non-JSON response for {url} (status {resp.status_code})"
+                    if snippet:
+                        message = f"{message}: {snippet}"
+                    raise requests.RequestException(message) from exc
             except requests.HTTPError as exc:
                 if exc.response is not None and exc.response.status_code in (403, 404):
                     raise
@@ -237,12 +269,23 @@ class LaqnClient:
         time.sleep(min(30, 2**attempt))
 
     def monitoring_sites(self, group: Optional[str] = None) -> List[Dict[str, Any]]:
+        group = group or LAQN_DEFAULT_GROUP
         params = {"GroupName": group} if group else None
-        last_error: Optional[Exception] = None
+        path_candidates: List[Tuple[str, Optional[Dict[str, Any]]]] = [
+            (f"Information/MonitoringSites/GroupName={group}/Json", None),
+            (f"Information/MonitoringSites/GroupName={group}", None),
+        ]
         for path in self.monitoring_sites_paths:
+            path_candidates.append((path, params))
+        last_error: Optional[Exception] = None
+        for path, path_params in path_candidates:
             try:
-                payload = self.get(path, params=params)
+                payload = self.get(path, params=path_params)
             except requests.HTTPError as exc:
+                last_error = exc
+                LOG.warning("Monitoring site fetch failed for %s: %s", path, exc)
+                continue
+            except requests.RequestException as exc:
                 last_error = exc
                 LOG.warning("Monitoring site fetch failed for %s: %s", path, exc)
                 continue
@@ -416,7 +459,11 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--group",
-        help="Optional GroupName filter (passed to the API as GroupName).",
+        default=LAQN_DEFAULT_GROUP,
+        help=(
+            "GroupName filter (default: London). "
+            "LAQN monitoring sites are listed under the London group."
+        ),
     )
     parser.add_argument(
         "--no-filter",

@@ -1,0 +1,88 @@
+code,label,network,type,lat,lng,latoffset,lonoffset,html
+EN7,Enfield - Prince of Wales School,LAQN,Urban Background,51.66864334727,-0.02200720557,0,0,publicdetails.asp?site=EN7&Maptype=Google&mapview=all
+EN1,Enfield - Bush Hill Park,LAQN,Suburban,51.6450367266602,-6.61800662229116E-02,0,0,publicdetails.asp?site=EN1&Maptype=Google&mapview=all
+EN4,Enfield - Derby Road,LAQN,Roadside,51.614864007,-0.0507658363689,0,0,publicdetails.asp?site=EN4&Maptype=Google&mapview=all
+EN5,Enfield - Bowes Primary School,LAQN,Roadside,51.613865,-0.125338,0,0,publicdetails.asp?site=EN5&Maptype=Google&mapview=all
+HG1,Haringey - Haringey Town Hall,mixed,Roadside,51.599302,-0.068218,0,0,publicdetails.asp?site=HG1&Maptype=Google&mapview=all
+HG4,Haringey  - Priory Park South,AURN,Urban Background,51.5839769007709,-0.125400278484885,0,0,publicdetails.asp?site=HG4&Maptype=Google&mapview=all
+HV3,Havering - Romford,LAQN,Roadside,51.572976,0.179079,0,0,publicdetails.asp?site=HV3&Maptype=Google&mapview=all
+BG1,Barking and Dagenham - Rush Green,LAQN,Suburban,51.563752,0.177891,0,0,publicdetails.asp?site=BG1&Maptype=Google&mapview=all
+IS6,Islington - Arsenal,LAQN,Urban Background,51.557895,-0.106989,0,0,publicdetails.asp?site=IS6&Maptype=Google&mapview=all
+IS2,Islington - Holloway Road,LAQN,Roadside,51.555378,-0.116146,0,0,publicdetails.asp?site=IS2&Maptype=Google&mapview=all
+BT5,Brent - Neasden Lane,LAQN,Industrial,51.552656,-0.248774,0,0,publicdetails.asp?site=BT5&Maptype=Google&mapview=all
+BT4,Brent - Ikea,mixed,Roadside,51.552476,-0.258089,0,0,publicdetails.asp?site=BT4&Maptype=Google&mapview=all
+CD1,Camden - Swiss Cottage,AURN,Kerbside,51.544219,-0.175284,0,0,publicdetails.asp?site=CD1&Maptype=Google&mapview=all
+TH5,Tower Hamlets - Victoria Park,LAQN,Urban Background,51.5399327394691,-3.31740581778178E-02,0,0,publicdetails.asp?site=TH5&Maptype=Google&mapview=all
+BT6,Brent - John Keble Primary School,LAQN,Roadside,51.537799,-0.247793,150,150,publicdetails.asp?site=BT6&Maptype=Google&mapview=all
+BT8,Brent - ARK Franklin Primary Academy,LAQN,Roadside,51.5324054617809,-0.217718908639377,0,0,publicdetails.asp?site=BT8&Maptype=Google&mapview=all
+BG2,Barking and Dagenham - Scrattons Farm,LAQN,Suburban,51.529389,0.132857,0,0,publicdetails.asp?site=BG2&Maptype=Google&mapview=all
+WME,Westminster - Queens Park Gardens,LAQN,Urban Background,51.5286629697555,-0.20875365618309,0,0,publicdetails.asp?site=WME&Maptype=Google&mapview=all
+HK6,Hackney - Old Street,mixed,Roadside,51.526454,-0.08491,0,0,publicdetails.asp?site=HK6&Maptype=Google&mapview=all
+TH2,Tower Hamlets - Mile End Road,mixed,Roadside,51.5225462561171,-4.20823040635312E-02,0,0,publicdetails.asp?site=TH2&Maptype=Google&mapview=all
+MY1,Westminster - Marylebone Road,mixed,Kerbside,51.52254,-0.15459,0,0,publicdetails.asp?site=MY1&Maptype=Google&mapview=all
+MR8,Marylebone Road - BAM,other,Kerbside,51.5225093597419,-0.154622154656843,200,500,publicdetails.asp?site=MR8&Maptype=Google&mapview=all
+BL0,Camden - Bloomsbury,AURN,Urban Background,51.522287,-0.125848,0,0,publicdetails.asp?site=BL0&Maptype=Google&mapview=all
+KC1,Kensington and Chelsea - North Ken,mixed,Urban Background,51.5210467476039,-0.213492139585065,0,0,publicdetails.asp?site=KC1&Maptype=Google&mapview=all
+KF1,Kensington and Chelsea - North Ken FIDAS,AURN,Urban Background,51.5210467476039,-0.213492139585065,0,500,publicdetails.asp?site=KF1&Maptype=Google&mapview=all
+HV1,Havering - Rainham,LAQN,Roadside,51.520787459334,0.205460705694044,0,0,publicdetails.asp?site=HV1&Maptype=Google&mapview=all
+TK3,Thurrock - Stanford-le-Hope,AURN,Roadside,51.518162,0.439548,125,280,publicdetails.asp?site=TK3&Maptype=Google&mapview=all
+TH4,Tower Hamlets - Blackwall,mixed,Roadside,51.5150461674013,-8.41849265642741E-03,0,0,publicdetails.asp?site=TH4&Maptype=Google&mapview=all
+GT1,Kensington and Chelsea - Station Walk,LAQN,Urban Background,51.5140519844289,-0.216532947379263,0,0,publicdetails.asp?site=GT1&Maptype=Google&mapview=all
+WM6,Westminster - Oxford Street,LAQN,Kerbside,51.5139287404213,-0.152792701881935,0,0,publicdetails.asp?site=WM6&Maptype=Google&mapview=all
+WM5,Westminster - Covent Garden,LAQN,Urban Background,51.5119769825798,-0.12162720332856,0,0,publicdetails.asp?site=WM5&Maptype=Google&mapview=all
+CE3,Regent Street (The Crown Estate),LAQN,Roadside,51.5113771448991,-0.139249367757023,0,0,publicdetails.asp?site=CE3&Maptype=Google&mapview=all
+TH7,Tower Hamlets - King Edward Memorial Park,LAQN,Urban Background,51.5094228799835,-5.05278232872832E-02,0,0,publicdetails.asp?site=TH7&Maptype=Google&mapview=all
+TL5,Newham - Hoola Tower,LAQN,Roadside,51.508198,0.015002152,0,0,publicdetails.asp?site=TL5&Maptype=Google&mapview=all
+CE2,Waterloo Place (The Crown Estate),LAQN,Roadside,51.5075819137762,-0.133068372704093,0,0,publicdetails.asp?site=CE2&Maptype=Google&mapview=all
+TL6,Newham - Britannia Gate,LAQN,Roadside,51.503858,0.020574415,0,0,publicdetails.asp?site=TL6&Maptype=Google&mapview=all
+CW3,Tower Hamlets - Jubilee Park,LAQN,Urban Background,51.5029878731458,-1.80219908165375E-02,0,0,publicdetails.asp?site=CW3&Maptype=Google&mapview=all
+HI0,Hillingdon - Keats Way,AURN,Suburban,51.496309,-0.460826,0,0,publicdetails.asp?site=HI0&Maptype=Google&mapview=all
+TL4,Greenwich - Tunnel Avenue,LAQN,Roadside,51.495057,0.0041074676,0,0,publicdetails.asp?site=TL4&Maptype=Google&mapview=all
+WM0,Westminster - Horseferry Road,mixed,Urban Background,51.494681,-0.131938,0,0,publicdetails.asp?site=WM0&Maptype=Google&mapview=all
+BQ7,Bexley - Belvedere West,LAQN,Urban Background,51.4946486813055,0.137279111232178,0,0,publicdetails.asp?site=BQ7&Maptype=Google&mapview=all
+GN6,Greenwich - John Harrison Way,LAQN,Roadside,51.4937746695818,1.07796237032558E-02,0,0,publicdetails.asp?site=GN6&Maptype=Google&mapview=all
+WMD,Westminster - Elizabeth Bridge,LAQN,Roadside,51.4922482333024,-0.147114752900186,0,0,publicdetails.asp?site=WMD&Maptype=Google&mapview=all
+BX2,Bexley - Belvedere,LAQN,Suburban,51.4906102082147,0.158914493927518,250,250,publicdetails.asp?site=BX2&Maptype=Google&mapview=all
+GN0,Greenwich - A206 Burrage Grove,LAQN,Roadside,51.490532,0.074003,0,0,publicdetails.asp?site=GN0&Maptype=Google&mapview=all
+TH6,Tower Hamlets - Millwall Park,LAQN,Urban Background,51.4891342634,-0.0129769309432,0,0,publicdetails.asp?site=TH6&Maptype=Google&mapview=all
+LH0,Hillingdon - Harlington,AURN,Urban Background,51.48878,-0.441627,0,0,publicdetails.asp?site=LH0&Maptype=Google&mapview=all
+GN3,Greenwich - Plumstead High Street,LAQN,Roadside,51.486957,0.095111,0,0,publicdetails.asp?site=GN3&Maptype=Google&mapview=all
+GR8,Greenwich - Woolwich Flyover,mixed,Roadside,51.486884,0.017901,0,0,publicdetails.asp?site=GR8&Maptype=Google&mapview=all
+LB5,Lambeth - Bondway Interchange,LAQN,Industrial,51.4854867739729,-0.124545234819213,300,0,publicdetails.asp?site=LB5&Maptype=Google&mapview=all
+GN5,Greenwich - Trafalgar Road (Hoskins St),LAQN,Roadside,51.4839072533485,4.07396935849736E-04,0,0,publicdetails.asp?site=GN5&Maptype=Google&mapview=all
+SK5,Southwark - A2 Old Kent Road,AURN,Roadside,51.4804994936467,-5.95528932573422E-02,300,300,publicdetails.asp?site=SK5&Maptype=Google&mapview=all
+RI1,Richmond Upon Thames - Castelnau,LAQN,Roadside,51.480189,-0.237335,300,-900,publicdetails.asp?site=RI1&Maptype=Google&mapview=all
+WAA,Wandsworth - Battersea,LAQN,Roadside,51.4794395281222,-0.141786953606306,0,0,publicdetails.asp?site=WAA&Maptype=Google&mapview=all
+TK1,Thurrock - London Road (Grays),mixed,Urban Background,51.477076,0.317938,137,243,publicdetails.asp?site=TK1&Maptype=Google&mapview=all
+RI2,Richmond Upon Thames - Barnes Wetlands,LAQN,Suburban,51.476168,-0.230427,-200,200,publicdetails.asp?site=RI2&Maptype=Google&mapview=all
+GR7,Greenwich - Blackheath,LAQN,Roadside,51.472504,-0.012381,0,0,publicdetails.asp?site=GR7&Maptype=Google&mapview=all
+BQ9,Bexley - Slade Green Fidas,AURN,Suburban,51.4659832746662,0.184877126994369,250,250,publicdetails.asp?site=BQ9&Maptype=Google&mapview=all
+BX1,Bexley - Slade Green,mixed,Suburban,51.4659832746662,0.184877126994369,0,0,publicdetails.asp?site=BX1&Maptype=Google&mapview=all
+WA9,Wandsworth - Putney,LAQN,Urban Background,51.4650325059122,-0.215824580947572,0,0,publicdetails.asp?site=WA9&Maptype=Google&mapview=all
+LB4,Lambeth - Brixton Road,LAQN,Kerbside,51.464113541162,-0.11458102695123,0,-300,publicdetails.asp?site=LB4&Maptype=Google&mapview=all
+RHI,Richmond Upon Thames - Richmond,LAQN,Kerbside,51.4638976490621,-0.301685013378926,0,0,publicdetails.asp?site=RHI&Maptype=Google&mapview=all
+WAC,Lavender Hill,LAQN,Roadside,51.4636903568111,-0.166713485994806,0,0,publicdetails.asp?site=WAC&Maptype=Google&mapview=all
+WA7,Wandsworth - Putney High Street,LAQN,Kerbside,51.463429,-0.215871,-200,-200,publicdetails.asp?site=WA7&Maptype=Google&mapview=all
+GR9,Greenwich - Westhorne Avenue,mixed,Roadside,51.456357,0.040725,0,0,publicdetails.asp?site=GR9&Maptype=Google&mapview=all
+GB0,Greenwich - Falconwood FDMS,LAQN,Roadside,51.4563,0.085606,0,0,publicdetails.asp?site=GB0&Maptype=Google&mapview=all
+GB6,Greenwich - Falconwood,LAQN,Roadside,51.4563,0.085606,250,250,publicdetails.asp?site=GB6&Maptype=Google&mapview=all
+RD0,Reading - New Town,AURN,Urban Background,51.4529847075166,-0.944461432664066,0,25,publicdetails.asp?site=RD0&Maptype=Google&mapview=all
+GR4,Greenwich - Eltham,mixed,Suburban,51.45258,0.070766,0,0,publicdetails.asp?site=GR4&Maptype=Google&mapview=all
+HP1,Lewisham - Honor Oak Park,AURN,Urban Background,51.4496728960354,-3.74153592115306E-02,0,0,publicdetails.asp?site=HP1&Maptype=Google&mapview=all
+ZR4,Dartford - St Clements 2,LAQN,Roadside,51.448823581151,0.279379130223739,0,0,publicdetails.asp?site=ZR4&Maptype=Google&mapview=all
+ZR6,Dartford - Town Centre,LAQN,Roadside,51.442557781389,0.215950164318913,0,0,publicdetails.asp?site=ZR6&Maptype=Google&mapview=all
+GN4,Greenwich - Fiveways Sidcup Rd A20,LAQN,Roadside,51.4346627060562,6.42224671704697E-02,0,0,publicdetails.asp?site=GN4&Maptype=Google&mapview=all
+ZR5,Dartford - Bean Lane,LAQN,Roadside,51.4306174423102,0.280976036868921,0,0,publicdetails.asp?site=ZR5&Maptype=Google&mapview=all
+MEB,Merton - Plough Lane Wimbledon,LAQN,Roadside,51.4304273690564,-0.185811823620255,0,0,publicdetails.asp?site=MEB&Maptype=Google&mapview=all
+WAB,Wandsworth - Tooting High Street,LAQN,Roadside,51.429331,-0.166524,0,0,publicdetails.asp?site=WAB&Maptype=Google&mapview=all
+LB6,Lambeth - Streatham Green,LAQN,Urban Background,51.4282131429499,-0.13186863879576,0,0,publicdetails.asp?site=LB6&Maptype=Google&mapview=all
+TD5,London Teddington Bushy Park,AURN,Suburban,51.4252560360937,-0.345608290872898,0,0,publicdetails.asp?site=TD5&Maptype=Google&mapview=all
+ME2,Merton - Merton Road,LAQN,Roadside,51.4161384794862,-0.192230805042824,0,0,publicdetails.asp?site=ME2&Maptype=Google&mapview=all
+CR5,Croydon - Norbury,LAQN,Kerbside,51.411349,-0.12311,0,0,publicdetails.asp?site=CR5&Maptype=Google&mapview=all
+CR8,Croydon - Norbury Manor,LAQN,Urban Background,51.410039,-0.127523,0,0,publicdetails.asp?site=CR8&Maptype=Google&mapview=all
+MEA,Merton - Mitcham,LAQN,Roadside,51.4055473441872,-0.164596893540707,0,0,publicdetails.asp?site=MEA&Maptype=Google&mapview=all
+ME9,Merton - Morden Civic Centre 2,LAQN,Roadside,51.40162,-0.19589212,0,0,publicdetails.asp?site=ME9&Maptype=Google&mapview=all
+CR9,Croydon - Park Lane,LAQN,Roadside,51.3739530635378,-9.67638468323854E-02,0,0,publicdetails.asp?site=CR9&Maptype=Google&mapview=all
+CR7,Croydon - Purley Way A23,LAQN,Roadside,51.3622305655403,-0.117604507351392,0,0,publicdetails.asp?site=CR7&Maptype=Google&mapview=all
+RG1,Reigate and Banstead - Horley,mixed,Suburban,51.1658750886143,-0.167703256282678,0,0,publicdetails.asp?site=RG1&Maptype=Google&mapview=all
+RGS,RG1 Horley SMPS,other,Suburban,51.1658319616611,-0.167763764582061,0,0,publicdetails.asp?site=RGS&Maptype=Google&mapview=all

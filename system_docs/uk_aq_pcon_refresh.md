@@ -18,7 +18,7 @@ This documents how `.github/workflows/uk_aq_pcon_refresh.yml` keeps station `pco
 2) **Resolve PCON GeoJSON from Dropbox**
    - Authenticates to Dropbox using refresh token.
    - Normalizes the configured base/path.
-   - If a direct GeoJSON path is provided, uses it. Otherwise lists year folders (YYYY) under the base, picks the latest year, and selects the single GeoJSON file inside.
+   - If a direct GeoJSON path is provided, uses it. Otherwise lists version folders under the base (supports year-only or month/year names like `July_2024`), picks the requested `PCON_VERSION` when possible, then finds the single GeoJSON file under that folder (recursively, e.g., `BFC/Data/...geojson`).
    - Downloads to `tmp/pcon.geojson` and writes `PCON_VERSION` and `PCON_GEOJSON_PATH` to `GITHUB_ENV`.
 
 3) **Check existing PCON boundaries**
