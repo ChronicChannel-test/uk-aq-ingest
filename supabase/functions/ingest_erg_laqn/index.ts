@@ -244,23 +244,20 @@ function pickValue(payload: Record<string, unknown>, keys: string[]): unknown {
 
 function extractStations(payload: unknown): Record<string, unknown>[] {
   if (Array.isArray(payload)) {
-    return payload.filter((row) => typeof row === "object" && row !== null)
-      as Record<string, unknown>[];
+    return payload.filter((row) => typeof row === "object" && row !== null) as Record<string, unknown>[];
   }
   if (payload && typeof payload === "object") {
     const dict = payload as Record<string, unknown>;
     for (const key of ["Sites", "sites", "MonitoringSites", "monitoringSites", "data"]) {
       const value = dict[key];
       if (Array.isArray(value)) {
-        return value.filter((row) => typeof row === "object" && row !== null)
-          as Record<string, unknown>[];
+        return value.filter((row) => typeof row === "object" && row !== null) as Record<string, unknown>[];
       }
       if (value && typeof value === "object") {
         const nested = value as Record<string, unknown>;
         const sites = nested["Site"] ?? nested["site"];
         if (Array.isArray(sites)) {
-          return sites.filter((row) => typeof row === "object" && row !== null)
-            as Record<string, unknown>[];
+          return sites.filter((row) => typeof row === "object" && row !== null) as Record<string, unknown>[];
         }
         if (sites && typeof sites === "object") {
           return [sites as Record<string, unknown>];
@@ -269,8 +266,7 @@ function extractStations(payload: unknown): Record<string, unknown>[] {
     }
     const sites = dict["Site"] ?? dict["site"];
     if (Array.isArray(sites)) {
-      return sites.filter((row) => typeof row === "object" && row !== null)
-        as Record<string, unknown>[];
+      return sites.filter((row) => typeof row === "object" && row !== null) as Record<string, unknown>[];
     }
     if (sites && typeof sites === "object") {
       return [sites as Record<string, unknown>];
@@ -321,8 +317,7 @@ function normalizeStation(
 
 function extractObservations(payload: unknown): Array<Record<string, unknown>> {
   if (Array.isArray(payload)) {
-    return payload.filter((row) => typeof row === "object" && row !== null)
-      as Array<Record<string, unknown>>;
+    return payload.filter((row) => typeof row === "object" && row !== null) as Array<Record<string, unknown>>;
   }
   if (payload && typeof payload === "object") {
     const dict = payload as Record<string, unknown>;
@@ -331,8 +326,7 @@ function extractObservations(payload: unknown): Array<Record<string, unknown>> {
     for (const key of ["RawData", "rawData", "Data", "data", "Measurements", "measurements"]) {
       const value = container[key];
       if (Array.isArray(value)) {
-        return value.filter((row) => typeof row === "object" && row !== null)
-          as Array<Record<string, unknown>>;
+        return value.filter((row) => typeof row === "object" && row !== null) as Array<Record<string, unknown>>;
       }
     }
   }
