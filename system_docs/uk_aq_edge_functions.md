@@ -61,6 +61,7 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
   - `connectors`, `stations`, `phenomena`, `timeseries`, `observations`
   - `timeseries.last_value` and `timeseries.last_value_at` (update by id)
   - `connectors.last_polled_at` (update by id)
+  - `erg_laqn_station_checkpoints` (update by station_id)
 - Notes:
   - Request body supports `group`, `station_refs`, `species`, `days`, `start_date`, `end_date`, `batch_size`, `sleep_seconds`, and `dry_run`.
   - Uses `/Information/MonitoringSites/GroupName={group}/Json` for stations.

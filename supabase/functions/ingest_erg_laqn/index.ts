@@ -760,6 +760,24 @@ async function updateConnectorLastPolled(connectorId: string): Promise<void> {
   }
 }
 
+async function upsertErgLaqnStationCheckpoints(
+  rows: Array<{ station_id: number; last_polled_at: string; updated_at: string }>,
+): Promise<void> {
+  if (!rows.length) {
+    return;
+  }
+  const { error } = await postgrestRequest(
+    "POST",
+    "erg_laqn_station_checkpoints",
+    { on_conflict: "station_id" },
+    rows,
+    UPSERT_PREFER,
+  );
+  if (error) {
+    throw new Error(`ERG LAQN checkpoint upsert failed: ${error.message}`);
+  }
+}
+
 function loadDropboxConfig(): DropboxConfig | null {
   if (!DROPBOX_APP_KEY || !DROPBOX_APP_SECRET || !DROPBOX_REFRESH_TOKEN) {
     return null;
@@ -1498,9 +1516,15 @@ serve(async (req) => {
         let observationsUpserted = 0;
         const latestObservedSummary: Record<string, Record<string, string | null>> = {};
         const timeseriesUpdates: Array<{ id: number; last_value: number; last_value_at: string }> = [];
+        const pollTimestamp = new Date().toISOString();
+        const checkpointRows: Array<{ station_id: number; last_polled_at: string; updated_at: string }> = [];
 
         for (const row of stationRows) {
           const stationRef = String(row.station_ref);
+          const stationId = stationIdMap[stationRef];
+          if (!stationId) {
+            continue;
+          }
           for (const species of speciesList) {
             const timeseriesRef = `${stationRef}:${species}`;
             const timeseriesId = timeseriesIdMap[timeseriesRef];
@@ -1561,11 +1585,21 @@ serve(async (req) => {
               await sleep(sleepSeconds);
             }
           }
+          checkpointRows.push({
+            station_id: stationId,
+            last_polled_at: pollTimestamp,
+            updated_at: pollTimestamp,
+          });
         }
 
         let timeseriesUpdated = 0;
+        let checkpointsUpserted = 0;
         if (!dryRun && timeseriesUpdates.length) {
           timeseriesUpdated = await updateTimeseriesLastValues(timeseriesUpdates);
+        }
+        if (!dryRun && checkpointRows.length) {
+          await upsertErgLaqnStationCheckpoints(checkpointRows);
+          checkpointsUpserted = checkpointRows.length;
         }
         if (!dryRun) {
           await updateConnectorLastPolled(connectorId);
@@ -1578,6 +1612,7 @@ serve(async (req) => {
           species: speciesList,
           observations_upserted: observationsUpserted,
           timeseries_updated: timeseriesUpdated,
+          checkpoints_upserted: checkpointsUpserted,
           latest_observed_by_station_species: latestObservedSummary,
           dry_run: dryRun,
         };

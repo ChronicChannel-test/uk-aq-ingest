@@ -293,6 +293,16 @@ create table if not exists breathelondon_timeseries_checkpoints (
 create index if not exists breathelondon_timeseries_checkpoints_last_obs_idx
   on breathelondon_timeseries_checkpoints(last_observed_at);
 
+create table if not exists erg_laqn_station_checkpoints (
+  station_id bigint primary key references stations(id) on delete cascade,
+  last_polled_at timestamptz,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+create index if not exists erg_laqn_station_checkpoints_last_polled_idx
+  on erg_laqn_station_checkpoints(last_polled_at);
+
 create unique index if not exists stations_connector_ref_uidx
   on stations(connector_id, service_ref, station_ref);
 create index if not exists stations_geom_idx on stations using gist (geometry);
@@ -885,6 +895,7 @@ alter table if exists uk_air_sos_site_register enable row level security;
 alter table if exists laqn_site_register enable row level security;
 alter table if exists uk_air_sos_station_refs enable row level security;
 alter table if exists breathelondon_timeseries_checkpoints enable row level security;
+alter table if exists erg_laqn_station_checkpoints enable row level security;
 alter table if exists timeseries enable row level security;
 alter table if exists reference_values enable row level security;
 alter table if exists observations enable row level security;
@@ -907,7 +918,7 @@ declare
   t text;
 begin
   for t in select unnest(array[
-    'connectors','categories','phenomena','offerings','features','procedures','stations','station_metadata','station_network_memberships','uk_aq_networks','uk_air_sos_networks','uk_air_sos_network_pollutants','uk_air_sos_site_register','laqn_site_register','uk_air_sos_station_refs','breathelondon_timeseries_checkpoints','timeseries','reference_values','observations','pm25_population_exposure','pm25_amct_sites','la_boundaries','pcon_boundaries','station_pcon_history','station_pcon_queue','pcon_current','pcon_legacy','gss_codes','uk_aq_region_names','uk_aq_guidelines'
+    'connectors','categories','phenomena','offerings','features','procedures','stations','station_metadata','station_network_memberships','uk_aq_networks','uk_air_sos_networks','uk_air_sos_network_pollutants','uk_air_sos_site_register','laqn_site_register','uk_air_sos_station_refs','breathelondon_timeseries_checkpoints','erg_laqn_station_checkpoints','timeseries','reference_values','observations','pm25_population_exposure','pm25_amct_sites','la_boundaries','pcon_boundaries','station_pcon_history','station_pcon_queue','pcon_current','pcon_legacy','gss_codes','uk_aq_region_names','uk_aq_guidelines'
   ])
   loop
     -- Read policy for authenticated + service_role

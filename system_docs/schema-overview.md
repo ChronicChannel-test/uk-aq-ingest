@@ -26,6 +26,7 @@ This document summarizes the schema defined in `supabase/uk_air_quality_schema.s
 - `laqn_site_register`: snapshot of the LAQN site list (e.g., LondonAir or ERG API), including LAQN site refs, coordinates, network flags, and raw payload for audit.
 - `uk_air_sos_station_refs`: mapping of SOS `stations` to UK-AIR site ids (`uk_air_id`) with match metadata for membership backfills.
 - `breathelondon_timeseries_checkpoints`: per-site/species checkpoints for staged Breathe London data pulls.
+- `erg_laqn_station_checkpoints`: per-station checkpoints for ERG LAQN batch polling.
 
 ## Geography mapping tables
 - `la_boundaries`: Local Authority polygons (MultiPolygon, 4326) with `la_code` + `la_version` for assigning stations to LAs.

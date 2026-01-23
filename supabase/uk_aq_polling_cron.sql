@@ -134,14 +134,18 @@ begin
     candidates as (
       select
         stn.station_ref,
-        lo.latest_observed_at
+        lo.latest_observed_at,
+        esc.last_polled_at
       from stations stn
       left join latest_obs lo on lo.station_id = stn.id
+      left join erg_laqn_station_checkpoints esc on esc.station_id = stn.id
       where stn.connector_id = v_connector_id
         and stn.service_ref = 'erg_laqn'
         and stn.station_ref is not null
         and (not active_only or stn.removed_at is null)
-      order by lo.latest_observed_at nulls first, stn.station_ref
+      order by lo.latest_observed_at nulls first,
+        esc.last_polled_at nulls first,
+        stn.station_ref
       limit batch_limit
     )
     select array_agg(station_ref) into station_refs
