@@ -8,7 +8,7 @@ This repo focuses on ingest, data management, and Supabase Edge Functions.
 
 ## Prerequisites
 - Python 3.10+
-- Supabase project with the schema applied from `supabase/uk_air_quality_schema.sql`
+- Supabase project with the shared schema applied from the `uk-aq-schema` repo (`schemas/uk_air_quality_schema.sql`).
   - This schema uses bigint internal ids; external identifiers stored as text use `_ref` (even if numeric).
 
 ## Setup

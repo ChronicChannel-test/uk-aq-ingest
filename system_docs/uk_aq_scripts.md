@@ -145,6 +145,27 @@ Environment:
 - `LAQN_SERVICE_REF` (optional; defaults to `LAQN_CONNECTOR_CODE`)
 - `LAQN_USER_AGENT` (optional)
 
+### `scripts/erg_laqn/erg_laqn_latest_check.py`
+Purpose:
+- Check the latest available LAQN observations for a sample of active sites/species.
+
+Common commands:
+```
+python3 scripts/erg_laqn/erg_laqn_latest_check.py --days 2 --species NO2,PM10
+```
+
+Key flags:
+- `--days` lookback window in days (default: 2).
+- `--species` comma-separated species list (default: NO2).
+- `--max-sites` number of active sites to test (default: 5).
+- `--stations-json` path to a stations JSON snapshot (default: `erg_laqn_stations.json`).
+- `--base-url` ERG API base URL.
+- `--timeout` HTTP timeout in seconds.
+
+Environment:
+- `LAQN_BASE_URL` (optional; defaults to `https://api.erg.ic.ac.uk/AirQuality`)
+- `LAQN_STATIONS_JSON` (optional; defaults to `erg_laqn_stations.json`)
+
 ### `scripts/uk_aq_load_la_boundaries.py`
 Purpose:
 - Load Local Authority boundary GeoJSON into `la_boundaries`.
