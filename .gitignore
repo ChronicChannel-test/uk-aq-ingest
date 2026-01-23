@@ -9,3 +9,4 @@ uk_air_sos_site_register*.csv
 gov_uk_aurn_site_register*.csv
 network_info/UK-Air-SOS/
 *.numbers
+network_info/LAQN/uk_aq_londonair_site_list_active.numbers

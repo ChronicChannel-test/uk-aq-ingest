@@ -22,3 +22,4 @@ Defines each network connector and its polling configuration.
 ## Notes
 - `connector_code` is unique; internal joins use `id`.
 - Known connectors can override the bbox/station filter support flags on insert.
+- Cron dispatchers in `supabase/uk_aq_polling_cron.sql` skip polling when `poll_enabled` is false.

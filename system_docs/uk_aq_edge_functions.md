@@ -8,7 +8,7 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
 
 ### ingest_uk_air_sos
 - Purpose: Poll UK-AIR SOS timeseries and write observations + last_value fields.
-- Triggered by: Supabase cron (see `supabase/uk_aq_polling_cron.sql`).
+- Triggered by: Supabase cron dispatcher (`uk_air_sos_dispatch_poll` in `supabase/uk_aq_polling_cron.sql`), which skips when `connectors.poll_enabled` is false.
 - Note: Deploying the Edge Function does not create a schedule; the cron timing lives in `supabase/uk_aq_polling_cron.sql` and must be applied separately.
 - Writes:
   - `observations` (upsert by timeseries_id + observed_at)
@@ -20,7 +20,7 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
 
 ### ingest_sensorcommunity
 - Purpose: Poll Sensor.Community recent values and write stations, timeseries, and observations.
-- Triggered by: Supabase cron (see `supabase/uk_aq_polling_cron.sql`).
+- Triggered by: Supabase cron dispatcher (`sensorcommunity_dispatch_poll` in `supabase/uk_aq_polling_cron.sql`), which skips when `connectors.poll_enabled` is false.
 - Writes:
   - `connectors`, `stations`, `phenomena`, `timeseries`, `observations`
 - Notes:
@@ -36,7 +36,7 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
 
 ### ingest_breathelondon
 - Purpose: Poll Breathe London Communities for hourly observations with checkpointing.
-- Triggered by: Supabase cron batcher (`breathelondon_dispatch_batch` in `supabase/uk_aq_polling_cron.sql`).
+- Triggered by: Supabase cron batcher (`breathelondon_dispatch_batch` in `supabase/uk_aq_polling_cron.sql`), which skips when `connectors.poll_enabled` is false.
 - Writes:
   - `connectors`, `stations`, `phenomena`, `timeseries`, `observations`
   - `breathelondon_timeseries_checkpoints` (per-station/species checkpoints)
@@ -56,7 +56,7 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
 
 ### ingest_erg_laqn
 - Purpose: Poll ERG LAQN (configurable group, default London) and write observations.
-- Triggered by: Supabase cron (optional; not scheduled by default).
+- Triggered by: Supabase cron batcher (`erg_laqn_dispatch_batch` in `supabase/uk_aq_polling_cron.sql`), which skips when `connectors.poll_enabled` is false.
 - Writes:
   - `connectors`, `stations`, `phenomena`, `timeseries`, `observations`
   - `timeseries.last_value` and `timeseries.last_value_at` (update by id)
