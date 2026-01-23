@@ -166,6 +166,26 @@ Environment:
 - `LAQN_BASE_URL` (optional; defaults to `https://api.erg.ic.ac.uk/AirQuality`)
 - `LAQN_STATIONS_JSON` (optional; defaults to `erg_laqn_stations.json`)
 
+### `scripts/uk_aq_move_history_observations.sh`
+Purpose:
+- Move observations older than a cutoff from the main DB into the history DB in batches.
+
+Common commands:
+```
+CUTOFF_DAYS=14 BATCH_SIZE=50000 ./scripts/uk_aq_move_history_observations.sh
+./scripts/uk_aq_move_history_observations.sh --days 21 --batch-size 20000
+```
+
+Key flags:
+- `--days` cutoff age in days (default: 14).
+- `--batch-size` rows per batch (default: 50,000).
+
+Environment:
+- `SUPABASE_DB_URL` (main DB)
+- `SBASE_HISTORY_DB_URL` (history DB)
+- `CUTOFF_DAYS` (optional; default 14)
+- `BATCH_SIZE` (optional; default 50,000)
+
 ### `scripts/uk_aq_load_la_boundaries.py`
 Purpose:
 - Load Local Authority boundary GeoJSON into `la_boundaries`.
