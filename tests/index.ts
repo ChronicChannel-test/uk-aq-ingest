@@ -1518,15 +1518,6 @@ function chunk<T>(values: T[], size: number): T[][] {
 }
 
 serve(async (req) => {
-  const cronHeader = req.headers.get("x-cron-secret");
-  console.log("ingest_breathelondon request", {
-    method: req.method,
-    has_cron_secret: Boolean(SB_UK_AQ_CRON_SECRET),
-    header_present: Boolean(cronHeader),
-    header_length: cronHeader ? cronHeader.length : 0,
-    has_authorization: Boolean(req.headers.get("authorization")),
-    has_apikey: Boolean(req.headers.get("apikey")),
-  });
   if (req.method !== "POST") {
     return new Response("Method not allowed", { status: 405 });
   }

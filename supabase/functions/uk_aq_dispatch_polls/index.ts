@@ -273,6 +273,11 @@ async function callEdgeFunction(
   if (SB_UK_AQ_CRON_SECRET) {
     headers["X-Cron-Secret"] = SB_UK_AQ_CRON_SECRET;
   }
+  console.log("dispatch_edge_function", {
+    path,
+    has_cron_secret: Boolean(SB_UK_AQ_CRON_SECRET),
+    cron_secret_length: SB_UK_AQ_CRON_SECRET ? SB_UK_AQ_CRON_SECRET.length : 0,
+  });
   const resp = await fetch(url, {
     method: "POST",
     headers,
