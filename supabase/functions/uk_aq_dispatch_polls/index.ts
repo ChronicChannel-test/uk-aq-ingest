@@ -1,0 +1,453 @@
+// @ts-nocheck
+// Dispatch connector polls based on connectors table settings.
+import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
+
+type ConnectorRow = {
+  id: string;
+  connector_code: string;
+  poll_enabled: boolean | null;
+  poll_interval_minutes: number | null;
+  poll_window_hours: number | null;
+  poll_timeseries_batch_size: number | null;
+  last_polled_at: string | null;
+};
+
+type DispatchResult = {
+  connector_code: string;
+  status: string;
+  detail?: string;
+  response_status?: number;
+};
+
+type ErrorLogEntry = {
+  severity: "error" | "warn";
+  message: string;
+  context?: Record<string, unknown> | null;
+  connector_id?: string | number | null;
+};
+
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL")
+  ?? Deno.env.get("SB_SUPABASE_URL")
+  ?? "";
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")
+  ?? Deno.env.get("SB_SERVICE_ROLE_KEY")
+  ?? "";
+const SB_UK_AQ_CRON_SECRET = Deno.env.get("SB_UK_AQ_CRON_SECRET") ?? "";
+
+const REST_BASE_URL = SUPABASE_URL
+  ? `${SUPABASE_URL.replace(/\/$/, "")}/rest/v1`
+  : "";
+
+const TARGET_CONNECTORS = [
+  "uk_air_sos",
+  "sensorcommunity",
+  "breathelondon",
+  "erg_laqn",
+];
+
+const DEFAULT_INTERVAL_MINUTES: Record<string, number> = {
+  uk_air_sos: 60,
+  sensorcommunity: 15,
+  breathelondon: 60,
+  erg_laqn: 60,
+};
+
+const DEFAULT_WINDOW_HOURS: Record<string, number> = {
+  uk_air_sos: 6,
+  breathelondon: 6,
+  erg_laqn: 24,
+};
+
+const DEFAULT_BATCH_LIMIT: Record<string, number> = {
+  breathelondon: 10,
+  erg_laqn: 10,
+};
+
+function postgrestHeaders(): Record<string, string> {
+  return {
+    apikey: SUPABASE_SERVICE_ROLE_KEY,
+    Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+    "Content-Type": "application/json",
+  };
+}
+
+function requireCronSecret(req: Request): Response | null {
+  if (!SB_UK_AQ_CRON_SECRET) {
+    return null;
+  }
+  const header = req.headers.get("x-cron-secret");
+  if (!header || header !== SB_UK_AQ_CRON_SECRET) {
+    return new Response("Unauthorized", { status: 401 });
+  }
+  return null;
+}
+
+function jsonResponse(payload: Record<string, unknown>, status = 200): Response {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+function quotePostgrestValue(value: string): string {
+  return `"${value.replace(/"/g, "\\\"")}"`;
+}
+
+function postgrestIn(values: string[]): string {
+  return `in.(${values.map(quotePostgrestValue).join(",")})`;
+}
+
+function parseDate(value: string | null): Date | null {
+  if (!value) {
+    return null;
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+  const candidate = trimmed.includes("T") ? trimmed : trimmed.replace(" ", "T");
+  const normalized = candidate.endsWith("Z") || candidate.includes("+")
+    ? candidate
+    : `${candidate}Z`;
+  const parsed = new Date(normalized);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function getIntervalMinutes(connector: ConnectorRow | null, connectorCode: string): number {
+  const value = connector?.poll_interval_minutes;
+  if (typeof value === "number" && Number.isFinite(value) && value >= 0) {
+    return value;
+  }
+  return DEFAULT_INTERVAL_MINUTES[connectorCode] ?? 60;
+}
+
+function getWindowHours(connector: ConnectorRow | null, connectorCode: string): number {
+  const value = connector?.poll_window_hours;
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+    return value;
+  }
+  return DEFAULT_WINDOW_HOURS[connectorCode] ?? 24;
+}
+
+function getBatchLimit(connector: ConnectorRow | null, connectorCode: string): number {
+  const value = connector?.poll_timeseries_batch_size;
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+    return Math.floor(value);
+  }
+  return DEFAULT_BATCH_LIMIT[connectorCode] ?? 10;
+}
+
+function isDue(connector: ConnectorRow | null, connectorCode: string, now: Date): boolean {
+  if (connector?.poll_enabled === false) {
+    return false;
+  }
+  const intervalMinutes = getIntervalMinutes(connector, connectorCode);
+  if (!Number.isFinite(intervalMinutes) || intervalMinutes <= 0) {
+    return true;
+  }
+  const lastPolled = parseDate(connector?.last_polled_at ?? null);
+  if (!lastPolled) {
+    return true;
+  }
+  const elapsedMs = now.getTime() - lastPolled.getTime();
+  return elapsedMs >= intervalMinutes * 60 * 1000;
+}
+
+async function postgrestRequest<T>(
+  method: string,
+  table: string,
+  params?: Record<string, string>,
+  body?: unknown,
+): Promise<{ data: T | null; error: { message: string } | null }> {
+  if (!REST_BASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    return { data: null, error: { message: "Missing REST_BASE_URL or SUPABASE_SERVICE_ROLE_KEY." } };
+  }
+  const url = new URL(`${REST_BASE_URL}/${table}`);
+  for (const [key, value] of Object.entries(params ?? {})) {
+    if (value !== undefined && value !== null) {
+      url.searchParams.set(key, String(value));
+    }
+  }
+  const resp = await fetch(url.toString(), {
+    method,
+    headers: postgrestHeaders(),
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const contentType = resp.headers.get("content-type") ?? "";
+  const payload = contentType.includes("application/json")
+    ? await resp.json().catch(() => null)
+    : await resp.text().catch(() => null);
+  if (!resp.ok) {
+    const message = payload?.message || payload?.error_description || payload?.error || resp.statusText;
+    return { data: null, error: { message: String(message) } };
+  }
+  return { data: payload as T, error: null };
+}
+
+async function logError(entry: ErrorLogEntry): Promise<void> {
+  const row = {
+    id: crypto.randomUUID(),
+    source: "edge",
+    severity: entry.severity,
+    message: entry.message,
+    stack: null,
+    context: entry.context ?? null,
+    connector_id: entry.connector_id ?? null,
+    station_id: null,
+    timeseries_id: null,
+  };
+  const { error } = await postgrestRequest("POST", "error_logs", undefined, row);
+  if (error) {
+    console.warn("error_logs insert failed:", error.message);
+  }
+}
+
+async function postgrestRpcRequest<T>(
+  fn: string,
+  body: Record<string, unknown>,
+): Promise<{ data: T | null; error: { message: string } | null }> {
+  return await postgrestRequest<T>("POST", `rpc/${fn}`, undefined, body);
+}
+
+async function loadConnectorConfigs(): Promise<ConnectorRow[]> {
+  const { data, error } = await postgrestRequest<ConnectorRow[]>("GET", "connectors", {
+    select: "id,connector_code,poll_enabled,poll_interval_minutes,poll_window_hours,poll_timeseries_batch_size,last_polled_at",
+    connector_code: postgrestIn(TARGET_CONNECTORS),
+    limit: "20",
+  });
+  if (error) {
+    throw new Error(`Failed to load connectors: ${error.message}`);
+  }
+  return data ?? [];
+}
+
+async function loadStationRefs(
+  fn: string,
+  batchLimit: number,
+  activeOnly: boolean,
+): Promise<string[]> {
+  const { data, error } = await postgrestRpcRequest<string[] | null>(fn, {
+    batch_limit: batchLimit,
+    active_only: activeOnly,
+  });
+  if (error) {
+    throw new Error(`Failed to load station refs via ${fn}: ${error.message}`);
+  }
+  if (!data || !Array.isArray(data)) {
+    return [];
+  }
+  return data.map((ref) => String(ref).trim().toUpperCase()).filter(Boolean);
+}
+
+async function callEdgeFunction(
+  path: string,
+  payload: Record<string, unknown>,
+): Promise<{ ok: boolean; status: number; body: unknown }>{
+  if (!SUPABASE_URL) {
+    throw new Error("Missing SUPABASE_URL.");
+  }
+  const url = `${SUPABASE_URL.replace(/\/$/, "")}/functions/v1/${path}`;
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+    apikey: SUPABASE_SERVICE_ROLE_KEY,
+  };
+  if (SB_UK_AQ_CRON_SECRET) {
+    headers["X-Cron-Secret"] = SB_UK_AQ_CRON_SECRET;
+  }
+  const resp = await fetch(url, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(payload),
+  });
+  const contentType = resp.headers.get("content-type") ?? "";
+  const payloadBody = contentType.includes("application/json")
+    ? await resp.json().catch(() => null)
+    : await resp.text().catch(() => null);
+  return { ok: resp.ok, status: resp.status, body: payloadBody };
+}
+
+function windowHoursToDays(windowHours: number): number {
+  if (!Number.isFinite(windowHours) || windowHours <= 0) {
+    return 1;
+  }
+  return Math.max(1, Math.ceil(windowHours / 24));
+}
+
+serve(async (req) => {
+  if (req.method !== "POST") {
+    return new Response("Method not allowed", { status: 405 });
+  }
+  const authResponse = requireCronSecret(req);
+  if (authResponse) {
+    return authResponse;
+  }
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    return jsonResponse({ error: "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY." }, 500);
+  }
+
+  const now = new Date();
+  const results: DispatchResult[] = [];
+  let connectors: ConnectorRow[] = [];
+  try {
+    connectors = await loadConnectorConfigs();
+  } catch (error) {
+    await logError({
+      severity: "error",
+      message: error instanceof Error ? error.message : String(error),
+      context: { component: "uk_aq_dispatch_polls", step: "load_connectors" },
+    });
+    return jsonResponse({ error: error instanceof Error ? error.message : String(error) }, 500);
+  }
+
+  const connectorMap = new Map(connectors.map((row) => [row.connector_code, row]));
+
+  for (const connectorCode of TARGET_CONNECTORS) {
+    const connector = connectorMap.get(connectorCode) ?? null;
+    if (!isDue(connector, connectorCode, now)) {
+      results.push({ connector_code: connectorCode, status: "skipped", detail: "not_due" });
+      continue;
+    }
+
+    try {
+      if (connectorCode === "uk_air_sos") {
+        const windowHours = getWindowHours(connector, connectorCode);
+        const resp = await callEdgeFunction("ingest_uk_air_sos", {
+          connector_code: connectorCode,
+          window_hours: windowHours,
+        });
+        if (!resp.ok) {
+          await logError({
+            severity: "error",
+            message: "ingest_uk_air_sos dispatch failed",
+            connector_id: connector?.id ?? null,
+            context: {
+              connector_code: connectorCode,
+              response_status: resp.status,
+              response_body: resp.body,
+            },
+          });
+        }
+        results.push({
+          connector_code: connectorCode,
+          status: resp.ok ? "triggered" : "error",
+          response_status: resp.status,
+          detail: resp.ok ? "dispatched" : JSON.stringify(resp.body),
+        });
+      } else if (connectorCode === "sensorcommunity") {
+        const resp = await callEdgeFunction("ingest_sensorcommunity", {
+          connector_code: connectorCode,
+          country: "GB",
+        });
+        if (!resp.ok) {
+          await logError({
+            severity: "error",
+            message: "ingest_sensorcommunity dispatch failed",
+            connector_id: connector?.id ?? null,
+            context: {
+              connector_code: connectorCode,
+              response_status: resp.status,
+              response_body: resp.body,
+            },
+          });
+        }
+        results.push({
+          connector_code: connectorCode,
+          status: resp.ok ? "triggered" : "error",
+          response_status: resp.status,
+          detail: resp.ok ? "dispatched" : JSON.stringify(resp.body),
+        });
+      } else if (connectorCode === "breathelondon") {
+        const batchLimit = getBatchLimit(connector, connectorCode);
+        const stationRefs = await loadStationRefs(
+          "breathelondon_select_station_refs",
+          batchLimit,
+          true,
+        );
+        if (!stationRefs.length) {
+          results.push({ connector_code: connectorCode, status: "skipped", detail: "no_station_refs" });
+          continue;
+        }
+        const windowHours = getWindowHours(connector, connectorCode);
+        const resp = await callEdgeFunction("ingest_breathelondon", {
+          connector_code: connectorCode,
+          service_ref: connectorCode,
+          station_refs: stationRefs,
+          skip_stations: true,
+          active_only: true,
+          initial_days: 2,
+          window_hours: windowHours,
+        });
+        if (!resp.ok) {
+          await logError({
+            severity: "error",
+            message: "ingest_breathelondon dispatch failed",
+            connector_id: connector?.id ?? null,
+            context: {
+              connector_code: connectorCode,
+              response_status: resp.status,
+              response_body: resp.body,
+            },
+          });
+        }
+        results.push({
+          connector_code: connectorCode,
+          status: resp.ok ? "triggered" : "error",
+          response_status: resp.status,
+          detail: resp.ok ? "dispatched" : JSON.stringify(resp.body),
+        });
+      } else if (connectorCode === "erg_laqn") {
+        const batchLimit = getBatchLimit(connector, connectorCode);
+        const stationRefs = await loadStationRefs(
+          "erg_laqn_select_station_refs",
+          batchLimit,
+          true,
+        );
+        if (!stationRefs.length) {
+          results.push({ connector_code: connectorCode, status: "skipped", detail: "no_station_refs" });
+          continue;
+        }
+        const windowHours = getWindowHours(connector, connectorCode);
+        const resp = await callEdgeFunction("ingest_erg_laqn", {
+          connector_code: connectorCode,
+          service_ref: connectorCode,
+          group: "London",
+          days: windowHoursToDays(windowHours),
+          station_refs: stationRefs,
+        });
+        if (!resp.ok) {
+          await logError({
+            severity: "error",
+            message: "ingest_erg_laqn dispatch failed",
+            connector_id: connector?.id ?? null,
+            context: {
+              connector_code: connectorCode,
+              response_status: resp.status,
+              response_body: resp.body,
+            },
+          });
+        }
+        results.push({
+          connector_code: connectorCode,
+          status: resp.ok ? "triggered" : "error",
+          response_status: resp.status,
+          detail: resp.ok ? "dispatched" : JSON.stringify(resp.body),
+        });
+      }
+    } catch (error) {
+      await logError({
+        severity: "error",
+        message: error instanceof Error ? error.message : String(error),
+        connector_id: connector?.id ?? null,
+        context: { connector_code: connectorCode, step: "dispatch" },
+      });
+      results.push({
+        connector_code: connectorCode,
+        status: "error",
+        detail: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  return jsonResponse({ checked_at: now.toISOString(), results });
+});

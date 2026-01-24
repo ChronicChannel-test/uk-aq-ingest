@@ -6,26 +6,10 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
 
 ## Functions
 
-### uk_aq_dispatch_polls
-- Purpose: Dispatch due connector polls based on `connectors` scheduling fields.
-- Triggered by: External scheduler (Cloudflare Worker cron) calling the edge function directly.
-- Reads:
-  - `connectors` (`poll_enabled`, `poll_interval_minutes`, `poll_window_hours`, `poll_timeseries_batch_size`, `last_polled_at`)
-  - Station batch helpers: `breathelondon_select_station_refs`, `erg_laqn_select_station_refs` (defined in `supabase/uk_aq_polling_cron.sql`)
-- Calls:
-  - `ingest_uk_air_sos` (`window_hours`)
-  - `ingest_sensorcommunity` (`country=GB`)
-  - `ingest_breathelondon` (`station_refs`, `window_hours`, `initial_days=2`, `skip_stations=true`)
-  - `ingest_erg_laqn` (`station_refs`, `days=ceil(poll_window_hours/24)`, `group=London`)
-- Notes:
-  - Requires `X-Cron-Secret` when `SB_UK_AQ_CRON_SECRET` is set.
-  - Uses the Supabase service role key to read connector settings and call ingest functions.
-  - Writes dispatch errors to `error_logs`.
-
 ### ingest_uk_air_sos
 - Purpose: Poll UK-AIR SOS timeseries and write observations + last_value fields.
-- Triggered by: `uk_aq_dispatch_polls` (external scheduler). Legacy Supabase cron dispatcher functions remain in `supabase/uk_aq_polling_cron.sql`, but schedules are no longer created there.
-- Note: Deploying the Edge Function does not create a schedule; use the Cloudflare Worker cron for regular runs.
+- Triggered by: Supabase cron dispatcher (`uk_air_sos_dispatch_poll` in `supabase/uk_aq_polling_cron.sql`), which skips when `connectors.poll_enabled` is false.
+- Note: Deploying the Edge Function does not create a schedule; the cron timing lives in `supabase/uk_aq_polling_cron.sql` and must be applied separately.
 - Writes:
   - `observations` (upsert by timeseries_id + observed_at)
   - `timeseries.last_value` and `timeseries.last_value_at` (update by id)
@@ -36,7 +20,7 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
 
 ### ingest_sensorcommunity
 - Purpose: Poll Sensor.Community recent values and write stations, timeseries, and observations.
-- Triggered by: `uk_aq_dispatch_polls` (external scheduler). Legacy Supabase cron dispatcher functions remain in `supabase/uk_aq_polling_cron.sql`, but schedules are no longer created there.
+- Triggered by: Supabase cron dispatcher (`sensorcommunity_dispatch_poll` in `supabase/uk_aq_polling_cron.sql`), which skips when `connectors.poll_enabled` is false.
 - Writes:
   - `connectors`, `stations`, `phenomena`, `timeseries`, `observations`
 - Notes:
@@ -52,7 +36,7 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
 
 ### ingest_breathelondon
 - Purpose: Poll Breathe London Communities for hourly observations with checkpointing.
-- Triggered by: `uk_aq_dispatch_polls` (external scheduler). Legacy Supabase cron batcher functions remain in `supabase/uk_aq_polling_cron.sql`, but schedules are no longer created there.
+- Triggered by: Supabase cron batcher (`breathelondon_dispatch_batch` in `supabase/uk_aq_polling_cron.sql`), which skips when `connectors.poll_enabled` is false.
 - Writes:
   - `connectors`, `stations`, `phenomena`, `timeseries`, `observations`
   - `breathelondon_timeseries_checkpoints` (per-station/species checkpoints)
@@ -72,7 +56,7 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
 
 ### ingest_erg_laqn
 - Purpose: Poll ERG LAQN (configurable group, default London) and write observations.
-- Triggered by: `uk_aq_dispatch_polls` (external scheduler). Legacy Supabase cron batcher functions remain in `supabase/uk_aq_polling_cron.sql`, but schedules are no longer created there.
+- Triggered by: Supabase cron batcher (`erg_laqn_dispatch_batch` in `supabase/uk_aq_polling_cron.sql`), which skips when `connectors.poll_enabled` is false.
 - Writes:
   - `connectors`, `stations`, `phenomena`, `timeseries`, `observations`
   - `timeseries.last_value` and `timeseries.last_value_at` (update by id)
