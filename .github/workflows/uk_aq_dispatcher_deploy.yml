@@ -16,14 +16,20 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Set Worker secrets
+        working-directory: workers/uk_aq_dispatcher
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          printf "%s" "${{ secrets.SUPABASE_URL }}" | npx wrangler secret put SUPABASE_URL
+          printf "%s" "${{ secrets.SUPABASE_ANON_JWT }}" | npx wrangler secret put SUPABASE_ANON_JWT
+          printf "%s" "${{ secrets.SB_UK_AQ_CRON_SECRET }}" | npx wrangler secret put SB_UK_AQ_CRON_SECRET
+
       - name: Deploy Worker
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: workers/uk_aq_dispatcher
-          command: |
-            printf "%s" "${{ secrets.SUPABASE_URL }}" | secret put SUPABASE_URL
-            printf "%s" "${{ secrets.SUPABASE_ANON_JWT }}" | secret put SUPABASE_ANON_JWT
-            printf "%s" "${{ secrets.SB_UK_AQ_CRON_SECRET }}" | secret put SB_UK_AQ_CRON_SECRET
-            deploy
+          command: deploy
