@@ -106,6 +106,11 @@ function requireCronSecret(req: Request): Response | null {
   }
   const header = req.headers.get("x-cron-secret");
   if (!header || header !== SB_UK_AQ_CRON_SECRET) {
+    console.warn("cron_secret_mismatch", {
+      has_cron_secret: Boolean(SB_UK_AQ_CRON_SECRET),
+      header_present: Boolean(header),
+      header_length: header ? header.length : 0,
+    });
     return new Response("Unauthorized", { status: 401 });
   }
   return null;

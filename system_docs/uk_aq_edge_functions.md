@@ -28,6 +28,8 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
 - Purpose: Poll UK-AIR SOS timeseries and write observations + last_value fields.
 - Triggered by: `uk_aq_dispatch_polls` (external scheduler). Legacy Supabase cron dispatcher functions remain in `supabase/uk_aq_polling_cron.sql`, but schedules are no longer created there.
 - Note: Deploying the Edge Function does not create a schedule; use the Cloudflare Worker cron for regular runs.
+- Notes:
+  - Logs cron secret mismatch diagnostics (presence/length only) when authorization fails.
 - Writes:
   - `observations` (upsert by timeseries_id + observed_at)
   - `timeseries.last_value` and `timeseries.last_value_at` (update by id)
