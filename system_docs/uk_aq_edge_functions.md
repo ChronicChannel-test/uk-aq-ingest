@@ -32,6 +32,7 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
 - Note: Deploying the Edge Function does not create a schedule; use the Cloudflare Worker cron for regular runs.
 - Notes:
   - Logs cron secret mismatch diagnostics (presence/length only) when authorization fails.
+  - Skips timeseries with missing `last_value_at` or `last_value_at` older than the poll window.
 - Writes:
   - `observations` (upsert by timeseries_id + observed_at)
   - `timeseries.last_value` and `timeseries.last_value_at` (update by id)
@@ -39,6 +40,7 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
   - Writes a log file to Dropbox `/connectors/uk_air_sos/log/YYYY-MM-DD/`
   - Writes raw payloads to Dropbox `/connectors/uk_air_sos/raw_data/YYYY-MM-DD/` as ZIP
   - Writes errors to `error_logs` and `/error_log/YYYY-MM-DD/`
+  - Logs a "No datapoints parsed" warning with row count when the SOS payload has no rows.
 
 ### ingest_sensorcommunity
 - Purpose: Poll Sensor.Community recent values and write stations, timeseries, and observations.

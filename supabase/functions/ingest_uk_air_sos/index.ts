@@ -218,6 +218,8 @@ serve(async (req) => {
   let status = 200;
   let polled = 0;
   let observationsUpserted = 0;
+  let skippedNoLastValueAt = 0;
+  let skippedStaleLastValueAt = 0;
   let responsePayload: Record<string, unknown> = {};
   let connector: ConnectorRow | null = null;
   let requestedConnectorId: string | undefined;
@@ -271,6 +273,8 @@ serve(async (req) => {
         const pollWindow = requestedWindowHours ?? connector.poll_window_hours ?? DEFAULT_WINDOW_HOURS;
         const effectiveLimit = requestedLimit ?? connector.poll_timeseries_batch_size ?? undefined;
         const baseUrl = (connector.service_url || UK_AIR_SOS_BASE_URL).replace(/\/$/, "");
+        const now = new Date();
+        const windowStart = new Date(now.getTime() - pollWindow * 60 * 60 * 1000);
 
         let series = await loadTimeseries(connector.id);
         if (requestedSeries?.length) {
@@ -298,12 +302,36 @@ serve(async (req) => {
         }
 
         if (shouldPoll) {
+          const beforeRecencyFilter = series.length;
+          series = series.filter((row) => {
+            if (!row.last_value_at) {
+              skippedNoLastValueAt += 1;
+              return false;
+            }
+            const parsed = new Date(row.last_value_at);
+            if (Number.isNaN(parsed.getTime())) {
+              skippedNoLastValueAt += 1;
+              return false;
+            }
+            if (parsed < windowStart) {
+              skippedStaleLastValueAt += 1;
+              return false;
+            }
+            return true;
+          });
+          if (beforeRecencyFilter !== series.length) {
+            log.info("Timeseries recency filter applied", {
+              total: beforeRecencyFilter,
+              remaining: series.length,
+              skipped_no_last_value_at: skippedNoLastValueAt,
+              skipped_stale_last_value_at: skippedStaleLastValueAt,
+              window_hours: pollWindow,
+            });
+          }
           if (typeof effectiveLimit === "number" && effectiveLimit > 0) {
             series = series.slice(0, effectiveLimit);
           }
 
-          const now = new Date();
-          const windowStart = new Date(now.getTime() - pollWindow * 60 * 60 * 1000);
           const timespan = `${windowStart.toISOString()}/${now.toISOString()}`;
           if (rawRecorder) {
             rawRecorder.recordEvent("context", {
@@ -1265,14 +1293,29 @@ async function loadConnector(
 
 async function loadTimeseries(
   connectorId: string,
-): Promise<Array<{ id: number; timeseries_ref: string | null; phenomenon_id: string | null }>> {
-  const rows: Array<{ id: number; timeseries_ref: string | null; phenomenon_id: string | null }> = [];
+): Promise<Array<{
+  id: number;
+  timeseries_ref: string | null;
+  phenomenon_id: string | null;
+  last_value_at: string | null;
+}>> {
+  const rows: Array<{
+    id: number;
+    timeseries_ref: string | null;
+    phenomenon_id: string | null;
+    last_value_at: string | null;
+  }> = [];
   let offset = 0;
   while (true) {
     const { data, error } = await postgrestRequest<
-      Array<{ id: number; timeseries_ref: string | null; phenomenon_id: string | null }>
+      Array<{
+        id: number;
+        timeseries_ref: string | null;
+        phenomenon_id: string | null;
+        last_value_at: string | null;
+      }>
     >("GET", "timeseries", {
-      select: "id,timeseries_ref,phenomenon_id",
+      select: "id,timeseries_ref,phenomenon_id,last_value_at",
       connector_id: `eq.${connectorId}`,
       limit: String(PAGE_SIZE),
       offset: String(offset),
@@ -1287,6 +1330,7 @@ async function loadTimeseries(
       id: Number(row.id),
       timeseries_ref: row.timeseries_ref ? String(row.timeseries_ref) : null,
       phenomenon_id: row.phenomenon_id ? String(row.phenomenon_id) : null,
+      last_value_at: row.last_value_at ? String(row.last_value_at) : null,
     })));
     if (data.length < PAGE_SIZE) {
       break;
@@ -1390,6 +1434,10 @@ function parseDatapoints(
   }
   if (!Array.isArray(rows)) {
     logEmptySeries(seriesId, rows, "values not array");
+    return [];
+  }
+  if (rows.length === 0) {
+    logEmptySeries(seriesId, { row_count: 0 }, "no rows");
     return [];
   }
   const points: Array<{ observed_at: string; value: number | null; status: string | null }> = [];
