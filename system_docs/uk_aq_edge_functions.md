@@ -20,6 +20,8 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
 - Notes:
   - Requires `X-Cron-Secret` when `SB_UK_AQ_CRON_SECRET` is set.
   - Uses the Supabase service role key to read connector settings and call ingest functions.
+  - Updates `connectors.last_run_start`, `last_run_end`, `last_run_status`, `last_run_message`, and `last_polled_at` for each attempted dispatch.
+  - Logs whether the cron secret is present (boolean + length) for debugging.
   - Writes dispatch errors to `error_logs`.
 
 ### ingest_uk_air_sos
@@ -62,6 +64,7 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
   - Supports `active_only` to limit polling to stations marked `enabled` or `site_active` in metadata.
   - Supports `station_refs` to limit polling to a specific set of station refs.
   - Supports `debug=true` to include a debug block in the response (Dropbox config status, no secrets).
+  - Logs cron secret mismatch diagnostics (presence/length only) when authorization fails.
   - Response includes `stations_requested`/`stations_selected` when station refs are supplied.
   - Updates `connectors.last_polled_at` on successful non-dry runs.
 - Logs:

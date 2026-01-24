@@ -304,6 +304,11 @@ serve(async (req) => {
     return jsonResponse({ error: "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY." }, 500);
   }
 
+  console.log("uk_aq_dispatch_polls cron secret", {
+    has_cron_secret: Boolean(SB_UK_AQ_CRON_SECRET),
+    cron_secret_length: SB_UK_AQ_CRON_SECRET ? SB_UK_AQ_CRON_SECRET.length : 0,
+  });
+
   const now = new Date();
   const results: DispatchResult[] = [];
   let connectors: ConnectorRow[] = [];
