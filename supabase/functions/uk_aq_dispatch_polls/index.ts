@@ -184,6 +184,24 @@ async function postgrestRequest<T>(
   return { data: payload as T, error: null };
 }
 
+async function updateConnectorRun(
+  connectorId: string | null,
+  payload: Record<string, unknown>,
+): Promise<void> {
+  if (!connectorId) {
+    return;
+  }
+  const { error } = await postgrestRequest(
+    "PATCH",
+    "connectors",
+    { id: `eq.${connectorId}` },
+    payload,
+  );
+  if (error) {
+    console.warn("connectors update failed:", error.message);
+  }
+}
+
 async function logError(entry: ErrorLogEntry): Promise<void> {
   const row = {
     id: crypto.randomUUID(),
@@ -309,6 +327,10 @@ serve(async (req) => {
       continue;
     }
 
+    const runStart = new Date();
+    let runStatus = "failed";
+    let runMessage = "";
+
     try {
       if (connectorCode === "uk_air_sos") {
         const windowHours = getWindowHours(connector, connectorCode);
@@ -317,6 +339,8 @@ serve(async (req) => {
           window_hours: windowHours,
         });
         if (!resp.ok) {
+          runStatus = "failed";
+          runMessage = `HTTP ${resp.status}`;
           await logError({
             severity: "error",
             message: "ingest_uk_air_sos dispatch failed",
@@ -327,6 +351,9 @@ serve(async (req) => {
               response_body: resp.body,
             },
           });
+        } else {
+          runStatus = "succeeded";
+          runMessage = "dispatched";
         }
         results.push({
           connector_code: connectorCode,
@@ -340,6 +367,8 @@ serve(async (req) => {
           country: "GB",
         });
         if (!resp.ok) {
+          runStatus = "failed";
+          runMessage = `HTTP ${resp.status}`;
           await logError({
             severity: "error",
             message: "ingest_sensorcommunity dispatch failed",
@@ -350,6 +379,9 @@ serve(async (req) => {
               response_body: resp.body,
             },
           });
+        } else {
+          runStatus = "succeeded";
+          runMessage = "dispatched";
         }
         results.push({
           connector_code: connectorCode,
@@ -365,37 +397,44 @@ serve(async (req) => {
           true,
         );
         if (!stationRefs.length) {
+          runStatus = "skipped";
+          runMessage = "no_station_refs";
           results.push({ connector_code: connectorCode, status: "skipped", detail: "no_station_refs" });
-          continue;
-        }
-        const windowHours = getWindowHours(connector, connectorCode);
-        const resp = await callEdgeFunction("ingest_breathelondon", {
-          connector_code: connectorCode,
-          service_ref: connectorCode,
-          station_refs: stationRefs,
-          skip_stations: true,
-          active_only: true,
-          initial_days: 2,
-          window_hours: windowHours,
-        });
-        if (!resp.ok) {
-          await logError({
-            severity: "error",
-            message: "ingest_breathelondon dispatch failed",
-            connector_id: connector?.id ?? null,
-            context: {
-              connector_code: connectorCode,
-              response_status: resp.status,
-              response_body: resp.body,
-            },
+        } else {
+          const windowHours = getWindowHours(connector, connectorCode);
+          const resp = await callEdgeFunction("ingest_breathelondon", {
+            connector_code: connectorCode,
+            service_ref: connectorCode,
+            station_refs: stationRefs,
+            skip_stations: true,
+            active_only: true,
+            initial_days: 2,
+            window_hours: windowHours,
+          });
+          if (!resp.ok) {
+            runStatus = "failed";
+            runMessage = `HTTP ${resp.status}`;
+            await logError({
+              severity: "error",
+              message: "ingest_breathelondon dispatch failed",
+              connector_id: connector?.id ?? null,
+              context: {
+                connector_code: connectorCode,
+                response_status: resp.status,
+                response_body: resp.body,
+              },
+            });
+          } else {
+            runStatus = "succeeded";
+            runMessage = "dispatched";
+          }
+          results.push({
+            connector_code: connectorCode,
+            status: resp.ok ? "triggered" : "error",
+            response_status: resp.status,
+            detail: resp.ok ? "dispatched" : JSON.stringify(resp.body),
           });
         }
-        results.push({
-          connector_code: connectorCode,
-          status: resp.ok ? "triggered" : "error",
-          response_status: resp.status,
-          detail: resp.ok ? "dispatched" : JSON.stringify(resp.body),
-        });
       } else if (connectorCode === "erg_laqn") {
         const batchLimit = getBatchLimit(connector, connectorCode);
         const stationRefs = await loadStationRefs(
@@ -404,37 +443,46 @@ serve(async (req) => {
           true,
         );
         if (!stationRefs.length) {
+          runStatus = "skipped";
+          runMessage = "no_station_refs";
           results.push({ connector_code: connectorCode, status: "skipped", detail: "no_station_refs" });
-          continue;
-        }
-        const windowHours = getWindowHours(connector, connectorCode);
-        const resp = await callEdgeFunction("ingest_erg_laqn", {
-          connector_code: connectorCode,
-          service_ref: connectorCode,
-          group: "London",
-          days: windowHoursToDays(windowHours),
-          station_refs: stationRefs,
-        });
-        if (!resp.ok) {
-          await logError({
-            severity: "error",
-            message: "ingest_erg_laqn dispatch failed",
-            connector_id: connector?.id ?? null,
-            context: {
-              connector_code: connectorCode,
-              response_status: resp.status,
-              response_body: resp.body,
-            },
+        } else {
+          const windowHours = getWindowHours(connector, connectorCode);
+          const resp = await callEdgeFunction("ingest_erg_laqn", {
+            connector_code: connectorCode,
+            service_ref: connectorCode,
+            group: "London",
+            days: windowHoursToDays(windowHours),
+            station_refs: stationRefs,
+          });
+          if (!resp.ok) {
+            runStatus = "failed";
+            runMessage = `HTTP ${resp.status}`;
+            await logError({
+              severity: "error",
+              message: "ingest_erg_laqn dispatch failed",
+              connector_id: connector?.id ?? null,
+              context: {
+                connector_code: connectorCode,
+                response_status: resp.status,
+                response_body: resp.body,
+              },
+            });
+          } else {
+            runStatus = "succeeded";
+            runMessage = "dispatched";
+          }
+          results.push({
+            connector_code: connectorCode,
+            status: resp.ok ? "triggered" : "error",
+            response_status: resp.status,
+            detail: resp.ok ? "dispatched" : JSON.stringify(resp.body),
           });
         }
-        results.push({
-          connector_code: connectorCode,
-          status: resp.ok ? "triggered" : "error",
-          response_status: resp.status,
-          detail: resp.ok ? "dispatched" : JSON.stringify(resp.body),
-        });
       }
     } catch (error) {
+      runStatus = "failed";
+      runMessage = error instanceof Error ? error.message : String(error);
       await logError({
         severity: "error",
         message: error instanceof Error ? error.message : String(error),
@@ -445,6 +493,15 @@ serve(async (req) => {
         connector_code: connectorCode,
         status: "error",
         detail: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      const runEnd = new Date();
+      await updateConnectorRun(connector?.id ?? null, {
+        last_run_start: runStart.toISOString(),
+        last_run_end: runEnd.toISOString(),
+        last_run_status: runStatus,
+        last_run_message: runMessage,
+        last_polled_at: runEnd.toISOString(),
       });
     }
   }
