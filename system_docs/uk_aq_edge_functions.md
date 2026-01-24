@@ -93,6 +93,7 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
   - Uses `/Information/MonitoringSites/GroupName={group}/Json` for stations.
   - Uses `/Data/SiteSpecies/SiteCode={code}/SpeciesCode={species}/StartDate={YYYY-MM-DD}/EndDate={YYYY-MM-DD}/Json` for raw data.
   - Skips per-site/species ERG responses that return HTTP 400 (logs a warning; continues).
+  - When `start_from_latest=true`, uses `timeseries.last_value_at` to extend the per-series start date if the latest value is older than the requested start date.
 - Logs:
   - Writes a log file to Dropbox `/connectors/erg_laqn/log/YYYY-MM-DD/` (prefix `uk_aq_log_edge_erg_laqn_`).
   - Writes raw payloads to Dropbox `/connectors/erg_laqn/raw_data/YYYY-MM-DD/` as ZIP (prefix `uk_aq_raw_edge_erg_laqn_`).

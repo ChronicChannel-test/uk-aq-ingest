@@ -14,6 +14,7 @@ type PollRequest = {
   days?: number;
   start_date?: string;
   end_date?: string;
+  start_from_latest?: boolean;
   batch_size?: number;
   sleep_seconds?: number;
   dry_run?: boolean;
@@ -239,6 +240,17 @@ function formatLogValue(value: unknown): string {
     return JSON.stringify(value);
   }
   return String(value);
+}
+
+function parseTimestamp(value?: string | null): Date | null {
+  if (!value) {
+    return null;
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+  return parsed;
 }
 
 function createRawRecorder(): RawRecorder {
@@ -684,18 +696,25 @@ async function upsertTimeseries(
   }
 }
 
-async function fetchTimeseriesIds(
+type TimeseriesMeta = {
+  id: number;
+  last_value_at: string | null;
+};
+
+async function fetchTimeseriesMeta(
   connectorId: number,
   timeseriesRefs: string[],
-): Promise<Record<string, number>> {
-  const mapping: Record<string, number> = {};
+): Promise<Record<string, TimeseriesMeta>> {
+  const mapping: Record<string, TimeseriesMeta> = {};
   for (const chunkRefs of chunk(timeseriesRefs, 200)) {
     const quoted = chunkRefs.map((value) => `"${value}"`);
-    const { data, error } = await postgrestRequest<Array<{ id: number; timeseries_ref: string }>>(
+    const { data, error } = await postgrestRequest<
+      Array<{ id: number; timeseries_ref: string; last_value_at: string | null }>
+    >(
       "GET",
       "timeseries",
       {
-        select: "id,timeseries_ref",
+        select: "id,timeseries_ref,last_value_at",
         connector_id: `eq.${connectorId}`,
         service_ref: `eq.${LAQN_SERVICE_REF}`,
         timeseries_ref: `in.(${quoted.join(",")})`,
@@ -705,7 +724,10 @@ async function fetchTimeseriesIds(
       throw new Error(`Timeseries id fetch failed: ${error.message}`);
     }
     for (const row of data ?? []) {
-      mapping[String(row.timeseries_ref)] = Number(row.id);
+      mapping[String(row.timeseries_ref)] = {
+        id: Number(row.id),
+        last_value_at: row.last_value_at ? String(row.last_value_at) : null,
+      };
     }
   }
   return mapping;
@@ -1380,6 +1402,7 @@ serve(async (req) => {
   const batchSize = payload.batch_size ?? DEFAULT_BATCH_SIZE;
   const sleepSeconds = payload.sleep_seconds ?? DEFAULT_SLEEP_SECONDS;
   const dryRun = Boolean(payload.dry_run);
+  const startFromLatest = Boolean(payload.start_from_latest);
   connectorCodeForLog = connectorCode;
 
   const now = new Date();
@@ -1413,6 +1436,7 @@ serve(async (req) => {
         days,
         start_date: startStr,
         end_date: endStr,
+        start_from_latest: startFromLatest,
         station_refs: stationRefs.length ? stationRefs : null,
         species: speciesList,
         dry_run: dryRun,
@@ -1427,6 +1451,7 @@ serve(async (req) => {
           days,
           start_date: startStr,
           end_date: endStr,
+          start_from_latest: startFromLatest,
           station_refs: stationRefs.length ? stationRefs : null,
           species: speciesList,
           dry_run: dryRun,
@@ -1509,7 +1534,7 @@ serve(async (req) => {
         if (!dryRun) {
           await upsertTimeseries(timeseriesRows);
         }
-        const timeseriesIdMap = await fetchTimeseriesIds(
+        const timeseriesMetaMap = await fetchTimeseriesMeta(
           Number(connectorId),
           timeseriesRows.map((row) => String(row.timeseries_ref)),
         );
@@ -1519,6 +1544,8 @@ serve(async (req) => {
         const timeseriesUpdates: Array<{ id: number; last_value: number; last_value_at: string }> = [];
         const pollTimestamp = new Date().toISOString();
         const checkpointRows: Array<{ station_id: number; last_polled_at: string; updated_at: string }> = [];
+        let backfillSeries = 0;
+        let backfillEarliest: Date | null = null;
 
         for (const row of stationRows) {
           const stationRef = String(row.station_ref);
@@ -1528,13 +1555,26 @@ serve(async (req) => {
           }
           for (const species of speciesList) {
             const timeseriesRef = `${stationRef}:${species}`;
-            const timeseriesId = timeseriesIdMap[timeseriesRef];
+            const timeseriesMeta = timeseriesMetaMap[timeseriesRef];
+            const timeseriesId = timeseriesMeta?.id;
             if (!timeseriesId) {
               continue;
             }
+            let seriesStartDate = startDate;
+            if (startFromLatest) {
+              const lastValueAt = parseTimestamp(timeseriesMeta?.last_value_at ?? null);
+              if (lastValueAt && lastValueAt < seriesStartDate) {
+                seriesStartDate = lastValueAt;
+                backfillSeries += 1;
+                if (!backfillEarliest || lastValueAt < backfillEarliest) {
+                  backfillEarliest = lastValueAt;
+                }
+              }
+            }
+            const seriesStartStr = seriesStartDate.toISOString().slice(0, 10);
             const url =
               `${baseUrl}/Data/SiteSpecies/SiteCode=${stationRef}/SpeciesCode=${species}` +
-              `/StartDate=${startStr}/EndDate=${endStr}/Json`;
+              `/StartDate=${seriesStartStr}/EndDate=${endStr}/Json`;
             let payloadData: unknown;
             try {
               payloadData = await fetchJson(url, undefined, log, rawRecorder);
@@ -1649,6 +1689,11 @@ serve(async (req) => {
           timeseries_updated: timeseriesUpdated,
           checkpoints_upserted: checkpointsUpserted,
           skipped_http_400: skippedHttp400,
+          start_from_latest: startFromLatest,
+          backfill_series: startFromLatest ? backfillSeries : null,
+          backfill_earliest: startFromLatest && backfillEarliest
+            ? backfillEarliest.toISOString()
+            : null,
           latest_observed_by_station_species: latestObservedSummary,
           dry_run: dryRun,
         };
@@ -1658,6 +1703,11 @@ serve(async (req) => {
           observations_upserted: observationsUpserted,
           timeseries_updated: timeseriesUpdated,
           skipped_http_400: skippedHttp400,
+          start_from_latest: startFromLatest,
+          backfill_series: startFromLatest ? backfillSeries : null,
+          backfill_earliest: startFromLatest && backfillEarliest
+            ? backfillEarliest.toISOString()
+            : null,
           dry_run: dryRun,
         });
       }

@@ -470,6 +470,7 @@ serve(async (req) => {
             service_ref: connectorCode,
             group: "London",
             days: windowHoursToDays(windowHours),
+            start_from_latest: true,
             station_refs: stationRefs,
           });
           if (!resp.ok) {
