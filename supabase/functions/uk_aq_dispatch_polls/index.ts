@@ -32,8 +32,9 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")
   ?? Deno.env.get("SB_SERVICE_ROLE_KEY")
   ?? "";
-const SUPABASE_ANON_JWT = Deno.env.get("SUPABASE_ANON_JWT")
+const SUPABASE_ANON_JWT = Deno.env.get("SB_ANON_JWT")
   ?? Deno.env.get("SB_SUPABASE_ANON_JWT")
+  ?? Deno.env.get("SUPABASE_ANON_JWT")
   ?? "";
 const SB_UK_AQ_CRON_SECRET = Deno.env.get("SB_UK_AQ_CRON_SECRET") ?? "";
 

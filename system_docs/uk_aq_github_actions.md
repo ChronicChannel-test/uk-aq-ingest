@@ -16,7 +16,7 @@ This repo uses GitHub Actions for scheduled syncs and deployments.
 - Deployed functions: `ingest_uk_air_sos`, `ingest_breathelondon`, `ingest_sensorcommunity`,
   `uk_aq_latest`, `uk_aq_bristol_latest`, `uk_aq_la_hex`, `uk_aq_pcon_hex`,
   `uk_aq_stations`, `uk_aq_timeseries`.
-- Secrets: `SUPABASE_PROJECT_REF`, `SUPABASE_PUBLISHABLE_DEFAULT_KEY`, `SUPABASE_ANON_JWT`,
+- Secrets: `SUPABASE_PROJECT_REF`, `SUPABASE_PUBLISHABLE_DEFAULT_KEY`, `SB_ANON_JWT`,
   `SUPABASE_ACCESS_TOKEN`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`,
   `SUPABASE_DB_URL`, `SB_UK_AQ_CRON_SECRET`.
 
@@ -32,7 +32,7 @@ This repo uses GitHub Actions for scheduled syncs and deployments.
 - Purpose: batch station refs and invoke `ingest_breathelondon` per chunk for manual runs.
 - Script: `python3 scripts/breathelondon/breathelondon_batch.py --connector-code breathelondon --batch-size 10 --active-only --skip-stations`.
 - Order: oldest `breathelondon_timeseries_checkpoints.last_fetch_at` first (nulls first).
-- Secrets: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_ANON_JWT`, `SB_UK_AQ_CRON_SECRET`.
+- Secrets: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SB_ANON_JWT`, `SB_UK_AQ_CRON_SECRET`.
 
 ### `uk_aq_stations_daily.yml`
 - Schedule: daily at 03:00 UTC.
@@ -50,7 +50,7 @@ This repo uses GitHub Actions for scheduled syncs and deployments.
 - Purpose: deploy the Cloudflare Worker cron dispatcher and set its secrets.
 - Worker: `workers/uk_aq_dispatcher`.
 - Secrets: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`,
-  `SUPABASE_URL`, `SUPABASE_ANON_JWT`, `SB_UK_AQ_CRON_SECRET`.
+  `SUPABASE_URL`, `SB_ANON_JWT`, `SB_UK_AQ_CRON_SECRET`.
 
 ### `uk_air_sos_site_register_monthly.yml`
 - Schedule: monthly on day 1 at 04:15 UTC.
