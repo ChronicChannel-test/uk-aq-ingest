@@ -1,6 +1,6 @@
 export interface Env {
   SUPABASE_URL: unknown;
-  SUPABASE_ANON_JWT: unknown;
+  SB_ANON_JWT: unknown;
   SB_UK_AQ_CRON_SECRET?: unknown;
 }
 
@@ -28,10 +28,10 @@ async function readSecret(value: unknown): Promise<string> {
 
 async function invokeDispatch(env: Env): Promise<void> {
   const supabaseUrl = await readSecret(env.SUPABASE_URL);
-  const supabaseAnonJwt = await readSecret(env.SUPABASE_ANON_JWT);
+  const supabaseAnonJwt = await readSecret(env.SB_ANON_JWT);
   const cronSecret = await readSecret(env.SB_UK_AQ_CRON_SECRET ?? "");
   if (!supabaseUrl || !supabaseAnonJwt) {
-    console.error("Missing SUPABASE_URL or SUPABASE_ANON_JWT.");
+    console.error("Missing SUPABASE_URL or SB_ANON_JWT.");
     return;
   }
   const url = `${normalizeBaseUrl(supabaseUrl)}/functions/v1/uk_aq_dispatch_polls`;

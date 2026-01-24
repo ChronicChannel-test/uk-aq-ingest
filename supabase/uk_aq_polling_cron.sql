@@ -1,7 +1,7 @@
 -- Schedule UK-AIR SOS polling via Supabase Edge Function.
 -- Replace placeholders before running:
 --   - {{SUPABASE_URL}}
---   - {{SUPABASE_ANON_JWT}}
+--   - {{SB_ANON_JWT}}
 --   - {{SB_UK_AQ_CRON_SECRET}}
 
 -- Reset schedules so this script can be re-applied safely.
@@ -56,7 +56,7 @@ begin
     else
       perform net.http_post(
         url := '{{SUPABASE_URL}}/functions/v1/ingest_uk_air_sos',
-        headers := '{"Content-Type":"application/json","Authorization":"Bearer {{SUPABASE_ANON_JWT}}","apikey":"{{SUPABASE_ANON_JWT}}","X-Cron-Secret":"{{SB_UK_AQ_CRON_SECRET}}"}'::jsonb,
+        headers := '{"Content-Type":"application/json","Authorization":"Bearer {{SB_ANON_JWT}}","apikey":"{{SB_ANON_JWT}}","X-Cron-Secret":"{{SB_UK_AQ_CRON_SECRET}}"}'::jsonb,
         body := jsonb_build_object(
           'connector_id', '1',
           'window_hours', window_hours
@@ -103,7 +103,7 @@ begin
     else
       perform net.http_post(
         url := '{{SUPABASE_URL}}/functions/v1/ingest_sensorcommunity',
-        headers := '{"Content-Type":"application/json","Authorization":"Bearer {{SUPABASE_ANON_JWT}}","apikey":"{{SUPABASE_ANON_JWT}}","X-Cron-Secret":"{{SB_UK_AQ_CRON_SECRET}}"}'::jsonb,
+        headers := '{"Content-Type":"application/json","Authorization":"Bearer {{SB_ANON_JWT}}","apikey":"{{SB_ANON_JWT}}","X-Cron-Secret":"{{SB_UK_AQ_CRON_SECRET}}"}'::jsonb,
         body := jsonb_build_object(
           'connector_code', 'sensorcommunity',
           'country', country
@@ -185,7 +185,7 @@ begin
       else
         perform net.http_post(
           url := '{{SUPABASE_URL}}/functions/v1/ingest_breathelondon',
-          headers := '{"Content-Type":"application/json","Authorization":"Bearer {{SUPABASE_ANON_JWT}}","apikey":"{{SUPABASE_ANON_JWT}}","X-Cron-Secret":"{{SB_UK_AQ_CRON_SECRET}}"}'::jsonb,
+          headers := '{"Content-Type":"application/json","Authorization":"Bearer {{SB_ANON_JWT}}","apikey":"{{SB_ANON_JWT}}","X-Cron-Secret":"{{SB_UK_AQ_CRON_SECRET}}"}'::jsonb,
           body := jsonb_build_object(
             'connector_code', 'breathelondon',
             'service_ref', 'breathelondon',
@@ -383,7 +383,7 @@ begin
       else
         perform net.http_post(
           url := '{{SUPABASE_URL}}/functions/v1/ingest_erg_laqn',
-          headers := '{"Content-Type":"application/json","Authorization":"Bearer {{SUPABASE_ANON_JWT}}","apikey":"{{SUPABASE_ANON_JWT}}","X-Cron-Secret":"{{SB_UK_AQ_CRON_SECRET}}"}'::jsonb,
+          headers := '{"Content-Type":"application/json","Authorization":"Bearer {{SB_ANON_JWT}}","apikey":"{{SB_ANON_JWT}}","X-Cron-Secret":"{{SB_UK_AQ_CRON_SECRET}}"}'::jsonb,
           body := jsonb_build_object(
             'connector_code', 'erg_laqn',
             'service_ref', 'erg_laqn',

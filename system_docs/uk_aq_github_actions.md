@@ -12,13 +12,13 @@ This repo uses GitHub Actions for scheduled syncs and deployments.
 
 ### `supabase_edge_deploy.yml`
 - Trigger: push to `main` affecting `supabase/functions/**`, or manual dispatch.
-- Purpose: inject Supabase project ref into the web page, set Supabase secrets, deploy edge functions, apply cron schedules.
+- Purpose: inject Supabase project ref into the web page, set Supabase secrets, deploy edge functions.
 - Deployed functions: `ingest_uk_air_sos`, `ingest_breathelondon`, `ingest_sensorcommunity`,
   `uk_aq_latest`, `uk_aq_bristol_latest`, `uk_aq_la_hex`, `uk_aq_pcon_hex`,
   `uk_aq_stations`, `uk_aq_timeseries`.
 - Secrets: `SUPABASE_PROJECT_REF`, `SUPABASE_PUBLISHABLE_DEFAULT_KEY`, `SB_ANON_JWT`,
   `SUPABASE_ACCESS_TOKEN`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`,
-  `SUPABASE_DB_URL`, `SB_UK_AQ_CRON_SECRET`.
+  `SB_UK_AQ_CRON_SECRET`.
 
 ### `uk_aq_raw_dropbox.yml`
 - Trigger: manual dispatch.

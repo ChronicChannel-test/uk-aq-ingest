@@ -3,12 +3,12 @@ import path from 'node:path';
 
 const projectRef = process.env.SUPABASE_PROJECT_REF || '';
 const publishableKey = process.env.SUPABASE_PUBLISHABLE_DEFAULT_KEY || '';
-const anonJwt = process.env.SUPABASE_ANON_JWT || '';
+const anonJwt = process.env.SB_ANON_JWT || '';
 
 const replacements = [
   { name: 'SUPABASE_PROJECT_REF', value: projectRef },
   { name: 'SUPABASE_PUBLISHABLE_DEFAULT_KEY', value: publishableKey },
-  { name: 'SUPABASE_ANON_JWT', value: anonJwt },
+  { name: 'SB_ANON_JWT', value: anonJwt },
 ];
 
 const allowedExtensions = new Set(['.html', '.js', '.mjs', '.ts', '.tsx', '.json']);

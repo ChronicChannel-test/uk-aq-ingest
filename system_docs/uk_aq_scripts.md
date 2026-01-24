@@ -26,7 +26,7 @@ Purpose:
 Placeholders:
 - `__SUPABASE_PROJECT_REF__` or `{{SUPABASE_PROJECT_REF}}`
 - `__SUPABASE_PUBLISHABLE_DEFAULT_KEY__` or `{{SUPABASE_PUBLISHABLE_DEFAULT_KEY}}`
-- `__SUPABASE_ANON_JWT__` or `{{SUPABASE_ANON_JWT}}`
+- `__SB_ANON_JWT__` or `{{SB_ANON_JWT}}`
 
 Notes:
 - If no placeholders are found, the script exits without changes.
@@ -35,7 +35,7 @@ Notes:
 Environment:
 - `SUPABASE_PROJECT_REF`
 - `SUPABASE_PUBLISHABLE_DEFAULT_KEY`
-- `SUPABASE_ANON_JWT`
+- `SB_ANON_JWT`
 
 ### `scripts/uk_air_sos/uk_air_sos_ingest.py`
 Purpose:
@@ -739,7 +739,7 @@ python3 scripts/breathelondon/breathelondon_batch.py --connector-code breathelon
 Environment:
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
-- `SUPABASE_ANON_JWT` (or `SUPABASE_ANON_KEY`)
+- `SB_ANON_JWT` (or `SUPABASE_ANON_KEY`)
 - `SB_UK_AQ_CRON_SECRET` (optional)
 - `BREATHELONDON_CONNECTOR_CODE` (optional override)
 - `BREATHELONDON_SERVICE_REF` (optional override)
@@ -782,7 +782,7 @@ python3 scripts/uk_aq_invoke_edge.py --function uk_aq_latest --connector-code br
 
 Environment:
 - `SUPABASE_URL`
-- `SUPABASE_ANON_JWT` (or `SUPABASE_ANON_KEY`)
+- `SB_ANON_JWT` (or `SUPABASE_ANON_KEY`)
 - `SB_UK_AQ_CRON_SECRET` (required for ingest functions when set in Supabase)
 
 ## SOS metadata glossary

@@ -44,8 +44,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--anon-jwt",
-        default=os.getenv("SUPABASE_ANON_JWT") or os.getenv("SUPABASE_ANON_KEY"),
-        help="Supabase anon JWT (defaults to SUPABASE_ANON_JWT).",
+        default=os.getenv("SB_ANON_JWT") or os.getenv("SUPABASE_ANON_KEY"),
+        help="Supabase anon JWT (defaults to SB_ANON_JWT).",
     )
     parser.add_argument(
         "--cron-secret",
@@ -76,7 +76,7 @@ def main() -> int:
         raise SystemExit("SUPABASE_URL (or --base-url) is required.")
     anon_jwt = args.anon_jwt or ""
     if not anon_jwt:
-        raise SystemExit("SUPABASE_ANON_JWT (or --anon-jwt) is required.")
+        raise SystemExit("SB_ANON_JWT (or --anon-jwt) is required.")
 
     method = args.method or ("POST" if args.function.startswith("ingest_") else "GET")
     params = parse_json(args.params, "params")
