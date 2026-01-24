@@ -23,7 +23,7 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           printf "%s" "${{ secrets.SUPABASE_URL }}" | npx wrangler secret put SUPABASE_URL
-          printf "%s" "${{ secrets.SUPABASE_ANON_JWT }}" | npx wrangler secret put SUPABASE_ANON_JWT
+          printf "%s" "${{ secrets.SB_ANON_JWT }}" | npx wrangler secret put SB_ANON_JWT
           printf "%s" "${{ secrets.SB_UK_AQ_CRON_SECRET }}" | npx wrangler secret put SB_UK_AQ_CRON_SECRET
 
       - name: Deploy Worker

@@ -1359,6 +1359,7 @@ serve(async (req) => {
   let responsePayload: Record<string, unknown> = {};
   let connectorId: string | null = null;
   let connectorCodeForLog = LAQN_CONNECTOR_CODE;
+  let skippedHttp400 = 0;
 
   let payload: PollRequest = {};
   try {
@@ -1534,7 +1535,41 @@ serve(async (req) => {
             const url =
               `${baseUrl}/Data/SiteSpecies/SiteCode=${stationRef}/SpeciesCode=${species}` +
               `/StartDate=${startStr}/EndDate=${endStr}/Json`;
-            const payloadData = await fetchJson(url, undefined, log, rawRecorder);
+            let payloadData: unknown;
+            try {
+              payloadData = await fetchJson(url, undefined, log, rawRecorder);
+            } catch (err) {
+              const message = err instanceof Error ? err.message : String(err);
+              if (message.startsWith("HTTP 400 ")) {
+                skippedHttp400 += 1;
+                if (skippedHttp400 <= 5) {
+                  log.warn("Skipping site/species due to HTTP 400.", {
+                    station_ref: stationRef,
+                    species,
+                    url,
+                  });
+                  await errorLogger.logError({
+                    source: "edge",
+                    severity: "warn",
+                    message: "ERG LAQN 400 for site/species.",
+                    stack: err instanceof Error ? err.stack : undefined,
+                    context: {
+                      connector_code: connectorCodeForLog,
+                      station_ref: stationRef,
+                      species,
+                      url,
+                      error: message,
+                    },
+                    connector_code: connectorCodeForLog,
+                    connector_id: connectorId ?? null,
+                    station_id: stationId,
+                    timeseries_id: timeseriesId,
+                  });
+                }
+                continue;
+              }
+              throw err;
+            }
             const rawRows = extractObservations(payloadData);
             const observations: Record<string, unknown>[] = [];
             let lastObserved: Date | null = null;
@@ -1613,6 +1648,7 @@ serve(async (req) => {
           observations_upserted: observationsUpserted,
           timeseries_updated: timeseriesUpdated,
           checkpoints_upserted: checkpointsUpserted,
+          skipped_http_400: skippedHttp400,
           latest_observed_by_station_species: latestObservedSummary,
           dry_run: dryRun,
         };
@@ -1621,6 +1657,7 @@ serve(async (req) => {
           stations: stationRows.length,
           observations_upserted: observationsUpserted,
           timeseries_updated: timeseriesUpdated,
+          skipped_http_400: skippedHttp400,
           dry_run: dryRun,
         });
       }
