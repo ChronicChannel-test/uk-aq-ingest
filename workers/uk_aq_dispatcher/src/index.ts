@@ -55,7 +55,7 @@ async function invokeDispatch(env: Env): Promise<void> {
 }
 
 export default {
-  async scheduled(_event: ScheduledEvent, env: Env, _ctx: ExecutionContext): Promise<void> {
+  async scheduled(_event: unknown, env: Env, _ctx: unknown): Promise<void> {
     await invokeDispatch(env);
   },
 };
