@@ -8,17 +8,20 @@ crons = ["*/2 * * * *"]
 [observability]
 enabled = true
 
-[[secrets_store]]
-binding = "SB_UK_AQ_CRON_SECRET"
+[[unsafe.bindings]]
+type = "secrets_store"
+name = "SB_UK_AQ_CRON_SECRET"
 store_id = "b516fa0fe5c54089a75898286a4c6234"
 secret_name = "SB_UK_AQ_CRON_SECRET"
 
-[[secrets_store]]
-binding = "SUPABASE_ANON_JWT"
+[[unsafe.bindings]]
+type = "secrets_store"
+name = "SUPABASE_ANON_JWT"
 store_id = "b516fa0fe5c54089a75898286a4c6234"
 secret_name = "SUPABASE_ANON_JWT"
 
-[[secrets_store]]
-binding = "SUPABASE_URL"
+[[unsafe.bindings]]
+type = "secrets_store"
+name = "SUPABASE_URL"
 store_id = "b516fa0fe5c54089a75898286a4c6234"
 secret_name = "SUPABASE_URL"
