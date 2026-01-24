@@ -32,6 +32,9 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")
   ?? Deno.env.get("SB_SERVICE_ROLE_KEY")
   ?? "";
+const SUPABASE_ANON_JWT = Deno.env.get("SUPABASE_ANON_JWT")
+  ?? Deno.env.get("SB_SUPABASE_ANON_JWT")
+  ?? "";
 const SB_UK_AQ_CRON_SECRET = Deno.env.get("SB_UK_AQ_CRON_SECRET") ?? "";
 
 const REST_BASE_URL = SUPABASE_URL
@@ -264,11 +267,15 @@ async function callEdgeFunction(
   if (!SUPABASE_URL) {
     throw new Error("Missing SUPABASE_URL.");
   }
+  const authKey = SUPABASE_ANON_JWT || SUPABASE_SERVICE_ROLE_KEY;
+  if (!authKey) {
+    throw new Error("Missing SUPABASE_ANON_JWT or SUPABASE_SERVICE_ROLE_KEY.");
+  }
   const url = `${SUPABASE_URL.replace(/\/$/, "")}/functions/v1/${path}`;
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
-    Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-    apikey: SUPABASE_SERVICE_ROLE_KEY,
+    Authorization: `Bearer ${authKey}`,
+    apikey: authKey,
   };
   if (SB_UK_AQ_CRON_SECRET) {
     headers["X-Cron-Secret"] = SB_UK_AQ_CRON_SECRET;
@@ -277,6 +284,8 @@ async function callEdgeFunction(
     path,
     has_cron_secret: Boolean(SB_UK_AQ_CRON_SECRET),
     cron_secret_length: SB_UK_AQ_CRON_SECRET ? SB_UK_AQ_CRON_SECRET.length : 0,
+    auth_key_type: SUPABASE_ANON_JWT ? "anon" : "service_role",
+    auth_key_length: authKey.length,
   });
   const resp = await fetch(url, {
     method: "POST",

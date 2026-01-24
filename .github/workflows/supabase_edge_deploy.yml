@@ -37,6 +37,7 @@ jobs:
             SB_SUPABASE_URL="${{ secrets.SUPABASE_URL }}" \
             SB_SERVICE_ROLE_KEY="${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
             SB_UK_AQ_CRON_SECRET="${{ secrets.SB_UK_AQ_CRON_SECRET }}" \
+            SUPABASE_ANON_JWT="${{ secrets.SUPABASE_ANON_JWT }}" \
             --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"
 
       - name: Deploy function
