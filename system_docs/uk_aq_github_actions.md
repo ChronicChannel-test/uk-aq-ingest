@@ -45,6 +45,13 @@ This repo uses GitHub Actions for scheduled syncs and deployments.
   `BREATHELONDON_API_KEY`, `BREATHELONDON_BASE_URL` (optional), `DROPBOX_APP_KEY`,
   `DROPBOX_APP_SECRET`, `DROPBOX_REFRESH_TOKEN`, `UK_AQ_DROPBOX_ROOT`, `UK_AQ_STATIONS_DROPBOX_DIR`.
 
+### `uk_aq_dispatcher_deploy.yml`
+- Trigger: push to `main` affecting `workers/uk_aq_dispatcher/**`, or manual dispatch.
+- Purpose: deploy the Cloudflare Worker cron dispatcher and set its secrets.
+- Worker: `workers/uk_aq_dispatcher`.
+- Secrets: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`,
+  `SUPABASE_URL`, `SUPABASE_ANON_JWT`, `SB_UK_AQ_CRON_SECRET`.
+
 ### `uk_air_sos_site_register_monthly.yml`
 - Schedule: monthly on day 1 at 04:15 UTC.
 - Purpose: download the UK-AIR monitoring sites CSV via the search page.

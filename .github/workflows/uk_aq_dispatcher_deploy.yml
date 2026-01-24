@@ -1,0 +1,29 @@
+name: Deploy uk_aq_dispatcher Worker
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "workers/uk_aq_dispatcher/**"
+      - ".github/workflows/uk_aq_dispatcher_deploy.yml"
+  workflow_dispatch:
+
+jobs:
+  deploy-worker:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Deploy Worker
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: workers/uk_aq_dispatcher
+          command: |
+            secret put SUPABASE_URL --text "${{ secrets.SUPABASE_URL }}"
+            secret put SUPABASE_ANON_JWT --text "${{ secrets.SUPABASE_ANON_JWT }}"
+            secret put SB_UK_AQ_CRON_SECRET --text "${{ secrets.SB_UK_AQ_CRON_SECRET }}"
+            deploy
