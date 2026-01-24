@@ -23,7 +23,7 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: workers/uk_aq_dispatcher
           command: |
-            secret put SUPABASE_URL --text "${{ secrets.SUPABASE_URL }}"
-            secret put SUPABASE_ANON_JWT --text "${{ secrets.SUPABASE_ANON_JWT }}"
-            secret put SB_UK_AQ_CRON_SECRET --text "${{ secrets.SB_UK_AQ_CRON_SECRET }}"
+            printf "%s" "${{ secrets.SUPABASE_URL }}" | secret put SUPABASE_URL
+            printf "%s" "${{ secrets.SUPABASE_ANON_JWT }}" | secret put SUPABASE_ANON_JWT
+            printf "%s" "${{ secrets.SB_UK_AQ_CRON_SECRET }}" | secret put SB_UK_AQ_CRON_SECRET
             deploy
