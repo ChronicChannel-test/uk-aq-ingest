@@ -149,6 +149,15 @@ def main() -> int:
             print("No boundaries parsed from the GeoJSON file.", file=sys.stderr)
             return 1
 
+        values = [
+            (
+                row["pcon_code"],
+                row.get("pcon_name"),
+                row["pcon_version"],
+                row["geometry"],
+            )
+            for row in rows
+        ]
         query = (
             "insert into pcon_boundaries (pcon_code, pcon_name, pcon_version, geometry) "
             "values %s "
@@ -158,7 +167,7 @@ def main() -> int:
         template = "(%s, %s, %s, ST_GeomFromEWKT(%s))"
 
         print("Uploading boundaries", end="", flush=True)
-        for batch in chunked(rows, max(1, args.batch_size)):
+        for batch in chunked(values, max(1, args.batch_size)):
             for attempt in range(1, max(1, args.max_retries) + 2):
                 try:
                     with conn.cursor() as cursor:
