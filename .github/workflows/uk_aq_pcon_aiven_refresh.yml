@@ -117,8 +117,8 @@ jobs:
           python3 scripts/uk_aq_load_la_boundaries_aiven.py \
             --geojson "${LA_GEOJSON_PATH}" \
             --la-version "${LA_VERSION}" \
-            --code-field "${LA_CODE_FIELD:-la_code}" \
-            --name-field "${LA_NAME_FIELD:-la_name}" \
+            --code-field "${LA_CODE_FIELD:-LAD25CD}" \
+            --name-field "${LA_NAME_FIELD:-LAD25NM}" \
             --skip-if-exists \
             --batch-size "${LA_BOUNDARY_BATCH_SIZE:-50}" \
             --sleep-seconds "${LA_SLEEP_SECONDS:-0.5}" \
