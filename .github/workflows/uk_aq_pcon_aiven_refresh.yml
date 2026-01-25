@@ -49,6 +49,14 @@ jobs:
             --env-prefix "PCON" \
             --env-file "$GITHUB_ENV"
 
+      - name: Debug PCON env
+        run: |
+          echo "PCON_GEOJSON_PATH=$PCON_GEOJSON_PATH"
+          echo "PCON_VERSION=$PCON_VERSION"
+          if [ -n "$PCON_GEOJSON_PATH" ]; then
+            ls -l "$PCON_GEOJSON_PATH"
+          fi
+
       - name: Resolve LA GeoJSON from Dropbox
         env:
           DROPBOX_APP_KEY: ${{ secrets.DROPBOX_APP_KEY }}
@@ -64,6 +72,14 @@ jobs:
             --output "tmp/la.geojson" \
             --env-prefix "LA" \
             --env-file "$GITHUB_ENV"
+
+      - name: Debug LA env
+        run: |
+          echo "LA_GEOJSON_PATH=$LA_GEOJSON_PATH"
+          echo "LA_VERSION=$LA_VERSION"
+          if [ -n "$LA_GEOJSON_PATH" ]; then
+            ls -l "$LA_GEOJSON_PATH"
+          fi
 
       - name: Upload PCON boundaries to Aiven
         env:
