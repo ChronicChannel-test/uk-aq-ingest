@@ -116,9 +116,9 @@ async function loadLatest({ region, pconCode, stationLike, connectorId, pollutan
     : "phenomenon:phenomena(id,label,notation,eionet_uri,pollutant_label)";
   const connectorSelect = "connector:connectors(id,connector_code,label,display_name,station_display_name_template)";
   const stationSelect =
-    "station:stations(id,station_ref,label,station_name,region,pcon_code,pcon_version,connector_id,station_network_memberships(network_code,network_label,is_primary))";
+    "station:stations(id,station_ref,label,station_name,region,la_code,la_version,pcon_code,pcon_version,connector_id,station_network_memberships(network_code,network_label,is_primary))";
   const stationSelectInner =
-    "station:stations!inner(id,station_ref,label,station_name,region,pcon_code,pcon_version,connector_id,station_network_memberships(network_code,network_label,is_primary))";
+    "station:stations!inner(id,station_ref,label,station_name,region,la_code,la_version,pcon_code,pcon_version,connector_id,station_network_memberships(network_code,network_label,is_primary))";
   const selectBase =
     `id,timeseries_ref,label,uom,last_value,last_value_at,connector_id,${connectorSelect},${stationSelect},${phenomenonSelect}`;
   const selectStationInner =

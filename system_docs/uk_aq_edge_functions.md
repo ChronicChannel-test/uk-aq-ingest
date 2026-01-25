@@ -24,6 +24,7 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
   - Dispatches one due connector per run, selecting the oldest `last_polled_at` (null first).
   - Skips dispatch if any connector is in-flight (`last_run_end` null within 15 minutes) and marks `last_run_start` before dispatch.
   - Cloudflare worker cron runs every 2 minutes (`workers/uk_aq_dispatcher/wrangler.toml`).
+  - For `uk_air_sos`, uses `poll_timeseries_batch_size` to select timeseries ids ordered by `last_value_at` and passes `timeseries_ids`/`timeseries_limit`.
   - Updates `connectors.last_run_start`, `last_run_end`, `last_run_status`, `last_run_message`, and `last_polled_at` for each attempted dispatch.
   - Logs whether the cron secret is present (boolean + length) for debugging.
   - Logs each dispatched edge call with the target function name and cron secret presence (length only).
@@ -105,7 +106,7 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
 ### uk_aq_latest
 - Purpose: Serve the latest values across all stations (optionally filtered by region/station/pollutant).
 - Triggered by: Web requests (read-only, no writes).
-- Returns: timeseries rows with station + phenomenon metadata, connector metadata (`connector_id`, `connector_code`, `connector_label` from `connectors.display_name`), `display_name`, latest values, and `station_network_memberships` (network_code, network_label, is_primary).
+- Returns: timeseries rows with station + phenomenon metadata, connector metadata (`connector_id`, `connector_code`, `connector_label` from `connectors.display_name`), `display_name`, latest values, and `station_network_memberships` (network_code, network_label, is_primary). Station payload includes `la_code`/`la_version` when present.
 - Params: `region`, `station_like`, `pollutant`, `connector_id`, `limit`, `pcon_code`.
 - Memberships are returned as-is (no filtering by network membership).
 - `display_name` logic:
