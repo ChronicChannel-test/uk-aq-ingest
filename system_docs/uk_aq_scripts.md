@@ -262,6 +262,7 @@ python3 scripts/uk_aq_load_la_boundaries_aiven.py --geojson tmp/la.geojson --la-
 Key flags:
 - `--code-field` GeoJSON property for LA code (default: `la_code`).
 - `--name-field` GeoJSON property for LA name (default: `la_name`).
+- `--source-srid` SRID of the GeoJSON coordinates (default: 4326; LAD 2025 BGC uses 27700).
 - `--skip-if-exists` skip upload if version already exists.
 
 Environment:

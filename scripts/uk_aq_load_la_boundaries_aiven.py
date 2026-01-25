@@ -62,6 +62,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--la-version", required=True, help="Boundary dataset version (e.g., 2024).")
     parser.add_argument("--code-field", default="la_code", help="GeoJSON property for LA code.")
     parser.add_argument("--name-field", default="la_name", help="GeoJSON property for LA name.")
+    parser.add_argument(
+        "--source-srid",
+        type=int,
+        default=4326,
+        help="SRID of the GeoJSON coordinates (default: 4326).",
+    )
     parser.add_argument("--batch-size", type=int, default=200, help="Rows per upsert batch.")
     parser.add_argument(
         "--sleep-seconds",
@@ -141,7 +147,7 @@ def main() -> int:
                     "la_code": str(la_code),
                     "la_name": props.get(args.name_field),
                     "la_version": args.la_version,
-                    "geometry": f"SRID=4326;{wkt}",
+                    "geometry": f"SRID={args.source_srid};{wkt}",
                 }
             )
 
@@ -164,7 +170,10 @@ def main() -> int:
             "on conflict (la_code, la_version) do update "
             "set la_name = excluded.la_name, geometry = excluded.geometry"
         )
-        template = "(%s, %s, %s, ST_GeomFromEWKT(%s))"
+        if args.source_srid == 4326:
+            template = "(%s, %s, %s, ST_GeomFromEWKT(%s))"
+        else:
+            template = "(%s, %s, %s, ST_Transform(ST_GeomFromEWKT(%s), 4326))"
 
         print("Uploading boundaries", end="", flush=True)
         for batch in chunked(values, max(1, args.batch_size)):
