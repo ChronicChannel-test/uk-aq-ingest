@@ -14,6 +14,7 @@
 
 ## Runtime
 - Use `python3` for all Python scripts and commands.
+- When writing regex patterns, avoid double-escaping (`\\d`) inside raw strings; use `\d` so year matching works correctly.
 
 ## Archive
 - Files in `archive/` can be referenced for context but must never be modified once created. Adding new files/directories under `archive/` is allowed.
