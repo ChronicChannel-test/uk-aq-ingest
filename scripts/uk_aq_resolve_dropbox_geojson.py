@@ -125,7 +125,7 @@ def list_folder_all(access_token: str, path: str, recursive: bool = False) -> It
 
 
 def parse_version_tag(name: str) -> Optional[Tuple[int, int]]:
-    match = re.search(r"(20\\d{2})", name)
+    match = re.search(r"(20\d{2})", name)
     if not match:
         return None
     year = int(match.group(1))
@@ -174,7 +174,7 @@ def choose_geojson(entries: Iterable[Dict[str, Any]], target_year: Optional[int]
 def parse_year(value: Optional[str]) -> Optional[int]:
     if not value:
         return None
-    match = re.search(r"(20\\d{2})", value)
+    match = re.search(r"(20\d{2})", value)
     if not match:
         return None
     return int(match.group(1))
@@ -199,7 +199,7 @@ def resolve_dropbox_geojson(
             inferred_version = parse_year(version_hint) or version_hint
         else:
             for part in Path(file_path).parts:
-                match = re.search(r"(20\\d{2})", part)
+                match = re.search(r"(20\d{2})", part)
                 if match:
                     inferred_version = match.group(1)
                     break

@@ -247,6 +247,9 @@ Key flags:
 Environment:
 - `PCON_AIVEN_PG_DSN`
 
+Note:
+- Legacy Supabase boundary loaders moved to `archive/2026-01-25/scripts/`.
+
 ### `scripts/uk_aq_load_la_boundaries_aiven.py`
 Purpose:
 - Load LA GeoJSON boundaries into Aiven PostGIS.
@@ -263,64 +266,6 @@ Key flags:
 
 Environment:
 - `PCON_AIVEN_PG_DSN`
-
-### `scripts/uk_aq_load_la_boundaries.py`
-Purpose:
-- Load Local Authority boundary GeoJSON into `la_boundaries`.
-- Optional: update `stations.la_code` + `stations.la_version` using the stored boundaries.
-
-Common commands:
-```
-python3 scripts/uk_aq_load_la_boundaries.py --geojson data/lad.geojson --la-version 2023
-python3 scripts/uk_aq_load_la_boundaries.py --geojson data/lad.geojson --la-version 2023 --update-stations
-```
-
-Inputs:
-- GeoJSON FeatureCollection with Polygon/MultiPolygon geometries.
-
-Key flags:
-- `--code-field` (default: `la_code`)
-- `--name-field` (default: `la_name`)
-- `--batch-size` (default: 10)
-- `--update-stations` to run `uk_aq_refresh_station_la_codes`.
-
-Environment:
-- `SUPABASE_URL`
-- `SUPABASE_SERVICE_ROLE_KEY`
-
-### `scripts/uk_aq_load_pcon_boundaries.py`
-Purpose:
-- Load Parliamentary Constituency boundary GeoJSON into `pcon_boundaries`.
-- Optional: update `stations.pcon_code` + `stations.pcon_version` using the stored boundaries.
-
-Common commands:
-```
-python3 scripts/uk_aq_load_pcon_boundaries.py --geojson data/pcon.geojson --pcon-version 2024
-python3 scripts/uk_aq_load_pcon_boundaries.py --geojson data/pcon.geojson --pcon-version 2024 --update-stations
-python3 scripts/uk_aq_load_pcon_boundaries.py --geojson data/pcon.geojson --pcon-version 2024 --update-history
-```
-
-Inputs:
-- GeoJSON FeatureCollection with Polygon/MultiPolygon geometries.
-
-Key flags:
-- `--code-field` (default: `PCON24CD`, use `pcon_code` for legacy datasets)
-- `--name-field` (default: `PCON24NM`, use `pcon_name` for legacy datasets)
-- `--batch-size` (default: 10)
-- `--sleep-seconds` (default: 0.2) pause between batches.
-- `--max-retries` (default: 3) retries per batch.
-- `--retry-backoff-seconds` (default: 2.0) base backoff between retries.
-- `--history-partitions` (default: 1) split history updates into partitions.
-- `--history-partition-index` run a single history partition (0-based).
-- `--stations-partitions` (default: 1) split station updates into partitions (uses `uk_aq_refresh_station_pcon_codes_partition`).
-- `--stations-partition-index` run a single station partition (0-based).
-- `--skip-boundaries` to skip uploads and only run update flags.
-- `--update-stations` to run `uk_aq_refresh_station_pcon_codes`.
-- `--update-history` to run `uk_aq_refresh_station_pcon_history`.
-
-Environment:
-- `SUPABASE_URL`
-- `SUPABASE_SERVICE_ROLE_KEY`
 
 ### `scripts/uk_aq_load_guidelines.py`
 Purpose:
