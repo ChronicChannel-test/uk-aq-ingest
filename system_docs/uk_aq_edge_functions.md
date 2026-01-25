@@ -21,6 +21,9 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
   - Requires `X-Cron-Secret` when `SB_UK_AQ_CRON_SECRET` is set.
   - Uses the Supabase service role key to read connector settings.
   - Uses `SB_ANON_JWT` (falls back to service role) to call ingest functions.
+  - Dispatches one due connector per run, selecting the oldest `last_polled_at` (null first).
+  - Skips dispatch if any connector is in-flight (`last_run_end` null within 15 minutes) and marks `last_run_start` before dispatch.
+  - Cloudflare worker cron runs every 2 minutes (`workers/uk_aq_dispatcher/wrangler.toml`).
   - Updates `connectors.last_run_start`, `last_run_end`, `last_run_status`, `last_run_message`, and `last_polled_at` for each attempted dispatch.
   - Logs whether the cron secret is present (boolean + length) for debugging.
   - Logs each dispatched edge call with the target function name and cron secret presence (length only).
