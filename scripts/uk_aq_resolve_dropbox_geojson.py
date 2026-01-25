@@ -187,7 +187,9 @@ def resolve_dropbox_geojson(
     base_path: str,
     version_hint: Optional[str],
 ) -> Tuple[str, str]:
+    print(f"Dropbox base path (raw): {base_path}")
     base_path = normalize_path(base_path, root_tag, app_folder_name)
+    print(f"Dropbox base path (normalized): {base_path}")
     target_year = parse_year(version_hint)
     inferred_version = None
 
@@ -206,11 +208,13 @@ def resolve_dropbox_geojson(
         return file_path, str(inferred_version)
 
     listing = list_folder_all(access_token, base_path, recursive=False)
+    print(f"Dropbox entries under {base_path}:")
     folders = []
     files = []
     for entry in listing:
         entry_name = entry.get("name") or ""
         entry_tag = entry.get(".tag")
+        print(f"- {entry_name} ({entry_tag})")
         if entry_tag == "folder":
             parsed = parse_version_tag(entry_name)
             if parsed:
