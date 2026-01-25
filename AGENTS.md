@@ -17,6 +17,7 @@
 
 ## Archive
 - Files in `archive/` can be referenced for context but must never be modified once created. Adding new files/directories under `archive/` is allowed.
+- For `/Users/mikehinford/Library/CloudStorage/Dropbox/Projects/CIC Website/CIC Air Quality Networks/CIC-test-uk-aq-schema/uk-aq-schema` and `/Users/mikehinford/Library/CloudStorage/Dropbox/Projects/CIC Website/CIC Air Quality Networks/CIC-test-uk-aq-history/uk-aq-history`, edits are allowed except under any `archive/` directory (read-only; new files allowed but must never be modified once created).
 
 ## Code removal
 - Remove any legacy code if it is definitely redundant.
@@ -32,6 +33,7 @@
 - When functions or logic change, update the relevant `system_docs/` pages accordingly.
 - `system_docs/` is markdown-only; store data files under `network_info/` in the relevant network directory.
 - Naming for any file/function: single-network uses the network name prefix; all SOS networks use `uk_air_sos_`; all networks use `uk_aq_`.
+- DB schemas live outside this repo at `/Users/mikehinford/Library/CloudStorage/Dropbox/Projects/CIC Website/CIC Air Quality Networks/CIC-test-uk-aq-schema/uk-aq-schema/schemas`.
 
 ## Station Name Enrichment
 - Keep enrichment logic centralized in `scripts/uk_aq_enrich_station_names.py` so report scripts stay in sync.

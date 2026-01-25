@@ -28,7 +28,7 @@ jobs:
       - name: Install dependencies
         run: |
           python3 -m pip install --upgrade pip
-          python3 -m pip install requests python-dotenv supabase pyproj
+          python3 -m pip install requests python-dotenv supabase pyproj psycopg2-binary
 
       - name: Sync stations
         env:
@@ -55,6 +55,16 @@ jobs:
         run: |
           python3 scripts/sensorcommunity/sensorcommunity_list_stations.py \
             --output "${SCOMM_CONNECTOR_CODE}_stations.json"
+
+      - name: Refresh station PCON/LA from Aiven
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          PCON_AIVEN_PG_DSN: ${{ secrets.PCON_AIVEN_PG_DSN }}
+          PCON_VERSION: ${{ vars.PCON_VERSION }}
+          LA_VERSION: ${{ vars.LA_VERSION }}
+        run: |
+          python3 scripts/uk_aq_refresh_station_geo_aiven.py
 
       - name: Check null station_name
         id: check_null_station_name

@@ -186,6 +186,84 @@ Environment:
 - `CUTOFF_DAYS` (optional; default 14)
 - `BATCH_SIZE` (optional; default 50,000)
 
+### `scripts/uk_aq_refresh_station_geo_aiven.py`
+Purpose:
+- Look up PCON + LA codes in an Aiven PostGIS DB and update missing values in `stations`.
+
+Common commands:
+```
+python3 scripts/uk_aq_refresh_station_geo_aiven.py
+python3 scripts/uk_aq_refresh_station_geo_aiven.py --page-size 200 --dry-run
+```
+
+Key flags:
+- `--page-size` Supabase page size (default: 500).
+- `--limit` max stations to process (default: 0 = no limit).
+- `--sleep-seconds` sleep between updates (default: 0).
+- `--dry-run` log updates without writing.
+
+Environment:
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `PCON_AIVEN_PG_DSN`
+- `PCON_VERSION` (optional; defaults to latest in Aiven)
+- `LA_VERSION` (optional; defaults to latest in Aiven)
+
+### `scripts/uk_aq_resolve_dropbox_geojson.py`
+Purpose:
+- Resolve and download a GeoJSON file from Dropbox, selecting the latest version when needed.
+
+Common commands:
+```
+python3 scripts/uk_aq_resolve_dropbox_geojson.py --dropbox-base "/GeoJSON/PCON" --output tmp/pcon.geojson --env-prefix PCON
+```
+
+Key flags:
+- `--dropbox-base` folder path to search (optional if `--dropbox-path` is provided).
+- `--dropbox-path` direct path to a GeoJSON file.
+- `--version` target year/version (optional).
+- `--output` local output path (required).
+- `--env-prefix` prefix for writing `*_VERSION` + `*_GEOJSON_PATH` into `GITHUB_ENV`.
+
+Environment:
+- `DROPBOX_APP_KEY`
+- `DROPBOX_APP_SECRET`
+- `DROPBOX_REFRESH_TOKEN`
+
+### `scripts/uk_aq_load_pcon_boundaries_aiven.py`
+Purpose:
+- Load PCON GeoJSON boundaries into Aiven PostGIS.
+
+Common commands:
+```
+python3 scripts/uk_aq_load_pcon_boundaries_aiven.py --geojson tmp/pcon.geojson --pcon-version 2024
+```
+
+Key flags:
+- `--code-field` GeoJSON property for PCON code (default: `PCON24CD`).
+- `--name-field` GeoJSON property for PCON name (default: `PCON24NM`).
+- `--skip-if-exists` skip upload if version already exists.
+
+Environment:
+- `PCON_AIVEN_PG_DSN`
+
+### `scripts/uk_aq_load_la_boundaries_aiven.py`
+Purpose:
+- Load LA GeoJSON boundaries into Aiven PostGIS.
+
+Common commands:
+```
+python3 scripts/uk_aq_load_la_boundaries_aiven.py --geojson tmp/la.geojson --la-version 2024
+```
+
+Key flags:
+- `--code-field` GeoJSON property for LA code (default: `la_code`).
+- `--name-field` GeoJSON property for LA name (default: `la_name`).
+- `--skip-if-exists` skip upload if version already exists.
+
+Environment:
+- `PCON_AIVEN_PG_DSN`
+
 ### `scripts/uk_aq_load_la_boundaries.py`
 Purpose:
 - Load Local Authority boundary GeoJSON into `la_boundaries`.

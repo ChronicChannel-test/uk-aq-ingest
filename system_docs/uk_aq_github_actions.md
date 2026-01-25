@@ -39,11 +39,31 @@ This repo uses GitHub Actions for scheduled syncs and deployments.
 - Purpose: sync stations to Supabase (UK-AIR SOS + Breathe London) and export a combined stations snapshot to Dropbox.
 - Script: `python3 scripts/uk_air_sos/uk_air_sos_list_stations.py --to-supabase`.
 - Script: `python3 scripts/breathelondon/breathelondon_list_stations.py --to-supabase`.
+- Script: `python3 scripts/uk_aq_refresh_station_geo_aiven.py` (refresh PCON/LA codes from Aiven).
 - Export: `python3 scripts/uk_aq_export_stations_dropbox.py` (uploads `uk_aq_stations_<timestamp>.json`).
 - Optional: Sensor.Community discovery step (disabled by default).
 - Secrets: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `UK_AIR_SOS_BASE_URL`,
   `BREATHELONDON_API_KEY`, `BREATHELONDON_BASE_URL` (optional), `DROPBOX_APP_KEY`,
-  `DROPBOX_APP_SECRET`, `DROPBOX_REFRESH_TOKEN`, `UK_AQ_DROPBOX_ROOT`, `UK_AQ_STATIONS_DROPBOX_DIR`.
+  `DROPBOX_APP_SECRET`, `DROPBOX_REFRESH_TOKEN`, `UK_AQ_DROPBOX_ROOT`, `UK_AQ_STATIONS_DROPBOX_DIR`,
+  `PCON_AIVEN_PG_DSN`.
+- Vars: `PCON_VERSION`, `LA_VERSION` (optional; defaults to latest in Aiven).
+
+### `uk_aq_pcon_aiven_refresh.yml`
+- Trigger: manual dispatch.
+- Purpose: download PCON/LA GeoJSON from Dropbox and load boundaries into Aiven PostGIS.
+- Scripts:
+  - `python3 scripts/uk_aq_resolve_dropbox_geojson.py` (PCON + LA downloads).
+  - `python3 scripts/uk_aq_load_pcon_boundaries_aiven.py`.
+  - `python3 scripts/uk_aq_load_la_boundaries_aiven.py`.
+- Secrets: `DROPBOX_APP_KEY`, `DROPBOX_APP_SECRET`, `DROPBOX_REFRESH_TOKEN`,
+  `PCON_GEOJSON_DROPBOX_BASE` or `PCON_GEOJSON_DROPBOX_PATH`,
+  `LA_GEOJSON_DROPBOX_BASE` or `LA_GEOJSON_DROPBOX_PATH`,
+  `PCON_AIVEN_PG_DSN`, optional `PCON_CODE_FIELD`, `PCON_NAME_FIELD`,
+  `LA_CODE_FIELD`, `LA_NAME_FIELD`, `PCON_BOUNDARY_BATCH_SIZE`,
+  `LA_BOUNDARY_BATCH_SIZE`, `PCON_SLEEP_SECONDS`, `LA_SLEEP_SECONDS`,
+  `PCON_MAX_RETRIES`, `LA_MAX_RETRIES`, `PCON_RETRY_BACKOFF_SECONDS`,
+  `LA_RETRY_BACKOFF_SECONDS`.
+- Vars: `PCON_VERSION`, `LA_VERSION` (optional; defaults to latest in Dropbox selection).
 
 ### `uk_aq_dispatcher_deploy.yml`
 - Trigger: push to `main` affecting `workers/uk_aq_dispatcher/**`, or manual dispatch.
