@@ -103,17 +103,18 @@ def geometry_to_lon_lat(value: Any) -> Tuple[Optional[float], Optional[float]]:
 def fetch_station_batch(
     url: str,
     headers: Dict[str, str],
-    offset: int,
+    last_id: Optional[int],
     page_size: int,
 ) -> List[Dict[str, Any]]:
     params = {
         "select": "id,geometry,pcon_code,la_code",
         "order": "id",
         "limit": str(page_size),
-        "offset": str(offset),
         "geometry": "not.is.null",
         "or": "(pcon_code.is.null,la_code.is.null)",
     }
+    if last_id is not None:
+        params["id"] = f"gt.{last_id}"
     resp = requests.get(url, headers=headers, params=params, timeout=30)
     resp.raise_for_status()
     data = resp.json()
@@ -199,7 +200,7 @@ def main() -> int:
 
         print(f"Using PCON_VERSION={pcon_version} LA_VERSION={la_version}")
 
-        offset = 0
+        last_id: Optional[int] = None
         processed = 0
         updated = 0
         missing_coords = 0
@@ -211,11 +212,16 @@ def main() -> int:
 
         with conn.cursor() as cursor:
             while True:
-                batch = fetch_station_batch(stations_url, headers, offset, args.page_size)
+                batch = fetch_station_batch(stations_url, headers, last_id, args.page_size)
                 if not batch:
                     break
                 for row in batch:
                     station_id = row.get("id")
+                    if station_id is not None:
+                        try:
+                            last_id = int(station_id)
+                        except (TypeError, ValueError):
+                            pass
                     lon, lat = geometry_to_lon_lat(row.get("geometry"))
                     if lon is None or lat is None:
                         missing_coords += 1
@@ -276,7 +282,6 @@ def main() -> int:
                     break
                 if len(batch) < args.page_size:
                     break
-                offset += args.page_size
 
         print(
             "Stations processed:",
