@@ -285,8 +285,8 @@ def write_env(env_file: str, prefix: str, version: str, output_path: Path) -> No
     if not env_file or not prefix:
         return
     with open(env_file, "a", encoding="utf-8") as handle:
-        handle.write(f"{prefix}_VERSION={version}\\n")
-        handle.write(f"{prefix}_GEOJSON_PATH={output_path}\\n")
+        handle.write(f"{prefix}_VERSION={version}\n")
+        handle.write(f"{prefix}_GEOJSON_PATH={output_path}\n")
 
 
 def main() -> int:
