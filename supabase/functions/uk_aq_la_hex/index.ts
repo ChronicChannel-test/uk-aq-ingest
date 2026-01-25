@@ -21,6 +21,18 @@ const REST_BASE_URL = SUPABASE_URL
   ? `${SUPABASE_URL.replace(/\/$/, "")}/rest/v1`
   : "";
 
+const BASE_SELECT_FIELDS = [
+  "la_code",
+  "la_name",
+  "la_version",
+  "station_count",
+  "single_site",
+  "median_value",
+  "mean_value",
+  "latest_value_at",
+];
+const EXTENDED_SELECT_FIELDS = [...BASE_SELECT_FIELDS, "la_codes"];
+
 
 const REGION_LA_CODES: Record<string, string[]> = {
   "East Midlands": [
@@ -490,6 +502,7 @@ type LoadOptions = {
 
 type LaRow = {
   la_code: string;
+  la_codes?: string[] | string | null;
   la_name: string | null;
   la_version: string | null;
   station_count: number | null;
@@ -500,25 +513,51 @@ type LaRow = {
 };
 
 async function loadLatest({ laVersion, region, limit }: LoadOptions): Promise<LaRow[]> {
-  const params: Record<string, string> = {
-    select: "la_code,la_name,la_version,station_count,single_site,median_value,mean_value,latest_value_at",
-    limit: String(limit),
-  };
-  if (laVersion) {
-    params.la_version = `eq.${laVersion}`;
-  }
   const regionCodes = resolveRegionCodes(region);
   if (region && !regionCodes) {
     return [];
   }
-  if (regionCodes && regionCodes.length) {
-    params.la_code = `in.(${regionCodes.join(",")})`;
+  const baseParams: Record<string, string> = {
+    limit: String(limit),
+  };
+  if (laVersion) {
+    baseParams.la_version = `eq.${laVersion}`;
   }
-  const { data, error } = await postgrestRequest<LaRow[]>("GET", "la_latest_pm25", params);
-  if (error) {
-    throw new Error(error.message);
+  const regionParams = regionCodes && regionCodes.length
+    ? { la_code: `in.(${regionCodes.join(",")})` }
+    : {};
+  const attempts: Array<Record<string, string>> = [
+    {
+      ...baseParams,
+      ...regionParams,
+      select: buildSelect(EXTENDED_SELECT_FIELDS),
+    },
+    {
+      ...baseParams,
+      ...regionParams,
+      select: buildSelect(BASE_SELECT_FIELDS),
+    },
+    {
+      ...baseParams,
+      select: "*",
+    },
+  ];
+  let lastError: { message: string } | null = null;
+  for (const params of attempts) {
+    const { data, error } = await postgrestRequest<LaRow[]>("GET", "la_latest_pm25", params);
+    if (error) {
+      lastError = error;
+      if (isMissingColumnError(error.message)) {
+        continue;
+      }
+      throw new Error(error.message);
+    }
+    return normalizeLaRows(data ?? [], regionCodes);
   }
-  return data ?? [];
+  if (lastError) {
+    throw new Error(lastError.message);
+  }
+  return [];
 }
 
 function normalizeText(value: string | null): string | null {
@@ -562,6 +601,82 @@ function maxTimestamp(values: Array<string | null | undefined>): string | null {
     }
   }
   return maxValue;
+}
+
+function buildSelect(fields: string[]): string {
+  return fields.join(",");
+}
+
+function isMissingColumnError(message: string): boolean {
+  const normalized = message.toLowerCase();
+  return normalized.includes("column")
+    && (normalized.includes("la_code") || normalized.includes("la_codes"));
+}
+
+function normalizeLaRows(rows: LaRow[], regionCodes: string[] | null): LaRow[] {
+  if (!rows.length) {
+    return [];
+  }
+  const regionSet = regionCodes ? new Set(regionCodes) : null;
+  const normalized: LaRow[] = [];
+  rows.forEach((row) => {
+    const codes = collectLaCodes(row);
+    if (!codes.length) {
+      return;
+    }
+    codes.forEach((code) => {
+      if (regionSet && !regionSet.has(code)) {
+        return;
+      }
+      normalized.push({ ...row, la_code: code });
+    });
+  });
+  return normalized;
+}
+
+function collectLaCodes(row: LaRow): string[] {
+  const codes = new Set<string>();
+  addLaCode(codes, row?.la_code);
+  parseLaCodes(row?.la_codes).forEach((code) => addLaCode(codes, code));
+  return Array.from(codes);
+}
+
+function addLaCode(set: Set<string>, value: string | null | undefined): void {
+  if (typeof value !== "string") {
+    return;
+  }
+  const trimmed = value.trim();
+  if (trimmed) {
+    set.add(trimmed);
+  }
+}
+
+function parseLaCodes(value: string[] | string | null | undefined): string[] {
+  if (!value) {
+    return [];
+  }
+  if (Array.isArray(value)) {
+    return value.filter((code) => typeof code === "string");
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return [];
+    }
+    if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (Array.isArray(parsed)) {
+          return parsed.filter((code) => typeof code === "string");
+        }
+      } catch {
+        // Fall back to basic parsing below.
+      }
+    }
+    const cleaned = trimmed.replace(/^\{|\}$/g, "");
+    return cleaned.split(",").map((code) => code.trim()).filter(Boolean);
+  }
+  return [];
 }
 
 function json(payload: unknown, status = 200): Response {
