@@ -148,6 +148,14 @@ function getBatchLimit(connector: ConnectorRow | null, connectorCode: string): n
   return DEFAULT_BATCH_LIMIT[connectorCode] ?? 10;
 }
 
+function getTimeseriesLimit(connector: ConnectorRow | null): number | null {
+  const value = connector?.poll_timeseries_batch_size;
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+    return Math.floor(value);
+  }
+  return null;
+}
+
 function isDue(connector: ConnectorRow | null, connectorCode: string, now: Date): boolean {
   if (connector?.poll_enabled === false) {
     return false;
@@ -314,6 +322,22 @@ async function loadStationRefs(
   return data.map((ref) => String(ref).trim().toUpperCase()).filter(Boolean);
 }
 
+async function loadUkAirSosTimeseriesIds(
+  limit: number,
+): Promise<string[]> {
+  const { data, error } = await postgrestRpcRequest<string[] | null>(
+    "uk_air_sos_select_timeseries_ids",
+    { batch_limit: limit },
+  );
+  if (error) {
+    throw new Error(`Failed to load uk_air_sos timeseries ids: ${error.message}`);
+  }
+  if (!data || !Array.isArray(data)) {
+    return [];
+  }
+  return data.map((value) => String(value));
+}
+
 async function callEdgeFunction(
   path: string,
   payload: Record<string, unknown>,
@@ -469,10 +493,22 @@ serve(async (req) => {
   try {
     if (connectorCode === "uk_air_sos") {
       const windowHours = getWindowHours(connector, connectorCode);
-      const resp = await callEdgeFunction("ingest_uk_air_sos", {
+      const timeseriesLimit = getTimeseriesLimit(connector);
+      let timeseriesIds: string[] = [];
+      if (timeseriesLimit) {
+        timeseriesIds = await loadUkAirSosTimeseriesIds(timeseriesLimit);
+      }
+      const payload: Record<string, unknown> = {
         connector_code: connectorCode,
         window_hours: windowHours,
-      });
+      };
+      if (timeseriesLimit) {
+        payload.timeseries_limit = timeseriesLimit;
+      }
+      if (timeseriesIds.length) {
+        payload.timeseries_ids = timeseriesIds;
+      }
+      const resp = await callEdgeFunction("ingest_uk_air_sos", payload);
       if (!resp.ok) {
         runStatus = "failed";
         runMessage = `HTTP ${resp.status}`;

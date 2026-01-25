@@ -406,3 +406,49 @@ $$;
 
 -- Legacy pg_cron schedules removed; use an external scheduler to call
 -- `uk_aq_dispatch_polls` instead of `net.http_post` from Postgres.
+
+create table if not exists uk_air_sos_timeseries_checkpoints (
+  timeseries_id bigint primary key references timeseries(id) on delete cascade,
+  last_polled_at timestamptz not null,
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists uk_air_sos_timeseries_checkpoints_last_polled_at_idx
+  on uk_air_sos_timeseries_checkpoints (last_polled_at);
+
+create or replace function uk_air_sos_select_timeseries_ids(
+  batch_limit integer default 200
+)
+returns bigint[]
+language plpgsql
+set search_path = public, pg_catalog
+as $$
+declare
+  v_connector_id bigint;
+  series_ids bigint[];
+begin
+  select id into v_connector_id
+  from connectors
+  where connector_code = 'uk_air_sos'
+  limit 1;
+
+  if v_connector_id is null then
+    return null;
+  end if;
+
+  with candidates as (
+    select ts.id
+    from timeseries ts
+    left join uk_air_sos_timeseries_checkpoints chk on chk.timeseries_id = ts.id
+    where ts.connector_id = v_connector_id
+    order by (chk.last_polled_at is not null),
+      chk.last_polled_at,
+      ts.id
+    limit batch_limit
+  )
+  select array_agg(id) into series_ids
+  from candidates;
+
+  return series_ids;
+end;
+$$;

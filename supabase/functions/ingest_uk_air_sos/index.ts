@@ -302,6 +302,7 @@ serve(async (req) => {
         }
 
         if (shouldPoll) {
+          const checkpointCandidates = requestedSeries?.length ? series.slice() : [];
           const beforeRecencyFilter = series.length;
           series = series.filter((row) => {
             if (!row.last_value_at) {
@@ -402,6 +403,16 @@ serve(async (req) => {
               });
             }
           });
+
+          if (checkpointCandidates.length) {
+            await upsertUkAirSosTimeseriesCheckpoints(
+              checkpointCandidates.map((row) => ({ id: row.id })),
+              now.toISOString(),
+              errorLogger,
+              connector?.id ?? requestedConnectorId ?? null,
+              connector?.connector_code ?? requestedConnectorCode ?? UK_AIR_SOS_CONNECTOR_CODE,
+            );
+          }
 
           const { error: pollUpdateError } = await postgrestRequest(
             "PATCH",
@@ -1591,6 +1602,47 @@ async function upsertLastValue(
       connector_id: connectorId ?? null,
       timeseries_id: seriesId,
     });
+  }
+}
+
+async function upsertUkAirSosTimeseriesCheckpoints(
+  series: Array<{ id: number }>,
+  polledAt: string,
+  errorLogger: { logError: (entry: ErrorLogEntry) => Promise<void> },
+  connectorId: string | null,
+  connectorCode: string | null,
+): Promise<void> {
+  if (!series.length) {
+    return;
+  }
+  for (let idx = 0; idx < series.length; idx += 200) {
+    const chunk = series.slice(idx, idx + 200);
+    const rows = chunk.map((row) => ({
+      timeseries_id: row.id,
+      last_polled_at: polledAt,
+      updated_at: polledAt,
+    }));
+    const { error } = await postgrestRequest(
+      "POST",
+      "uk_air_sos_timeseries_checkpoints",
+      { on_conflict: "timeseries_id" },
+      rows,
+      "resolution=merge-duplicates,return=minimal",
+    );
+    if (error) {
+      console.warn("uk_air_sos_timeseries_checkpoints upsert failed", error.message);
+      await errorLogger.logError({
+        source: "edge",
+        severity: "error",
+        message: "Failed to update uk_air_sos_timeseries_checkpoints.",
+        context: {
+          connector_id: connectorId,
+          error: error.message,
+        },
+        connector_code: connectorCode ?? UK_AIR_SOS_CONNECTOR_CODE,
+        connector_id: connectorId,
+      });
+    }
   }
 }
 

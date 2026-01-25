@@ -75,6 +75,7 @@ python3 scripts/uk_air_sos/uk_air_sos_ingest.py --station-type AURN --region Bri
 ## Edge function polling
 The Edge Function `ingest_uk_air_sos` polls recent observations using the existing `timeseries` rows.
 It does not update `stations.station_name` (station metadata comes from the ingest/list scripts).
+`uk_air_sos_timeseries_checkpoints` tracks the last poll attempt per timeseries so the dispatcher can rotate batches.
 
 Environment variables (Supabase secrets):
 - `SB_SUPABASE_URL`
