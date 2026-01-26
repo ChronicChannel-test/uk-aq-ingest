@@ -47,6 +47,14 @@ jobs:
         run: |
           python3 scripts/breathelondon/breathelondon_list_stations.py --to-supabase
 
+      - name: Sync LAQN stations
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          LAQN_BASE_URL: ${{ secrets.LAQN_BASE_URL }}
+        run: |
+          python3 scripts/erg_laqn/erg_laqn_list_stations.py --to-supabase
+
       - name: Discover Sensor.Community stations (optional)
         if: env.RUN_SCOMM_STATIONS_EXPORT == '1'
         env:
