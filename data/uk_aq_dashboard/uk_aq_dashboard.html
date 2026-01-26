@@ -183,6 +183,40 @@
         color: var(--accent);
       }
 
+      .status-pill {
+        display: inline-flex;
+        align-items: center;
+        padding: 4px 10px;
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        background: rgba(31, 122, 122, 0.12);
+        color: var(--accent-2);
+      }
+
+      .status-pill.succeeded {
+        background: rgba(47, 143, 91, 0.15);
+        color: #2f8f5b;
+      }
+
+      .status-pill.failed,
+      .status-pill.error {
+        background: rgba(211, 74, 63, 0.16);
+        color: #b0322a;
+      }
+
+      .status-pill.skipped {
+        background: rgba(245, 193, 74, 0.18);
+        color: #a56800;
+      }
+
+      .status-pill.running {
+        background: rgba(31, 122, 122, 0.14);
+        color: var(--accent-2);
+      }
+
       table {
         width: 100%;
         border-collapse: collapse;
@@ -348,6 +382,37 @@
         return date.toLocaleString();
       }
 
+      function formatCount(value) {
+        if (value === null || value === undefined || Number.isNaN(Number(value))) {
+          return "n/a";
+        }
+        return Number(value).toLocaleString();
+      }
+
+      function formatStations(run) {
+        if (run.stations_updated !== null && run.stations_updated !== undefined) {
+          return formatCount(run.stations_updated);
+        }
+        if (run.series_polled !== null && run.series_polled !== undefined) {
+          return `${formatCount(run.series_polled)} series`;
+        }
+        return "n/a";
+      }
+
+      function formatSeries(run) {
+        if (run.timeseries_updated !== null && run.timeseries_updated !== undefined) {
+          return formatCount(run.timeseries_updated);
+        }
+        if (run.series_polled !== null && run.series_polled !== undefined) {
+          return formatCount(run.series_polled);
+        }
+        return "n/a";
+      }
+
+      function statusClass(status) {
+        return (status || "unknown").toLowerCase();
+      }
+
       function setStatus(text) {
         statusEl.textContent = text;
       }
@@ -415,6 +480,46 @@
         return panel;
       }
 
+      function renderDispatchPanel(runs) {
+        const panel = document.createElement("section");
+        panel.className = "panel";
+        panel.innerHTML = `
+          <h2>Dispatcher Feed <span class="chip">ingest runs</span></h2>
+          <table class="dispatch-table">
+            <thead>
+              <tr>
+                <th>Connector</th>
+                <th>Status</th>
+                <th>Updated</th>
+                <th>Stations</th>
+                <th>Observations</th>
+                <th>Series</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${runs
+                .map((run) => {
+                  const status = statusClass(run.run_status);
+                  const timestamp = run.run_timestamp || run.run_ended_at || run.run_started_at;
+                  return `
+                    <tr>
+                      <td class="connector-name">${run.connector_label || run.connector_code || "Unknown"}</td>
+                      <td><span class="status-pill ${status}">${run.run_status || "unknown"}</span></td>
+                      <td>${formatTime(timestamp)}</td>
+                      <td>${formatStations(run)}</td>
+                      <td>${formatCount(run.observations_upserted)}</td>
+                      <td>${formatSeries(run)}</td>
+                    </tr>
+                  `;
+                })
+                .join("")}
+            </tbody>
+          </table>
+          <div class="footnote">Ordered by most recent run end time.</div>
+        `;
+        return panel;
+      }
+
       async function loadDashboard() {
         setError("");
         setStatus("Loading...");
@@ -436,6 +541,9 @@
           }
           const data = payload || {};
           dashboardEl.innerHTML = "";
+          if (Array.isArray(data.dispatch_runs)) {
+            dashboardEl.appendChild(renderDispatchPanel(data.dispatch_runs));
+          }
           data.pollutants.forEach((pollutant) => {
             dashboardEl.appendChild(renderPanel(pollutant));
           });

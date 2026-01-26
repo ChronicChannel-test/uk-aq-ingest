@@ -30,6 +30,7 @@ EXCLUDED_CONNECTORS_BY_POLLUTANT = {
     "pm10": {"breathelondon"},
     "no2": {"sensorcommunity"},
 }
+DISPATCH_FEED_LIMIT = 30
 
 CACHE_LOCK = threading.Lock()
 CACHE_STATE: Dict[str, Any] = {"data": None, "generated_at": None}
@@ -84,6 +85,22 @@ def _fetch_all(
             break
         offset += limit
     return rows
+
+
+def _fetch_ingest_runs(
+    base_url: str,
+    headers: Dict[str, str],
+    limit: int = DISPATCH_FEED_LIMIT,
+) -> List[Dict[str, Any]]:
+    return _fetch_json(
+        f"{base_url}/uk_aq_ingest_runs",
+        headers,
+        {
+            "select": "connector_id,connector_code,run_started_at,run_ended_at,run_status,run_message,stations_updated,observations_upserted,timeseries_updated,series_polled",
+            "order": "run_ended_at.desc.nullslast",
+            "limit": str(limit),
+        },
+    )
 
 
 def _parse_timestamp(value: Optional[str]) -> Optional[datetime]:
@@ -152,6 +169,12 @@ def _build_dashboard(base_url: str, service_role_key: str) -> Dict[str, Any]:
         for row in connectors
         if row.get("id") is not None
     }
+    ingest_runs = _fetch_ingest_runs(base_url, headers)
+    for row in ingest_runs:
+        connector_id = row.get("connector_id")
+        meta = connector_map.get(connector_id, {})
+        row["connector_label"] = meta.get("label") or row.get("connector_code") or ""
+        row["run_timestamp"] = row.get("run_ended_at") or row.get("run_started_at")
 
     timeseries_rows = _fetch_all(
         base_url,
@@ -235,6 +258,7 @@ def _build_dashboard(base_url: str, service_role_key: str) -> Dict[str, Any]:
         "generated_at": now.isoformat().replace("+00:00", "Z"),
         "buckets": list(BUCKETS),
         "pollutants": pollutants_payload,
+        "dispatch_runs": ingest_runs,
     }
 
 

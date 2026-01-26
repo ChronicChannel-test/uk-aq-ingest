@@ -22,6 +22,13 @@ type DispatchResult = {
   response_status?: number;
 };
 
+type RunMetrics = {
+  stations_updated: number | null;
+  observations_upserted: number | null;
+  timeseries_updated: number | null;
+  series_polled: number | null;
+};
+
 type ErrorLogEntry = {
   severity: "error" | "warn";
   message: string;
@@ -74,6 +81,64 @@ function postgrestHeaders(): Record<string, string> {
     apikey: SUPABASE_SERVICE_ROLE_KEY,
     Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
     "Content-Type": "application/json",
+  };
+}
+
+function asNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function asPayloadObject(payload: unknown): Record<string, unknown> | null {
+  if (payload && typeof payload === "object" && !Array.isArray(payload)) {
+    return payload as Record<string, unknown>;
+  }
+  return null;
+}
+
+function getPayloadNumber(
+  payload: Record<string, unknown> | null,
+  keys: string[],
+): number | null {
+  if (!payload) {
+    return null;
+  }
+  for (const key of keys) {
+    if (Object.prototype.hasOwnProperty.call(payload, key)) {
+      const value = asNumber(payload[key]);
+      if (value !== null) {
+        return value;
+      }
+    }
+  }
+  return null;
+}
+
+function extractRunMetrics(connectorCode: string, payload: unknown): RunMetrics {
+  const data = asPayloadObject(payload);
+  const observations = getPayloadNumber(data, ["observations_upserted", "observations"]);
+  const stations = getPayloadNumber(data, ["stations_selected", "stations"]);
+  const timeseries = getPayloadNumber(data, ["timeseries_updated", "timeseries"]);
+  const seriesPolled = getPayloadNumber(data, ["series_polled"]);
+  if (connectorCode === "uk_air_sos") {
+    return {
+      stations_updated: null,
+      observations_upserted: observations,
+      timeseries_updated: null,
+      series_polled: seriesPolled,
+    };
+  }
+  return {
+    stations_updated: stations,
+    observations_upserted: observations,
+    timeseries_updated: timeseries,
+    series_polled: null,
   };
 }
 
@@ -264,6 +329,13 @@ async function updateConnectorRun(
   );
   if (error) {
     console.warn("connectors update failed:", error.message);
+  }
+}
+
+async function insertIngestRun(row: Record<string, unknown>): Promise<void> {
+  const { error } = await postgrestRequest("POST", "uk_aq_ingest_runs", undefined, row);
+  if (error) {
+    console.warn("uk_aq_ingest_runs insert failed:", error.message);
   }
 }
 
@@ -489,6 +561,7 @@ serve(async (req) => {
   });
   let runStatus = "failed";
   let runMessage = "";
+  let lastResponse: { status: number; body: unknown } | null = null;
 
   try {
     if (connectorCode === "uk_air_sos") {
@@ -509,6 +582,7 @@ serve(async (req) => {
         payload.timeseries_ids = timeseriesIds;
       }
       const resp = await callEdgeFunction("ingest_uk_air_sos", payload);
+      lastResponse = { status: resp.status, body: resp.body };
       if (!resp.ok) {
         runStatus = "failed";
         runMessage = `HTTP ${resp.status}`;
@@ -537,6 +611,7 @@ serve(async (req) => {
         connector_code: connectorCode,
         country: "GB",
       });
+      lastResponse = { status: resp.status, body: resp.body };
       if (!resp.ok) {
         runStatus = "failed";
         runMessage = `HTTP ${resp.status}`;
@@ -586,6 +661,7 @@ serve(async (req) => {
           initial_days: 2,
           window_hours: windowHours,
         });
+        lastResponse = { status: resp.status, body: resp.body };
         if (!resp.ok) {
           runStatus = "failed";
           runMessage = `HTTP ${resp.status}`;
@@ -635,6 +711,7 @@ serve(async (req) => {
           start_from_latest: true,
           station_refs: stationRefs,
         });
+        lastResponse = { status: resp.status, body: resp.body };
         if (!resp.ok) {
           runStatus = "failed";
           runMessage = `HTTP ${resp.status}`;
@@ -691,6 +768,23 @@ serve(async (req) => {
       last_run_message: runMessage,
       last_polled_at: runEnd.toISOString(),
     });
+    if (connectorCode) {
+      const metrics = extractRunMetrics(connectorCode, lastResponse?.body ?? null);
+      await insertIngestRun({
+        connector_id: connector?.id ?? null,
+        connector_code: connectorCode,
+        run_started_at: runStart.toISOString(),
+        run_ended_at: runEnd.toISOString(),
+        run_status: runStatus,
+        run_message: runMessage || null,
+        stations_updated: metrics.stations_updated,
+        observations_upserted: metrics.observations_upserted,
+        timeseries_updated: metrics.timeseries_updated,
+        series_polled: metrics.series_polled,
+        response_status: lastResponse?.status ?? null,
+        response_payload: lastResponse?.body ?? null,
+      });
+    }
   }
 
   return jsonResponse({
