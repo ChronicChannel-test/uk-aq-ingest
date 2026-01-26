@@ -86,6 +86,10 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")
   ?? Deno.env.get("SB_SERVICE_ROLE_KEY")
   ?? "";
+const UK_AQ_CORE_SCHEMA = Deno.env.get("UK_AQ_CORE_SCHEMA")
+  ?? "uk_aq_core";
+const UK_AQ_RAW_SCHEMA = Deno.env.get("UK_AQ_RAW_SCHEMA")
+  ?? "uk_aq_raw";
 const SB_UK_AQ_CRON_SECRET = Deno.env.get("SB_UK_AQ_CRON_SECRET") ?? "";
 
 const LAQN_BASE_URL = (Deno.env.get("LAQN_BASE_URL") ?? DEFAULT_BASE_URL)
@@ -141,7 +145,7 @@ const REST_BASE_URL = SUPABASE_URL
   ? `${SUPABASE_URL.replace(/\/$/, "")}/rest/v1`
   : "";
 
-function postgrestHeaders(prefer?: string): Record<string, string> {
+function postgrestHeaders(prefer?: string, schema = UK_AQ_CORE_SCHEMA): Record<string, string> {
   const headers: Record<string, string> = {
     apikey: SUPABASE_SERVICE_ROLE_KEY,
     Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
@@ -149,6 +153,10 @@ function postgrestHeaders(prefer?: string): Record<string, string> {
   };
   if (prefer) {
     headers.Prefer = prefer;
+  }
+  if (schema && schema !== "public") {
+    headers["Accept-Profile"] = schema;
+    headers["Content-Profile"] = schema;
   }
   return headers;
 }
@@ -170,6 +178,7 @@ async function postgrestRequest<T>(
   params?: Record<string, string>,
   body?: unknown,
   prefer?: string,
+  schema?: string,
 ): Promise<{ data: T | null; error: { message: string } | null }> {
   if (!REST_BASE_URL) {
     return { data: null, error: { message: "Missing REST_BASE_URL" } };
@@ -180,7 +189,7 @@ async function postgrestRequest<T>(
   }
   const resp = await fetch(url.toString(), {
     method,
-    headers: postgrestHeaders(prefer),
+    headers: postgrestHeaders(prefer, schema),
     body: body ? JSON.stringify(body) : undefined,
   });
   if (!resp.ok) {
@@ -939,6 +948,7 @@ async function upsertErgLaqnStationCheckpoints(
     { on_conflict: "station_id" },
     rows,
     UPSERT_PREFER,
+    UK_AQ_RAW_SCHEMA,
   );
   if (error) {
     throw new Error(`ERG LAQN checkpoint upsert failed: ${error.message}`);
@@ -1252,6 +1262,7 @@ function createErrorLogger(config: DropboxConfig | null, enabled: boolean) {
         undefined,
         row,
         "return=minimal",
+        UK_AQ_RAW_SCHEMA,
       );
       if (error) {
         console.warn("error_logs insert failed:", error.message);
@@ -1287,6 +1298,7 @@ function createErrorLogger(config: DropboxConfig | null, enabled: boolean) {
           { id: `eq.${errorId}` },
           { dropbox_path: dropboxPath },
           "return=minimal",
+          UK_AQ_RAW_SCHEMA,
         );
       } catch (err) {
         console.warn("Dropbox error log upload failed:", err);

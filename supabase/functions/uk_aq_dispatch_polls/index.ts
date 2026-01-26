@@ -49,6 +49,10 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")
   ?? "";
 const SB_ANON_JWT = Deno.env.get("SB_ANON_JWT") ?? "";
 const SB_UK_AQ_CRON_SECRET = Deno.env.get("SB_UK_AQ_CRON_SECRET") ?? "";
+const UK_AQ_CORE_SCHEMA = Deno.env.get("UK_AQ_CORE_SCHEMA")
+  ?? "uk_aq_core";
+const UK_AQ_RAW_SCHEMA = Deno.env.get("UK_AQ_RAW_SCHEMA")
+  ?? "uk_aq_raw";
 
 const REST_BASE_URL = SUPABASE_URL
   ? `${SUPABASE_URL.replace(/\/$/, "")}/rest/v1`
@@ -81,12 +85,17 @@ const DEFAULT_BATCH_LIMIT: Record<string, number> = {
 
 const IN_FLIGHT_TIMEOUT_MINUTES = 10;
 
-function postgrestHeaders(): Record<string, string> {
-  return {
+function postgrestHeaders(schema = UK_AQ_CORE_SCHEMA): Record<string, string> {
+  const headers: Record<string, string> = {
     apikey: SUPABASE_SERVICE_ROLE_KEY,
     Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
     "Content-Type": "application/json",
   };
+  if (schema && schema !== "public") {
+    headers["Accept-Profile"] = schema;
+    headers["Content-Profile"] = schema;
+  }
+  return headers;
 }
 
 function asNumber(value: unknown): number | null {
@@ -364,6 +373,7 @@ async function postgrestRequest<T>(
   table: string,
   params?: Record<string, string>,
   body?: unknown,
+  schema?: string,
 ): Promise<{ data: T | null; error: { message: string } | null }> {
   if (!REST_BASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
     return { data: null, error: { message: "Missing REST_BASE_URL or SUPABASE_SERVICE_ROLE_KEY." } };
@@ -376,7 +386,7 @@ async function postgrestRequest<T>(
   }
   const resp = await fetch(url.toString(), {
     method,
-    headers: postgrestHeaders(),
+    headers: postgrestHeaders(schema),
     body: body ? JSON.stringify(body) : undefined,
   });
   const contentType = resp.headers.get("content-type") ?? "";
@@ -427,7 +437,7 @@ async function logError(entry: ErrorLogEntry): Promise<void> {
     station_id: null,
     timeseries_id: null,
   };
-  const { error } = await postgrestRequest("POST", "error_logs", undefined, row);
+  const { error } = await postgrestRequest("POST", "error_logs", undefined, row, UK_AQ_RAW_SCHEMA);
   if (error) {
     console.warn("error_logs insert failed:", error.message);
   }
@@ -437,7 +447,7 @@ async function postgrestRpcRequest<T>(
   fn: string,
   body: Record<string, unknown>,
 ): Promise<{ data: T | null; error: { message: string } | null }> {
-  return await postgrestRequest<T>("POST", `rpc/${fn}`, undefined, body);
+  return await postgrestRequest<T>("POST", `rpc/${fn}`, undefined, body, "public");
 }
 
 async function loadConnectorConfigs(): Promise<ConnectorRow[]> {

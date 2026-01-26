@@ -78,6 +78,10 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")
   ?? Deno.env.get("SB_SERVICE_ROLE_KEY")
   ?? "";
+const UK_AQ_CORE_SCHEMA = Deno.env.get("UK_AQ_CORE_SCHEMA")
+  ?? "uk_aq_core";
+const UK_AQ_RAW_SCHEMA = Deno.env.get("UK_AQ_RAW_SCHEMA")
+  ?? "uk_aq_raw";
 
 const SCOMM_BASE_URL = (Deno.env.get("SCOMM_BASE_URL") ?? DEFAULT_BASE_URL).replace(/\/$/, "");
 const SCOMM_CONNECTOR_CODE = Deno.env.get("SCOMM_CONNECTOR_CODE")
@@ -175,7 +179,7 @@ function parseBool(value: string | null | undefined, defaultValue = false): bool
   return ["1", "true", "yes", "y", "on"].includes(normalized);
 }
 
-function postgrestHeaders(prefer?: string): Record<string, string> {
+function postgrestHeaders(prefer?: string, schema = UK_AQ_CORE_SCHEMA): Record<string, string> {
   const headers: Record<string, string> = {
     apikey: SUPABASE_SERVICE_ROLE_KEY,
     Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
@@ -183,6 +187,10 @@ function postgrestHeaders(prefer?: string): Record<string, string> {
   };
   if (prefer) {
     headers.Prefer = prefer;
+  }
+  if (schema && schema !== "public") {
+    headers["Accept-Profile"] = schema;
+    headers["Content-Profile"] = schema;
   }
   return headers;
 }
@@ -204,6 +212,7 @@ async function postgrestRequest<T>(
   params?: Record<string, string>,
   body?: unknown,
   prefer?: string,
+  schema?: string,
 ): Promise<{ data: T | null; error: { message: string } | null }> {
   if (!REST_BASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
     return { data: null, error: { message: "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY." } };
@@ -216,7 +225,7 @@ async function postgrestRequest<T>(
   }
   const resp = await fetch(url.toString(), {
     method,
-    headers: postgrestHeaders(prefer),
+    headers: postgrestHeaders(prefer, schema),
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   let payload: unknown = null;
@@ -1092,6 +1101,7 @@ function createErrorLogger(config: DropboxConfig | null, enabled: boolean) {
         undefined,
         row,
         "return=minimal",
+        UK_AQ_RAW_SCHEMA,
       );
       if (error) {
         console.warn("error_logs insert failed:", error.message);
@@ -1127,6 +1137,7 @@ function createErrorLogger(config: DropboxConfig | null, enabled: boolean) {
           { id: `eq.${errorId}` },
           { dropbox_path: dropboxPath },
           "return=minimal",
+          UK_AQ_RAW_SCHEMA,
         );
       } catch (err) {
         console.warn("Dropbox error log upload failed:", err);

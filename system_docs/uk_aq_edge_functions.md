@@ -166,6 +166,8 @@ Dropbox folders:
 - `SCOMM_RAW_DROPBOX_ALLOWED_SUPABASE_URL` (optional allowlist override for Sensor.Community)
 
 Optional:
+- `UK_AQ_CORE_SCHEMA` (defaults to `uk_aq_core`; used for PostgREST profile headers)
+- `UK_AQ_RAW_SCHEMA` (defaults to `uk_aq_raw`; used for raw tables like `error_logs` and checkpoint tables)
 - `UK_AIR_ERROR_DROPBOX_FOLDER` (defaults to `error_log`)
 - `BREATHELONDON_ERROR_DROPBOX_FOLDER` (optional override for Breathe London)
 - `SCOMM_ERROR_DROPBOX_FOLDER` (optional override for Sensor.Community)
@@ -198,3 +200,6 @@ Optional:
   header that matches the secret.
 - If `timeseries.station_id` is null, joins to stations will not work correctly.
   Run the discovery step to populate station links.
+- Edge functions send `Accept-Profile` / `Content-Profile` headers for core/raw
+  schemas (core by default; raw for `error_logs` and checkpoint tables). RPC calls
+  in `uk_aq_dispatch_polls` target the `public` schema.

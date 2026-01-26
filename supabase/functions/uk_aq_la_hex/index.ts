@@ -10,6 +10,8 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")
   ?? Deno.env.get("SB_SERVICE_ROLE_KEY")
   ?? "";
+const UK_AQ_CORE_SCHEMA = Deno.env.get("UK_AQ_CORE_SCHEMA")
+  ?? "uk_aq_core";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -424,18 +426,24 @@ const REGION_LA_CODES_LOOKUP = new Map(
   Object.entries(REGION_LA_CODES).map(([name, codes]) => [name.toLowerCase(), codes]),
 );
 
-function postgrestHeaders(): Record<string, string> {
-  return {
+function postgrestHeaders(schema = UK_AQ_CORE_SCHEMA): Record<string, string> {
+  const headers: Record<string, string> = {
     apikey: SUPABASE_SERVICE_ROLE_KEY,
     Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
     "Content-Type": "application/json",
   };
+  if (schema && schema !== "public") {
+    headers["Accept-Profile"] = schema;
+    headers["Content-Profile"] = schema;
+  }
+  return headers;
 }
 
 async function postgrestRequest<T>(
   method: string,
   table: string,
   params?: Record<string, string>,
+  schema?: string,
 ): Promise<{ data: T | null; error: { message: string } | null }> {
   if (!REST_BASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
     return { data: null, error: { message: "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY." } };
@@ -448,7 +456,7 @@ async function postgrestRequest<T>(
   }
   const resp = await fetch(url.toString(), {
     method,
-    headers: postgrestHeaders(),
+    headers: postgrestHeaders(schema),
   });
   const contentType = resp.headers.get("content-type") ?? "";
   const payload = contentType.includes("application/json") ? await resp.json() : await resp.text();
