@@ -11,6 +11,7 @@ import json
 import os
 import re
 import struct
+import sys
 import traceback
 import uuid
 from datetime import datetime, timezone
@@ -20,6 +21,10 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 import requests
 from dotenv import load_dotenv
 from supabase import Client
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 from scripts.uk_aq_supabase import SupabaseSchemas, create_supabase_client
 
