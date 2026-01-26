@@ -29,6 +29,11 @@ type RunMetrics = {
   series_polled: number | null;
 };
 
+type RunScope = {
+  stationRefs?: string[];
+  timeseriesIds?: string[];
+};
+
 type ErrorLogEntry = {
   severity: "error" | "warn";
   message: string;
@@ -140,6 +145,77 @@ function extractRunMetrics(connectorCode: string, payload: unknown): RunMetrics 
     timeseries_updated: timeseries,
     series_polled: null,
   };
+}
+
+async function loadStationIdsByRefs(
+  connectorId: string,
+  stationRefs: string[],
+): Promise<string[]> {
+  if (!stationRefs.length) {
+    return [];
+  }
+  const { data, error } = await postgrestRequest<Array<{ id: number }>>(
+    "GET",
+    "stations",
+    {
+      select: "id",
+      connector_id: `eq.${connectorId}`,
+      station_ref: postgrestIn(stationRefs),
+      limit: "1000",
+    },
+  );
+  if (error) {
+    throw new Error(`Failed to load station ids: ${error.message}`);
+  }
+  return (data ?? []).map((row) => String(row.id)).filter(Boolean);
+}
+
+async function fetchMaxTimeseriesLastValueAt(
+  params: Record<string, string>,
+): Promise<string | null> {
+  const { data, error } = await postgrestRequest<Array<{ last_value_at: string | null }>>(
+    "GET",
+    "timeseries",
+    {
+      select: "last_value_at",
+      last_value_at: "not.is.null",
+      order: "last_value_at.desc.nullslast",
+      limit: "1",
+      ...params,
+    },
+  );
+  if (error) {
+    throw new Error(`Failed to load timeseries last_value_at: ${error.message}`);
+  }
+  const value = data && data.length ? data[0]?.last_value_at : null;
+  return value ? String(value) : null;
+}
+
+async function resolveLastObservedAt(
+  connectorId: string | null,
+  scope: RunScope,
+): Promise<string | null> {
+  if (!connectorId) {
+    return null;
+  }
+  if (scope.timeseriesIds && scope.timeseriesIds.length) {
+    return await fetchMaxTimeseriesLastValueAt({
+      id: postgrestIn(scope.timeseriesIds),
+    });
+  }
+  if (scope.stationRefs && scope.stationRefs.length) {
+    const stationIds = await loadStationIdsByRefs(connectorId, scope.stationRefs);
+    if (!stationIds.length) {
+      return null;
+    }
+    return await fetchMaxTimeseriesLastValueAt({
+      connector_id: `eq.${connectorId}`,
+      station_id: postgrestIn(stationIds),
+    });
+  }
+  return await fetchMaxTimeseriesLastValueAt({
+    connector_id: `eq.${connectorId}`,
+  });
 }
 
 function requireCronSecret(req: Request): Response | null {
@@ -562,6 +638,7 @@ serve(async (req) => {
   let runStatus = "failed";
   let runMessage = "";
   let lastResponse: { status: number; body: unknown } | null = null;
+  const runScope: RunScope = {};
 
   try {
     if (connectorCode === "uk_air_sos") {
@@ -571,6 +648,7 @@ serve(async (req) => {
       if (timeseriesLimit) {
         timeseriesIds = await loadUkAirSosTimeseriesIds(timeseriesLimit);
       }
+      runScope.timeseriesIds = timeseriesIds;
       const payload: Record<string, unknown> = {
         connector_code: connectorCode,
         window_hours: windowHours,
@@ -642,6 +720,7 @@ serve(async (req) => {
         batchLimit,
         true,
       );
+      runScope.stationRefs = stationRefs;
       if (!stationRefs.length) {
         runStatus = "skipped";
         runMessage = "no_station_refs";
@@ -693,6 +772,7 @@ serve(async (req) => {
         batchLimit,
         true,
       );
+      runScope.stationRefs = stationRefs;
       if (!stationRefs.length) {
         runStatus = "skipped";
         runMessage = "no_station_refs";
@@ -769,6 +849,17 @@ serve(async (req) => {
       last_polled_at: runEnd.toISOString(),
     });
     if (connectorCode) {
+      let lastObservedAt: string | null = null;
+      if (lastResponse) {
+        try {
+          lastObservedAt = await resolveLastObservedAt(connector?.id ?? null, runScope);
+        } catch (error) {
+          console.warn("Failed to resolve last_observed_at.", {
+            connector_code: connectorCode,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
       const metrics = extractRunMetrics(connectorCode, lastResponse?.body ?? null);
       await insertIngestRun({
         connector_id: connector?.id ?? null,
@@ -777,6 +868,7 @@ serve(async (req) => {
         run_ended_at: runEnd.toISOString(),
         run_status: runStatus,
         run_message: runMessage || null,
+        last_observed_at: lastObservedAt,
         stations_updated: metrics.stations_updated,
         observations_upserted: metrics.observations_upserted,
         timeseries_updated: metrics.timeseries_updated,

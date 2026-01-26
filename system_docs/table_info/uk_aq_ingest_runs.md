@@ -10,6 +10,7 @@ Stores per-run dispatcher summaries for dashboard ingest feeds.
 - run_ended_at: Timestamp when dispatch finished.
 - run_status: Run status (e.g. succeeded, failed, skipped).
 - run_message: Dispatcher status message.
+- last_observed_at: Latest timeseries last_value_at for the dispatched scope.
 - stations_updated: Count of stations updated (when available).
 - observations_upserted: Count of observations upserted (when available).
 - timeseries_updated: Count of timeseries updated (when available).

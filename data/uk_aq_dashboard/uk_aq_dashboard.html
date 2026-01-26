@@ -491,6 +491,7 @@
                 <th>Connector</th>
                 <th>Status</th>
                 <th>Updated</th>
+                <th>Last observed</th>
                 <th>Stations</th>
                 <th>Observations</th>
                 <th>Series</th>
@@ -506,6 +507,7 @@
                       <td class="connector-name">${run.connector_label || run.connector_code || "Unknown"}</td>
                       <td><span class="status-pill ${status}">${run.run_status || "unknown"}</span></td>
                       <td>${formatTime(timestamp)}</td>
+                      <td>${formatTime(run.last_observed_at)}</td>
                       <td>${formatStations(run)}</td>
                       <td>${formatCount(run.observations_upserted)}</td>
                       <td>${formatSeries(run)}</td>

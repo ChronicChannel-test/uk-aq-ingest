@@ -96,7 +96,7 @@ def _fetch_ingest_runs(
         f"{base_url}/uk_aq_ingest_runs",
         headers,
         {
-            "select": "connector_id,connector_code,run_started_at,run_ended_at,run_status,run_message,stations_updated,observations_upserted,timeseries_updated,series_polled",
+            "select": "connector_id,connector_code,run_started_at,run_ended_at,run_status,run_message,last_observed_at,stations_updated,observations_upserted,timeseries_updated,series_polled",
             "order": "run_ended_at.desc.nullslast",
             "limit": str(limit),
         },
