@@ -118,7 +118,7 @@ const DROPBOX_ERROR_ALLOWED_SUPABASE_URL =
   Deno.env.get("LAQN_ERROR_DROPBOX_ALLOWED_SUPABASE_URL")
     ?? Deno.env.get("UK_AIR_ERROR_DROPBOX_ALLOWED_SUPABASE_URL")
     ?? "";
-const DROPBOX_ROOT_FOLDER = (() => {
+const UK_AQ_DROPBOX_ROOT = (() => {
   const raw = Deno.env.get("UK_AQ_DROPBOX_ROOT") ?? "";
   return normalizeDropboxPath(raw);
 })();
@@ -984,16 +984,19 @@ function normalizeDropboxPath(raw: string): string {
 
 function dropboxWithRoot(path: string): string {
   const cleaned = normalizeDropboxPath(path);
-  if (!DROPBOX_ROOT_FOLDER) {
+  if (!UK_AQ_DROPBOX_ROOT) {
     return cleaned;
   }
   if (!cleaned) {
-    return DROPBOX_ROOT_FOLDER;
+    return UK_AQ_DROPBOX_ROOT;
   }
-  if (cleaned === DROPBOX_ROOT_FOLDER || cleaned.startsWith(`${DROPBOX_ROOT_FOLDER}/`)) {
+  if (
+    cleaned === UK_AQ_DROPBOX_ROOT ||
+    cleaned.startsWith(`${UK_AQ_DROPBOX_ROOT}/`)
+  ) {
     return cleaned;
   }
-  return `${DROPBOX_ROOT_FOLDER}${cleaned}`;
+  return `${UK_AQ_DROPBOX_ROOT}${cleaned}`;
 }
 
 function normalizeConnectorPrefix(connectorCode: string | null): string {
