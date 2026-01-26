@@ -79,7 +79,7 @@ const DEFAULT_BATCH_LIMIT: Record<string, number> = {
   erg_laqn: 10,
 };
 
-const IN_FLIGHT_TIMEOUT_MINUTES = 15;
+const IN_FLIGHT_TIMEOUT_MINUTES = 10;
 
 function postgrestHeaders(): Record<string, string> {
   return {
