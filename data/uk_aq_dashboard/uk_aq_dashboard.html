@@ -217,6 +217,27 @@
         color: var(--accent-2);
       }
 
+      .status-stack {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .runtime-pill {
+        font-family: "IBM Plex Mono", ui-monospace, monospace;
+        font-size: 11px;
+        padding: 4px 8px;
+        border-radius: 999px;
+        background: rgba(245, 193, 74, 0.18);
+        color: #a56800;
+      }
+
+      .runtime-pill.overdue {
+        background: rgba(211, 74, 63, 0.16);
+        color: #b0322a;
+      }
+
       table {
         width: 100%;
         border-collapse: collapse;
@@ -413,6 +434,13 @@
         return (status || "unknown").toLowerCase();
       }
 
+      function formatMinutes(value) {
+        if (value === null || value === undefined || Number.isNaN(Number(value))) {
+          return null;
+        }
+        return `${Number(value)}m`;
+      }
+
       function setStatus(text) {
         statusEl.textContent = text;
       }
@@ -502,10 +530,21 @@
                 .map((run) => {
                   const status = statusClass(run.run_status);
                   const timestamp = run.run_timestamp || run.run_ended_at || run.run_started_at;
+                  const minutes = formatMinutes(run.in_flight_minutes);
+                  const runtimeBadge = minutes
+                    ? `<span class="runtime-pill ${
+                        Number(run.in_flight_minutes) >= 5 ? "overdue" : ""
+                      }">${minutes}</span>`
+                    : "";
                   return `
                     <tr>
                       <td class="connector-name">${run.connector_label || run.connector_code || "Unknown"}</td>
-                      <td><span class="status-pill ${status}">${run.run_status || "unknown"}</span></td>
+                      <td>
+                        <div class="status-stack">
+                          <span class="status-pill ${status}">${run.run_status || "unknown"}</span>
+                          ${runtimeBadge}
+                        </div>
+                      </td>
                       <td>${formatTime(timestamp)}</td>
                       <td>${formatTime(run.last_observed_at)}</td>
                       <td>${formatStations(run)}</td>

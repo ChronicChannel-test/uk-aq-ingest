@@ -31,6 +31,7 @@ EXCLUDED_CONNECTORS_BY_POLLUTANT = {
     "no2": {"sensorcommunity"},
 }
 DISPATCH_FEED_LIMIT = 30
+IN_FLIGHT_WARN_MINUTES = 5
 
 CACHE_LOCK = threading.Lock()
 CACHE_STATE: Dict[str, Any] = {"data": None, "generated_at": None}
@@ -159,7 +160,10 @@ def _build_dashboard(base_url: str, service_role_key: str) -> Dict[str, Any]:
         base_url,
         headers,
         "connectors",
-        {"select": "id,connector_code,label", "order": "connector_code.asc"},
+        {
+            "select": "id,connector_code,label,last_run_start,last_run_end",
+            "order": "connector_code.asc",
+        },
     )
     connector_map = {
         row["id"]: {
@@ -169,12 +173,51 @@ def _build_dashboard(base_url: str, service_role_key: str) -> Dict[str, Any]:
         for row in connectors
         if row.get("id") is not None
     }
+
+    now = datetime.now(timezone.utc)
+    in_flight_rows: List[Dict[str, Any]] = []
+    for row in connectors:
+        last_run_start = _parse_timestamp(row.get("last_run_start"))
+        last_run_end = _parse_timestamp(row.get("last_run_end"))
+        if last_run_start and not last_run_end:
+            minutes = max(0, int((now - last_run_start).total_seconds() / 60))
+            in_flight_rows.append(
+                {
+                    "connector_id": row.get("id"),
+                    "connector_code": row.get("connector_code"),
+                    "connector_label": row.get("label")
+                    or row.get("connector_code")
+                    or "",
+                    "run_started_at": last_run_start.isoformat().replace("+00:00", "Z"),
+                    "run_ended_at": None,
+                    "run_status": "running",
+                    "run_message": "in_flight",
+                    "last_observed_at": None,
+                    "stations_updated": None,
+                    "observations_upserted": None,
+                    "timeseries_updated": None,
+                    "series_polled": None,
+                    "run_timestamp": last_run_start.isoformat().replace("+00:00", "Z"),
+                    "in_flight_minutes": minutes,
+                    "in_flight_over_threshold": minutes >= IN_FLIGHT_WARN_MINUTES,
+                }
+            )
+
     ingest_runs = _fetch_ingest_runs(base_url, headers)
     for row in ingest_runs:
         connector_id = row.get("connector_id")
         meta = connector_map.get(connector_id, {})
         row["connector_label"] = meta.get("label") or row.get("connector_code") or ""
         row["run_timestamp"] = row.get("run_ended_at") or row.get("run_started_at")
+        row.setdefault("in_flight_minutes", None)
+        row.setdefault("in_flight_over_threshold", False)
+
+    dispatch_runs = in_flight_rows + ingest_runs
+    dispatch_runs.sort(
+        key=lambda item: _parse_timestamp(item.get("run_timestamp"))
+        or datetime.min.replace(tzinfo=timezone.utc),
+        reverse=True,
+    )
 
     timeseries_rows = _fetch_all(
         base_url,
@@ -208,7 +251,6 @@ def _build_dashboard(base_url: str, service_role_key: str) -> Dict[str, Any]:
         if current is None or latest_at > current:
             latest_by_pollutant[pollutant_key][key] = latest_at
 
-    now = datetime.now(timezone.utc)
     pollutants_payload: List[Dict[str, Any]] = []
 
     for pollutant_key, config in POLLUTANTS.items():
@@ -258,7 +300,7 @@ def _build_dashboard(base_url: str, service_role_key: str) -> Dict[str, Any]:
         "generated_at": now.isoformat().replace("+00:00", "Z"),
         "buckets": list(BUCKETS),
         "pollutants": pollutants_payload,
-        "dispatch_runs": ingest_runs,
+        "dispatch_runs": dispatch_runs,
     }
 
 

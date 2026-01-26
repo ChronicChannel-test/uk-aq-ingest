@@ -1,8 +1,10 @@
 // @ts-nocheck
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import {
+  addUtcDays,
   buildErgDateRange,
   formatUtcDate,
+  utcDayStart,
 } from "./uk_aq_erg_laqn_date_range.ts";
 
 type PollRequest = {
@@ -22,6 +24,8 @@ type PollRequest = {
   batch_size?: number;
   sleep_seconds?: number;
   dry_run?: boolean;
+  csv_station_id?: string;
+  csv_station_ref?: string;
 };
 
 type ConnectorRow = {
@@ -98,6 +102,11 @@ const LAQN_CONNECTOR_DISPLAY_NAME = Deno.env.get("LAQN_CONNECTOR_DISPLAY_NAME")
 const LAQN_USER_AGENT = Deno.env.get("LAQN_USER_AGENT")
   ?? DEFAULT_USER_AGENT;
 const LAQN_DEFAULT_GROUP = Deno.env.get("LAQN_DEFAULT_GROUP") ?? DEFAULT_GROUP;
+const LAQN_CSV_STATION_ID = Deno.env.get("LAQN_CSV_STATION_ID") ?? "";
+const LAQN_CSV_STATION_REF = Deno.env.get("LAQN_CSV_STATION_REF") ?? "";
+const LAQN_CSV_DROPBOX_FOLDER = dropboxWithRoot(
+  Deno.env.get("LAQN_CSV_DROPBOX_FOLDER") ?? "/connectors/erg_laqn",
+);
 
 const DROPBOX_APP_KEY = Deno.env.get("DROPBOX_APP_KEY") ?? "";
 const DROPBOX_APP_SECRET = Deno.env.get("DROPBOX_APP_SECRET") ?? "";
@@ -551,6 +560,138 @@ function chunk<T>(values: T[], size: number): T[][] {
   return result;
 }
 
+function normalizePollutant(value: string | null | undefined): string | null {
+  if (!value) {
+    return null;
+  }
+  return value.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function csvEscape(value: unknown): string {
+  if (value === null || value === undefined) {
+    return "";
+  }
+  const text = String(value);
+  if (!/[",\n]/.test(text)) {
+    return text;
+  }
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
+async function loadCsvStation(
+  connectorId: string,
+  stationIdRaw: string | null,
+  stationRefRaw: string | null,
+): Promise<{ id: string; station_ref: string; label: string } | null> {
+  if (!connectorId) {
+    return null;
+  }
+  if (stationIdRaw) {
+    const { data, error } = await postgrestRequest<
+      Array<{ id: number; station_ref: string; label: string }>
+    >(
+      "GET",
+      "stations",
+      {
+        select: "id,station_ref,label",
+        id: `eq.${stationIdRaw}`,
+        connector_id: `eq.${connectorId}`,
+        limit: "1",
+      },
+    );
+    if (error) {
+      throw new Error(`CSV station lookup failed: ${error.message}`);
+    }
+    if (data && data.length) {
+      const row = data[0];
+      return {
+        id: String(row.id),
+        station_ref: String(row.station_ref),
+        label: String(row.label),
+      };
+    }
+  }
+  if (stationRefRaw) {
+    const { data, error } = await postgrestRequest<
+      Array<{ id: number; station_ref: string; label: string }>
+    >(
+      "GET",
+      "stations",
+      {
+        select: "id,station_ref,label",
+        connector_id: `eq.${connectorId}`,
+        station_ref: `eq.${stationRefRaw}`,
+        limit: "1",
+      },
+    );
+    if (error) {
+      throw new Error(`CSV station lookup failed: ${error.message}`);
+    }
+    if (data && data.length) {
+      const row = data[0];
+      return {
+        id: String(row.id),
+        station_ref: String(row.station_ref),
+        label: String(row.label),
+      };
+    }
+  }
+  return null;
+}
+
+async function loadTimeseriesByStation(
+  connectorId: string,
+  stationId: string,
+): Promise<Array<{ id: string; pollutant: string | null }>> {
+  const { data, error } = await postgrestRequest<
+    Array<{ id: number; phenomenon: { pollutant_label?: string; notation?: string; label?: string } | null }>
+  >(
+    "GET",
+    "timeseries",
+    {
+      select: "id,phenomenon:phenomena(pollutant_label,notation,label)",
+      connector_id: `eq.${connectorId}`,
+      station_id: `eq.${stationId}`,
+      limit: "500",
+    },
+  );
+  if (error) {
+    throw new Error(`CSV timeseries lookup failed: ${error.message}`);
+  }
+  return (data ?? []).map((row) => ({
+    id: String(row.id),
+    pollutant: normalizePollutant(
+      row.phenomenon?.pollutant_label ?? row.phenomenon?.notation ?? row.phenomenon?.label ?? null,
+    ),
+  }));
+}
+
+async function loadObservationsForToday(
+  timeseriesId: string,
+  startIso: string,
+  endIso: string,
+): Promise<Array<{ observed_at: string; value: number | null }>> {
+  const { data, error } = await postgrestRequest<Array<{ observed_at: string; value: number | null }>>(
+    "GET",
+    "observations",
+    {
+      select: "observed_at,value",
+      timeseries_id: `eq.${timeseriesId}`,
+      and: `(observed_at.gte.${startIso},observed_at.lt.${endIso})`,
+      order: "observed_at.asc",
+      limit: "2000",
+    },
+  );
+  if (error) {
+    throw new Error(`CSV observations fetch failed: ${error.message}`);
+  }
+  return data ?? [];
+}
+
+function buildErgCsvPath(pollutant: string, dateStamp: string): string {
+  return `${LAQN_CSV_DROPBOX_FOLDER}/erg_laqn_${pollutant}_${dateStamp}.csv`;
+}
+
 async function upsertConnector(
   connectorCode: string,
   connectorLabel: string,
@@ -988,6 +1129,100 @@ async function uploadDropboxRaw(
   return accessToken;
 }
 
+async function uploadErgDailyCsvs(
+  accessToken: string,
+  connectorId: string | null,
+  stationIdRaw: string | null,
+  stationRefRaw: string | null,
+  speciesList: string[],
+  log: LogBuffer,
+  errorLogger: { logError: (entry: ErrorLogEntry) => Promise<void> },
+  refreshToken?: () => Promise<string>,
+): Promise<string> {
+  if (!accessToken || !connectorId) {
+    return accessToken;
+  }
+  const station = await loadCsvStation(connectorId, stationIdRaw, stationRefRaw);
+  if (!station) {
+    log.warn("CSV station not resolved; skipping ERG daily CSV upload.", {
+      station_id: stationIdRaw,
+      station_ref: stationRefRaw,
+    });
+    return accessToken;
+  }
+  const todayStart = utcDayStart(new Date());
+  const tomorrowStart = addUtcDays(todayStart, 1);
+  const dateStamp = formatUtcDate(todayStart).replace(/-/g, "");
+  const startIso = todayStart.toISOString();
+  const endIso = tomorrowStart.toISOString();
+  const seriesList = await loadTimeseriesByStation(connectorId, station.id);
+  const seriesByPollutant = new Map<string, string>();
+  for (const series of seriesList) {
+    if (!series.pollutant) {
+      continue;
+    }
+    if (!seriesByPollutant.has(series.pollutant)) {
+      seriesByPollutant.set(series.pollutant, series.id);
+    }
+  }
+  for (const species of speciesList) {
+    const normalized = normalizePollutant(
+      SPECIES_CONFIG[species]?.pollutant_label ?? species,
+    );
+    if (!normalized) {
+      continue;
+    }
+    const timeseriesId = seriesByPollutant.get(normalized);
+    if (!timeseriesId) {
+      log.warn("CSV timeseries missing for pollutant.", { pollutant: normalized });
+      continue;
+    }
+    const observations = await loadObservationsForToday(timeseriesId, startIso, endIso);
+    const header = "station.id,station_ref,label,timeseries_id,value,observed_at";
+    const rows = observations.map((obs) =>
+      [
+        csvEscape(station.id),
+        csvEscape(station.station_ref),
+        csvEscape(station.label),
+        csvEscape(timeseriesId),
+        csvEscape(obs.value),
+        csvEscape(obs.observed_at),
+      ].join(",")
+    );
+    const contents = [header, ...rows].join("\n");
+    const dropboxPath = buildErgCsvPath(normalized, dateStamp);
+    try {
+      accessToken = await dropboxUploadOverwriteWithRetry(
+        accessToken,
+        dropboxPath,
+        contents,
+        refreshToken,
+      );
+      log.info("ERG daily CSV uploaded.", {
+        pollutant: normalized,
+        dropbox_path: dropboxPath,
+        row_count: observations.length,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      log.warn("ERG daily CSV upload failed.", { pollutant: normalized, error: message });
+      await errorLogger.logError({
+        source: "edge",
+        severity: "warn",
+        message: "ERG daily CSV upload failed.",
+        context: {
+          connector_id: connectorId,
+          pollutant: normalized,
+          dropbox_path: dropboxPath,
+          error: message,
+        },
+        connector_id: connectorId,
+      });
+    }
+  }
+  return accessToken;
+}
+
 function createErrorLogger(config: DropboxConfig | null, enabled: boolean) {
   let accessToken: string | null = null;
   return {
@@ -1114,6 +1349,31 @@ async function dropboxUploadFile(
   }
 }
 
+async function dropboxUploadFileOverwrite(
+  accessToken: string,
+  path: string,
+  contents: string | Uint8Array,
+): Promise<void> {
+  const body = typeof contents === "string" ? new TextEncoder().encode(contents) : contents;
+  const resp = await fetch(DROPBOX_UPLOAD_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Dropbox-API-Arg": JSON.stringify({
+        path,
+        mode: "overwrite",
+        autorename: false,
+        mute: false,
+      }),
+      "Content-Type": "application/octet-stream",
+    },
+    body,
+  });
+  if (!resp.ok) {
+    throw new DropboxHttpError(`Dropbox upload failed (${resp.status})`, resp.status);
+  }
+}
+
 async function dropboxUploadFileWithRetry(
   accessToken: string,
   path: string,
@@ -1127,6 +1387,25 @@ async function dropboxUploadFileWithRetry(
     if (err instanceof DropboxHttpError && err.status === 401 && refreshToken) {
       const refreshed = await refreshToken();
       await dropboxUploadFile(refreshed, path, contents);
+      return refreshed;
+    }
+    throw err;
+  }
+}
+
+async function dropboxUploadOverwriteWithRetry(
+  accessToken: string,
+  path: string,
+  contents: string | Uint8Array,
+  refreshToken?: () => Promise<string>,
+): Promise<string> {
+  try {
+    await dropboxUploadFileOverwrite(accessToken, path, contents);
+    return accessToken;
+  } catch (err) {
+    if (err instanceof DropboxHttpError && err.status === 401 && refreshToken) {
+      const refreshed = await refreshToken();
+      await dropboxUploadFileOverwrite(refreshed, path, contents);
       return refreshed;
     }
     throw err;
@@ -1407,6 +1686,10 @@ serve(async (req) => {
   const sleepSeconds = payload.sleep_seconds ?? DEFAULT_SLEEP_SECONDS;
   const dryRun = Boolean(payload.dry_run);
   const startFromLatest = Boolean(payload.start_from_latest);
+  const csvStationIdRaw = String(payload.csv_station_id ?? LAQN_CSV_STATION_ID).trim() || null;
+  const csvStationRefRaw = String(payload.csv_station_ref ?? LAQN_CSV_STATION_REF)
+    .trim()
+    .toUpperCase() || null;
   connectorCodeForLog = connectorCode;
 
   const now = new Date();
@@ -1659,11 +1942,14 @@ serve(async (req) => {
               }
             }
             if (lastObserved && lastValue !== null) {
-              timeseriesUpdates.push({
-                id: timeseriesId,
-                last_value: lastValue,
-                last_value_at: lastObserved.toISOString(),
-              });
+              const currentLast = parseTimestamp(timeseriesMeta?.last_value_at ?? null);
+              if (!currentLast || lastObserved > currentLast) {
+                timeseriesUpdates.push({
+                  id: timeseriesId,
+                  last_value: lastValue,
+                  last_value_at: lastObserved.toISOString(),
+                });
+              }
             }
             if (!latestObservedSummary[stationRef]) {
               latestObservedSummary[stationRef] = {};
@@ -1760,7 +2046,7 @@ serve(async (req) => {
         errorLogger,
         refreshDropbox,
       );
-      await uploadDropboxRaw(
+      accessToken = await uploadDropboxRaw(
         accessToken,
         rawRecorder,
         connectorId,
@@ -1768,6 +2054,18 @@ serve(async (req) => {
         errorLogger,
         refreshDropbox,
       );
+      if (!dryRun) {
+        accessToken = await uploadErgDailyCsvs(
+          accessToken,
+          connectorId,
+          csvStationIdRaw,
+          csvStationRefRaw,
+          speciesList,
+          log,
+          errorLogger,
+          refreshDropbox,
+        );
+      }
     } catch (err) {
       log.warn("Dropbox logging skipped due to token error.", {
         error: err instanceof Error ? err.message : String(err),
