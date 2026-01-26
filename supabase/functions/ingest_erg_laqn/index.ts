@@ -1,5 +1,9 @@
 // @ts-nocheck
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
+import {
+  buildErgDateRange,
+  formatUtcDate,
+} from "./uk_aq_erg_laqn_date_range.ts";
 
 type PollRequest = {
   connector_id?: string;
@@ -1406,16 +1410,18 @@ serve(async (req) => {
   connectorCodeForLog = connectorCode;
 
   const now = new Date();
-  const endDate = parseDate(payload.end_date) ?? now;
-  const startDate = parseDate(payload.start_date)
-    ?? new Date(endDate.getTime() - Math.max(days, 1) * 24 * 60 * 60 * 1000);
-  if (startDate > endDate) {
-    const tmp = startDate;
-    startDate.setTime(endDate.getTime());
-    endDate.setTime(tmp.getTime());
-  }
-  const startStr = startDate.toISOString().slice(0, 10);
-  const endStr = endDate.toISOString().slice(0, 10);
+  const {
+    startDate,
+    endDate,
+    startDateStr: startStr,
+    endDateStr: endStr,
+    utcTodayStart,
+  } = buildErgDateRange({
+    now,
+    startDateOverride: parseDate(payload.start_date),
+    endDateOverride: parseDate(payload.end_date),
+    days,
+  });
 
   try {
     if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
@@ -1571,7 +1577,7 @@ serve(async (req) => {
                 }
               }
             }
-            const seriesStartStr = seriesStartDate.toISOString().slice(0, 10);
+            const seriesStartStr = formatUtcDate(seriesStartDate);
             const url =
               `${baseUrl}/Data/SiteSpecies/SiteCode=${stationRef}/SpeciesCode=${species}` +
               `/StartDate=${seriesStartStr}/EndDate=${endStr}/Json`;
@@ -1637,6 +1643,15 @@ serve(async (req) => {
                 lastObserved = observedAt;
                 lastValue = value;
               }
+            }
+            if (lastObserved && lastObserved < utcTodayStart) {
+              log.warn("ERG LAQN observations missing today.", {
+                station_ref: stationRef,
+                species,
+                start_date: seriesStartStr,
+                end_date: endStr,
+                last_observed_at: lastObserved.toISOString(),
+              });
             }
             if (observations.length && !dryRun) {
               for (const batch of chunk(observations, batchSize)) {

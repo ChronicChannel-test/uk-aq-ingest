@@ -12,6 +12,7 @@ Source: `network_info/LAQN/Operations at https___api.erg.ic.ac.uk_AirQuality.csv
 - Stations: `/Information/MonitoringSites/GroupName={GroupName}/Json`
 - Raw observations: `/Data/SiteSpecies/SiteCode={SiteCode}/SpeciesCode={SpeciesCode}/StartDate={StartDate}/EndDate={EndDate}/Json`
 - Raw observations (wide fallback): `/Data/Site/SiteCode={SiteCode}/StartDate={StartDate}/EndDate={EndDate}/Json`
+- EndDate is interpreted as midnight GMT at the start of that date. To include today's data, set `EndDate` to tomorrow's UTC date (`YYYY-MM-DD`).
 
 ## Payload notes
 - Raw observations are returned under `RawAQData.Data` with fields like `@MeasurementDateGMT` and `@Value`.
@@ -19,6 +20,7 @@ Source: `network_info/LAQN/Operations at https___api.erg.ic.ac.uk_AirQuality.csv
 ## Local snapshots
 - `scripts/erg_laqn/erg_laqn_ingest.py` supports `--stations-json` for using a local stations snapshot (for example `network_info/LAQN/erg_laqn_stations.json`).
 - `--output-raw-responses` writes raw API responses for troubleshooting payload parsing.
+  - If `LAQN_RAW_DATA_URL_TEMPLATE` supplies `EndDate`, it must follow the same "tomorrow" rule to include the current day.
 
 ## Utilities
 - `scripts/erg_laqn/erg_laqn_list_groups.py` lists available ERG group names.

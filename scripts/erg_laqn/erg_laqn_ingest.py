@@ -69,6 +69,30 @@ def utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _utc_day_start(value: datetime) -> datetime:
+    value_utc = value.astimezone(timezone.utc)
+    return datetime(value_utc.year, value_utc.month, value_utc.day, tzinfo=timezone.utc)
+
+
+def _build_erg_date_range(
+    now: datetime,
+    start_date: Optional[datetime],
+    end_date: Optional[datetime],
+    days: int,
+) -> Tuple[datetime, datetime]:
+    today_start = _utc_day_start(now)
+    default_end = today_start + timedelta(days=1)
+    end_date = end_date.astimezone(timezone.utc) if end_date else default_end
+    start_date = (
+        start_date.astimezone(timezone.utc)
+        if start_date
+        else end_date - timedelta(days=max(days, 1))
+    )
+    if start_date > end_date:
+        start_date, end_date = end_date, start_date
+    return start_date, end_date
+
+
 def _clean_text(value: Any) -> Optional[str]:
     if value is None:
         return None
@@ -552,12 +576,10 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _parse_date_arg(value: Optional[str], fallback: datetime) -> datetime:
+def _parse_date_arg(value: Optional[str]) -> Optional[datetime]:
     if not value:
-        return fallback
+        return None
     parsed = _parse_datetime(value)
-    if parsed is None:
-        return fallback
     return parsed
 
 
@@ -580,10 +602,10 @@ def main() -> int:
         raise RuntimeError("No species specified.")
 
     now = utcnow()
-    end_date = _parse_date_arg(args.end_date, now)
-    start_date = _parse_date_arg(args.start_date, end_date - timedelta(days=max(args.days, 1)))
-    if start_date > end_date:
-        start_date, end_date = end_date, start_date
+    end_date = _parse_date_arg(args.end_date)
+    start_date = _parse_date_arg(args.start_date)
+    start_date, end_date = _build_erg_date_range(now, start_date, end_date, args.days)
+    utc_today_start = _utc_day_start(now)
 
     if args.stations_json:
         stations = _load_stations_snapshot(args.stations_json)
@@ -637,7 +659,16 @@ def main() -> int:
                     raw_output.append(
                         {"station_ref": station_ref, "species": species, "payload": payload}
                     )
-                rows, _, _ = _parse_observations(payload, 0)
+                rows, last_observed, _ = _parse_observations(payload, 0)
+                if last_observed and last_observed < utc_today_start:
+                    LOG.warning(
+                        "ERG LAQN observations missing today. station_ref=%s species=%s start_date=%s end_date=%s last_observed_at=%s",
+                        station_ref,
+                        species,
+                        start_date.date().isoformat(),
+                        end_date.date().isoformat(),
+                        last_observed.isoformat(),
+                    )
                 if observations_output is not None:
                     observations_output.append(
                         {
@@ -750,6 +781,15 @@ def main() -> int:
                     {"station_ref": station_ref, "species": species, "payload": payload}
                 )
             rows, last_observed, last_value = _parse_observations(payload, timeseries_id)
+            if last_observed and last_observed < utc_today_start:
+                LOG.warning(
+                    "ERG LAQN observations missing today. station_ref=%s species=%s start_date=%s end_date=%s last_observed_at=%s",
+                    station_ref,
+                    species,
+                    start_date.date().isoformat(),
+                    end_date.date().isoformat(),
+                    last_observed.isoformat(),
+                )
             if observations_output is not None:
                 observations_output.append(
                     {
