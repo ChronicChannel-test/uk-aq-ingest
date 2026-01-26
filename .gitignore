@@ -1,4 +1,6 @@
 .env
+.env.supabase
+.env.supabase.local
 .DS_Store
 node_modules/
 __pycache__/
@@ -10,3 +12,4 @@ gov_uk_aurn_site_register*.csv
 network_info/UK-Air-SOS/
 *.numbers
 network_info/LAQN/uk_aq_londonair_site_list_active.numbers
+/archive/env files

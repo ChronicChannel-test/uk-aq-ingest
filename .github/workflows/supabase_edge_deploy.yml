@@ -28,17 +28,19 @@ jobs:
           SUPABASE_ANON_JWT: ${{ secrets.SUPABASE_ANON_JWT }}
         run: |
           node scripts/uk_aq_inject_project_ref.mjs
-
       - name: Set Supabase secrets
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_SECRETS_ENV: ${{ secrets.SUPABASE_SECRETS_ENV }}
         run: |
-          supabase secrets set \
-            SB_SUPABASE_URL="${{ secrets.SUPABASE_URL }}" \
-            SB_SERVICE_ROLE_KEY="${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
-            SB_UK_AQ_CRON_SECRET="${{ secrets.SB_UK_AQ_CRON_SECRET }}" \
-            SB_ANON_JWT="${{ secrets.SB_ANON_JWT }}" \
-            --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"
+          if [ -z "${SUPABASE_SECRETS_ENV:-}" ]; then
+            echo "Missing SUPABASE_SECRETS_ENV secret." >&2
+            exit 1
+          fi
+          printf '%s' "${SUPABASE_SECRETS_ENV}" > .env.supabase
+          supabase secrets set             --env-file .env.supabase             --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"
+
+
 
       - name: Deploy function
         env:

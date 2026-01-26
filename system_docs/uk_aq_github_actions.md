@@ -16,9 +16,18 @@ This repo uses GitHub Actions for scheduled syncs and deployments.
 - Deployed functions: `ingest_uk_air_sos`, `ingest_breathelondon`, `ingest_sensorcommunity`,
   `uk_aq_latest`, `uk_aq_bristol_latest`, `uk_aq_la_hex`, `uk_aq_pcon_hex`,
   `uk_aq_stations`, `uk_aq_timeseries`.
-- Secrets: `SUPABASE_PROJECT_REF`, `SUPABASE_PUBLISHABLE_DEFAULT_KEY`, `SB_ANON_JWT`,
-  `SUPABASE_ACCESS_TOKEN`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`,
-  `SB_UK_AQ_CRON_SECRET`.
+- Secrets: `SUPABASE_PROJECT_REF`, `SUPABASE_PUBLISHABLE_DEFAULT_KEY`, `SUPABASE_ACCESS_TOKEN`,
+  `SUPABASE_SECRETS_ENV` (newline-delimited env file contents).
+- Supabase secret names cannot start with `SUPABASE_`. Use `SB_` (or another prefix) in
+  `SUPABASE_SECRETS_ENV`.
+
+Example `SUPABASE_SECRETS_ENV` content:
+```
+SB_SUPABASE_URL=...
+SB_SERVICE_ROLE_KEY=...
+SB_ANON_JWT=...
+SB_UK_AQ_CRON_SECRET=...
+```
 
 ### `uk_aq_raw_dropbox.yml`
 - Trigger: manual dispatch.
