@@ -1,0 +1,466 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>UK AQ Local Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg-base: #f9f3e7;
+        --bg-accent: #f4e3c2;
+        --ink: #1f1c16;
+        --ink-soft: #4b443a;
+        --card: #fffaf1;
+        --border: #e4d6be;
+        --accent: #d0632c;
+        --accent-2: #1f7a7a;
+        --accent-3: #87562c;
+        --accent-4: #a8b2c1;
+        --accent-5: #d8c8a8;
+        --shadow: 0 20px 40px rgba(34, 24, 12, 0.12);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: "Space Grotesk", "Segoe UI", sans-serif;
+        color: var(--ink);
+        background:
+          radial-gradient(circle at 20% 20%, rgba(214, 115, 44, 0.15), transparent 50%),
+          radial-gradient(circle at 80% 0%, rgba(31, 122, 122, 0.18), transparent 45%),
+          linear-gradient(135deg, var(--bg-base), var(--bg-accent));
+        min-height: 100vh;
+        padding: 32px 20px 40px;
+      }
+
+      .shell {
+        max-width: 1100px;
+        margin: 0 auto;
+        display: grid;
+        gap: 24px;
+        position: relative;
+      }
+
+      header {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 20px;
+        padding: 24px 24px 20px;
+        box-shadow: var(--shadow);
+        display: grid;
+        gap: 16px;
+        animation: float-in 0.6s ease both;
+      }
+
+      header h1 {
+        margin: 0;
+        font-size: clamp(28px, 4vw, 38px);
+        letter-spacing: -0.02em;
+      }
+
+      header p {
+        margin: 0;
+        color: var(--ink-soft);
+        max-width: 740px;
+      }
+
+      .meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 16px 24px;
+        align-items: center;
+      }
+
+      .meta-status {
+        font-family: "IBM Plex Mono", ui-monospace, monospace;
+        font-size: 13px;
+        padding: 6px 10px;
+        border-radius: 999px;
+        background: rgba(31, 122, 122, 0.1);
+        color: var(--accent-2);
+      }
+
+      .refresh-controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px 16px;
+        align-items: center;
+      }
+
+      .refresh-controls span {
+        font-weight: 600;
+        color: var(--ink-soft);
+      }
+
+      .refresh-group {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .refresh-pill {
+        position: relative;
+      }
+
+      .refresh-pill input {
+        position: absolute;
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      .refresh-pill label {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 12px;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        background: #fff;
+        font-size: 13px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+      }
+
+      .refresh-pill input:checked + label {
+        background: var(--ink);
+        color: #fff;
+        border-color: var(--ink);
+      }
+
+      .refresh-button {
+        border: none;
+        background: var(--accent);
+        color: #fff;
+        padding: 8px 14px;
+        border-radius: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+      }
+
+      .refresh-button:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 8px 16px rgba(208, 99, 44, 0.25);
+      }
+
+      .grid {
+        display: grid;
+        gap: 22px;
+      }
+
+      .panel {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 20px;
+        padding: 20px 22px 24px;
+        box-shadow: var(--shadow);
+        animation: rise-in 0.55s ease both;
+      }
+
+      .panel h2 {
+        margin: 0 0 14px;
+        font-size: 22px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .chip {
+        font-family: "IBM Plex Mono", ui-monospace, monospace;
+        font-size: 12px;
+        padding: 4px 8px;
+        border-radius: 999px;
+        background: rgba(208, 99, 44, 0.12);
+        color: var(--accent);
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 14px;
+      }
+
+      th,
+      td {
+        text-align: left;
+        padding: 10px 8px;
+        border-bottom: 1px solid var(--border);
+      }
+
+      th {
+        font-weight: 600;
+        color: var(--ink-soft);
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+
+      tbody tr:hover {
+        background: rgba(244, 227, 194, 0.45);
+      }
+
+      .connector-name {
+        font-weight: 600;
+      }
+
+      .bucket-bar {
+        display: flex;
+        height: 10px;
+        border-radius: 999px;
+        overflow: hidden;
+        background: #efe4cf;
+        min-width: 140px;
+      }
+
+      .seg {
+        height: 100%;
+      }
+
+      .seg-0 {
+        background: #2f8f5b;
+      }
+
+      .seg-1 {
+        background: #f5c14a;
+      }
+
+      .seg-2 {
+        background: #e57a2f;
+      }
+
+      .seg-3 {
+        background: #d34a3f;
+      }
+
+      .seg-4 {
+        background: #7b3bb5;
+      }
+
+      .footnote {
+        margin-top: 8px;
+        font-size: 12px;
+        color: var(--ink-soft);
+      }
+
+      .error {
+        margin-top: 8px;
+        color: #9b2c2c;
+        font-family: "IBM Plex Mono", ui-monospace, monospace;
+        font-size: 12px;
+      }
+
+      @keyframes float-in {
+        from {
+          opacity: 0;
+          transform: translateY(-10px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      @keyframes rise-in {
+        from {
+          opacity: 0;
+          transform: translateY(12px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      @media (max-width: 900px) {
+        th:nth-child(n + 5),
+        td:nth-child(n + 5) {
+          display: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <header>
+        <h1>UK AQ Local Dashboard</h1>
+        <p>
+          Live snapshot of PM2.5, PM10, and NO2 freshness using timeseries last_value_at. Data updates
+          from your local API.
+        </p>
+        <div class="meta">
+          <span class="meta-status" id="status">Waiting for data...</span>
+          <div class="refresh-controls">
+            <span>Refresh</span>
+            <div class="refresh-group" id="refresh-group">
+              <span class="refresh-pill">
+                <input type="radio" name="refresh" id="refresh-1" value="60" />
+                <label for="refresh-1">1 min</label>
+              </span>
+              <span class="refresh-pill">
+                <input type="radio" name="refresh" id="refresh-5" value="300" checked />
+                <label for="refresh-5">5 min</label>
+              </span>
+              <span class="refresh-pill">
+                <input type="radio" name="refresh" id="refresh-10" value="600" />
+                <label for="refresh-10">10 min</label>
+              </span>
+              <span class="refresh-pill">
+                <input type="radio" name="refresh" id="refresh-30" value="1800" />
+                <label for="refresh-30">30 min</label>
+              </span>
+              <span class="refresh-pill">
+                <input type="radio" name="refresh" id="refresh-60" value="3600" />
+                <label for="refresh-60">60 min</label>
+              </span>
+            </div>
+            <button class="refresh-button" id="refresh-now">Refresh now</button>
+          </div>
+        </div>
+        <div class="error" id="error"></div>
+      </header>
+
+      <div class="grid" id="dashboard"></div>
+    </div>
+
+    <script>
+      const dashboardEl = document.getElementById("dashboard");
+      const statusEl = document.getElementById("status");
+      const errorEl = document.getElementById("error");
+      const refreshGroup = document.getElementById("refresh-group");
+      const refreshNowBtn = document.getElementById("refresh-now");
+      let refreshTimer = null;
+      let refreshSeconds = 300;
+
+      const bucketOrder = ["0-3 Hours", "3-6 Hours", "6-24 Hours", "1 - 7 Days", "Older than 7 Days"];
+
+      function formatTime(value) {
+        if (!value) return "n/a";
+        const date = new Date(value);
+        return date.toLocaleString();
+      }
+
+      function setStatus(text) {
+        statusEl.textContent = text;
+      }
+
+      function setError(text) {
+        errorEl.textContent = text || "";
+      }
+
+      function setRefreshInterval(seconds) {
+        refreshSeconds = seconds;
+        if (refreshTimer) {
+          clearInterval(refreshTimer);
+        }
+        refreshTimer = setInterval(loadDashboard, refreshSeconds * 1000);
+      }
+
+      function renderPanel(pollutant) {
+        const panel = document.createElement("section");
+        panel.className = "panel";
+        panel.innerHTML = `
+          <h2>${pollutant.label} <span class="chip">${pollutant.key}</span></h2>
+          <table>
+            <thead>
+              <tr>
+                <th>Connector</th>
+                <th>Stations</th>
+                <th>0-3</th>
+                <th>3-6</th>
+                <th>6-24</th>
+                <th>1-7</th>
+                <th>7+</th>
+                <th>Trend</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${pollutant.connectors
+                .map((row) => {
+                  const total = row.stations_with_pollutant || 0;
+                  const bucketCounts = bucketOrder.map((bucket) => row.buckets[bucket] || 0);
+                  const segments = bucketCounts
+                    .map((count, idx) => {
+                      const pct = total ? (count / total) * 100 : 0;
+                      const label = `${bucketOrder[idx]}: ${count}`;
+                      return `<span class="seg seg-${idx}" style="width:${pct}%" title="${label}"></span>`;
+                    })
+                    .join("");
+                  return `
+                    <tr>
+                      <td class="connector-name">${row.label}</td>
+                      <td>${total}</td>
+                      <td>${bucketCounts[0]}</td>
+                      <td>${bucketCounts[1]}</td>
+                      <td>${bucketCounts[2]}</td>
+                      <td>${bucketCounts[3]}</td>
+                      <td>${bucketCounts[4]}</td>
+                      <td><div class="bucket-bar">${segments}</div></td>
+                    </tr>
+                  `;
+                })
+                .join("")}
+            </tbody>
+          </table>
+          <div class="footnote">Buckets are based on timeseries last_value_at timestamps.</div>
+        `;
+        return panel;
+      }
+
+      async function loadDashboard() {
+        setError("");
+        setStatus("Loading...");
+        try {
+          const resp = await fetch(`/api/dashboard?t=${Date.now()}`);
+          const text = await resp.text();
+          let payload = null;
+          try {
+            payload = JSON.parse(text);
+          } catch (err) {
+            payload = null;
+          }
+          if (!resp.ok) {
+            const message =
+              (payload && (payload.error || payload.message)) ||
+              text ||
+              `Request failed (${resp.status})`;
+            throw new Error(message);
+          }
+          const data = payload || {};
+          dashboardEl.innerHTML = "";
+          data.pollutants.forEach((pollutant) => {
+            dashboardEl.appendChild(renderPanel(pollutant));
+          });
+          setStatus(`Updated ${formatTime(data.generated_at)} (local time)`);
+        } catch (err) {
+          setError(err.message || String(err));
+          setStatus("Error");
+        }
+      }
+
+      refreshGroup.addEventListener("change", (event) => {
+        if (event.target && event.target.name === "refresh") {
+          const value = Number(event.target.value);
+          if (Number.isFinite(value) && value > 0) {
+            setRefreshInterval(value);
+          }
+        }
+      });
+
+      refreshNowBtn.addEventListener("click", () => {
+        loadDashboard();
+      });
+
+      setRefreshInterval(refreshSeconds);
+      loadDashboard();
+    </script>
+  </body>
+</html>

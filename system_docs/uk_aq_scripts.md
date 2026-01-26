@@ -37,6 +37,40 @@ Environment:
 - `SUPABASE_PUBLISHABLE_DEFAULT_KEY`
 - `SB_ANON_JWT`
 
+### `scripts/uk_aq_export_connectors_snapshot.py`
+Purpose:
+- Export connector polling settings and station/timeseries counts to a CSV for spreadsheet review.
+
+Common commands:
+```
+python3 scripts/uk_aq_export_connectors_snapshot.py
+python3 scripts/uk_aq_export_connectors_snapshot.py --output network_info/uk_aq/uk_aq_connectors_snapshot.csv
+```
+
+Notes:
+- Output includes `hours_since_*` fields derived from connector `last_polled_at` / `last_run_end` and timeseries `last_value_at`.
+
+Environment:
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+
+### `scripts/uk_aq_dashboard_local.py`
+Purpose:
+- Run a local dashboard server that exposes PM2.5, PM10, and NO2 freshness buckets (timeseries last_value_at).
+
+Common commands:
+```
+python3 scripts/uk_aq_dashboard_local.py --port 8045
+```
+
+Notes:
+- Serves the UI at `http://127.0.0.1:8045` and JSON at `/api/dashboard`.
+- The HTML lives at `data/uk_aq_dashboard/uk_aq_dashboard.html`.
+
+Environment:
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+
 ### `scripts/uk_air_sos/uk_air_sos_ingest.py`
 Purpose:
 - Discover stations and timeseries with optional filters.

@@ -18,7 +18,7 @@
 
 ## Archive
 - Files in `archive/` can be referenced for context but must never be modified once created. Adding new files/directories under `archive/` is allowed.
-- For `/Users/mikehinford/Library/CloudStorage/Dropbox/Projects/CIC Website/CIC Air Quality Networks/CIC-test-uk-aq-schema/uk-aq-schema` and `/Users/mikehinford/Library/CloudStorage/Dropbox/Projects/CIC Website/CIC Air Quality Networks/CIC-test-uk-aq-history/uk-aq-history`, edits are allowed except under any `archive/` directory (read-only; new files allowed but must never be modified once created).
+- For `/Users/mikehinford/Library/CloudStorage/Dropbox/Projects/CIC Website/CIC Air Quality Networks/CIC-test-uk-aq-schema/uk-aq-schema` and `/Users/mikehinford/Library/CloudStorage/Dropbox/Projects/CIC Website/CIC Air Quality Networks/CIC-test-uk-aq-history/uk-aq-history`, edits are allowed for any file except under `archive/` directories. Archive files are read-only; new files may be added under `archive/` but must never be modified once created.
 
 ## Code removal
 - Remove any legacy code if it is definitely redundant.
