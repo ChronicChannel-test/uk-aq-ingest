@@ -11,9 +11,18 @@ from __future__ import annotations
 
 import os
 import sys
+from pathlib import Path
 
 from dotenv import load_dotenv
-from supabase import create_client
+from supabase import Client
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if PROJECT_ROOT.name == "scripts":
+    PROJECT_ROOT = PROJECT_ROOT.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from scripts.uk_aq_supabase import SupabaseSchemas, create_supabase_client
 
 load_dotenv()
 
@@ -25,8 +34,9 @@ def main() -> int:
         print("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY.", file=sys.stderr)
         return 1
 
-    client = create_client(supabase_url, service_role_key)
-    response = client.rpc("uk_aq_fix_station_geometry_swapped").execute()
+    client: Client = create_supabase_client(supabase_url, service_role_key)
+    schemas = SupabaseSchemas.from_client(client)
+    response = schemas.core.rpc("uk_aq_fix_station_geometry_swapped").execute()
     updated = response.data if hasattr(response, "data") else None
     print(f"Updated station geometries: {updated}")
     return 0

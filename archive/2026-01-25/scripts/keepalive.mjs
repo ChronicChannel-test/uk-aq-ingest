@@ -1,0 +1,40 @@
+// scripts/keepalive.mjs
+import 'dotenv/config';
+import { createClient } from '@supabase/supabase-js';
+
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_KEY =
+  process.env.SUPABASE_KEY ||
+  process.env.SUPABASE_ANON_KEY ||
+  process.env.SUPABASE_PUBLISHABLE_DEFAULT_KEY ||
+  process.env.SUPABASE_SERVICE_ROLE_KEY;
+const KEEPALIVE_TABLE = process.env.KEEPALIVE_TABLE || 'keep_alive';
+const KEEPALIVE_SELECT = process.env.KEEPALIVE_SELECT || '*';
+
+if (!SUPABASE_URL || !SUPABASE_KEY) {
+  console.error(
+    'Missing SUPABASE_URL or a key (SUPABASE_KEY / SUPABASE_ANON_KEY / SUPABASE_PUBLISHABLE_DEFAULT_KEY / SUPABASE_SERVICE_ROLE_KEY).'
+  );
+  process.exit(1);
+}
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+async function main() {
+  // Using head: true + limit(1) avoids transferring rows.
+  const { error } = await supabase
+    .from(KEEPALIVE_TABLE)
+    .select(KEEPALIVE_SELECT, { head: true })
+    .limit(1);
+
+  if (error) {
+    console.error('Keepalive query failed:', error);
+    process.exit(1);
+  }
+  console.log(`Keepalive OK table=${KEEPALIVE_TABLE}`);
+}
+
+main().catch((error) => {
+  console.error('Keepalive crashed:', error);
+  process.exit(1);
+});

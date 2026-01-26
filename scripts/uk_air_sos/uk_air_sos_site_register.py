@@ -13,8 +13,10 @@ import json
 import logging
 import os
 import re
+import sys
 from datetime import datetime, timezone
 from html.parser import HTMLParser
+from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 from urllib.parse import urljoin
 
@@ -22,6 +24,14 @@ import requests
 from dotenv import load_dotenv
 
 load_dotenv()
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if PROJECT_ROOT.name == "scripts":
+    PROJECT_ROOT = PROJECT_ROOT.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from scripts.uk_aq_supabase import SupabaseSchemas, create_supabase_client
 
 LOG = logging.getLogger("uk_air_sos_site_register")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -439,14 +449,9 @@ def _parse_networks(value: Optional[str]) -> List[str]:
     return [item.strip() for item in cleaned.split(";") if item.strip()]
 
 
-def _build_client():
-    from supabase import create_client
-
-    supabase_url = os.getenv("SUPABASE_URL", "").strip()
-    service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
-    if not supabase_url or not service_key:
-        raise RuntimeError("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required.")
-    return create_client(supabase_url, service_key)
+def _build_client() -> SupabaseSchemas:
+    client = create_supabase_client()
+    return SupabaseSchemas.from_client(client)
 
 
 def _fetch_existing_networks(client) -> Dict[str, Dict[str, Any]]:
@@ -590,8 +595,8 @@ def _load_register(
         LOG.info("Dry run enabled; no data written to Supabase.")
         return
 
-    client = _build_client()
-    existing_networks = _fetch_existing_networks(client)
+    schemas = _build_client()
+    existing_networks = _fetch_existing_networks(schemas.core)
     network_rows = []
     updated_at = datetime.now(timezone.utc).isoformat()
     for ref in sorted(network_refs):
@@ -607,15 +612,15 @@ def _load_register(
         network_rows.append(payload)
 
     _upsert_batches(
-        client,
+        schemas.core,
         "uk_air_sos_networks",
         network_rows,
         batch_size=batch_size,
         on_conflict="network_ref",
     )
-    _upsert_network_pollutants(client, network_refs, batch_size=batch_size)
+    _upsert_network_pollutants(schemas.core, network_refs, batch_size=batch_size)
     _upsert_batches(
-        client,
+        schemas.raw,
         "uk_air_sos_site_register",
         rows,
         batch_size=batch_size,

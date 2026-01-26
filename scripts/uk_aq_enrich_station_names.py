@@ -21,7 +21,9 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 import requests
 from dotenv import load_dotenv
-from supabase import create_client
+from supabase import Client
+
+from scripts.uk_aq_supabase import SupabaseSchemas, create_supabase_client
 
 _ENV_PATH = Path(__file__).resolve().parents[1] / ".env"
 if _ENV_PATH.exists():
@@ -387,12 +389,13 @@ def _fetch_stations(page_size: int) -> List[Dict[str, Any]]:
     service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
     if not supabase_url or not service_role_key:
         raise RuntimeError("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY.")
-    client = create_client(supabase_url, service_role_key)
+    client: Client = create_supabase_client(supabase_url, service_role_key)
+    schemas = SupabaseSchemas.from_client(client)
     rows: List[Dict[str, Any]] = []
     offset = 0
     while True:
         response = (
-            client.table("stations")
+            schemas.core.table("stations")
             .select(
                 "id,station_ref,label,station_name,station_type,region,geometry,connector_id,service_ref,"
                 "first_seen_at,last_seen_at,removed_at"
@@ -419,9 +422,10 @@ def _fetch_station_pollutants(station_ids: Sequence[int]) -> Dict[int, List[str]
     service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
     if not supabase_url or not service_role_key:
         raise RuntimeError("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY.")
-    client = create_client(supabase_url, service_role_key)
+    client: Client = create_supabase_client(supabase_url, service_role_key)
+    schemas = SupabaseSchemas.from_client(client)
     response = (
-        client.table("timeseries")
+        schemas.core.table("timeseries")
         .select("station_id,phenomenon_id")
         .in_("station_id", list(station_ids))
         .execute()
@@ -442,7 +446,7 @@ def _fetch_station_pollutants(station_ids: Sequence[int]) -> Dict[int, List[str]
     if not phenomenon_ids:
         return {}
     response = (
-        client.table("phenomena")
+        schemas.core.table("phenomena")
         .select("id,label,notation,eionet_uri")
         .in_("id", list(phenomenon_ids))
         .execute()
@@ -475,9 +479,10 @@ def _fetch_station_latest_observations(
     service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
     if not supabase_url or not service_role_key:
         raise RuntimeError("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY.")
-    client = create_client(supabase_url, service_role_key)
+    client: Client = create_supabase_client(supabase_url, service_role_key)
+    schemas = SupabaseSchemas.from_client(client)
     response = (
-        client.table("timeseries")
+        schemas.core.table("timeseries")
         .select("id,station_id,phenomenon_id")
         .in_("station_id", list(station_ids))
         .execute()
@@ -505,7 +510,7 @@ def _fetch_station_latest_observations(
     label_by_id: Dict[int, str] = {}
     if phenomenon_ids:
         response = (
-            client.table("phenomena")
+            schemas.core.table("phenomena")
             .select("id,label,notation,eionet_uri")
             .in_("id", list(phenomenon_ids))
             .execute()
@@ -520,7 +525,7 @@ def _fetch_station_latest_observations(
             if label:
                 label_by_id[phen_id] = str(label)
     response = (
-        client.table("observations")
+        schemas.core.table("observations")
         .select("timeseries_id,observed_at,value")
         .in_("timeseries_id", timeseries_ids)
         .order("observed_at", desc=True)
@@ -939,7 +944,8 @@ def _apply_station_name_updates(updates: Sequence[Dict[str, Any]], batch_size: i
     service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
     if not supabase_url or not service_role_key:
         raise RuntimeError("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY.")
-    client = create_client(supabase_url, service_role_key)
+    client: Client = create_supabase_client(supabase_url, service_role_key)
+    schemas = SupabaseSchemas.from_client(client)
     applied = 0
     for chunk in _chunked(list(updates), batch_size):
         for update in chunk:
@@ -950,7 +956,7 @@ def _apply_station_name_updates(updates: Sequence[Dict[str, Any]], batch_size: i
             if not update_fields:
                 continue
             response = (
-                client.table("stations")
+                schemas.core.table("stations")
                 .update(update_fields)
                 .eq("id", station_id)
                 .execute()

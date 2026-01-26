@@ -29,7 +29,7 @@ warnings.filterwarnings(
 
 import requests
 from dotenv import load_dotenv
-from supabase import Client, create_client
+from supabase import Client
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if PROJECT_ROOT.name == "scripts":
@@ -38,6 +38,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from scripts.ingest_helpers import station_coords, station_in_bbox_or_missing_coords
+from scripts.uk_aq_supabase import SupabaseSchemas, create_supabase_client
 
 load_dotenv()
 
@@ -119,11 +120,9 @@ class SensorCommunityClient:
 
 class SupabaseWriter:
     def __init__(self) -> None:
-        supabase_url = os.getenv("SUPABASE_URL")
-        supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-        if not supabase_url or not supabase_key:
-            raise RuntimeError("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required.")
-        self.client: Client = create_client(supabase_url, supabase_key)
+        self.client: Client = create_supabase_client()
+        schemas = SupabaseSchemas.from_client(self.client)
+        self.core = schemas.core
 
     def upsert_connector(self) -> Tuple[int, bool]:
         payload = {
@@ -135,9 +134,9 @@ class SupabaseWriter:
             "stations_bbox_supported": False,
             "timeseries_station_filter_supported": False,
         }
-        self.client.table("connectors").upsert(payload, on_conflict="connector_code").execute()
+        self.core.table("connectors").upsert(payload, on_conflict="connector_code").execute()
         row = (
-            self.client.table("connectors")
+            self.core.table("connectors")
             .select("id,overwrite_station_name")
             .eq("connector_code", SCOMM_CONNECTOR_CODE)
             .single()
@@ -158,7 +157,7 @@ class SupabaseWriter:
         mapping: Dict[str, Optional[str]] = {}
         for chunk in chunked(refs, 200):
             resp = (
-                self.client.table("stations")
+                self.core.table("stations")
                 .select("station_ref,station_name")
                 .eq("connector_id", connector_id)
                 .eq("service_ref", str(service_ref))
@@ -226,7 +225,7 @@ class SupabaseWriter:
                 if existing_name is not None and "station_name" in row:
                     row.pop("station_name", None)
         if rows:
-            self.client.table("stations").upsert(
+            self.core.table("stations").upsert(
                 rows, on_conflict="connector_id,service_ref,station_ref"
             ).execute()
         return len(rows)

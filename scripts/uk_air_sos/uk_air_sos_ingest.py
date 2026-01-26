@@ -40,7 +40,7 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
 import requests
 from dotenv import load_dotenv
-from supabase import Client, create_client
+from supabase import Client
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if PROJECT_ROOT.name == "scripts":
@@ -49,6 +49,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from scripts.ingest_helpers import station_coords, station_in_bbox, station_in_bbox_or_missing_coords
+from scripts.uk_aq_supabase import SupabaseSchemas, create_supabase_client
 load_dotenv()
 
 DEFAULT_LOG_LEVEL = os.getenv("UK_AIR_LOG_LEVEL", "WARNING").upper()
@@ -213,7 +214,7 @@ class ErrorLogger:
             "timeseries_id": timeseries_id,
         }
         try:
-            self.client.table("error_logs").insert(payload).execute()
+            self.raw.table("error_logs").insert(payload).execute()
         except Exception as insert_exc:
             LOG.warning("Failed to insert error_logs row: %s", insert_exc)
             return
@@ -245,7 +246,7 @@ class ErrorLogger:
                 json.dumps(error_payload, ensure_ascii=True, indent=2).encode("utf-8"),
                 dropbox_path,
             )
-            self.client.table("error_logs").update({"dropbox_path": dropbox_path}).eq(
+            self.raw.table("error_logs").update({"dropbox_path": dropbox_path}).eq(
                 "id",
                 error_id,
             ).execute()
@@ -847,11 +848,10 @@ class UkAirClient:
 
 class SupabaseWriter:
     def __init__(self) -> None:
-        supabase_url = os.getenv("SUPABASE_URL")
-        supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-        if not supabase_url or not supabase_key:
-            raise RuntimeError("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required.")
-        self.client: Client = create_client(supabase_url, supabase_key)
+        self.client: Client = create_supabase_client()
+        schemas = SupabaseSchemas.from_client(self.client)
+        self.core = schemas.core
+        self.raw = schemas.raw
 
     def upsert_connectors(self, services: Iterable[Dict[str, Any]]) -> Optional[int]:
         services_list = [svc for svc in services if isinstance(svc, dict)]
@@ -868,12 +868,12 @@ class SupabaseWriter:
                 "service_url": primary.get("serviceUrl") or primary.get("url") or UK_AIR_SOS_BASE_URL,
             }
         ]
-        self.client.table("connectors").upsert(payload, on_conflict="connector_code").execute()
+        self.core.table("connectors").upsert(payload, on_conflict="connector_code").execute()
         return self.get_connector_id()
 
     def get_connector_id(self) -> Optional[int]:
         resp = (
-            self.client.table("connectors")
+            self.core.table("connectors")
             .select("id")
             .eq("connector_code", UK_AIR_SOS_CONNECTOR_CODE)
             .limit(1)
@@ -893,7 +893,7 @@ class SupabaseWriter:
     def get_connector_settings(self, connector_id: int) -> Dict[str, Optional[object]]:
         try:
             resp = (
-                self.client.table("connectors")
+                self.core.table("connectors")
                 .select("poll_timeseries_batch_size,stations_bbox_supported,timeseries_station_filter_supported")
                 .eq("id", connector_id)
                 .execute()
@@ -978,7 +978,7 @@ class SupabaseWriter:
             if service_ref is not None:
                 conflict_keys.append("service_ref")
             conflict_keys.append(ref_key)
-            self.client.table(table).upsert(payload, on_conflict=",".join(conflict_keys)).execute()
+            self.core.table(table).upsert(payload, on_conflict=",".join(conflict_keys)).execute()
         return self.get_ref_id_map(
             table, ref_key, list(payload_by_ref.keys()), connector_id, service_ref
         )
@@ -1014,7 +1014,7 @@ class SupabaseWriter:
                 row["notation"] = notation
         payload = list(payload_by_uri.values())
         if payload:
-            self.client.table("phenomena").upsert(payload, on_conflict="connector_id,eionet_uri").execute()
+            self.core.table("phenomena").upsert(payload, on_conflict="connector_id,eionet_uri").execute()
         return self.get_phenomena_id_map(list(payload_by_uri.keys()), connector_id)
 
     def get_ref_id_map(
@@ -1030,7 +1030,7 @@ class SupabaseWriter:
             return mapping
         for chunk in _chunked(list(refs), 500):
             query = (
-                self.client.table(table)
+                self.core.table(table)
                 .select(f"id,{ref_key}")
                 .eq("connector_id", connector_id)
                 .in_(ref_key, chunk)
@@ -1051,7 +1051,7 @@ class SupabaseWriter:
             return mapping
         for chunk in _chunked(list(eionet_uris), 500):
             resp = (
-                self.client.table("phenomena")
+                self.core.table("phenomena")
                 .select("id,eionet_uri")
                 .eq("connector_id", connector_id)
                 .in_("eionet_uri", chunk)
@@ -1107,7 +1107,7 @@ class SupabaseWriter:
                 row["station_name"] = station_name
             rows.append(row)
         if rows:
-            self.client.table("stations").upsert(
+            self.core.table("stations").upsert(
                 rows, on_conflict="connector_id,service_ref,station_ref"
             ).execute()
 
@@ -1179,7 +1179,7 @@ class SupabaseWriter:
             )
         rows = [row for row in rows if row.get("timeseries_ref")]
         if rows:
-            self.client.table("timeseries").upsert(
+            self.core.table("timeseries").upsert(
                 rows, on_conflict="connector_id,service_ref,timeseries_ref"
             ).execute()
         return label_match_count
@@ -1200,7 +1200,7 @@ class SupabaseWriter:
         batch_size = 1000
         while True:
             resp = (
-                self.client.table("stations")
+                self.core.table("stations")
                 .select("id,label")
                 .eq("connector_id", connector_id)
                 .eq("service_ref", str(service_ref))
@@ -1236,7 +1236,7 @@ class SupabaseWriter:
         batch_size = 1000
         while True:
             resp = (
-                self.client.table("stations")
+                self.core.table("stations")
                 .select("id,label,geometry")
                 .eq("connector_id", connector_id)
                 .eq("service_ref", str(service_ref))
@@ -1274,7 +1274,7 @@ class SupabaseWriter:
         batch_size = 1000
         while True:
             resp = (
-                self.client.table("stations")
+                self.core.table("stations")
                 .select("id,label,geometry,station_type,region")
                 .eq("connector_id", connector_id)
                 .eq("service_ref", str(service_ref))
@@ -1329,7 +1329,7 @@ class SupabaseWriter:
         if rows:
             for attempt in range(1, 4):
                 try:
-                    self.client.table("observations").upsert(
+                    self.core.table("observations").upsert(
                         rows, on_conflict="timeseries_id,observed_at"
                     ).execute()
                     break
@@ -1364,7 +1364,7 @@ class SupabaseWriter:
             payload["last_value"] = last_value
         if not payload:
             return
-        self.client.table("timeseries").update(payload).eq("id", series_id).execute()
+        self.core.table("timeseries").update(payload).eq("id", series_id).execute()
 
 
 class UkAirIngestor:
@@ -1689,7 +1689,7 @@ class UkAirIngestor:
                 row["region"] = seed["region"]
             created_rows.append(row)
         if created_rows:
-            self.writer.client.table("stations").upsert(
+            self.writer.core.table("stations").upsert(
                 created_rows,
                 on_conflict="connector_id,service_ref,station_ref",
                 returning="minimal",

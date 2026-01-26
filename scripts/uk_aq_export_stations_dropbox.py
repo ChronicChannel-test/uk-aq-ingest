@@ -19,7 +19,9 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import requests
 from dotenv import load_dotenv
-from supabase import create_client
+from supabase import Client
+
+from scripts.uk_aq_supabase import SupabaseSchemas, create_supabase_client
 
 load_dotenv()
 
@@ -241,11 +243,12 @@ def _iter_stations(page_size: int) -> Iterable[Dict[str, Any]]:
     if not supabase_url or not service_role_key:
         raise RuntimeError("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY.")
 
-    client = create_client(supabase_url, service_role_key)
+    client: Client = create_supabase_client(supabase_url, service_role_key)
+    schemas = SupabaseSchemas.from_client(client)
     offset = 0
     while True:
         resp = (
-            client.table("stations")
+            schemas.core.table("stations")
             .select(
                 "id,station_ref,label,station_name,station_type,station_exposure,region,"
                 "la_code,la_version,pcon_code,pcon_version,service_ref,connector_id,geometry,"

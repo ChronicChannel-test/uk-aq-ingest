@@ -29,7 +29,8 @@ from zoneinfo import ZoneInfo
 
 import requests
 from dotenv import load_dotenv
-from supabase import Client, create_client
+from supabase import Client
+from scripts.uk_aq_supabase import SupabaseSchemas, create_supabase_client
 
 load_dotenv()
 
@@ -272,11 +273,9 @@ def fetch_defra_rows(url: str, timeout: int = 30) -> List[PollutantRow]:
 
 
 def build_supabase_client() -> Client:
-    supabase_url = os.getenv("SUPABASE_URL")
-    supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-    if not supabase_url or not supabase_key:
-        raise RuntimeError("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required.")
-    return create_client(supabase_url, supabase_key)
+    client = create_supabase_client()
+    schemas = SupabaseSchemas.from_client(client)
+    return schemas.core
 
 
 def load_station(client: Client, station_ref: str) -> Dict[str, str]:

@@ -45,10 +45,13 @@ def normalize_base_url(url: str) -> str:
 
 
 def supabase_headers(service_role_key: str) -> Dict[str, str]:
+    core_schema = os.getenv("UK_AQ_CORE_SCHEMA", "uk_aq_core")
     return {
         "apikey": service_role_key,
         "Authorization": f"Bearer {service_role_key}",
         "Content-Type": "application/json",
+        "Accept-Profile": core_schema,
+        "Content-Profile": core_schema,
     }
 
 

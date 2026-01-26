@@ -161,6 +161,7 @@ def main() -> None:
 
     supabase_url = os.getenv("SUPABASE_URL", "").strip().rstrip("/")
     supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
+    core_schema = os.getenv("UK_AQ_CORE_SCHEMA", "uk_aq_core")
     if not supabase_url or not supabase_key:
         raise SystemExit("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required.")
 
@@ -168,6 +169,8 @@ def main() -> None:
     headers = {
         "apikey": supabase_key,
         "Authorization": f"Bearer {supabase_key}",
+        "Accept-Profile": core_schema,
+        "Content-Profile": core_schema,
     }
 
     connector_rows = _fetch_json(

@@ -19,7 +19,7 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 import requests
 from dotenv import load_dotenv
-from supabase import Client, create_client
+from supabase import Client
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if PROJECT_ROOT.name == "scripts":
@@ -37,6 +37,7 @@ from scripts.erg_laqn.erg_laqn_list_stations import (
     LaqnClient,
     _normalize_station_payload,
 )
+from scripts.uk_aq_supabase import SupabaseSchemas, create_supabase_client
 
 load_dotenv()
 
@@ -234,11 +235,9 @@ def _chunked_values(values: List[str], size: int) -> Iterable[List[str]]:
 
 class SupabaseWriter:
     def __init__(self) -> None:
-        supabase_url = os.getenv("SUPABASE_URL")
-        supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-        if not supabase_url or not supabase_key:
-            raise RuntimeError("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required.")
-        self.client: Client = create_client(supabase_url, supabase_key)
+        self.client: Client = create_supabase_client()
+        schemas = SupabaseSchemas.from_client(self.client)
+        self.core = schemas.core
 
     def upsert_connector(self) -> int:
         payload = {
@@ -249,9 +248,9 @@ class SupabaseWriter:
             "stations_bbox_supported": False,
             "timeseries_station_filter_supported": False,
         }
-        self.client.table("connectors").upsert(payload, on_conflict="connector_code").execute()
+        self.core.table("connectors").upsert(payload, on_conflict="connector_code").execute()
         row = (
-            self.client.table("connectors")
+            self.core.table("connectors")
             .select("id")
             .eq("connector_code", LAQN_CONNECTOR_CODE)
             .single()
@@ -266,7 +265,7 @@ class SupabaseWriter:
         payload = [row for row in rows if row.get("station_ref")]
         if not payload:
             return 0
-        self.client.table("stations").upsert(
+        self.core.table("stations").upsert(
             payload, on_conflict="connector_id,service_ref,station_ref"
         ).execute()
         return len(payload)
@@ -280,7 +279,7 @@ class SupabaseWriter:
         mapping: Dict[str, int] = {}
         for chunk in _chunked_values(refs, 200):
             resp = (
-                self.client.table("stations")
+                self.core.table("stations")
                 .select("id,station_ref")
                 .eq("connector_id", connector_id)
                 .eq("service_ref", str(service_ref))
@@ -296,7 +295,7 @@ class SupabaseWriter:
         payload = list(rows)
         if not payload:
             return 0
-        self.client.table("phenomena").upsert(
+        self.core.table("phenomena").upsert(
             payload, on_conflict="connector_id,eionet_uri"
         ).execute()
         return len(payload)
@@ -310,7 +309,7 @@ class SupabaseWriter:
         mapping: Dict[str, int] = {}
         for chunk in _chunked_values(refs, 200):
             resp = (
-                self.client.table("phenomena")
+                self.core.table("phenomena")
                 .select("id,eionet_uri")
                 .eq("connector_id", connector_id)
                 .in_("eionet_uri", list(chunk))
@@ -325,7 +324,7 @@ class SupabaseWriter:
         payload = list(rows)
         if not payload:
             return 0
-        self.client.table("timeseries").upsert(
+        self.core.table("timeseries").upsert(
             payload, on_conflict="connector_id,service_ref,timeseries_ref"
         ).execute()
         return len(payload)
@@ -339,7 +338,7 @@ class SupabaseWriter:
         mapping: Dict[str, int] = {}
         for chunk in _chunked_values(refs, 200):
             resp = (
-                self.client.table("timeseries")
+                self.core.table("timeseries")
                 .select("id,timeseries_ref")
                 .eq("connector_id", connector_id)
                 .eq("service_ref", str(service_ref))
@@ -355,7 +354,7 @@ class SupabaseWriter:
         payload = list(rows)
         if not payload:
             return 0
-        self.client.table("observations").upsert(
+        self.core.table("observations").upsert(
             payload, on_conflict="timeseries_id,observed_at"
         ).execute()
         return len(payload)
@@ -369,7 +368,7 @@ class SupabaseWriter:
             timeseries_id = row.get("id")
             if timeseries_id is None:
                 continue
-            self.client.table("timeseries").update(
+            self.core.table("timeseries").update(
                 {
                     "last_value": row.get("last_value"),
                     "last_value_at": row.get("last_value_at"),

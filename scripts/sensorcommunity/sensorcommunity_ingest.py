@@ -53,7 +53,7 @@ warnings.filterwarnings(
 
 import requests
 from dotenv import load_dotenv
-from supabase import Client, create_client
+from supabase import Client
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if PROJECT_ROOT.name == "scripts":
@@ -62,6 +62,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from scripts.ingest_helpers import station_coords, station_in_bbox_or_missing_coords
+from scripts.uk_aq_supabase import SupabaseSchemas, create_supabase_client
 
 load_dotenv()
 
@@ -276,7 +277,7 @@ class ErrorLogger:
             "timeseries_id": timeseries_id,
         }
         try:
-            self.client.table("error_logs").insert(payload).execute()
+            self.raw.table("error_logs").insert(payload).execute()
         except Exception as insert_exc:
             LOG.warning("Failed to insert error_logs row: %s", insert_exc)
             return
@@ -308,7 +309,7 @@ class ErrorLogger:
                 json.dumps(error_payload, ensure_ascii=True, indent=2).encode("utf-8"),
                 dropbox_path,
             )
-            self.client.table("error_logs").update({"dropbox_path": dropbox_path}).eq(
+            self.raw.table("error_logs").update({"dropbox_path": dropbox_path}).eq(
                 "id",
                 error_id,
             ).execute()
@@ -769,11 +770,10 @@ class TimeseriesKey:
 
 class SupabaseWriter:
     def __init__(self) -> None:
-        supabase_url = os.getenv("SUPABASE_URL")
-        supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-        if not supabase_url or not supabase_key:
-            raise RuntimeError("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required.")
-        self.client: Client = create_client(supabase_url, supabase_key)
+        self.client: Client = create_supabase_client()
+        schemas = SupabaseSchemas.from_client(self.client)
+        self.core = schemas.core
+        self.raw = schemas.raw
 
     def upsert_connector(self) -> Tuple[int, bool]:
         payload = {
@@ -788,9 +788,9 @@ class SupabaseWriter:
             "stations_bbox_supported": False,
             "timeseries_station_filter_supported": False,
         }
-        self.client.table("connectors").upsert(payload, on_conflict="connector_code").execute()
+        self.core.table("connectors").upsert(payload, on_conflict="connector_code").execute()
         row = (
-            self.client.table("connectors")
+            self.core.table("connectors")
             .select("id,overwrite_station_name")
             .eq("connector_code", SCOMM_CONNECTOR_CODE)
             .single()
@@ -811,7 +811,7 @@ class SupabaseWriter:
         mapping: Dict[str, Optional[str]] = {}
         for chunk in chunked(refs, 200):
             resp = (
-                self.client.table("stations")
+                self.core.table("stations")
                 .select("station_ref,station_name")
                 .eq("connector_id", connector_id)
                 .eq("service_ref", str(service_ref))
@@ -879,7 +879,7 @@ class SupabaseWriter:
                 if existing_name is not None and "station_name" in row:
                     row.pop("station_name", None)
         if rows:
-            self.client.table("stations").upsert(
+            self.core.table("stations").upsert(
                 rows, on_conflict="connector_id,service_ref,station_ref"
             ).execute()
         return len(rows)
@@ -896,11 +896,11 @@ class SupabaseWriter:
                     "pollutant_label": meta["pollutant_label"],
                 }
             )
-        self.client.table("phenomena").upsert(
+        self.core.table("phenomena").upsert(
             payload, on_conflict="connector_id,eionet_uri"
         ).execute()
         rows = (
-            self.client.table("phenomena")
+            self.core.table("phenomena")
             .select("id,eionet_uri")
             .eq("connector_id", connector_id)
             .in_("eionet_uri", [meta["eionet_uri"] for meta in SCOMM_PHENOMENA.values()])
@@ -921,7 +921,7 @@ class SupabaseWriter:
         self, connector_id: int, service_ref: str, phenomenon_ids: Dict[str, int]
     ) -> int:
         resp = (
-            self.client.table("timeseries")
+            self.core.table("timeseries")
             .select("id,timeseries_ref")
             .eq("connector_id", connector_id)
             .eq("service_ref", str(service_ref))
@@ -950,7 +950,7 @@ class SupabaseWriter:
             phen_id = phenomenon_ids.get(pollutant)
             if not phen_id or not ids:
                 continue
-            self.client.table("timeseries").update(
+            self.core.table("timeseries").update(
                 {"phenomenon_id": phen_id}
             ).in_("id", ids).execute()
             total_updated += len(ids)
@@ -965,7 +965,7 @@ class SupabaseWriter:
         mapping: Dict[str, int] = {}
         for chunk in chunked(refs, 200):
             resp = (
-                self.client.table("stations")
+                self.core.table("stations")
                 .select("id,station_ref")
                 .eq("connector_id", connector_id)
                 .eq("service_ref", str(service_ref))
@@ -983,7 +983,7 @@ class SupabaseWriter:
     ) -> None:
         rows = list(timeseries_rows)
         if rows:
-            self.client.table("timeseries").upsert(
+            self.core.table("timeseries").upsert(
                 rows, on_conflict="connector_id,service_ref,timeseries_ref"
             ).execute()
 
@@ -996,7 +996,7 @@ class SupabaseWriter:
         mapping: Dict[str, int] = {}
         for chunk in chunked(refs, 200):
             resp = (
-                self.client.table("timeseries")
+                self.core.table("timeseries")
                 .select("id,timeseries_ref")
                 .eq("connector_id", connector_id)
                 .eq("service_ref", str(service_ref))
@@ -1012,7 +1012,7 @@ class SupabaseWriter:
         payload = list(rows)
         if not payload:
             return 0
-        self.client.table("observations").upsert(
+        self.core.table("observations").upsert(
             payload, on_conflict="timeseries_id,observed_at"
         ).execute()
         return len(payload)

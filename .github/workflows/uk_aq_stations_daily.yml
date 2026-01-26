@@ -87,6 +87,7 @@ jobs:
 
           supabase_url = os.environ.get("SUPABASE_URL")
           supabase_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+          core_schema = os.environ.get("UK_AQ_CORE_SCHEMA", "uk_aq_core")
           if not supabase_url or not supabase_key:
             raise SystemExit("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required.")
 
@@ -101,6 +102,8 @@ jobs:
                 "apikey": supabase_key,
                 "Authorization": f"Bearer {supabase_key}",
                 "Prefer": "count=exact",
+                "Accept-Profile": core_schema,
+                "Content-Profile": core_schema,
               },
               timeout=30,
             )
@@ -175,6 +178,7 @@ jobs:
 
           supabase_url = os.environ.get("SUPABASE_URL")
           supabase_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+          core_schema = os.environ.get("UK_AQ_CORE_SCHEMA", "uk_aq_core")
           if not supabase_url or not supabase_key:
             raise SystemExit("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required.")
 
@@ -189,6 +193,8 @@ jobs:
                 "apikey": supabase_key,
                 "Authorization": f"Bearer {supabase_key}",
                 "Prefer": "count=exact",
+                "Accept-Profile": core_schema,
+                "Content-Profile": core_schema,
               },
               timeout=30,
             )

@@ -21,7 +21,7 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 import requests
 from dotenv import load_dotenv
-from supabase import Client, create_client
+from supabase import Client
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if PROJECT_ROOT.name == "scripts":
@@ -30,6 +30,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from scripts.ingest_helpers import station_in_bbox_or_missing_coords
+from scripts.uk_aq_supabase import SupabaseSchemas, create_supabase_client
 
 load_dotenv()
 
@@ -315,11 +316,9 @@ def chunked(values: List[Any], size: int) -> Iterable[List[Any]]:
 
 class SupabaseWriter:
     def __init__(self) -> None:
-        supabase_url = os.getenv("SUPABASE_URL")
-        supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-        if not supabase_url or not supabase_key:
-            raise RuntimeError("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required.")
-        self.client: Client = create_client(supabase_url, supabase_key)
+        self.client: Client = create_supabase_client()
+        schemas = SupabaseSchemas.from_client(self.client)
+        self.core = schemas.core
 
     def upsert_connector(self) -> int:
         payload = {
@@ -330,9 +329,9 @@ class SupabaseWriter:
             "stations_bbox_supported": False,
             "timeseries_station_filter_supported": False,
         }
-        self.client.table("connectors").upsert(payload, on_conflict="connector_code").execute()
+        self.core.table("connectors").upsert(payload, on_conflict="connector_code").execute()
         row = (
-            self.client.table("connectors")
+            self.core.table("connectors")
             .select("id")
             .eq("connector_code", LAQN_CONNECTOR_CODE)
             .single()
@@ -347,7 +346,7 @@ class SupabaseWriter:
         payload = [row for row in rows if row.get("station_ref")]
         if not payload:
             return 0
-        self.client.table("stations").upsert(
+        self.core.table("stations").upsert(
             payload, on_conflict="connector_id,service_ref,station_ref"
         ).execute()
         return len(payload)
@@ -361,7 +360,7 @@ class SupabaseWriter:
         mapping: Dict[str, int] = {}
         for chunk in chunked(refs, 200):
             resp = (
-                self.client.table("stations")
+                self.core.table("stations")
                 .select("id,station_ref")
                 .eq("connector_id", connector_id)
                 .eq("service_ref", str(service_ref))
@@ -379,7 +378,7 @@ class SupabaseWriter:
         metadata: Dict[int, Dict[str, Any]] = {}
         for chunk in chunked([str(val) for val in station_ids], 200):
             resp = (
-                self.client.table("station_metadata")
+                self.core.table("station_metadata")
                 .select("station_id,attributes")
                 .in_("station_id", list(chunk))
                 .execute()
@@ -410,7 +409,7 @@ class SupabaseWriter:
                 {"station_id": station_id, "attributes": merged, "updated_at": timestamp}
             )
         if rows:
-            self.client.table("station_metadata").upsert(rows, on_conflict="station_id").execute()
+            self.core.table("station_metadata").upsert(rows, on_conflict="station_id").execute()
         return len(rows)
 
 

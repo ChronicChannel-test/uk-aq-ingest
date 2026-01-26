@@ -174,13 +174,15 @@ def main() -> int:
     args = parse_args()
     supabase_url = os.getenv("SUPABASE_URL")
     service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+    default_profile = os.getenv("UK_AQ_CORE_SCHEMA", "uk_aq_core")
     if not supabase_url or not service_role_key:
         raise SystemExit("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required.")
 
     base_url = _rest_base(supabase_url)
-    headers = _build_headers(service_role_key, args.profile)
+    profile = args.profile or default_profile
+    headers = _build_headers(service_role_key, profile)
 
-    _print_env_summary(supabase_url, service_role_key, args.profile)
+    _print_env_summary(supabase_url, service_role_key, profile)
 
     print("")
     print("Counts (REST):")

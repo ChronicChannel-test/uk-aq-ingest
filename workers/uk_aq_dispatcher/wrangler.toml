@@ -3,8 +3,8 @@ main = "src/index.ts"
 compatibility_date = "2025-01-01"
 
 [triggers]
-crons = ["*/2 * * * *"]
-#crons = []
+#crons = ["*/2 * * * *"]
+crons = []
 #keep the crons = [] in case we need to turn off the ingest
 
 [observability]

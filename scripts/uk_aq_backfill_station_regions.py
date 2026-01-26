@@ -12,7 +12,9 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from dotenv import load_dotenv
-from supabase import create_client
+from supabase import Client
+
+from scripts.uk_aq_supabase import SupabaseSchemas, create_supabase_client
 from shapely.geometry import Point
 from shapely.ops import transform as shapely_transform
 from shapely import wkb as shapely_wkb
@@ -191,12 +193,13 @@ def _fetch_stations(page_size: int) -> List[Dict[str, Any]]:
     service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
     if not supabase_url or not service_role_key:
         raise RuntimeError("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY.")
-    client = create_client(supabase_url, service_role_key)
+    client: Client = create_supabase_client(supabase_url, service_role_key)
+    schemas = SupabaseSchemas.from_client(client)
     rows: List[Dict[str, Any]] = []
     offset = 0
     while True:
         response = (
-            client.table("stations")
+            schemas.core.table("stations")
             .select("id,station_ref,label,region,geometry")
             .is_("region", "null")
             .order("id")
@@ -236,7 +239,8 @@ def _apply_updates(updates: List[Dict[str, Any]], batch_size: int) -> int:
     service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
     if not supabase_url or not service_role_key:
         raise RuntimeError("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY.")
-    client = create_client(supabase_url, service_role_key)
+    client: Client = create_supabase_client(supabase_url, service_role_key)
+    schemas = SupabaseSchemas.from_client(client)
     applied = 0
     for idx, update in enumerate(updates, start=1):
         station_id = update.get("id")
@@ -248,7 +252,7 @@ def _apply_updates(updates: List[Dict[str, Any]], batch_size: int) -> int:
         if la_code:
             payload["la_code"] = la_code
         response = (
-            client.table("stations")
+            schemas.core.table("stations")
             .update(payload)
             .eq("id", station_id)
             .execute()

@@ -16,10 +16,19 @@ import os
 import sys
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
 import requests
-from supabase import create_client
+from supabase import Client
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if PROJECT_ROOT.name == "scripts":
+    PROJECT_ROOT = PROJECT_ROOT.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from scripts.uk_aq_supabase import SupabaseSchemas, create_supabase_client
 
 TRUTHY = {"y", "yes", "true", "1"}
 
@@ -218,9 +227,12 @@ def main() -> int:
     if args.batch_size <= 0:
         raise SystemExit("--batch-size must be greater than zero.")
 
-    client = create_client(base_url, service_role_key)
+    client: Client = create_supabase_client(base_url, service_role_key)
+    schemas = SupabaseSchemas.from_client(client)
+    core = schemas.core
+    raw = schemas.raw
     connector_resp = (
-        client.table("connectors")
+        core.table("connectors")
         .select("id,connector_code")
         .eq("connector_code", connector_code)
         .limit(1)
@@ -232,7 +244,7 @@ def main() -> int:
     connector_id = connector_rows[0]["id"]
 
     station_rows: List[Dict[str, Any]] = []
-    for row in _iter_station_rows(client, connector_id, service_ref, args.active_only):
+    for row in _iter_station_rows(core, connector_id, service_ref, args.active_only):
         station_ref = row.get("station_ref")
         if not station_ref:
             continue
@@ -245,7 +257,7 @@ def main() -> int:
         return 0
 
     station_ids = [int(row["id"]) for row in station_rows if row.get("id") is not None]
-    fetch_map = _load_oldest_fetch_map(client, station_ids)
+    fetch_map = _load_oldest_fetch_map(raw, station_ids)
     min_stamp = datetime.min.replace(tzinfo=timezone.utc)
     station_rows.sort(
         key=lambda row: (

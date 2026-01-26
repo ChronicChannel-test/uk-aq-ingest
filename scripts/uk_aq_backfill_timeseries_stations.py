@@ -108,7 +108,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def fetch_connectors(writer: SupabaseWriter) -> Dict[int, Dict[str, Any]]:
-    resp = writer.client.table("connectors").select("id,connector_code,service_url,label").execute()
+    resp = writer.core.table("connectors").select("id,connector_code,service_url,label").execute()
     rows = resp.data if hasattr(resp, "data") else resp.get("data")
     return {int(row["id"]): row for row in (rows or [])}
 
@@ -124,7 +124,7 @@ def fetch_missing_timeseries(
     offset = 0
     while True:
         query = (
-            writer.client.table("timeseries")
+            writer.core.table("timeseries")
             .select("timeseries_ref,connector_id,service_ref,label")
             .is_("station_id", None)
             .order("id", desc=False)
@@ -153,7 +153,7 @@ def fetch_station_label_map(
     batch_size = 1000
     while True:
         resp = (
-            writer.client.table("stations")
+            writer.core.table("stations")
             .select("id,label")
             .eq("connector_id", connector_id)
             .eq("service_ref", str(service_ref))
@@ -270,7 +270,7 @@ def fetch_station_geometry_index(
     batch_size = 1000
     while True:
         resp = (
-            writer.client.table("stations")
+            writer.core.table("stations")
             .select("id,label,geometry,station_type,region")
             .eq("connector_id", connector_id)
             .eq("service_ref", str(service_ref))
@@ -531,7 +531,7 @@ def main() -> int:
             created_rows.append(row)
             created_refs.add(station_ref_str)
         if created_rows:
-            writer.client.table("stations").upsert(
+            writer.core.table("stations").upsert(
                 created_rows,
                 on_conflict="connector_id,service_ref,station_ref",
                 returning="minimal",
@@ -635,7 +635,7 @@ def main() -> int:
             updates.append(row)
 
         if updates:
-            writer.client.table("timeseries").upsert(
+            writer.core.table("timeseries").upsert(
                 updates,
                 on_conflict="connector_id,service_ref,timeseries_ref",
                 returning="minimal",

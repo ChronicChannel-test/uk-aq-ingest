@@ -121,9 +121,11 @@ def main() -> None:
         raise SystemExit("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required.")
 
     base_url = f"{supabase_url}/rest/v1"
+    core_schema = os.getenv("UK_AQ_CORE_SCHEMA", "uk_aq_core")
     headers = {
         "apikey": service_role_key,
         "Authorization": f"Bearer {service_role_key}",
+        "Accept-Profile": core_schema,
     }
 
     connectors = _fetch_all(

@@ -29,13 +29,14 @@ warnings.filterwarnings(
 )
 import requests
 from dotenv import load_dotenv
-from supabase import Client, create_client
+from supabase import Client
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from scripts.ingest_helpers import station_coords, station_in_bbox_or_missing_coords
+from scripts.uk_aq_supabase import SupabaseSchemas, create_supabase_client
 load_dotenv()
 
 LOG = logging.getLogger("uk_aq_stations")
@@ -385,11 +386,10 @@ class UkAirClient:
 
 class SupabaseWriter:
     def __init__(self) -> None:
-        supabase_url = os.getenv("SUPABASE_URL")
-        supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-        if not supabase_url or not supabase_key:
-            raise RuntimeError("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required.")
-        self.client: Client = create_client(supabase_url, supabase_key)
+        self.client: Client = create_supabase_client()
+        schemas = SupabaseSchemas.from_client(self.client)
+        self.core = schemas.core
+        self.raw = schemas.raw
 
     def upsert_connectors(self, services: Iterable[Dict[str, Any]]) -> Optional[int]:
         services_list = [svc for svc in services if isinstance(svc, dict)]
@@ -406,12 +406,12 @@ class SupabaseWriter:
                 "service_url": primary.get("serviceUrl") or primary.get("url") or UK_AIR_SOS_BASE_URL,
             }
         ]
-        self.client.table("connectors").upsert(payload, on_conflict="connector_code").execute()
+        self.core.table("connectors").upsert(payload, on_conflict="connector_code").execute()
         return self.get_connector_id()
 
     def get_connector_id(self) -> Optional[int]:
         resp = (
-            self.client.table("connectors")
+            self.core.table("connectors")
             .select("id")
             .eq("connector_code", UK_AIR_SOS_CONNECTOR_CODE)
             .limit(1)
@@ -438,7 +438,7 @@ class SupabaseWriter:
             return rows
         for chunk in _chunked(list(station_refs), 200):
             resp = (
-                self.client.table("stations")
+                self.core.table("stations")
                 .select("id,station_ref,service_ref,station_type")
                 .eq("connector_id", connector_id)
                 .in_("station_ref", list(chunk))
@@ -470,7 +470,7 @@ class SupabaseWriter:
         mapping: Dict[int, str] = {}
         for chunk in _chunked(list(station_ids), 200):
             resp = (
-                self.client.table("stations")
+                self.core.table("stations")
                 .select("id,station_ref")
                 .in_("id", list(chunk))
                 .execute()
@@ -496,7 +496,7 @@ class SupabaseWriter:
             return rows
         for chunk in _chunked(list(timeseries_refs), 200):
             resp = (
-                self.client.table("timeseries")
+                self.core.table("timeseries")
                 .select("id,timeseries_ref,station_id,service_ref")
                 .eq("connector_id", connector_id)
                 .in_("timeseries_ref", list(chunk))
@@ -508,7 +508,7 @@ class SupabaseWriter:
 
     def fetch_latest_site_register_snapshot(self) -> Optional[str]:
         resp = (
-            self.client.table("uk_air_sos_site_register")
+            self.raw.table("uk_air_sos_site_register")
             .select("snapshot_at")
             .order("snapshot_at", desc=True)
             .limit(1)
@@ -532,7 +532,7 @@ class SupabaseWriter:
         offset = 0
         while True:
             resp = (
-                self.client.table("uk_air_sos_site_register")
+                self.raw.table("uk_air_sos_site_register")
                 .select("uk_air_id,site_name,latitude,longitude,networks,snapshot_at")
                 .eq("snapshot_at", snapshot_at)
                 .range(offset, offset + page_size - 1)
@@ -548,7 +548,7 @@ class SupabaseWriter:
 
     def fetch_uk_air_sos_networks(self) -> Dict[str, Dict[str, Any]]:
         resp = (
-            self.client.table("uk_air_sos_networks")
+            self.core.table("uk_air_sos_networks")
             .select("network_ref,network_code,network_display_name")
             .execute()
         )
@@ -570,7 +570,7 @@ class SupabaseWriter:
         refs: Dict[int, Dict[str, Any]] = {}
         for chunk in _chunked(list(station_ids), 200):
             resp = (
-                self.client.table("uk_air_sos_station_refs")
+                self.raw.table("uk_air_sos_station_refs")
                 .select("station_id,uk_air_id,match_method,match_distance_m,source_snapshot_at")
                 .in_("station_id", list(chunk))
                 .execute()
@@ -590,7 +590,7 @@ class SupabaseWriter:
         metadata: Dict[int, Dict[str, Any]] = {}
         for chunk in _chunked(list(station_ids), 200):
             resp = (
-                self.client.table("station_metadata")
+                self.core.table("station_metadata")
                 .select("station_id,attributes")
                 .in_("station_id", list(chunk))
                 .execute()
@@ -625,13 +625,13 @@ class SupabaseWriter:
                 }
             )
         if rows:
-            self.client.table("station_metadata").upsert(rows, on_conflict="station_id").execute()
+            self.core.table("station_metadata").upsert(rows, on_conflict="station_id").execute()
         return len(rows)
 
     def upsert_station_network_memberships(self, rows: List[Dict[str, Any]]) -> int:
         if not rows:
             return 0
-        self.client.table("station_network_memberships").upsert(
+        self.core.table("station_network_memberships").upsert(
             rows,
             on_conflict="station_id,network_code",
         ).execute()
@@ -640,7 +640,7 @@ class SupabaseWriter:
     def upsert_station_types(self, rows: List[Dict[str, Any]]) -> int:
         if not rows:
             return 0
-        self.client.table("stations").upsert(rows, on_conflict="id").execute()
+        self.core.table("stations").upsert(rows, on_conflict="id").execute()
         return len(rows)
 
     def upsert_reference_table(
@@ -669,7 +669,7 @@ class SupabaseWriter:
                 }
             )
         if rows:
-            self.client.table(table).upsert(
+            self.core.table(table).upsert(
                 rows,
                 on_conflict=f"connector_id,service_ref,{ref_key}",
             ).execute()
@@ -699,7 +699,7 @@ class SupabaseWriter:
                 row["notation"] = notation
         rows = list(payload_by_uri.values())
         if rows:
-            self.client.table("phenomena").upsert(
+            self.core.table("phenomena").upsert(
                 rows,
                 on_conflict="connector_id,eionet_uri",
             ).execute()
@@ -765,7 +765,7 @@ class SupabaseWriter:
                 row["station_name"] = station_name
             rows.append(row)
         if rows:
-            self.client.table("stations").upsert(
+            self.core.table("stations").upsert(
                 rows,
                 on_conflict="connector_id,service_ref,station_ref",
             ).execute()
@@ -787,7 +787,7 @@ class SupabaseWriter:
         if not connector_ids:
             return 0
         resp = (
-            self.client.table("stations")
+            self.core.table("stations")
             .select("id,station_ref,label,service_ref,connector_id")
             .in_("connector_id", list(connector_ids))
             .is_("station_name", "null")
@@ -810,14 +810,14 @@ class SupabaseWriter:
                     }
                 )
         if updates:
-            self.client.table("stations").upsert(updates, on_conflict="id").execute()
+            self.core.table("stations").upsert(updates, on_conflict="id").execute()
         return len(updates)
 
     def mark_removed(self, seen_at: datetime, connector_ids: Sequence[int]) -> None:
         if not connector_ids:
             return
         seen_at_value = seen_at.isoformat()
-        self.client.table("stations").update({"removed_at": seen_at_value}).in_(
+        self.core.table("stations").update({"removed_at": seen_at_value}).in_(
             "connector_id", list(connector_ids)
         ).is_("removed_at", "null").lt("last_seen_at", seen_at_value).execute()
 

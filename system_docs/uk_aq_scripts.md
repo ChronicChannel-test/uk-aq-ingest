@@ -19,6 +19,18 @@ This document summarizes the UK-AQ helper scripts and their inputs/outputs.
 
 ## Scripts
 
+### `scripts/uk_aq_supabase.py`
+Purpose:
+- Central helper for Supabase clients that target `uk_aq_core`, `uk_aq_raw`, and `uk_aq_pop`.
+- Provides `create_supabase_client` plus `SupabaseSchemas` / `SchemaClient` wrappers for schema-specific `.table()` and `.rpc()` calls.
+
+Environment:
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY` (or `SUPABASE_KEY` fallback)
+- `UK_AQ_CORE_SCHEMA` (optional; defaults to `uk_aq_core`)
+- `UK_AQ_RAW_SCHEMA` (optional; defaults to `uk_aq_raw`)
+- `UK_AQ_POP_SCHEMA` (optional; defaults to `uk_aq_pop`)
+
 ### `scripts/uk_aq_inject_project_ref.mjs`
 Purpose:
 - Replace Supabase placeholders in web assets during GitHub Actions deploys.

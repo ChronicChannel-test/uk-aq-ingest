@@ -21,10 +21,17 @@ import json
 import time
 import logging
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import List, Dict, Optional
 import argparse
 from dotenv import load_dotenv
-from supabase import create_client, Client
+from supabase import Client
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from scripts.uk_aq_supabase import SupabaseSchemas, create_supabase_client
 
 # Load environment variables from .env file (for local development)
 load_dotenv()
@@ -46,7 +53,9 @@ supabase_url = os.getenv('SUPABASE_URL')
 supabase_key = os.getenv('SUPABASE_SERVICE_ROLE_KEY')
 
 # Initialize Supabase client
-supabase: Client = create_client(supabase_url, supabase_key)
+supabase: Client = create_supabase_client(supabase_url, supabase_key)
+schemas = SupabaseSchemas.from_client(supabase)
+core = schemas.core
 
 # Logging setup
 logging.basicConfig(
@@ -108,7 +117,7 @@ class PurpleAirFetcher:
                       response_size: int, response_data: Dict):
         """Log API usage to database"""
         try:
-            supabase.table('purpleair_api_usage').insert({
+            core.table('purpleair_api_usage').insert({
                 'api_call_type': endpoint,
                 'sensors_queried': len(response_data.get('data', [])) if 'data' in response_data else 0,
                 'points_used': points_used,
@@ -176,7 +185,7 @@ class PurpleAirFetcher:
                     sensor_records.append(sensor_data)
                 
                 # Upsert batch
-                supabase.table('purpleair_sensors').upsert(sensor_records).execute()
+                core.table('purpleair_sensors').upsert(sensor_records).execute()
                 stored_count += len(batch)
                 logger.info(f"Stored {stored_count}/{len(sensors)} sensors")
                 
@@ -256,7 +265,7 @@ class PurpleAirFetcher:
                     observation_records.append(obs_data)
                 
                 # Insert batch
-                supabase.table('purpleair_observations').insert(observation_records).execute()
+                core.table('purpleair_observations').insert(observation_records).execute()
                 stored_count += len(batch)
                 logger.info(f"Stored {stored_count}/{len(sensor_data)} observations")
                 
@@ -272,7 +281,7 @@ class PurpleAirFetcher:
     def get_stored_sensor_indices(self) -> List[int]:
         """Get sensor indices from database"""
         try:
-            response = supabase.table('purpleair_sensors').select('sensor_index').eq('location_type', 0).execute()
+            response = core.table('purpleair_sensors').select('sensor_index').eq('location_type', 0).execute()
             
             if response.data:
                 return [sensor['sensor_index'] for sensor in response.data]

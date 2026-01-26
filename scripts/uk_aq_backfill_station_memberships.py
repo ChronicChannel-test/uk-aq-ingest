@@ -168,7 +168,7 @@ def _pollutant_keys_from_phenomenon(row: Dict[str, Any]) -> List[str]:
 
 def _fetch_network_pollutant_rules(writer: SupabaseWriter) -> Dict[str, List[Tuple[str, str]]]:
     resp = (
-        writer.client.table("uk_air_sos_network_pollutants")
+        writer.core.table("uk_air_sos_network_pollutants")
         .select("network_ref,match_type,match_value")
         .execute()
     )
@@ -197,7 +197,7 @@ def _fetch_station_pollutant_keys(
     phenomena_ids: Set[int] = set()
     for chunk in _chunked([str(val) for val in station_ids], batch_size):
         resp = (
-            writer.client.table("timeseries")
+            writer.core.table("timeseries")
             .select("station_id,phenomenon_id")
             .in_("station_id", list(chunk))
             .execute()
@@ -215,7 +215,7 @@ def _fetch_station_pollutant_keys(
     phenomena_labels: Dict[int, List[str]] = {}
     for chunk in _chunked([str(val) for val in phenomena_ids], batch_size):
         resp = (
-            writer.client.table("phenomena")
+            writer.core.table("phenomena")
             .select("id,label,notation,pollutant_label")
             .in_("id", list(chunk))
             .execute()
@@ -379,7 +379,7 @@ def _upsert_with_progress(
     for idx in range(0, len(rows), batch_size):
         chunk = rows[idx : idx + batch_size]
         print(".", end="", flush=True)
-        writer.client.table(table).upsert(chunk, on_conflict=on_conflict).execute()
+        writer.core.table(table).upsert(chunk, on_conflict=on_conflict).execute()
     print()
     return len(rows)
 
@@ -405,7 +405,7 @@ def _update_station_types(
         for idx in range(0, len(station_ids), batch_size):
             chunk = station_ids[idx : idx + batch_size]
             print(".", end="", flush=True)
-            writer.client.table("stations").update({"station_type": station_type}).in_(
+            writer.core.table("stations").update({"station_type": station_type}).in_(
                 "id", chunk
             ).execute()
             updated += len(chunk)

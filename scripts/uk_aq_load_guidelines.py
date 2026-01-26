@@ -21,7 +21,9 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from dotenv import load_dotenv
-from supabase import create_client
+from supabase import Client
+
+from scripts.uk_aq_supabase import SupabaseSchemas, create_supabase_client
 
 load_dotenv()
 
@@ -128,10 +130,11 @@ def main() -> int:
         print("No guideline rows parsed from the CSV.", file=sys.stderr)
         return 1
 
-    client = create_client(supabase_url, service_role_key)
+    client: Client = create_supabase_client(supabase_url, service_role_key)
+    schemas = SupabaseSchemas.from_client(client)
     total = 0
     for batch in chunked(rows, max(1, args.batch_size)):
-        client.table("uk_aq_guidelines").upsert(
+        schemas.core.table("uk_aq_guidelines").upsert(
             batch,
             on_conflict="pollutant,averaging_period_label,level_label,source",
         ).execute()
