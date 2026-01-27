@@ -90,6 +90,7 @@ const DEFAULT_WINDOW_HOURS = 24;
 const DEFAULT_SLEEP_SECONDS = 0.2;
 const DEFAULT_BATCH_SIZE = 500;
 const DEFAULT_TIMEOUT_MS = 30_000;
+const DEFAULT_MAX_RUNTIME_SECONDS = 110;
 const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
 
 const SPECIES_CONFIG: Record<
@@ -143,6 +144,9 @@ const BREATHELONDON_SERVICE_LABEL = Deno.env.get("BREATHELONDON_SERVICE_LABEL")
   ?? DEFAULT_SERVICE_LABEL;
 const BREATHELONDON_USER_AGENT = Deno.env.get("BREATHELONDON_USER_AGENT")
   ?? DEFAULT_USER_AGENT;
+const BREATHELONDON_MAX_RUNTIME_SECONDS = Number(
+  Deno.env.get("BREATHELONDON_MAX_RUNTIME_SECONDS") ?? DEFAULT_MAX_RUNTIME_SECONDS,
+);
 const SB_UK_AQ_CRON_SECRET = Deno.env.get("SB_UK_AQ_CRON_SECRET") ?? "";
 const DROPBOX_APP_KEY = Deno.env.get("DROPBOX_APP_KEY") ?? "";
 const DROPBOX_APP_SECRET = Deno.env.get("DROPBOX_APP_SECRET") ?? "";
@@ -1587,6 +1591,12 @@ serve(async (req) => {
   let checkpointsUpserted = 0;
   let stationsSelected = 0;
   let stationsRequested: number | null = null;
+  const runStartedAt = Date.now();
+  const maxRuntimeSeconds = Number.isFinite(BREATHELONDON_MAX_RUNTIME_SECONDS)
+    ? Math.max(30, BREATHELONDON_MAX_RUNTIME_SECONDS)
+    : DEFAULT_MAX_RUNTIME_SECONDS;
+  const runtimeDeadline = runStartedAt + maxRuntimeSeconds * 1000;
+  const shouldStop = () => Date.now() >= runtimeDeadline;
 
   try {
     if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
@@ -1859,6 +1869,19 @@ serve(async (req) => {
               const timeseriesUpdates: Array<{ id: number; last_value: number; last_value_at: string }> = [];
               const checkpointRows: Record<string, unknown>[] = [];
               observationsUpserted = 0;
+              let timeBudgetHit = false;
+
+              const flushUpdates = async () => {
+                if (dryRun) {
+                  return;
+                }
+                if (timeseriesUpdates.length) {
+                  timeseriesUpdated += await updateTimeseriesLastValues(timeseriesUpdates.splice(0), errors);
+                }
+                if (checkpointRows.length) {
+                  checkpointsUpserted += await upsertCheckpoints(checkpointRows.splice(0));
+                }
+              };
 
               for (const row of stationRows) {
                 const stationRef = String(row.station_ref);
@@ -1896,6 +1919,11 @@ serve(async (req) => {
                   let cursor = startTime;
 
                   while (cursor < now) {
+                    if (shouldStop()) {
+                      lastError = "runtime_budget_exceeded";
+                      timeBudgetHit = true;
+                      break;
+                    }
                     const endTime = new Date(Math.min(cursor.getTime() + windowMs, now.getTime()));
                     try {
                       const payload = await getClarityData(
@@ -1927,9 +1955,13 @@ serve(async (req) => {
                       break;
                     }
                     cursor = endTime;
-                    if (sleepSeconds && sleepSeconds > 0) {
+                    if (sleepSeconds && sleepSeconds > 0 && !shouldStop()) {
                       await sleep(sleepSeconds * 1000);
                     }
+                  }
+
+                  if (timeBudgetHit) {
+                    break;
                   }
 
                   if (lastObserved && lastValue !== null) {
@@ -1946,18 +1978,19 @@ serve(async (req) => {
                     updated_at: new Date().toISOString(),
                   });
                 }
+
+                if (timeBudgetHit) {
+                  break;
+                }
+
+                if (shouldStop()) {
+                  timeBudgetHit = true;
+                  await flushUpdates();
+                  break;
+                }
               }
 
-              timeseriesUpdated = 0;
-              checkpointsUpserted = 0;
-              if (!dryRun) {
-                if (timeseriesUpdates.length) {
-                  timeseriesUpdated = await updateTimeseriesLastValues(timeseriesUpdates, errors);
-                }
-                if (checkpointRows.length) {
-                  checkpointsUpserted = await upsertCheckpoints(checkpointRows);
-                }
-              }
+              await flushUpdates();
 
               responsePayload = {
                 connector_id: connector.id,
@@ -1969,6 +2002,8 @@ serve(async (req) => {
                 timeseries_updated: timeseriesUpdated,
                 checkpoints_upserted: checkpointsUpserted,
                 dry_run: dryRun,
+                partial: timeBudgetHit,
+                stopped_reason: timeBudgetHit ? "runtime_budget_exceeded" : null,
                 errors,
               };
               if (!dryRun) {

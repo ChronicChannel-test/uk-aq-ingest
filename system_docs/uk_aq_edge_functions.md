@@ -80,6 +80,7 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
   - Logs cron secret mismatch diagnostics (presence/length only) when authorization fails.
   - Logs incoming request auth header presence (no secrets) for debugging.
   - Response includes `stations_requested`/`stations_selected` when station refs are supplied.
+  - Enforces a runtime budget and will return partial progress with `partial=true` when exceeded.
   - Updates `connectors.last_polled_at` on successful non-dry runs.
 - Logs:
   - Writes a log file to Dropbox `/connectors/breathelondon/log/YYYY-MM-DD/` (prefix `uk_aq_log_edge_breathelondon_`).
@@ -180,6 +181,7 @@ Optional:
 - `BREATHELONDON_CONNECTOR_CODE` / `BREATHELONDON_SERVICE_REF` (optional override)
 - `BREATHELONDON_SERVICE_LABEL` (optional override)
 - `BREATHELONDON_USER_AGENT` (optional override)
+- `BREATHELONDON_MAX_RUNTIME_SECONDS` (optional; defaults to 110)
 - `LAQN_BASE_URL` (optional override for ERG LAQN API base URL)
 - `LAQN_CONNECTOR_CODE` / `LAQN_SERVICE_REF` (optional override)
 - `LAQN_CONNECTOR_LABEL` (optional override, `LAQN_SERVICE_LABEL` also accepted)
