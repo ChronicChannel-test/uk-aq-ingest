@@ -1707,6 +1707,7 @@ serve(async (req) => {
   connectorCodeForLog = connectorCode;
 
   const now = new Date();
+  const recentZeroCutoff = new Date(now.getTime() - 60 * 60 * 1000);
   const {
     startDate,
     endDate,
@@ -1929,6 +1930,9 @@ serve(async (req) => {
                 entry["@Value"] ?? entry["Value"] ?? entry["ScaledValue"] ?? entry["RawValue"]
               );
               if (!observedAt || Number.isNaN(value)) {
+                continue;
+              }
+              if (value === 0 && observedAt >= recentZeroCutoff) {
                 continue;
               }
               observations.push({

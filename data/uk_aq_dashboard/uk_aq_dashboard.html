@@ -461,6 +461,32 @@
         return `${Number(value)}m`;
       }
 
+      function formatDurationSeconds(totalSeconds) {
+        if (totalSeconds === null || totalSeconds === undefined || Number.isNaN(Number(totalSeconds))) {
+          return null;
+        }
+        const rounded = Math.max(0, Math.round(Number(totalSeconds)));
+        const minutes = Math.floor(rounded / 60);
+        const seconds = rounded % 60;
+        return `${minutes}m ${seconds}s`;
+      }
+
+      function calcDurationMinutes(run) {
+        const startRaw = run.run_started_at;
+        const endRaw = run.run_ended_at;
+        if (startRaw && endRaw) {
+          const start = new Date(startRaw).getTime();
+          const end = new Date(endRaw).getTime();
+          if (!Number.isNaN(start) && !Number.isNaN(end) && end >= start) {
+            return (end - start) / 60000;
+          }
+        }
+        if (run.in_flight_minutes !== null && run.in_flight_minutes !== undefined) {
+          return Number(run.in_flight_minutes);
+        }
+        return null;
+      }
+
       function setStatus(text) {
         statusEl.textContent = text;
       }
@@ -544,6 +570,7 @@
               <tr>
                 <th>Connector</th>
                 <th>Status</th>
+                <th>Duration</th>
                 <th>Updated</th>
                 <th>Last observed</th>
                 <th>Stations</th>
@@ -557,6 +584,8 @@
                   const status = statusClass(run.run_status);
                   const timestamp = run.run_timestamp || run.run_ended_at || run.run_started_at;
                   const minutes = formatMinutes(run.in_flight_minutes);
+                  const durationMinutes = calcDurationMinutes(run);
+                  const duration = durationMinutes === null ? null : formatDurationSeconds(durationMinutes * 60);
                   const runtimeBadge = minutes
                     ? `<span class="runtime-pill ${
                         Number(run.in_flight_minutes) >= 5 ? "overdue" : ""
@@ -571,6 +600,7 @@
                           ${runtimeBadge}
                         </div>
                       </td>
+                      <td>${duration || "n/a"}</td>
                       <td>${formatTime(timestamp)}</td>
                       <td>${formatTime(run.last_observed_at)}</td>
                       <td>${formatStations(run)}</td>
