@@ -2053,6 +2053,11 @@ serve(async (req) => {
           partial: timeBudgetHit,
           stopped_reason: timeBudgetHit ? "runtime_budget_exceeded" : null,
         };
+        log.info("Stations polled.", {
+          stations_selected: stationRows.length,
+          stations_processed: stationsProcessed,
+          partial: timeBudgetHit,
+        });
         log.info("Poll complete.", {
           connector_id: connectorId,
           stations: stationRows.length,

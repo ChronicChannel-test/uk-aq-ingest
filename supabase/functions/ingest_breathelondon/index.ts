@@ -2010,6 +2010,11 @@ serve(async (req) => {
                 stopped_reason: timeBudgetHit ? "runtime_budget_exceeded" : null,
                 errors,
               };
+              log.info("Stations polled.", {
+                stations_selected: stationsSelected,
+                stations_processed: stationsProcessed,
+                partial: timeBudgetHit,
+              });
               if (!dryRun) {
                 const { error: pollUpdateError } = await postgrestRequest(
                   "PATCH",

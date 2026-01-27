@@ -1785,6 +1785,11 @@ serve(async (req) => {
                 partial: timeBudgetHit,
                 stopped_reason: timeBudgetHit ? "runtime_budget_exceeded" : null,
               };
+              log.info("Stations polled.", {
+                stations_selected: stationsCount,
+                stations_processed: stationsProcessed,
+                partial: timeBudgetHit,
+              });
             }
             }
           }
