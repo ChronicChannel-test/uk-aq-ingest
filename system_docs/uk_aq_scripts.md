@@ -718,6 +718,21 @@ Environment:
 - `SUPABASE_URL` + `UK_AIR_ERROR_DROPBOX_ALLOWED_SUPABASE_URL` (must match to run)
 - Optional `UK_AIR_ERROR_DROPBOX_FOLDER` (defaults to `/error_log`)
 
+### `scripts/uk_aq_check_error_logs.py`
+Purpose:
+- Fetch recent `uk_aq_raw.error_logs` rows for debugging edge-function failures.
+
+Common commands:
+```
+python3 scripts/uk_aq_check_error_logs.py
+python3 scripts/uk_aq_check_error_logs.py --source erg_laqn --since-hours 6 --limit 100
+```
+
+Environment:
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- Optional `UK_AQ_RAW_SCHEMA` (defaults to `uk_aq_raw`)
+
 ### `scripts/gov_uk_waqn/gov_uk_waqn_ingest.py`
 Purpose:
 - Placeholder for the Wales Air Quality Network ingest pipeline.

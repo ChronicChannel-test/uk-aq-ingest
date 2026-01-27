@@ -356,15 +356,50 @@ function findRecentInFlightConnector(
           age_minutes: ageMinutes,
         };
       }
-    } else {
-      console.warn("in_flight_stale", {
-        connector_code: connector.connector_code,
-        last_run_start: startedAt.toISOString(),
-        age_minutes: Math.floor(ageMs / 60000),
-      });
     }
   }
   return candidate;
+}
+
+async function settleStaleInFlight(connectors: ConnectorRow[], now: Date): Promise<void> {
+  const timeoutMs = IN_FLIGHT_TIMEOUT_MINUTES * 60 * 1000;
+  for (const connector of connectors) {
+    if (!connector || connector.last_run_end) {
+      continue;
+    }
+    const startedAt = parseDate(connector.last_run_start ?? null);
+    if (!startedAt) {
+      continue;
+    }
+    const ageMs = now.getTime() - startedAt.getTime();
+    if (!Number.isFinite(ageMs) || ageMs <= timeoutMs) {
+      continue;
+    }
+    const ageMinutes = Math.floor(ageMs / 60000);
+    console.warn("in_flight_stale", {
+      connector_code: connector.connector_code,
+      last_run_start: startedAt.toISOString(),
+      age_minutes: ageMinutes,
+    });
+    await updateConnectorRun(connector.id ?? null, {
+      last_run_end: now.toISOString(),
+      last_run_status: "failed",
+      last_run_message: "in_flight_timeout",
+    });
+    await insertIngestRun({
+      connector_id: connector.id ?? null,
+      connector_code: connector.connector_code,
+      run_started_at: startedAt.toISOString(),
+      run_ended_at: now.toISOString(),
+      run_status: "failed",
+      run_message: "in_flight_timeout",
+      last_observed_at: null,
+      stations_updated: null,
+      observations_upserted: null,
+      timeseries_updated: null,
+      series_polled: null,
+    });
+  }
 }
 
 async function postgrestRequest<T>(
@@ -571,6 +606,8 @@ serve(async (req) => {
     });
     return jsonResponse({ error: error instanceof Error ? error.message : String(error) }, 500);
   }
+
+  await settleStaleInFlight(connectors, now);
 
   const connectorMap = new Map(connectors.map((row) => [row.connector_code, row]));
   const inFlight = findRecentInFlightConnector(connectors, now);

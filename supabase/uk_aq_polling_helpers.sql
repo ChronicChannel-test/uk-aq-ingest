@@ -98,8 +98,7 @@ begin
       and stn.service_ref = 'erg_laqn'
       and stn.station_ref is not null
       and (not active_only or stn.removed_at is null)
-    order by lo.latest_observed_at nulls first,
-      esc.last_polled_at nulls first,
+    order by esc.last_polled_at nulls first,
       stn.station_ref
     limit batch_limit
   )

@@ -98,7 +98,7 @@
 
       .meta-note {
         font-family: "IBM Plex Mono", ui-monospace, monospace;
-        font-size: 12px;
+        font-size: 13px;
         padding: 6px 10px;
         border-radius: 999px;
         background: rgba(32, 29, 29, 0.06);
@@ -493,8 +493,7 @@
 
       function setDataMeta(payload) {
         const projectRef = payload && payload.project_ref ? payload.project_ref : "n/a";
-        const dataStamp = payload && payload.generated_at ? formatTime(payload.generated_at) : "n/a";
-        dataMetaEl.textContent = `Project ${projectRef} • Data ${dataStamp}`;
+        dataMetaEl.textContent = `Project ${projectRef}`;
       }
 
       function setError(text) {
