@@ -43,6 +43,7 @@ const DEFAULT_BASE_URL = "https://uk-air.defra.gov.uk/sos-ukair/api/v1";
 const DEFAULT_SERVICE_LABEL = "UK-AIR-SOS";
 const DEFAULT_CONNECTOR_CODE = "uk_air_sos";
 const DEFAULT_WINDOW_HOURS = 6;
+const DEFAULT_MAX_RUNTIME_SECONDS = 110;
 const DEFAULT_TIMEOUT_MS = 30_000;
 const PAGE_SIZE = 1000;
 const CONCURRENCY_LIMIT = 5;
@@ -66,6 +67,9 @@ const UK_AIR_SOS_SERVICE_LABEL = Deno.env.get("UK_AIR_SOS_SERVICE_LABEL")
   ?? DEFAULT_SERVICE_LABEL;
 const UK_AIR_SOS_CONNECTOR_CODE = Deno.env.get("UK_AIR_SOS_CONNECTOR_CODE")
   ?? DEFAULT_CONNECTOR_CODE;
+const UK_AIR_SOS_MAX_RUNTIME_SECONDS = Number(
+  Deno.env.get("UK_AIR_SOS_MAX_RUNTIME_SECONDS") ?? DEFAULT_MAX_RUNTIME_SECONDS,
+);
 const DROPBOX_APP_KEY = Deno.env.get("DROPBOX_APP_KEY") ?? "";
 const DROPBOX_APP_SECRET = Deno.env.get("DROPBOX_APP_SECRET") ?? "";
 const DROPBOX_REFRESH_TOKEN = Deno.env.get("DROPBOX_REFRESH_TOKEN") ?? "";
@@ -238,6 +242,13 @@ serve(async (req) => {
   let requestedPollutants: string[] | undefined;
   let requestedLimit: number | undefined;
   let requestedSeries: string[] | undefined;
+  const runStartedAt = Date.now();
+  const maxRuntimeSeconds = Number.isFinite(UK_AIR_SOS_MAX_RUNTIME_SECONDS)
+    ? Math.max(30, UK_AIR_SOS_MAX_RUNTIME_SECONDS)
+    : DEFAULT_MAX_RUNTIME_SECONDS;
+  const runtimeDeadline = runStartedAt + maxRuntimeSeconds * 1000;
+  const shouldStop = () => Date.now() >= runtimeDeadline;
+  let timeBudgetHit = false;
 
   try {
     if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
@@ -355,7 +366,10 @@ serve(async (req) => {
             });
           }
 
-          await runPool(series, CONCURRENCY_LIMIT, async (row) => {
+          timeBudgetHit = await runPool(series, CONCURRENCY_LIMIT, async (row) => {
+            if (shouldStop()) {
+              return;
+            }
             try {
               const sourceId = row.timeseries_ref || String(row.id);
               const data = await fetchJson(
@@ -411,7 +425,13 @@ serve(async (req) => {
                 timeseries_id: row.id,
               });
             }
-          });
+          }, shouldStop);
+
+          if (timeBudgetHit) {
+            log.warn("Stopping UK-AIR SOS poll early (runtime budget exceeded).", {
+              max_runtime_seconds: maxRuntimeSeconds,
+            });
+          }
 
           if (checkpointCandidates.length) {
             await upsertUkAirSosTimeseriesCheckpoints(
@@ -452,6 +472,8 @@ serve(async (req) => {
             series_polled: polled,
             observations_upserted: observationsUpserted,
             errors,
+            partial: timeBudgetHit,
+            stopped_reason: timeBudgetHit ? "runtime_budget_exceeded" : null,
           };
         }
       }
@@ -1662,9 +1684,15 @@ async function runPool<T>(
   items: T[],
   limit: number,
   worker: (item: T) => Promise<void>,
-): Promise<void> {
+  shouldStop?: () => boolean,
+): Promise<boolean> {
   const executing = new Set<Promise<void>>();
+  let stopped = false;
   for (const item of items) {
+    if (shouldStop?.()) {
+      stopped = true;
+      break;
+    }
     const task = worker(item).finally(() => executing.delete(task));
     executing.add(task);
     if (executing.size >= limit) {
@@ -1672,4 +1700,5 @@ async function runPool<T>(
     }
   }
   await Promise.all(executing);
+  return stopped;
 }

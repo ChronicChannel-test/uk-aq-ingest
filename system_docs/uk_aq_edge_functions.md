@@ -40,6 +40,7 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
 - Notes:
   - Logs cron secret mismatch diagnostics (presence/length only) when authorization fails.
   - Skips timeseries with missing `last_value_at` or `last_value_at` older than the poll window.
+  - Enforces a runtime budget and will return partial progress with `partial=true` when exceeded.
 - Writes:
   - `observations` (upsert by timeseries_id + observed_at)
   - `timeseries.last_value` and `timeseries.last_value_at` (update by id)
@@ -60,6 +61,7 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
   - Filters to the UK bounding box by default; stations with missing coordinates are kept.
   - Sets `stations.station_exposure` to `indoor`/`outdoor` when `location.indoor` is present (0/1 or boolean).
   - Honors `connectors.overwrite_station_name` to decide when `stations.station_name` can be overwritten (false keeps existing non-null names).
+  - Enforces a runtime budget and will return partial progress with `partial=true` when exceeded.
 - Logs:
   - Writes a log file to Dropbox `/connectors/sensorcommunity/log/YYYY-MM-DD/` (prefix `uk_aq_log_edge_scomm_`).
   - Writes raw payloads to Dropbox `/connectors/sensorcommunity/raw_data/YYYY-MM-DD/` as ZIP (prefix `uk_aq_raw_edge_scomm_`).
@@ -178,6 +180,7 @@ Optional:
 - `SCOMM_ERROR_DROPBOX_FOLDER` (optional override for Sensor.Community)
 - `SCOMM_ERROR_DROPBOX_ALLOWED_SUPABASE_URL` (optional allowlist for Sensor.Community error uploads)
 - `SCOMM_INGEST_MET_FIELDS` (defaults to `false`; set `true` to ingest temperature/humidity/pressure)
+- `SCOMM_MAX_RUNTIME_SECONDS` (optional; defaults to 110)
 - `BREATHELONDON_BASE_URL` (optional override for Breathe London API base URL)
 - `BREATHELONDON_CONNECTOR_CODE` / `BREATHELONDON_SERVICE_REF` (optional override)
 - `BREATHELONDON_SERVICE_LABEL` (optional override)
@@ -195,6 +198,7 @@ Optional:
 - `LAQN_ERROR_DROPBOX_ALLOWED_SUPABASE_URL` (optional allowlist override for ERG LAQN error uploads)
 - `LAQN_ERROR_DROPBOX_FOLDER` (optional override for ERG LAQN error folder)
 - `LAQN_MAX_RUNTIME_SECONDS` (optional; defaults to 110)
+- `UK_AIR_SOS_MAX_RUNTIME_SECONDS` (optional; defaults to 110)
 - `SB_UK_AQ_CRON_SECRET` (when set, ingest functions require `X-Cron-Secret`)
 
 ## Notes

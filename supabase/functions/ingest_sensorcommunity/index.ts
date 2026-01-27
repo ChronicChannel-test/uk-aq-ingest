@@ -43,6 +43,7 @@ const DEFAULT_SERVICE_LABEL = "Sensor.Community";
 const DEFAULT_COUNTRY = "GB";
 const DEFAULT_USER_AGENT = "uk-air-quality-networks";
 const DEFAULT_TIMEOUT_MS = 30_000;
+const DEFAULT_MAX_RUNTIME_SECONDS = 110;
 const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
 
 const UK_BBOX = {
@@ -95,6 +96,9 @@ const SCOMM_SERVICE_LABEL = Deno.env.get("SCOMM_SERVICE_LABEL")
 const SCOMM_COUNTRY = Deno.env.get("SCOMM_COUNTRY") ?? DEFAULT_COUNTRY;
 const SCOMM_USER_AGENT = Deno.env.get("SCOMM_USER_AGENT") ?? DEFAULT_USER_AGENT;
 const SCOMM_INGEST_MET_FIELDS = parseBool(Deno.env.get("SCOMM_INGEST_MET_FIELDS"), false);
+const SCOMM_MAX_RUNTIME_SECONDS = Number(
+  Deno.env.get("SCOMM_MAX_RUNTIME_SECONDS") ?? DEFAULT_MAX_RUNTIME_SECONDS,
+);
 const SB_UK_AQ_CRON_SECRET = Deno.env.get("SB_UK_AQ_CRON_SECRET") ?? "";
 
 const VALUE_TYPE_MAP: Record<string, { pollutant: string; label: string; uom: string }> = {
@@ -1503,6 +1507,14 @@ serve(async (req) => {
   let stationsCount = 0;
   let timeseriesCount = 0;
   let observationsUpserted = 0;
+  let stationsProcessed = 0;
+  const runStartedAt = Date.now();
+  const maxRuntimeSeconds = Number.isFinite(SCOMM_MAX_RUNTIME_SECONDS)
+    ? Math.max(30, SCOMM_MAX_RUNTIME_SECONDS)
+    : DEFAULT_MAX_RUNTIME_SECONDS;
+  const runtimeDeadline = runStartedAt + maxRuntimeSeconds * 1000;
+  const shouldStop = () => Date.now() >= runtimeDeadline;
+  let timeBudgetHit = false;
 
   try {
     if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
@@ -1617,14 +1629,7 @@ serve(async (req) => {
               : records.filter((record) => stationInBboxOrMissingCoords(stationStub(record), UK_BBOX));
             filteredCount = filtered.length;
 
-            const phenomenonIds = await upsertPhenomena(connector.id);
-            await upsertStations(
-              filtered,
-              connector.id,
-              requestedServiceRef,
-              connector.overwrite_station_name ?? true,
-            );
-
+            const processedRecords: Array<Record<string, unknown>> = [];
             const stationRefSet = new Set<string>();
             const timeseriesRefSet = new Set<string>();
             const observationsByTimeseries: Map<
@@ -1633,10 +1638,15 @@ serve(async (req) => {
             > = new Map();
 
             for (const record of filtered) {
+              if (shouldStop()) {
+                timeBudgetHit = true;
+                break;
+              }
               const normalized = normalizeStationPayload(record);
               if (!normalized.station_ref) {
                 continue;
               }
+              processedRecords.push(record);
               const stationRef = normalized.station_ref;
               stationRefSet.add(stationRef);
               const observedAt = parseTimestamp(record.timestamp) ?? new Date().toISOString();
@@ -1671,84 +1681,112 @@ serve(async (req) => {
               }
             }
 
-            const stationRefs = Array.from(stationRefSet);
-            stationsCount = stationRefs.length;
-            const stationIdMap = await fetchStationIds(connector.id, requestedServiceRef, stationRefs);
-
-            const timeseriesPayload: Array<Record<string, unknown>> = [];
-            for (const entry of observationsByTimeseries.values()) {
-              const stationId = stationIdMap[entry.station_ref];
-              if (!stationId) {
-                continue;
-              }
-              const meta = Object.values(VALUE_TYPE_MAP).find((item) => item.pollutant === entry.pollutant);
-              const label = meta ? `${entry.station_ref} ${meta.label}` : entry.pollutant;
-              timeseriesPayload.push({
-                timeseries_ref: `${entry.station_ref}:${entry.pollutant}`,
-                label,
-                uom: meta ? meta.uom : null,
-                station_id: stationId,
-                connector_id: connector.id,
-                service_ref: String(requestedServiceRef),
-                phenomenon_id: phenomenonIds[entry.pollutant],
-                last_value_at: entry.observed_at,
-                last_value: entry.value,
-              });
-            }
-            timeseriesCount = timeseriesPayload.length;
-            await upsertTimeseries(timeseriesPayload);
-            await backfillTimeseriesPhenomena(connector.id, requestedServiceRef, phenomenonIds);
-
-            const timeseriesRefs = Array.from(timeseriesRefSet);
-            const timeseriesIdMap = await fetchTimeseriesIds(connector.id, requestedServiceRef, timeseriesRefs);
-
-            const observationRows: Array<Record<string, unknown>> = [];
-            for (const entry of observationsByTimeseries.values()) {
-              const timeseriesRef = `${entry.station_ref}:${entry.pollutant}`;
-              const timeseriesId = timeseriesIdMap[timeseriesRef];
-              if (!timeseriesId) {
-                continue;
-              }
-              observationRows.push({
-                timeseries_id: timeseriesId,
-                observed_at: entry.observed_at,
-                value: entry.value,
-                status: null,
+            if (timeBudgetHit) {
+              log.warn("Stopping Sensor.Community poll early (runtime budget exceeded).", {
+                max_runtime_seconds: maxRuntimeSeconds,
               });
             }
 
-            observationsUpserted = await upsertObservations(observationRows);
+            if (!processedRecords.length) {
+              responsePayload = {
+                ok: true,
+                count: 0,
+                message: "No records processed.",
+                partial: timeBudgetHit,
+                stopped_reason: timeBudgetHit ? "runtime_budget_exceeded" : null,
+              };
+            } else {
+              const phenomenonIds = await upsertPhenomena(connector.id);
+              await upsertStations(
+                processedRecords,
+                connector.id,
+                requestedServiceRef,
+                connector.overwrite_station_name ?? true,
+              );
+              const stationRefs = Array.from(stationRefSet);
+              stationsCount = stationRefs.length;
+              stationsProcessed = stationsCount;
+              const stationIdMap = await fetchStationIds(connector.id, requestedServiceRef, stationRefs);
 
-            const { error: pollUpdateError } = await postgrestRequest(
-              "PATCH",
-              "connectors",
-              { id: `eq.${connector.id}` },
-              { last_polled_at: new Date().toISOString() },
-              "return=minimal",
-            );
-            if (pollUpdateError) {
-              log.warn("Failed to update connectors.last_polled_at.", { error: pollUpdateError.message });
-              await errorLogger.logError({
-                source: "edge",
-                severity: "error",
-                message: "Failed to update connectors.last_polled_at.",
-                context: {
+              const timeseriesPayload: Array<Record<string, unknown>> = [];
+              for (const entry of observationsByTimeseries.values()) {
+                const stationId = stationIdMap[entry.station_ref];
+                if (!stationId) {
+                  continue;
+                }
+                const meta = Object.values(VALUE_TYPE_MAP).find((item) => item.pollutant === entry.pollutant);
+                const label = meta ? `${entry.station_ref} ${meta.label}` : entry.pollutant;
+                timeseriesPayload.push({
+                  timeseries_ref: `${entry.station_ref}:${entry.pollutant}`,
+                  label,
+                  uom: meta ? meta.uom : null,
+                  station_id: stationId,
                   connector_id: connector.id,
-                  error: pollUpdateError.message,
-                },
-                connector_code: connector.connector_code ?? requestedConnectorCode,
-                connector_id: connector.id,
-              });
-            }
+                  service_ref: String(requestedServiceRef),
+                  phenomenon_id: phenomenonIds[entry.pollutant],
+                  last_value_at: entry.observed_at,
+                  last_value: entry.value,
+                });
+              }
+              timeseriesCount = timeseriesPayload.length;
+              await upsertTimeseries(timeseriesPayload);
+              await backfillTimeseriesPhenomena(connector.id, requestedServiceRef, phenomenonIds);
 
-            responsePayload = {
-              ok: true,
-              fetched: records.length,
-              filtered: filtered.length,
-              stations: stationsCount,
-              timeseries: timeseriesCount,
-              observations: observationsUpserted,
-            };
+              const timeseriesRefs = Array.from(timeseriesRefSet);
+              const timeseriesIdMap = await fetchTimeseriesIds(connector.id, requestedServiceRef, timeseriesRefs);
+
+              const observationRows: Array<Record<string, unknown>> = [];
+              for (const entry of observationsByTimeseries.values()) {
+                const timeseriesRef = `${entry.station_ref}:${entry.pollutant}`;
+                const timeseriesId = timeseriesIdMap[timeseriesRef];
+                if (!timeseriesId) {
+                  continue;
+                }
+                observationRows.push({
+                  timeseries_id: timeseriesId,
+                  observed_at: entry.observed_at,
+                  value: entry.value,
+                  status: null,
+                });
+              }
+
+              observationsUpserted = await upsertObservations(observationRows);
+
+              const { error: pollUpdateError } = await postgrestRequest(
+                "PATCH",
+                "connectors",
+                { id: `eq.${connector.id}` },
+                { last_polled_at: new Date().toISOString() },
+                "return=minimal",
+              );
+              if (pollUpdateError) {
+                log.warn("Failed to update connectors.last_polled_at.", { error: pollUpdateError.message });
+                await errorLogger.logError({
+                  source: "edge",
+                  severity: "error",
+                  message: "Failed to update connectors.last_polled_at.",
+                  context: {
+                    connector_id: connector.id,
+                    error: pollUpdateError.message,
+                  },
+                  connector_code: connector.connector_code ?? requestedConnectorCode,
+                  connector_id: connector.id,
+                });
+              }
+
+              responsePayload = {
+                ok: true,
+                fetched: records.length,
+                filtered: filtered.length,
+                stations: stationsCount,
+                stations_processed: stationsProcessed,
+                timeseries: timeseriesCount,
+                observations: observationsUpserted,
+                partial: timeBudgetHit,
+                stopped_reason: timeBudgetHit ? "runtime_budget_exceeded" : null,
+              };
+            }
+            }
           }
         }
       }
