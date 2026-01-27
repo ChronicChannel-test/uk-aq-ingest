@@ -64,6 +64,7 @@ const DEFAULT_SPECIES = ["NO2", "PM10", "PM25", "O3"];
 const DEFAULT_DAYS = 1;
 const DEFAULT_BATCH_SIZE = 500;
 const DEFAULT_SLEEP_SECONDS = 0.2;
+const DEFAULT_MAX_RUNTIME_SECONDS = 110;
 const DEFAULT_TIMEOUT_MS = 30_000;
 const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
 const UPSERT_PREFER = "resolution=merge-duplicates,return=minimal";
@@ -109,6 +110,9 @@ const LAQN_DEFAULT_GROUP = Deno.env.get("LAQN_DEFAULT_GROUP") ?? DEFAULT_GROUP;
 const LAQN_CSV_STATION_ID = Deno.env.get("LAQN_CSV_STATION_ID") ?? "";
 const LAQN_CSV_STATION_REF = Deno.env.get("LAQN_CSV_STATION_REF") ?? "";
 const LAQN_ZERO_CUTOFF_HOURS = Number(Deno.env.get("LAQN_ZERO_CUTOFF_HOURS") ?? "1");
+const LAQN_MAX_RUNTIME_SECONDS = Number(
+  Deno.env.get("LAQN_MAX_RUNTIME_SECONDS") ?? DEFAULT_MAX_RUNTIME_SECONDS,
+);
 const UK_AQ_DROPBOX_ROOT = (() => {
   const raw = Deno.env.get("UK_AQ_DROPBOX_ROOT") ?? "";
   return normalizeDropboxPath(raw);
@@ -1680,6 +1684,12 @@ serve(async (req) => {
   let connectorId: string | null = null;
   let connectorCodeForLog = LAQN_CONNECTOR_CODE;
   let skippedHttp400 = 0;
+  const runStartedAt = Date.now();
+  const maxRuntimeSeconds = Number.isFinite(LAQN_MAX_RUNTIME_SECONDS)
+    ? Math.max(30, LAQN_MAX_RUNTIME_SECONDS)
+    : DEFAULT_MAX_RUNTIME_SECONDS;
+  const runtimeDeadline = runStartedAt + maxRuntimeSeconds * 1000;
+  const shouldStop = () => Date.now() >= runtimeDeadline;
 
   let payload: PollRequest = {};
   try {
@@ -1854,14 +1864,23 @@ serve(async (req) => {
         const checkpointRows: Array<{ station_id: number; last_polled_at: string; updated_at: string }> = [];
         let backfillSeries = 0;
         let backfillEarliest: Date | null = null;
+        let timeBudgetHit = false;
 
         for (const row of stationRows) {
+          if (shouldStop()) {
+            timeBudgetHit = true;
+            break;
+          }
           const stationRef = String(row.station_ref);
           const stationId = stationIdMap[stationRef];
           if (!stationId) {
             continue;
           }
           for (const species of speciesList) {
+            if (shouldStop()) {
+              timeBudgetHit = true;
+              break;
+            }
             const timeseriesRef = `${stationRef}:${species}`;
             const timeseriesMeta = timeseriesMetaMap[timeseriesRef];
             const timeseriesId = timeseriesMeta?.id;
@@ -1983,10 +2002,19 @@ serve(async (req) => {
               await sleep(sleepSeconds);
             }
           }
+          if (timeBudgetHit) {
+            break;
+          }
           checkpointRows.push({
             station_id: stationId,
             last_polled_at: pollTimestamp,
             updated_at: pollTimestamp,
+          });
+        }
+
+        if (timeBudgetHit) {
+          log.warn("Stopping ERG LAQN poll early (runtime budget exceeded).", {
+            max_runtime_seconds: maxRuntimeSeconds,
           });
         }
 
@@ -2019,6 +2047,8 @@ serve(async (req) => {
             : null,
           latest_observed_by_station_species: latestObservedSummary,
           dry_run: dryRun,
+          partial: timeBudgetHit,
+          stopped_reason: timeBudgetHit ? "runtime_budget_exceeded" : null,
         };
         log.info("Poll complete.", {
           connector_id: connectorId,
@@ -2032,6 +2062,8 @@ serve(async (req) => {
             ? backfillEarliest.toISOString()
             : null,
           dry_run: dryRun,
+          partial: timeBudgetHit,
+          stopped_reason: timeBudgetHit ? "runtime_budget_exceeded" : null,
         });
       }
     }

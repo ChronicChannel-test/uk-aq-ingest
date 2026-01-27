@@ -421,6 +421,10 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.wfile.write(payload.encode("utf-8"))
             return
 
+        with CACHE_LOCK:
+            CACHE_STATE["data"] = None
+            CACHE_STATE["generated_at"] = None
+
         payload = json.dumps(data, indent=2)
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", "application/json")

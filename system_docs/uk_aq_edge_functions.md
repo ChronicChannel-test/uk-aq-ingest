@@ -106,6 +106,7 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
   - When `start_from_latest=true`, uses `timeseries.last_value_at` to extend the per-series start date if the latest value is older than the requested start date.
   - Logs a warning when a site/species fetch returns data older than UTC midnight for the current day.
   - When CSV settings are configured, uploads a daily CSV per pollutant to Dropbox using a fixed station (see env vars).
+  - Enforces a runtime budget and will return partial progress with `partial=true` when exceeded.
 - Logs:
   - Writes a log file to Dropbox `/connectors/erg_laqn/log/YYYY-MM-DD/` (prefix `uk_aq_log_edge_erg_laqn_`).
   - Writes raw payloads to Dropbox `/connectors/erg_laqn/raw_data/YYYY-MM-DD/` as ZIP (prefix `uk_aq_raw_edge_erg_laqn_`).
@@ -193,6 +194,7 @@ Optional:
 - `LAQN_RAW_DROPBOX_ALLOWED_SUPABASE_URL` (optional allowlist override for ERG LAQN raw uploads)
 - `LAQN_ERROR_DROPBOX_ALLOWED_SUPABASE_URL` (optional allowlist override for ERG LAQN error uploads)
 - `LAQN_ERROR_DROPBOX_FOLDER` (optional override for ERG LAQN error folder)
+- `LAQN_MAX_RUNTIME_SECONDS` (optional; defaults to 110)
 - `SB_UK_AQ_CRON_SECRET` (when set, ingest functions require `X-Cron-Secret`)
 
 ## Notes
