@@ -108,6 +108,9 @@ const LAQN_USER_AGENT = Deno.env.get("LAQN_USER_AGENT")
 const LAQN_DEFAULT_GROUP = Deno.env.get("LAQN_DEFAULT_GROUP") ?? DEFAULT_GROUP;
 const LAQN_CSV_STATION_ID = Deno.env.get("LAQN_CSV_STATION_ID") ?? "";
 const LAQN_CSV_STATION_REF = Deno.env.get("LAQN_CSV_STATION_REF") ?? "";
+const LAQN_PM25_SKIP_ZERO_RECENT_HOURS = Number(
+  Deno.env.get("LAQN_PM25_SKIP_ZERO_RECENT_HOURS") ?? "1",
+);
 const UK_AQ_DROPBOX_ROOT = (() => {
   const raw = Deno.env.get("UK_AQ_DROPBOX_ROOT") ?? "";
   return normalizeDropboxPath(raw);
@@ -1849,6 +1852,11 @@ serve(async (req) => {
         const checkpointRows: Array<{ station_id: number; last_polled_at: string; updated_at: string }> = [];
         let backfillSeries = 0;
         let backfillEarliest: Date | null = null;
+        let skippedRecentZero = 0;
+        const recentZeroCutoffMs = Number.isFinite(LAQN_PM25_SKIP_ZERO_RECENT_HOURS) &&
+            LAQN_PM25_SKIP_ZERO_RECENT_HOURS > 0
+          ? now.getTime() - LAQN_PM25_SKIP_ZERO_RECENT_HOURS * 60 * 60 * 1000
+          : null;
 
         for (const row of stationRows) {
           const stationRef = String(row.station_ref);
@@ -1931,6 +1939,15 @@ serve(async (req) => {
               if (!observedAt || Number.isNaN(value)) {
                 continue;
               }
+              if (
+                species === "PM25" &&
+                value === 0 &&
+                recentZeroCutoffMs !== null &&
+                observedAt.getTime() >= recentZeroCutoffMs
+              ) {
+                skippedRecentZero += 1;
+                continue;
+              }
               observations.push({
                 timeseries_id: timeseriesId,
                 observed_at: observedAt.toISOString(),
@@ -2004,6 +2021,7 @@ serve(async (req) => {
           timeseries_updated: timeseriesUpdated,
           checkpoints_upserted: checkpointsUpserted,
           skipped_http_400: skippedHttp400,
+          skipped_recent_zero_pm25: skippedRecentZero,
           start_from_latest: startFromLatest,
           backfill_series: startFromLatest ? backfillSeries : null,
           backfill_earliest: startFromLatest && backfillEarliest
@@ -2018,6 +2036,7 @@ serve(async (req) => {
           observations_upserted: observationsUpserted,
           timeseries_updated: timeseriesUpdated,
           skipped_http_400: skippedHttp400,
+          skipped_recent_zero_pm25: skippedRecentZero,
           start_from_latest: startFromLatest,
           backfill_series: startFromLatest ? backfillSeries : null,
           backfill_earliest: startFromLatest && backfillEarliest

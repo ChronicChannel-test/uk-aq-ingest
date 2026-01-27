@@ -99,6 +99,7 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
   - Uses `/Data/SiteSpecies/SiteCode={code}/SpeciesCode={species}/StartDate={YYYY-MM-DD}/EndDate={YYYY-MM-DD}/Json` for raw data.
   - Dates are treated as UTC/GMT; when `end_date` is omitted, the edge function sets `EndDate` to tomorrow's UTC date so "today" is included.
   - Skips per-site/species ERG responses that return HTTP 400 (logs a warning; continues).
+  - Skips PM2.5 observations with value 0 when they fall within the last hour (configurable via `LAQN_PM25_SKIP_ZERO_RECENT_HOURS`).
   - When `start_from_latest=true`, uses `timeseries.last_value_at` to extend the per-series start date if the latest value is older than the requested start date.
   - Logs a warning when a site/species fetch returns data older than UTC midnight for the current day.
   - When CSV settings are configured, uploads a daily CSV per pollutant to Dropbox using a fixed station (see env vars).
