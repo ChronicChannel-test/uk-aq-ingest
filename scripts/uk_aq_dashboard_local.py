@@ -125,9 +125,26 @@ def _parse_timestamp(value: Optional[str]) -> Optional[datetime]:
         return None
     if text.endswith("Z"):
         text = text[:-1] + "+00:00"
+    if re.search(r"[+-]\d{2}$", text):
+        text = text + ":00"
+    if re.search(r"[+-]\d{4}$", text):
+        text = text[:-2] + ":" + text[-2:]
+    fraction = re.search(r"\.(\d+)", text)
+    if fraction:
+        digits = fraction.group(1)
+        if len(digits) > 6:
+            digits = digits[:6]
+        else:
+            digits = digits.ljust(6, "0")
+        text = text[: fraction.start(1)] + digits + text[fraction.end(1) :]
     try:
         return datetime.fromisoformat(text)
     except ValueError:
+        if " " in text:
+            try:
+                return datetime.fromisoformat(text.replace(" ", "T", 1))
+            except ValueError:
+                return None
         return None
 
 
@@ -189,6 +206,7 @@ def _build_dashboard(base_url: str, service_role_key: str) -> Dict[str, Any]:
     }
 
     now = datetime.now(timezone.utc)
+    ingest_runs = _fetch_ingest_runs(base_url, headers)
     in_flight_rows: List[Dict[str, Any]] = []
     for row in connectors:
         last_run_start = _parse_timestamp(row.get("last_run_start"))
@@ -216,8 +234,6 @@ def _build_dashboard(base_url: str, service_role_key: str) -> Dict[str, Any]:
                     "in_flight_over_threshold": minutes >= IN_FLIGHT_WARN_MINUTES,
                 }
             )
-
-    ingest_runs = _fetch_ingest_runs(base_url, headers)
     for row in ingest_runs:
         connector_id = row.get("connector_id")
         meta = connector_map.get(connector_id, {})

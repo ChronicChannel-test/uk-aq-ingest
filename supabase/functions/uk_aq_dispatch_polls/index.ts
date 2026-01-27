@@ -402,6 +402,39 @@ async function settleStaleInFlight(connectors: ConnectorRow[], now: Date): Promi
   }
 }
 
+async function reconcileInFlightByLastPolled(
+  connectors: ConnectorRow[],
+): Promise<void> {
+  for (const connector of connectors) {
+    if (!connector || connector.last_run_end) {
+      continue;
+    }
+    const startedAt = parseDate(connector.last_run_start ?? null);
+    const lastPolled = parseDate(connector.last_polled_at ?? null);
+    if (!startedAt || !lastPolled || lastPolled < startedAt) {
+      continue;
+    }
+    await updateConnectorRun(connector.id ?? null, {
+      last_run_end: lastPolled.toISOString(),
+      last_run_status: "succeeded",
+      last_run_message: "polled_reconciled",
+    });
+    await insertIngestRun({
+      connector_id: connector.id ?? null,
+      connector_code: connector.connector_code,
+      run_started_at: startedAt.toISOString(),
+      run_ended_at: lastPolled.toISOString(),
+      run_status: "succeeded",
+      run_message: "polled_reconciled",
+      last_observed_at: null,
+      stations_updated: null,
+      observations_upserted: null,
+      timeseries_updated: null,
+      series_polled: null,
+    });
+  }
+}
+
 async function postgrestRequest<T>(
   method: string,
   table: string,
@@ -607,6 +640,7 @@ serve(async (req) => {
     return jsonResponse({ error: error instanceof Error ? error.message : String(error) }, 500);
   }
 
+  await reconcileInFlightByLastPolled(connectors);
   await settleStaleInFlight(connectors, now);
 
   const connectorMap = new Map(connectors.map((row) => [row.connector_code, row]));
