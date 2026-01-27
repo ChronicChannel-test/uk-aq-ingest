@@ -182,6 +182,9 @@ Key flags:
 - `--dry-run` to skip Supabase writes while still fetching observations (outputs use a `timeseries_id` of `0`).
 - `--output-raw-responses` to write raw API responses per station/species.
 
+Notes:
+- Skips zero-valued observations from the most recent hour so placeholder zeros are not written to the DB.
+
 Environment:
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`

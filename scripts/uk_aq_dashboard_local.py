@@ -61,6 +61,17 @@ def _postgrest_headers(service_role_key: str) -> Dict[str, str]:
     }
 
 
+def _project_ref_from_base_url(base_url: str) -> Optional[str]:
+    parsed = urlparse(base_url)
+    host = parsed.netloc or parsed.path
+    host = host.split("/")[0]
+    if not host:
+        return None
+    if host.endswith(".supabase.co"):
+        return host.split(".")[0]
+    return host
+
+
 def _fetch_json(url: str, headers: Dict[str, str], params: Dict[str, str]) -> List[Dict[str, Any]]:
     resp = requests.get(url, headers=headers, params=params, timeout=60)
     if not resp.ok:
@@ -157,6 +168,7 @@ def _bucket_for(latest_at: datetime, now: datetime) -> str:
 
 def _build_dashboard(base_url: str, service_role_key: str) -> Dict[str, Any]:
     headers = _postgrest_headers(service_role_key)
+    project_ref = _project_ref_from_base_url(base_url)
 
     connectors = _fetch_all(
         base_url,
@@ -299,6 +311,7 @@ def _build_dashboard(base_url: str, service_role_key: str) -> Dict[str, Any]:
         )
 
     return {
+        "project_ref": project_ref,
         "generated_at": now.isoformat().replace("+00:00", "Z"),
         "buckets": list(BUCKETS),
         "pollutants": pollutants_payload,

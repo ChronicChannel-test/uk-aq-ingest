@@ -53,6 +53,7 @@ logging.getLogger("postgrest").setLevel(getattr(logging, DEFAULT_LOG_LEVEL, logg
 DEFAULT_DAYS = 7
 DEFAULT_SLEEP_SECONDS = 0.2
 DEFAULT_BATCH_SIZE = 500
+DEFAULT_SKIP_ZERO_RECENT_HOURS = 1.0
 
 LAQN_RAW_DATA_URL_TEMPLATE = os.getenv("LAQN_RAW_DATA_URL_TEMPLATE")
 
@@ -182,7 +183,9 @@ def _extract_observations(payload: Any) -> List[Dict[str, Any]]:
 
 
 def _parse_observations(
-    payload: Any, timeseries_id: int
+    payload: Any,
+    timeseries_id: int,
+    recent_zero_cutoff: Optional[datetime],
 ) -> Tuple[List[Dict[str, Any]], Optional[datetime], Optional[float]]:
     rows: List[Dict[str, Any]] = []
     last_observed: Optional[datetime] = None
@@ -205,6 +208,8 @@ def _parse_observations(
             or entry.get("@Value")
         )
         if observed_at is None or value is None:
+            continue
+        if recent_zero_cutoff and value == 0 and observed_at >= recent_zero_cutoff:
             continue
         rows.append(
             {
@@ -605,6 +610,7 @@ def main() -> int:
     start_date = _parse_date_arg(args.start_date)
     start_date, end_date = _build_erg_date_range(now, start_date, end_date, args.days)
     utc_today_start = _utc_day_start(now)
+    recent_zero_cutoff = now - timedelta(hours=DEFAULT_SKIP_ZERO_RECENT_HOURS)
 
     if args.stations_json:
         stations = _load_stations_snapshot(args.stations_json)
@@ -658,7 +664,9 @@ def main() -> int:
                     raw_output.append(
                         {"station_ref": station_ref, "species": species, "payload": payload}
                     )
-                rows, last_observed, _ = _parse_observations(payload, 0)
+                rows, last_observed, _ = _parse_observations(
+                    payload, 0, recent_zero_cutoff
+                )
                 if last_observed and last_observed < utc_today_start:
                     LOG.warning(
                         "ERG LAQN observations missing today. station_ref=%s species=%s start_date=%s end_date=%s last_observed_at=%s",
@@ -779,7 +787,9 @@ def main() -> int:
                 raw_output.append(
                     {"station_ref": station_ref, "species": species, "payload": payload}
                 )
-            rows, last_observed, last_value = _parse_observations(payload, timeseries_id)
+            rows, last_observed, last_value = _parse_observations(
+                payload, timeseries_id, recent_zero_cutoff
+            )
             if last_observed and last_observed < utc_today_start:
                 LOG.warning(
                     "ERG LAQN observations missing today. station_ref=%s species=%s start_date=%s end_date=%s last_observed_at=%s",
