@@ -1532,6 +1532,22 @@ function chunk<T>(values: T[], size: number): T[][] {
   return chunks;
 }
 
+const MAX_LOG_STATION_REFS = 50;
+
+function summarizeStationRefs(refs: string[]): { count: number; refs: string[]; truncated: boolean } {
+  if (!refs.length) {
+    return { count: 0, refs: [], truncated: false };
+  }
+  if (refs.length <= MAX_LOG_STATION_REFS) {
+    return { count: refs.length, refs, truncated: false };
+  }
+  return {
+    count: refs.length,
+    refs: refs.slice(0, MAX_LOG_STATION_REFS),
+    truncated: true,
+  };
+}
+
 serve(async (req) => {
   const cronHeader = req.headers.get("x-cron-secret");
   console.log("ingest_breathelondon request", {
@@ -1612,6 +1628,7 @@ serve(async (req) => {
         skip_stations: skipStations,
         active_only: activeOnly,
         station_refs: stationRefs.length || null,
+        station_refs_preview: stationRefs.length ? summarizeStationRefs(stationRefs) : null,
         species: speciesList,
         window_hours: windowHours,
         initial_days: initialDays,
@@ -1754,6 +1771,15 @@ serve(async (req) => {
           }
 
           stationsSelected = stationRows.length;
+          if (stationRows.length) {
+            const selectedRefs = stationRows
+              .map((row) => asString(row.station_ref))
+              .filter((value): value is string => Boolean(value));
+            log.info("Stations selected", {
+              stations_selected: stationsSelected,
+              station_refs: summarizeStationRefs(selectedRefs),
+            });
+          }
           if (!stationRows.length) {
             responsePayload = {
               warning: skipStations
