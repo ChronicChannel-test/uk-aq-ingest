@@ -506,6 +506,26 @@ class SupabaseWriter:
             rows.extend(data or [])
         return rows
 
+    def fetch_timeseries_rows_by_station_ids(
+        self,
+        connector_id: int,
+        station_ids: Sequence[int],
+    ) -> List[Dict[str, Any]]:
+        rows: List[Dict[str, Any]] = []
+        if not station_ids:
+            return rows
+        for chunk in _chunked(list(station_ids), 200):
+            resp = (
+                self.core.table("timeseries")
+                .select("id,station_id,last_value,last_value_at")
+                .eq("connector_id", connector_id)
+                .in_("station_id", list(chunk))
+                .execute()
+            )
+            data = resp.data if hasattr(resp, "data") else resp.get("data")
+            rows.extend(data or [])
+        return rows
+
     def fetch_latest_site_register_snapshot(self) -> Optional[str]:
         resp = (
             self.raw.table("uk_air_sos_site_register")
@@ -935,6 +955,7 @@ def _normalize_station(
     station: Dict[str, Any],
     service_ref_map: Optional[Dict[str, str]] = None,
     default_service_ref: Optional[str] = None,
+    timeseries_summary: Optional[Dict[str, Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     props = station.get("properties", {}) if isinstance(station.get("properties"), dict) else {}
     lon, lat = station_coords(station, bbox=UK_BBOX)
@@ -951,7 +972,7 @@ def _normalize_station(
     service_ref = _resolve_service_ref(station, station_ref, service_ref_map, default_service_ref)
     label = station.get("label") or props.get("label") or station.get("name")
     station_name = _derive_station_name(label)
-    return {
+    payload = {
         "station_ref": station_ref,
         "label": label,
         "station_name": station_name,
@@ -962,6 +983,76 @@ def _normalize_station(
         "service_ref": service_ref,
         "timeseries_refs": timeseries_ids or None,
     }
+    if timeseries_summary and station_ref:
+        summary = timeseries_summary.get(str(station_ref))
+        if summary:
+            payload.update(summary)
+    return payload
+
+
+def _parse_iso_datetime(value: Optional[str]) -> Optional[datetime]:
+    if not value:
+        return None
+    try:
+        cleaned = value.replace("Z", "+00:00")
+        return datetime.fromisoformat(cleaned)
+    except (TypeError, ValueError):
+        return None
+
+
+def build_timeseries_summary(
+    writer: "SupabaseWriter",
+    connector_id: int,
+    station_refs: Sequence[str],
+) -> Dict[str, Dict[str, Any]]:
+    summary: Dict[str, Dict[str, Any]] = {}
+    if not station_refs:
+        return summary
+    station_rows = writer.fetch_station_rows(connector_id, station_refs)
+    station_id_to_ref: Dict[int, str] = {}
+    for row in station_rows:
+        try:
+            station_id = int(row.get("id"))
+        except (TypeError, ValueError):
+            continue
+        station_ref = row.get("station_ref")
+        if station_ref is None:
+            continue
+        station_id_to_ref[station_id] = str(station_ref)
+        summary.setdefault(
+            str(station_ref),
+            {"timeseries_count": 0, "last_value": None, "last_value_at": None},
+        )
+    if not station_id_to_ref:
+        return summary
+    timeseries_rows = writer.fetch_timeseries_rows_by_station_ids(
+        connector_id,
+        list(station_id_to_ref.keys()),
+    )
+    for row in timeseries_rows:
+        try:
+            station_id = int(row.get("station_id"))
+        except (TypeError, ValueError):
+            continue
+        station_ref = station_id_to_ref.get(station_id)
+        if not station_ref:
+            continue
+        entry = summary.setdefault(
+            station_ref,
+            {"timeseries_count": 0, "last_value": None, "last_value_at": None},
+        )
+        entry["timeseries_count"] += 1
+        last_value_at = row.get("last_value_at")
+        if last_value_at is None:
+            continue
+        candidate_dt = _parse_iso_datetime(str(last_value_at))
+        current_dt = _parse_iso_datetime(
+            str(entry["last_value_at"]) if entry.get("last_value_at") else None
+        )
+        if current_dt is None or (candidate_dt and candidate_dt > current_dt):
+            entry["last_value_at"] = str(last_value_at)
+            entry["last_value"] = row.get("last_value")
+    return summary
 
 
 def _extract_timeseries_refs(station: Dict[str, Any]) -> List[str]:
@@ -1541,6 +1632,23 @@ def main() -> None:
             args.check_output,
         )
 
+    timeseries_summary: Dict[str, Dict[str, Any]] = {}
+    if writer is not None:
+        connector_id = writer.get_connector_id()
+        if connector_id is not None:
+            station_refs = sorted(
+                {
+                    ref
+                    for ref in (_resolve_station_ref(station) for station in filtered)
+                    if ref
+                }
+            )
+            timeseries_summary = build_timeseries_summary(
+                writer,
+                connector_id,
+                station_refs,
+            )
+
     if args.format == "csv":
         _write_csv(
             args.output,
@@ -1570,6 +1678,7 @@ def main() -> None:
                     station,
                     service_ref_map=station_service_ref_map,
                     default_service_ref=default_service_ref,
+                    timeseries_summary=timeseries_summary,
                 )
                 for station in filtered
             ],

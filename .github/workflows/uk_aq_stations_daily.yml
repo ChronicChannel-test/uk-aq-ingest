@@ -38,6 +38,14 @@ jobs:
         run: |
           python3 scripts/uk_air_sos/uk_air_sos_list_stations.py --to-supabase
 
+      - name: Discover UK-AIR SOS timeseries
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          UK_AIR_SOS_BASE_URL: ${{ secrets.UK_AIR_SOS_BASE_URL }}
+        run: |
+          python3 scripts/uk_air_sos/uk_air_sos_ingest.py --discover
+
       - name: Sync Breathe London stations
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
