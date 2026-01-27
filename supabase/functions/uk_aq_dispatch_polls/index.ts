@@ -137,7 +137,12 @@ function getPayloadNumber(
 function extractRunMetrics(connectorCode: string, payload: unknown): RunMetrics {
   const data = asPayloadObject(payload);
   const observations = getPayloadNumber(data, ["observations_upserted", "observations"]);
-  const stations = getPayloadNumber(data, ["stations_selected", "stations"]);
+  const stations = getPayloadNumber(data, [
+    "stations_processed",
+    "stations_polled",
+    "stations_selected",
+    "stations",
+  ]);
   const timeseries = getPayloadNumber(data, ["timeseries_updated", "timeseries"]);
   const seriesPolled = getPayloadNumber(data, ["series_polled"]);
   if (connectorCode === "uk_air_sos") {

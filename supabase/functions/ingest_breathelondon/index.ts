@@ -1870,6 +1870,7 @@ serve(async (req) => {
               const checkpointRows: Record<string, unknown>[] = [];
               observationsUpserted = 0;
               let timeBudgetHit = false;
+              let stationsProcessed = 0;
 
               const flushUpdates = async () => {
                 if (dryRun) {
@@ -1983,6 +1984,8 @@ serve(async (req) => {
                   break;
                 }
 
+                stationsProcessed += 1;
+
                 if (shouldStop()) {
                   timeBudgetHit = true;
                   await flushUpdates();
@@ -1997,6 +2000,7 @@ serve(async (req) => {
                 stations: stationRows.length,
                 stations_requested: stationsRequested,
                 stations_selected: stationsSelected,
+                stations_processed: stationsProcessed,
                 species: speciesList,
                 observations_upserted: observationsUpserted,
                 timeseries_updated: timeseriesUpdated,

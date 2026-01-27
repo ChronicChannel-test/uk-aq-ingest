@@ -1865,6 +1865,7 @@ serve(async (req) => {
         let backfillSeries = 0;
         let backfillEarliest: Date | null = null;
         let timeBudgetHit = false;
+        let stationsProcessed = 0;
 
         for (const row of stationRows) {
           if (shouldStop()) {
@@ -2010,6 +2011,7 @@ serve(async (req) => {
             last_polled_at: pollTimestamp,
             updated_at: pollTimestamp,
           });
+          stationsProcessed += 1;
         }
 
         if (timeBudgetHit) {
@@ -2035,6 +2037,7 @@ serve(async (req) => {
           connector_id: connectorId,
           group: groupName,
           stations: stationRows.length,
+          stations_processed: stationsProcessed,
           species: speciesList,
           observations_upserted: observationsUpserted,
           timeseries_updated: timeseriesUpdated,
