@@ -11,7 +11,7 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
 - Triggered by: External scheduler (Cloudflare Worker cron) calling the edge function directly.
 - Reads:
   - `connectors` (`poll_enabled`, `poll_interval_minutes`, `poll_window_hours`, `poll_timeseries_batch_size`, `last_polled_at`)
-  - Station batch helpers: `breathelondon_select_station_refs`, `erg_laqn_select_station_refs` (defined in `supabase/uk_aq_polling_cron.sql`)
+- Station batch helpers: `breathelondon_select_station_refs`, `erg_laqn_select_station_refs` (defined in `supabase/uk_aq_polling_helpers.sql`)
 - Calls:
   - `ingest_uk_air_sos` (`window_hours`)
   - `ingest_sensorcommunity` (`country=GB`)
@@ -33,7 +33,7 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
 
 ### ingest_uk_air_sos
 - Purpose: Poll UK-AIR SOS timeseries and write observations + last_value fields.
-- Triggered by: `uk_aq_dispatch_polls` (external scheduler). Legacy Supabase cron dispatcher functions remain in `supabase/uk_aq_polling_cron.sql`, but schedules are no longer created there.
+- Triggered by: `uk_aq_dispatch_polls` (external scheduler). Helper RPCs live in `supabase/uk_aq_polling_helpers.sql`.
 - Note: Deploying the Edge Function does not create a schedule; use the Cloudflare Worker cron for regular runs.
 - Notes:
   - Logs cron secret mismatch diagnostics (presence/length only) when authorization fails.
@@ -49,7 +49,7 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
 
 ### ingest_sensorcommunity
 - Purpose: Poll Sensor.Community recent values and write stations, timeseries, and observations.
-- Triggered by: `uk_aq_dispatch_polls` (external scheduler). Legacy Supabase cron dispatcher functions remain in `supabase/uk_aq_polling_cron.sql`, but schedules are no longer created there.
+- Triggered by: `uk_aq_dispatch_polls` (external scheduler). Helper RPCs live in `supabase/uk_aq_polling_helpers.sql`.
 - Writes:
   - `connectors`, `stations`, `phenomena`, `timeseries`, `observations`
 - Notes:
@@ -65,7 +65,7 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
 
 ### ingest_breathelondon
 - Purpose: Poll Breathe London Communities for hourly observations with checkpointing.
-- Triggered by: `uk_aq_dispatch_polls` (external scheduler). Legacy Supabase cron batcher functions remain in `supabase/uk_aq_polling_cron.sql`, but schedules are no longer created there.
+- Triggered by: `uk_aq_dispatch_polls` (external scheduler). Helper RPCs live in `supabase/uk_aq_polling_helpers.sql`.
 - Writes:
   - `connectors`, `stations`, `phenomena`, `timeseries`, `observations`
   - `breathelondon_timeseries_checkpoints` (per-station/species checkpoints)
@@ -87,7 +87,7 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
 
 ### ingest_erg_laqn
 - Purpose: Poll ERG LAQN (configurable group, default London) and write observations.
-- Triggered by: `uk_aq_dispatch_polls` (external scheduler). Legacy Supabase cron batcher functions remain in `supabase/uk_aq_polling_cron.sql`, but schedules are no longer created there.
+- Triggered by: `uk_aq_dispatch_polls` (external scheduler). Helper RPCs live in `supabase/uk_aq_polling_helpers.sql`.
 - Writes:
   - `connectors`, `stations`, `phenomena`, `timeseries`, `observations`
   - `timeseries.last_value` and `timeseries.last_value_at` (update by id)

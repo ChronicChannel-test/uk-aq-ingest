@@ -447,7 +447,7 @@ async function postgrestRpcRequest<T>(
   fn: string,
   body: Record<string, unknown>,
 ): Promise<{ data: T | null; error: { message: string } | null }> {
-  return await postgrestRequest<T>("POST", `rpc/${fn}`, undefined, body, "public");
+  return await postgrestRequest<T>("POST", `rpc/${fn}`, undefined, body, UK_AQ_CORE_SCHEMA);
 }
 
 async function loadConnectorConfigs(): Promise<ConnectorRow[]> {

@@ -73,7 +73,7 @@ python3 scripts/uk_air_sos/uk_air_sos_ingest.py --backfill-2025 --chunk-days 14
 
 ## Edge function polling (optional)
 For continuous updates, deploy the Edge Function in `supabase/functions/ingest_uk_air_sos`.
-Deploying the Edge Function does not create a schedule; the cron timing is set in `supabase/uk_aq_polling_cron.sql` (edit the cron expression there and rerun the SQL to change it).
+Deploying the Edge Function does not create a schedule; helper RPCs live in `supabase/uk_aq_polling_helpers.sql`.
 
 Supabase secrets required (Edge Function runtime):
 ```
@@ -83,7 +83,7 @@ UK_AIR_SOS_BASE_URL=https://uk-air.defra.gov.uk/sos-ukair/api/v1
 UK_AIR_SOS_SERVICE_LABEL=UK-AIR-SOS
 ```
 
-Example cron SQL to schedule the poller lives in `supabase/uk_aq_polling_cron.sql`.
+Helper RPC SQL for the poller lives in `supabase/uk_aq_polling_helpers.sql`.
 
 GitHub Actions deployment secrets (used by `.github/workflows/supabase_edge_deploy.yml`):
 - `SUPABASE_ACCESS_TOKEN`

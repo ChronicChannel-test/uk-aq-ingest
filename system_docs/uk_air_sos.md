@@ -107,7 +107,7 @@ Environment variables are only a fallback for discovery or missing connector row
 
 If `timeseries_limit` is not provided, the function uses `connectors.poll_timeseries_batch_size` when set.
 
-Scheduling SQL lives in `supabase/uk_aq_polling_cron.sql` and uses `net.http_post` to invoke the function.
+Helper RPC SQL lives in `supabase/uk_aq_polling_helpers.sql` and is used by the dispatcher.
 The default schedule runs 5 minutes past each quarter-hour (:05, :20, :35, :50) to align with on-the-hour measurements.
 
 Dropbox log output (optional):
