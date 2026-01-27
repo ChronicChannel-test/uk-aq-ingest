@@ -419,19 +419,6 @@ async function reconcileInFlightByLastPolled(
       last_run_status: "succeeded",
       last_run_message: "polled_reconciled",
     });
-    await insertIngestRun({
-      connector_id: connector.id ?? null,
-      connector_code: connector.connector_code,
-      run_started_at: startedAt.toISOString(),
-      run_ended_at: lastPolled.toISOString(),
-      run_status: "succeeded",
-      run_message: "polled_reconciled",
-      last_observed_at: null,
-      stations_updated: null,
-      observations_upserted: null,
-      timeseries_updated: null,
-      series_polled: null,
-    });
   }
 }
 

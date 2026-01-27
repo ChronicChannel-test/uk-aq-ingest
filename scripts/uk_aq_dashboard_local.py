@@ -52,13 +52,16 @@ def _load_env(path: Path) -> None:
             os.environ[key] = value
 
 
-def _postgrest_headers(service_role_key: str) -> Dict[str, str]:
+def _postgrest_headers(service_role_key: str, write: bool = False) -> Dict[str, str]:
     core_schema = os.getenv("UK_AQ_CORE_SCHEMA", "uk_aq_core")
-    return {
+    headers = {
         "apikey": service_role_key,
         "Authorization": f"Bearer {service_role_key}",
         "Accept-Profile": core_schema,
     }
+    if write:
+        headers["Content-Profile"] = core_schema
+    return headers
 
 
 def _project_ref_from_base_url(base_url: str) -> Optional[str]:
@@ -78,6 +81,12 @@ def _fetch_json(url: str, headers: Dict[str, str], params: Dict[str, str]) -> Li
         raise RuntimeError(f"PostgREST error {resp.status_code}: {resp.text}")
     payload = resp.json()
     return payload if isinstance(payload, list) else []
+
+
+def _patch_json(url: str, headers: Dict[str, str], payload: Dict[str, Any]) -> None:
+    resp = requests.patch(url, headers=headers, json=payload, timeout=60)
+    if not resp.ok:
+        raise RuntimeError(f"PostgREST error {resp.status_code}: {resp.text}")
 
 
 def _fetch_all(
@@ -192,7 +201,7 @@ def _build_dashboard(base_url: str, service_role_key: str) -> Dict[str, Any]:
         headers,
         "connectors",
         {
-            "select": "id,connector_code,label,last_run_start,last_run_end",
+            "select": "id,connector_code,label,display_name,last_run_start,last_run_end,poll_enabled,poll_interval_minutes,poll_window_hours,poll_timeseries_batch_size",
             "order": "connector_code.asc",
         },
     )
@@ -332,6 +341,20 @@ def _build_dashboard(base_url: str, service_role_key: str) -> Dict[str, Any]:
         "buckets": list(BUCKETS),
         "pollutants": pollutants_payload,
         "dispatch_runs": dispatch_runs,
+        "connectors_settings": [
+            {
+                "id": row.get("id"),
+                "connector_code": row.get("connector_code"),
+                "label": row.get("label"),
+                "display_name": row.get("display_name"),
+                "poll_enabled": row.get("poll_enabled"),
+                "poll_interval_minutes": row.get("poll_interval_minutes"),
+                "poll_window_hours": row.get("poll_window_hours"),
+                "poll_timeseries_batch_size": row.get("poll_timeseries_batch_size"),
+            }
+            for row in connectors
+            if row.get("id") is not None
+        ],
     }
 
 
@@ -360,6 +383,13 @@ class DashboardHandler(BaseHTTPRequestHandler):
             return
         if parsed.path == "/api/dashboard":
             self._serve_dashboard()
+            return
+        self.send_error(HTTPStatus.NOT_FOUND, "Not found")
+
+    def do_POST(self) -> None:
+        parsed = urlparse(self.path)
+        if parsed.path == "/api/connectors":
+            self._update_connectors()
             return
         self.send_error(HTTPStatus.NOT_FOUND, "Not found")
 
@@ -392,6 +422,59 @@ class DashboardHandler(BaseHTTPRequestHandler):
             return
 
         payload = json.dumps(data, indent=2)
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.end_headers()
+        self.wfile.write(payload.encode("utf-8"))
+
+    def _update_connectors(self) -> None:
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            length = 0
+        raw_body = self.rfile.read(length) if length > 0 else b""
+        try:
+            body = json.loads(raw_body.decode("utf-8")) if raw_body else {}
+        except json.JSONDecodeError:
+            body = {}
+
+        updates = body.get("updates") if isinstance(body, dict) else None
+        if not isinstance(updates, list):
+            self.send_error(HTTPStatus.BAD_REQUEST, "Invalid payload")
+            return
+
+        headers = _postgrest_headers(self.server.service_role_key, write=True)
+        base_url = self.server.base_url
+        try:
+            for entry in updates:
+                if not isinstance(entry, dict):
+                    continue
+                connector_id = entry.get("id")
+                if connector_id is None:
+                    continue
+                payload = {
+                    "poll_enabled": entry.get("poll_enabled"),
+                    "poll_interval_minutes": entry.get("poll_interval_minutes"),
+                    "poll_window_hours": entry.get("poll_window_hours"),
+                    "poll_timeseries_batch_size": entry.get("poll_timeseries_batch_size"),
+                }
+                _patch_json(
+                    f"{base_url}/connectors?id=eq.{connector_id}",
+                    headers,
+                    payload,
+                )
+        except Exception as exc:
+            payload = json.dumps({"error": str(exc)}, indent=2)
+            self.send_response(HTTPStatus.INTERNAL_SERVER_ERROR)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(payload.encode("utf-8"))
+            return
+
+        payload = json.dumps({"status": "ok"}, indent=2)
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", "application/json")
         self.send_header("Cache-Control", "no-store")

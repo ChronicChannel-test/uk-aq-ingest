@@ -254,6 +254,39 @@
         color: #b0322a;
       }
 
+      .settings-actions {
+        display: flex;
+        justify-content: flex-end;
+        margin-top: 12px;
+      }
+
+      .settings-button {
+        border: none;
+        background: var(--accent-2);
+        color: #fff;
+        padding: 8px 14px;
+        border-radius: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+      }
+
+      .settings-button:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 8px 16px rgba(31, 122, 122, 0.25);
+      }
+
+      .settings-input,
+      .settings-select {
+        width: 100%;
+        padding: 6px 8px;
+        border-radius: 10px;
+        border: 1px solid var(--border);
+        background: #fff;
+        font-family: "IBM Plex Mono", ui-monospace, monospace;
+        font-size: 12px;
+      }
+
       table {
         width: 100%;
         border-collapse: collapse;
@@ -616,6 +649,110 @@
         return panel;
       }
 
+      function renderConnectorSettingsPanel(connectors) {
+        const panel = document.createElement("section");
+        panel.className = "panel";
+        panel.innerHTML = `
+          <h2>Polling settings <span class="chip">i</span></h2>
+          <table>
+            <thead>
+              <tr>
+                <th>Connector</th>
+                <th>Poll enabled</th>
+                <th>Interval (min)</th>
+                <th>Window (hrs)</th>
+                <th>Batch size</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${connectors
+                .map((row) => {
+                  const label = row.display_name || row.label || row.connector_code || "";
+                  const enabled = row.poll_enabled === true
+                    ? "true"
+                    : row.poll_enabled === false
+                      ? "false"
+                      : "";
+                  const interval = row.poll_interval_minutes ?? "";
+                  const windowHours = row.poll_window_hours ?? "";
+                  const batchSize = row.poll_timeseries_batch_size ?? "";
+                  return `
+                    <tr data-connector-id="${row.id}">
+                      <td class="connector-name">${label}</td>
+                      <td>
+                        <select class="settings-select" data-field="poll_enabled">
+                          <option value="" ${enabled === "" ? "selected" : ""}>NULL</option>
+                          <option value="true" ${enabled === "true" ? "selected" : ""}>TRUE</option>
+                          <option value="false" ${enabled === "false" ? "selected" : ""}>FALSE</option>
+                        </select>
+                      </td>
+                      <td>
+                        <input class="settings-input" data-field="poll_interval_minutes" type="number" min="0" step="1" value="${interval}" />
+                      </td>
+                      <td>
+                        <input class="settings-input" data-field="poll_window_hours" type="number" min="0" step="1" value="${windowHours}" />
+                      </td>
+                      <td>
+                        <input class="settings-input" data-field="poll_timeseries_batch_size" type="number" min="0" step="1" value="${batchSize}" />
+                      </td>
+                    </tr>
+                  `;
+                })
+                .join("")}
+            </tbody>
+          </table>
+          <div class="settings-actions">
+            <button class="settings-button" id="commit-settings">Commit changes</button>
+          </div>
+        `;
+
+        const commitButton = panel.querySelector("#commit-settings");
+        if (commitButton) {
+          commitButton.addEventListener("click", async () => {
+            const rows = Array.from(panel.querySelectorAll("tbody tr"));
+            const updates = rows.map((rowEl) => {
+              const connectorId = rowEl.getAttribute("data-connector-id");
+              const getValue = (field) => {
+                const input = rowEl.querySelector(`[data-field="${field}"]`);
+                return input ? input.value : "";
+              };
+              const parseOptionalNumber = (value) => {
+                if (value === "" || value === null || value === undefined) return null;
+                const parsed = Number(value);
+                return Number.isFinite(parsed) ? Math.floor(parsed) : null;
+              };
+              const enabled = getValue("poll_enabled");
+              return {
+                id: connectorId ? Number(connectorId) : null,
+                poll_enabled: enabled === "true" ? true : enabled === "false" ? false : null,
+                poll_interval_minutes: parseOptionalNumber(getValue("poll_interval_minutes")),
+                poll_window_hours: parseOptionalNumber(getValue("poll_window_hours")),
+                poll_timeseries_batch_size: parseOptionalNumber(getValue("poll_timeseries_batch_size")),
+              };
+            }).filter((row) => row.id !== null);
+
+            setError("");
+            setStatus("Saving settings...");
+            try {
+              const resp = await fetch("/api/connectors", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ updates }),
+              });
+              if (!resp.ok) {
+                const text = await resp.text();
+                throw new Error(text || `Request failed (${resp.status})`);
+              }
+              await loadDashboard();
+            } catch (err) {
+              setError(err.message || String(err));
+              setStatus("Error");
+            }
+          });
+        }
+        return panel;
+      }
+
       async function loadDashboard() {
         setError("");
         setStatus("Loading...");
@@ -637,6 +774,9 @@
           }
           const data = payload || {};
           dashboardEl.innerHTML = "";
+          if (Array.isArray(data.connectors_settings)) {
+            dashboardEl.appendChild(renderConnectorSettingsPanel(data.connectors_settings));
+          }
           if (Array.isArray(data.dispatch_runs)) {
             dashboardEl.appendChild(renderDispatchPanel(data.dispatch_runs));
           }
