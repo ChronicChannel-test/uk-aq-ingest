@@ -108,6 +108,7 @@ const LAQN_USER_AGENT = Deno.env.get("LAQN_USER_AGENT")
 const LAQN_DEFAULT_GROUP = Deno.env.get("LAQN_DEFAULT_GROUP") ?? DEFAULT_GROUP;
 const LAQN_CSV_STATION_ID = Deno.env.get("LAQN_CSV_STATION_ID") ?? "";
 const LAQN_CSV_STATION_REF = Deno.env.get("LAQN_CSV_STATION_REF") ?? "";
+const LAQN_ZERO_CUTOFF_HOURS = Number(Deno.env.get("LAQN_ZERO_CUTOFF_HOURS") ?? "1");
 const UK_AQ_DROPBOX_ROOT = (() => {
   const raw = Deno.env.get("UK_AQ_DROPBOX_ROOT") ?? "";
   return normalizeDropboxPath(raw);
@@ -1707,7 +1708,10 @@ serve(async (req) => {
   connectorCodeForLog = connectorCode;
 
   const now = new Date();
-  const recentZeroCutoff = new Date(now.getTime() - 60 * 60 * 1000);
+  const zeroCutoffHours = Number.isFinite(LAQN_ZERO_CUTOFF_HOURS)
+    ? Math.max(0, LAQN_ZERO_CUTOFF_HOURS)
+    : 1;
+  const recentZeroCutoff = new Date(now.getTime() - zeroCutoffHours * 60 * 60 * 1000);
   const {
     startDate,
     endDate,
