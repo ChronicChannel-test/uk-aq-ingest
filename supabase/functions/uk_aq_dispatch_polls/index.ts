@@ -334,7 +334,6 @@ function findRecentInFlightConnector(
     }
     const startedAt = parseDate(connector.last_run_start ?? null);
     if (!startedAt) {
-      console.warn("in_flight_missing_start", { connector_code: connector.connector_code });
       continue;
     }
     const ageMs = now.getTime() - startedAt.getTime();
