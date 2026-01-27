@@ -103,14 +103,42 @@ jobs:
           print(f"Raw test path: {raw_path}")
           normalized_path = normalize_path(raw_path)
           print(f"Normalized test path: {normalized_path}")
+          if root_tag == "app_folder":
+              print("Note: Dropbox app folder access is enabled.")
+              print(
+                  "If your path starts with /Apps/<app-name>/..., it must be "
+                  "converted to an app-root path like /Geo-Resources/..."
+              )
+
+          def list_folder(path, label):
+              print(f"Listing {label}: {path or '/'}")
+              listing = dropbox_request("files/list_folder", {"path": path})
+              entries = listing.get("entries", [])
+              print(f"Found {len(entries)} entries under {path or '/'}")
+              for entry in entries:
+                  print(f"- {entry.get('name')} ({entry.get('.tag')})")
+              return entries
 
           if normalized_path.lower().endswith(".geojson"):
               meta = dropbox_request("files/get_metadata", {"path": normalized_path})
               print("Metadata:", meta)
           else:
-              listing = dropbox_request("files/list_folder", {"path": normalized_path})
-              entries = listing.get("entries", [])
-              print(f"Listed {len(entries)} entries under {normalized_path}:")
-              for entry in entries:
-                  print(f"- {entry.get('name')} ({entry.get('.tag')})")
+              try:
+                  list_folder(normalized_path, "target path")
+              except requests.HTTPError:
+                  parent = "/".join(normalized_path.rstrip("/").split("/")[:-1])
+                  if parent:
+                      print("Target path failed. Trying parent folder for context...")
+                      try:
+                          list_folder(parent, "parent path")
+                      except requests.HTTPError:
+                          print("Parent folder lookup failed.", file=sys.stderr)
+                  else:
+                      print("No parent folder to inspect.", file=sys.stderr)
+                  print("Also listing app root for reference...")
+                  try:
+                      list_folder("", "app root")
+                  except requests.HTTPError:
+                      print("App root listing failed.", file=sys.stderr)
+                  raise
           PY

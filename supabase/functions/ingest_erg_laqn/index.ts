@@ -108,6 +108,10 @@ const LAQN_USER_AGENT = Deno.env.get("LAQN_USER_AGENT")
 const LAQN_DEFAULT_GROUP = Deno.env.get("LAQN_DEFAULT_GROUP") ?? DEFAULT_GROUP;
 const LAQN_CSV_STATION_ID = Deno.env.get("LAQN_CSV_STATION_ID") ?? "";
 const LAQN_CSV_STATION_REF = Deno.env.get("LAQN_CSV_STATION_REF") ?? "";
+const UK_AQ_DROPBOX_ROOT = (() => {
+  const raw = Deno.env.get("UK_AQ_DROPBOX_ROOT") ?? "";
+  return normalizeDropboxPath(raw);
+})();
 const LAQN_CSV_DROPBOX_FOLDER = dropboxWithRoot(
   Deno.env.get("LAQN_CSV_DROPBOX_FOLDER") ?? "/connectors/erg_laqn",
 );
@@ -122,11 +126,6 @@ const DROPBOX_ERROR_ALLOWED_SUPABASE_URL =
   Deno.env.get("LAQN_ERROR_DROPBOX_ALLOWED_SUPABASE_URL")
     ?? Deno.env.get("UK_AIR_ERROR_DROPBOX_ALLOWED_SUPABASE_URL")
     ?? "";
-const UK_AQ_DROPBOX_ROOT = (() => {
-  const raw = Deno.env.get("UK_AQ_DROPBOX_ROOT") ?? "";
-  return normalizeDropboxPath(raw);
-})();
-
 const DROPBOX_LOG_FOLDER = dropboxWithRoot("/connectors/erg_laqn/log");
 const DROPBOX_RAW_FOLDER = dropboxWithRoot("/connectors/erg_laqn/raw_data");
 const DROPBOX_ERROR_FOLDER = dropboxWithRoot(
