@@ -58,6 +58,16 @@ LAQN_SERVICE_LABEL = LAQN_CONNECTOR_LABEL
 LAQN_USER_AGENT = os.getenv("LAQN_USER_AGENT", "uk-air-quality-networks")
 LAQN_MONITORING_SITES_PATHS = os.getenv("LAQN_MONITORING_SITES_PATHS")
 LAQN_DEFAULT_GROUP = os.getenv("LAQN_DEFAULT_GROUP") or "London"
+LAQN_TIMESERIES_SPECIES = os.getenv("LAQN_TIMESERIES_SPECIES") or "NO2,PM10,PM25,O3"
+
+SPECIES_CONFIG: Dict[str, Dict[str, str]] = {
+    "NO2": {"label": "NO2", "uom": "ug/m3"},
+    "PM10": {"label": "PM10", "uom": "ug/m3"},
+    "PM25": {"label": "PM2.5", "uom": "ug/m3"},
+    "O3": {"label": "O3", "uom": "ug/m3"},
+    "SO2": {"label": "SO2", "uom": "ug/m3"},
+    "CO": {"label": "CO", "uom": "mg/m3"},
+}
 
 UK_BBOX = {
     "west": -11.0,
@@ -127,6 +137,13 @@ def _station_coords(station: Dict[str, Any]) -> Tuple[Optional[float], Optional[
     lon = _coerce_float(_pick_value(station, ["Longitude", "Lon", "Lng", "Easting"]))
     lat = _coerce_float(_pick_value(station, ["Latitude", "Lat", "Northing"]))
     return lon, lat
+
+
+def _parse_species_list(value: Optional[str]) -> List[str]:
+    if not value:
+        return []
+    parts = [item.strip().upper() for item in value.split(",") if item.strip()]
+    return [item for item in parts if item]
 
 
 def _normalize_station_payload(
@@ -351,6 +368,15 @@ class SupabaseWriter:
         ).execute()
         return len(payload)
 
+    def upsert_timeseries(self, rows: Iterable[Dict[str, Any]]) -> int:
+        payload = [row for row in rows if row.get("timeseries_ref")]
+        if not payload:
+            return 0
+        self.core.table("timeseries").upsert(
+            payload, on_conflict="connector_id,service_ref,timeseries_ref"
+        ).execute()
+        return len(payload)
+
     def fetch_station_ids_by_ref(
         self, connector_id: int, service_ref: str, station_refs: Iterable[str]
     ) -> Dict[str, int]:
@@ -487,6 +513,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Skip station_metadata upserts when writing to Supabase.",
     )
+    parser.add_argument(
+        "--skip-timeseries",
+        action="store_true",
+        help="Skip seeding timeseries rows for each station/species.",
+    )
     return parser.parse_args()
 
 
@@ -531,6 +562,41 @@ def main() -> int:
             if attributes_by_station:
                 updated = writer.upsert_station_metadata(attributes_by_station)
                 LOG.info("Upserted %s station_metadata rows.", updated)
+
+        if station_rows and not args.skip_timeseries:
+            species_list = _parse_species_list(LAQN_TIMESERIES_SPECIES)
+            if not species_list:
+                LOG.warning("No LAQN_TIMESERIES_SPECIES provided; skipping timeseries seed.")
+            else:
+                station_ids = writer.fetch_station_ids_by_ref(
+                    connector_id,
+                    LAQN_SERVICE_REF,
+                    [row.get("station_ref") for row in station_rows if row.get("station_ref")],
+                )
+                timeseries_rows: List[Dict[str, Any]] = []
+                for row in station_rows:
+                    station_ref = row.get("station_ref")
+                    if not station_ref:
+                        continue
+                    station_id = station_ids.get(str(station_ref))
+                    if not station_id:
+                        continue
+                    station_name = row.get("station_name") or row.get("label") or station_ref
+                    for species in species_list:
+                        config = SPECIES_CONFIG.get(species, {"label": species, "uom": "ug/m3"})
+                        timeseries_rows.append(
+                            {
+                                "timeseries_ref": f"{station_ref}:{species}",
+                                "label": f"{station_name} {config['label']}",
+                                "uom": config.get("uom"),
+                                "station_id": station_id,
+                                "service_ref": LAQN_SERVICE_REF,
+                                "connector_id": connector_id,
+                                "extras": {"site_code": station_ref, "species": species},
+                            }
+                        )
+                upserted_ts = writer.upsert_timeseries(timeseries_rows)
+                LOG.info("Upserted %s timeseries rows.", upserted_ts)
 
     if args.format == "json":
         payload = {

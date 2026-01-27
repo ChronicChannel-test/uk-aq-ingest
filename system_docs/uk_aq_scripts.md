@@ -134,7 +134,7 @@ Raw payloads (testing only):
 ### `scripts/erg_laqn/erg_laqn_list_stations.py`
 Purpose:
 - Fetch LAQN monitoring sites from the ERG AirQuality API.
-- Optionally upsert LAQN stations and station_metadata into Supabase.
+- Optionally upsert LAQN stations, station_metadata, and seed timeseries rows into Supabase.
 
 Common commands:
 ```
@@ -147,6 +147,7 @@ Key flags:
 - `--group` to override the GroupName filter (default: London).
 - `--no-filter` to skip UK bounding box filtering.
 - `--skip-station-metadata` to avoid station_metadata updates.
+- `--skip-timeseries` to avoid seeding timeseries rows for each station/species.
 
 Environment:
 - `SUPABASE_URL`
@@ -159,6 +160,7 @@ Environment:
 - `LAQN_CONNECTOR_DISPLAY_NAME` (optional; defaults to `London Air LAQN`)
 - `LAQN_SERVICE_REF` (optional; defaults to `LAQN_CONNECTOR_CODE`)
 - `LAQN_USER_AGENT` (optional)
+- `LAQN_TIMESERIES_SPECIES` (optional; defaults to `NO2,PM10,PM25,O3`)
 
 ### `scripts/erg_laqn/erg_laqn_ingest.py`
 Purpose:
@@ -733,7 +735,7 @@ python3 scripts/gov_uk_waqn/gov_uk_waqn_list_stations.py
 
 ### `scripts/erg_laqn/erg_laqn_ingest.py`
 Purpose:
-- Placeholder for the London Air Quality Network ingest pipeline.
+- Ingest ERG LAQN observations into Supabase (station/timeseries/observations).
 
 Common commands:
 ```
@@ -742,7 +744,7 @@ python3 scripts/erg_laqn/erg_laqn_ingest.py
 
 ### `scripts/erg_laqn/erg_laqn_list_stations.py`
 Purpose:
-- Placeholder for the London Air Quality Network station listing.
+- Fetch LAQN monitoring sites and optionally upsert stations, metadata, and timeseries seeds.
 
 Common commands:
 ```

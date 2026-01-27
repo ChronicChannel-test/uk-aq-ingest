@@ -38,6 +38,71 @@ jobs:
         run: |
           python3 scripts/uk_air_sos/uk_air_sos_list_stations.py --to-supabase
 
+      - name: Check UK-AIR SOS polling flag
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          python3 - <<'PY'
+          import os
+          import requests
+
+          supabase_url = os.environ.get("SUPABASE_URL")
+          supabase_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+          if not supabase_url or not supabase_key:
+              raise SystemExit("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required.")
+          url = f"{supabase_url}/rest/v1/connectors"
+          resp = requests.get(
+              url,
+              params={"connector_code": "eq.uk_air_sos", "select": "poll_enabled"},
+              headers={
+                  "apikey": supabase_key,
+                  "Authorization": f"Bearer {supabase_key}",
+                  "Accept-Profile": "uk_aq_core",
+                  "Content-Profile": "uk_aq_core",
+              },
+              timeout=30,
+          )
+          resp.raise_for_status()
+          rows = resp.json()
+          poll_enabled = bool(rows and rows[0].get("poll_enabled"))
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as handle:
+              handle.write(f"UK_AIR_SOS_POLL_WAS_ENABLED={'1' if poll_enabled else '0'}\\n")
+          print(f"UK_AIR_SOS_POLL_WAS_ENABLED={poll_enabled}")
+          PY
+
+      - name: Pause UK-AIR SOS polling
+        if: env.UK_AIR_SOS_POLL_WAS_ENABLED == '1'
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          python3 - <<'PY'
+          import os
+          import requests
+
+          supabase_url = os.environ.get("SUPABASE_URL")
+          supabase_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+          if not supabase_url or not supabase_key:
+              raise SystemExit("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required.")
+          url = f"{supabase_url}/rest/v1/connectors"
+          resp = requests.patch(
+              url,
+              params={"connector_code": "eq.uk_air_sos"},
+              headers={
+                  "apikey": supabase_key,
+                  "Authorization": f"Bearer {supabase_key}",
+                  "Content-Type": "application/json",
+                  "Accept-Profile": "uk_aq_core",
+                  "Content-Profile": "uk_aq_core",
+              },
+              json={"poll_enabled": False},
+              timeout=30,
+          )
+          resp.raise_for_status()
+          print("Paused uk_air_sos polling.")
+          PY
+
       - name: Discover UK-AIR SOS timeseries
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -45,6 +110,46 @@ jobs:
           UK_AIR_SOS_BASE_URL: ${{ secrets.UK_AIR_SOS_BASE_URL }}
         run: |
           python3 scripts/uk_air_sos/uk_air_sos_ingest.py --discover
+
+      - name: Refresh UK-AIR SOS recent observations
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          UK_AIR_SOS_BASE_URL: ${{ secrets.UK_AIR_SOS_BASE_URL }}
+        run: |
+          python3 scripts/uk_air_sos/uk_air_sos_ingest.py --refresh-recent --hours 6
+
+      - name: Resume UK-AIR SOS polling
+        if: always() && env.UK_AIR_SOS_POLL_WAS_ENABLED == '1'
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          python3 - <<'PY'
+          import os
+          import requests
+
+          supabase_url = os.environ.get("SUPABASE_URL")
+          supabase_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+          if not supabase_url or not supabase_key:
+              raise SystemExit("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required.")
+          url = f"{supabase_url}/rest/v1/connectors"
+          resp = requests.patch(
+              url,
+              params={"connector_code": "eq.uk_air_sos"},
+              headers={
+                  "apikey": supabase_key,
+                  "Authorization": f"Bearer {supabase_key}",
+                  "Content-Type": "application/json",
+                  "Accept-Profile": "uk_aq_core",
+                  "Content-Profile": "uk_aq_core",
+              },
+              json={"poll_enabled": True},
+              timeout=30,
+          )
+          resp.raise_for_status()
+          print("Resumed uk_air_sos polling.")
+          PY
 
       - name: Sync Breathe London stations
         env:
