@@ -260,6 +260,20 @@
         margin-top: 12px;
       }
 
+      .settings-inline {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+
+      .settings-toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        font-weight: 600;
+      }
+
       .settings-button {
         border: none;
         background: var(--accent-2);
@@ -756,6 +770,64 @@
         return panel;
       }
 
+      function renderDispatcherSettingsPanel(settings) {
+        const panel = document.createElement("section");
+        panel.className = "panel";
+        const parallel = Boolean(settings.dispatcher_parallel_ingest);
+        const maxRuns = Number.isFinite(Number(settings.max_runs_per_dispatch_call))
+          ? Number(settings.max_runs_per_dispatch_call)
+          : 1;
+        const updatedAt = settings.updated_at ? formatTime(settings.updated_at) : "n/a";
+        panel.innerHTML = `
+          <h2>Dispatcher settings <span class="chip">i</span></h2>
+          <div class="settings-inline">
+            <label class="settings-toggle">
+              <input type="checkbox" id="dispatcher-parallel" ${parallel ? "checked" : ""} />
+              Parallel ingest
+            </label>
+            <label>
+              Max runs per call
+              <input class="settings-input" id="dispatcher-max-runs" type="number" min="1" step="1" value="${maxRuns}" />
+            </label>
+            <span class="meta-note">Last updated: ${updatedAt}</span>
+          </div>
+          <div class="settings-actions">
+            <button class="settings-button" id="commit-dispatcher-settings">Save dispatcher settings</button>
+          </div>
+        `;
+
+        const commitButton = panel.querySelector("#commit-dispatcher-settings");
+        if (commitButton) {
+          commitButton.addEventListener("click", async () => {
+            const parallelEl = panel.querySelector("#dispatcher-parallel");
+            const maxRunsEl = panel.querySelector("#dispatcher-max-runs");
+            const maxRunsValue = maxRunsEl ? Number(maxRunsEl.value) : 1;
+            setError("");
+            setStatus("Saving dispatcher settings...");
+            try {
+              const resp = await fetch("/api/dispatcher_settings", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  dispatcher_parallel_ingest: Boolean(parallelEl && parallelEl.checked),
+                  max_runs_per_dispatch_call: Number.isFinite(maxRunsValue) ? maxRunsValue : 1,
+                }),
+              });
+              if (!resp.ok) {
+                const text = await resp.text();
+                throw new Error(text || `Request failed (${resp.status})`);
+              }
+              await loadDashboard();
+            } catch (err) {
+              setError(err.message || String(err));
+              setStatus("Error");
+            }
+          });
+        }
+
+        return panel;
+      }
+
       async function loadDashboard() {
         setError("");
         setStatus("Loading...");
@@ -779,6 +851,9 @@
           dashboardEl.innerHTML = "";
           if (Array.isArray(data.connectors_settings)) {
             dashboardEl.appendChild(renderConnectorSettingsPanel(data.connectors_settings));
+          }
+          if (data.dispatcher_settings) {
+            dashboardEl.appendChild(renderDispatcherSettingsPanel(data.dispatcher_settings));
           }
           if (Array.isArray(data.dispatch_runs)) {
             dashboardEl.appendChild(renderDispatchPanel(data.dispatch_runs));

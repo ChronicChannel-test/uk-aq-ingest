@@ -126,6 +126,35 @@ def _fetch_ingest_runs(
     )
 
 
+def _fetch_dispatcher_settings(
+    base_url: str,
+    headers: Dict[str, str],
+) -> Dict[str, Any]:
+    rows = _fetch_json(
+        f"{base_url}/dispatcher_settings",
+        headers,
+        {
+            "select": "id,dispatcher_parallel_ingest,max_runs_per_dispatch_call,updated_at",
+            "id": "eq.1",
+            "limit": "1",
+        },
+    )
+    if not rows:
+        return {
+            "id": 1,
+            "dispatcher_parallel_ingest": False,
+            "max_runs_per_dispatch_call": 1,
+            "updated_at": None,
+        }
+    row = rows[0]
+    return {
+        "id": row.get("id", 1),
+        "dispatcher_parallel_ingest": bool(row.get("dispatcher_parallel_ingest")),
+        "max_runs_per_dispatch_call": row.get("max_runs_per_dispatch_call") or 1,
+        "updated_at": row.get("updated_at"),
+    }
+
+
 def _parse_timestamp(value: Optional[str]) -> Optional[datetime]:
     if not value:
         return None
@@ -263,6 +292,7 @@ def _build_dashboard(base_url: str, service_role_key: str) -> Dict[str, Any]:
 
     now = datetime.now(timezone.utc)
     ingest_runs = _fetch_ingest_runs(base_url, headers)
+    dispatcher_settings = _fetch_dispatcher_settings(base_url, headers)
     in_flight_rows: List[Dict[str, Any]] = []
     for row in connectors:
         last_run_start = _parse_timestamp(row.get("last_run_start"))
@@ -398,6 +428,7 @@ def _build_dashboard(base_url: str, service_role_key: str) -> Dict[str, Any]:
         "buckets": list(BUCKETS),
         "pollutants": pollutants_payload,
         "dispatch_runs": dispatch_runs,
+        "dispatcher_settings": dispatcher_settings,
         "connectors_settings": [
             {
                 "id": row.get("id"),
@@ -447,6 +478,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         if parsed.path == "/api/connectors":
             self._update_connectors()
+            return
+        if parsed.path == "/api/dispatcher_settings":
+            self._update_dispatcher_settings()
             return
         self.send_error(HTTPStatus.NOT_FOUND, "Not found")
 
@@ -534,6 +568,67 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(payload.encode("utf-8"))
             return
+
+        payload = json.dumps({"status": "ok"}, indent=2)
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.end_headers()
+        self.wfile.write(payload.encode("utf-8"))
+
+    def _update_dispatcher_settings(self) -> None:
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            length = 0
+        raw_body = self.rfile.read(length) if length > 0 else b""
+        try:
+            body = json.loads(raw_body.decode("utf-8")) if raw_body else {}
+        except json.JSONDecodeError:
+            body = {}
+
+        if not isinstance(body, dict):
+            self.send_error(HTTPStatus.BAD_REQUEST, "Invalid payload")
+            return
+
+        parallel = body.get("dispatcher_parallel_ingest")
+        max_runs = body.get("max_runs_per_dispatch_call")
+        if max_runs is not None:
+            try:
+                max_runs = int(max_runs)
+            except (TypeError, ValueError):
+                self.send_error(HTTPStatus.BAD_REQUEST, "Invalid max_runs_per_dispatch_call")
+                return
+            if max_runs < 1:
+                self.send_error(HTTPStatus.BAD_REQUEST, "max_runs_per_dispatch_call must be >= 1")
+                return
+
+        headers = _postgrest_headers(self.server.service_role_key, write=True)
+        base_url = self.server.base_url
+        payload = {
+            "dispatcher_parallel_ingest": bool(parallel),
+            "max_runs_per_dispatch_call": max_runs or 1,
+            "updated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        }
+        try:
+            _patch_json(
+                f"{base_url}/dispatcher_settings?id=eq.1",
+                headers,
+                payload,
+            )
+        except Exception as exc:
+            payload = json.dumps({"error": str(exc)}, indent=2)
+            self.send_response(HTTPStatus.INTERNAL_SERVER_ERROR)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(payload.encode("utf-8"))
+            return
+
+        with CACHE_LOCK:
+            CACHE_STATE["data"] = None
+            CACHE_STATE["generated_at"] = None
 
         payload = json.dumps({"status": "ok"}, indent=2)
         self.send_response(HTTPStatus.OK)
