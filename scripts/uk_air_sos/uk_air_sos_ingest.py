@@ -182,6 +182,8 @@ class RawDropboxSession:
 class ErrorLogger:
     def __init__(self, client: Client) -> None:
         self.client = client
+        schemas = SupabaseSchemas.from_client(self.client)
+        self.raw = schemas.raw
         self.dropbox_config = _load_error_dropbox_config()
         self._dropbox_access_token: Optional[str] = None
 
