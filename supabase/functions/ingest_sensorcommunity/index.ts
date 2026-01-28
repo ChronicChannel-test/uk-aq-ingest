@@ -885,7 +885,7 @@ async function upsertObservations(rows: Array<Record<string, unknown>>): Promise
   await postgrestRequest(
     "POST",
     "observations",
-    { on_conflict: "timeseries_id,observed_at" },
+    { on_conflict: "connector_id,timeseries_id,observed_at" },
     rows,
     "resolution=merge-duplicates,return=minimal",
   );
@@ -1743,6 +1743,7 @@ serve(async (req) => {
                   continue;
                 }
                 observationRows.push({
+                  connector_id: connector.id,
                   timeseries_id: timeseriesId,
                   observed_at: entry.observed_at,
                   value: entry.value,

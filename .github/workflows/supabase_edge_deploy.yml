@@ -1,5 +1,5 @@
 name: Deploy Supabase Edge Function
-# comment to trigger workflow
+
 on:
   push:
     branches:

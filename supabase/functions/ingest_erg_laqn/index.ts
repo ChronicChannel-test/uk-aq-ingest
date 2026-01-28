@@ -898,7 +898,7 @@ async function upsertObservations(rows: Record<string, unknown>[]): Promise<numb
   const { error } = await postgrestRequest(
     "POST",
     "observations",
-    { on_conflict: "timeseries_id,observed_at" },
+    { on_conflict: "connector_id,timeseries_id,observed_at" },
     rows,
     UPSERT_PREFER,
   );
@@ -1960,6 +1960,7 @@ serve(async (req) => {
                 continue;
               }
               observations.push({
+                connector_id: Number(connectorId),
                 timeseries_id: timeseriesId,
                 observed_at: observedAt.toISOString(),
                 value,

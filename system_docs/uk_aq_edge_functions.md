@@ -42,7 +42,7 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
   - Skips timeseries with missing `last_value_at` or `last_value_at` older than the poll window.
   - Enforces a runtime budget and will return partial progress with `partial=true` when exceeded.
 - Writes:
-  - `observations` (upsert by timeseries_id + observed_at)
+  - `observations` (upsert by connector_id + timeseries_id + observed_at)
   - `timeseries.last_value` and `timeseries.last_value_at` (update by id)
 - Logs:
   - Writes a log file to Dropbox `/connectors/uk_air_sos/log/YYYY-MM-DD/`

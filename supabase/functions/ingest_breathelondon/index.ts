@@ -908,7 +908,7 @@ async function upsertObservations(rows: Record<string, unknown>[]): Promise<numb
   await postgrestRequest(
     "POST",
     "observations",
-    { on_conflict: "timeseries_id,observed_at" },
+    { on_conflict: "connector_id,timeseries_id,observed_at" },
     rows,
     "resolution=merge-duplicates,return=minimal",
   );
@@ -942,6 +942,7 @@ async function updateTimeseriesLastValues(
 function extractObservations(
   payload: unknown,
   timeseriesId: number,
+  connectorId: number,
 ): { rows: Record<string, unknown>[]; lastObserved: string | null; lastValue: number | null } {
   const rows: Record<string, unknown>[] = [];
   let lastObserved: string | null = null;
@@ -961,7 +962,7 @@ function extractObservations(
     if (!observedAt || value === null) {
       continue;
     }
-    rows.push({ timeseries_id: timeseriesId, observed_at: observedAt, value });
+    rows.push({ connector_id: connectorId, timeseries_id: timeseriesId, observed_at: observedAt, value });
     if (!lastObserved || observedAt > lastObserved) {
       lastObserved = observedAt;
       lastValue = value;
@@ -1939,6 +1940,7 @@ serve(async (req) => {
                       const { rows, lastObserved: windowLast, lastValue: windowValue } = extractObservations(
                         payload,
                         timeseriesId,
+                        connector.id,
                       );
                       if (rows.length) {
                         if (!dryRun) {

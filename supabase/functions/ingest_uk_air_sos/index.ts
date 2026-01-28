@@ -380,11 +380,13 @@ serve(async (req) => {
               );
               const points = parseDatapoints(data?.values, row.id);
               if (points.length) {
+                const connectorIdForObs = connector?.id ?? requestedConnectorId ?? null;
                 const { error } = await postgrestRequest(
                   "POST",
                   "observations",
-                  { on_conflict: "timeseries_id,observed_at" },
+                  { on_conflict: "connector_id,timeseries_id,observed_at" },
                   points.map((point) => ({
+                    connector_id: connectorIdForObs,
                     timeseries_id: row.id,
                     observed_at: point.observed_at,
                     value: point.value,
