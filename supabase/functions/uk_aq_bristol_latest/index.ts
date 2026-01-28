@@ -117,7 +117,7 @@ async function loadLatest({ region, stationLike, connectorId, pollutant, limit }
   const phenomenonSelect = pollutantKey
     ? "phenomenon:phenomena!inner(id,label,notation,eionet_uri,pollutant_label)"
     : "phenomenon:phenomena(id,label,notation,eionet_uri,pollutant_label)";
-  const connectorSelect = "connector:connectors(id,connector_code,label,display_name,station_display_name_template)";
+  const connectorSelect = "connector:connectors!timeseries_connector_id_fkey(id,connector_code,label,display_name,station_display_name_template)";
   const stationSelect = "station:stations(id,station_ref,label,station_name,region,connector_id)";
   const stationSelectInner =
     "station:stations!inner(id,station_ref,label,station_name,region,connector_id)";
