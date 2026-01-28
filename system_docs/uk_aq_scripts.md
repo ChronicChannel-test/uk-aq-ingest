@@ -16,6 +16,16 @@ This document summarizes the UK-AQ helper scripts and their inputs/outputs.
 - `SCOMM_USER_AGENT` (optional; identifies your client when polling Sensor.Community)
 - `SCOMM_INGEST_MET_FIELDS` (optional; defaults to `false`; enable temperature/humidity/pressure ingestion)
 - `SCOMM_LOG_LEVEL` (optional; defaults to `INFO`)
+- `AIRGRADIENT_BASE_URL` (optional; defaults to `https://api.airgradient.com/public/api/v1`)
+- `AIRGRADIENT_API_KEY` (required; AirGradient API key)
+- `AIRGRADIENT_CONNECTOR_CODE` (optional; defaults to `airgradient`)
+- `AIRGRADIENT_SERVICE_REF` (optional; defaults to `AIRGRADIENT_CONNECTOR_CODE`)
+- `AIRGRADIENT_SERVICE_LABEL` (optional; defaults to `AirGradient`)
+- `AIRGRADIENT_LOCATIONS_PATH` (optional; defaults to `/locations`)
+- `AIRGRADIENT_API_KEY_PARAM` (optional; defaults to `api_key`)
+- `AIRGRADIENT_API_KEY_HEADER` (optional; defaults to `X-API-KEY`)
+- `AIRGRADIENT_LOG_LEVEL` (optional; defaults to `INFO`)
+- `AIRGRADIENT_USER_AGENT` (optional; defaults to `uk-air-quality-networks`)
 
 ## Scripts
 
@@ -161,6 +171,29 @@ Environment:
 - `LAQN_SERVICE_REF` (optional; defaults to `LAQN_CONNECTOR_CODE`)
 - `LAQN_USER_AGENT` (optional)
 - `LAQN_TIMESERIES_SPECIES` (optional; defaults to `NO2,PM10,PM25,O3`)
+
+### `scripts/airgradient/airgradient_list_stations.py`
+Purpose:
+- Fetch AirGradient locations and optionally upsert stations into Supabase.
+
+Common commands:
+```
+python3 scripts/airgradient/airgradient_list_stations.py
+python3 scripts/airgradient/airgradient_list_stations.py --format csv --output airgradient_stations.csv
+python3 scripts/airgradient/airgradient_list_stations.py --to-supabase
+```
+
+Environment:
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `AIRGRADIENT_BASE_URL` (optional; defaults to `https://api.airgradient.com/public/api/v1`)
+- `AIRGRADIENT_API_KEY` (required)
+- `AIRGRADIENT_CONNECTOR_CODE` (optional; defaults to `airgradient`)
+- `AIRGRADIENT_SERVICE_REF` (optional; defaults to `AIRGRADIENT_CONNECTOR_CODE`)
+- `AIRGRADIENT_SERVICE_LABEL` (optional; defaults to `AirGradient`)
+- `AIRGRADIENT_LOCATIONS_PATH` (optional; defaults to `/locations`)
+- `AIRGRADIENT_API_KEY_PARAM` (optional; defaults to `api_key`)
+- `AIRGRADIENT_API_KEY_HEADER` (optional; defaults to `X-API-KEY`)
 
 ### `scripts/erg_laqn/erg_laqn_ingest.py`
 Purpose:
