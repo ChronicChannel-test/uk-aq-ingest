@@ -1792,7 +1792,6 @@ serve(async (req) => {
                 partial: timeBudgetHit,
               });
             }
-            }
           }
         }
       }
