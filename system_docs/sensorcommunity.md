@@ -15,6 +15,9 @@ This network uses Sensor.Community (formerly Luftdaten) for community air qualit
 - Observations are inserted into `observations` with the timestamp provided by Sensor.Community payloads.
 - When `SCOMM_INGEST_MET_FIELDS=true`, temperature/humidity/pressure are ingested with their own timeseries.
 
+## Connector creation
+- Connector rows are created by the stations sync; the ingest expects the connector to exist and does not create it.
+
 ## Poll cadence
 - Intended polling cadence: every 15 minutes at **:10, :25, :40, :55** (UTC).
 

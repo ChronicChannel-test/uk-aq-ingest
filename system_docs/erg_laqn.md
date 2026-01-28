@@ -5,6 +5,7 @@ Placeholder documentation for the London Air Quality Network (LAQN) sourced from
 ## Status
 - TODO: capture auth and data model mapping.
 - TODO: define ingest and station-listing workflows.
+- Connector rows are created by the stations sync; ingests expect the connector to exist and do not create it.
 
 ## Endpoints
 Source: `network_info/LAQN/Operations at https___api.erg.ic.ac.uk_AirQuality.csv`

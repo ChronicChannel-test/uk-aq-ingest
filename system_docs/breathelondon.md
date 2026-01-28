@@ -18,6 +18,7 @@
 - Observations are pulled per SiteCode and species (`IPM25`, `INO2`) in hourly windows.
 - Checkpoints live in `breathelondon_timeseries_checkpoints` to avoid re-fetching history.
 - Set a modest polling cadence and window sizes to comply with the fair-use terms.
+- Connector rows are created by the stations sync; ingests expect the connector to exist and do not create it.
 
 ## Field glossary
 - `connectors.connector_code`: internal code for the data source (here `breathelondon`).

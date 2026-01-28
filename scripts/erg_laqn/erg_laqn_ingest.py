@@ -245,15 +245,6 @@ class SupabaseWriter:
         self.core = schemas.core
 
     def upsert_connector(self) -> int:
-        payload = {
-            "connector_code": LAQN_CONNECTOR_CODE,
-            "label": LAQN_CONNECTOR_LABEL,
-            "display_name": LAQN_CONNECTOR_DISPLAY_NAME,
-            "service_url": LAQN_BASE_URL,
-            "stations_bbox_supported": False,
-            "timeseries_station_filter_supported": False,
-        }
-        self.core.table("connectors").upsert(payload, on_conflict="connector_code").execute()
         row = (
             self.core.table("connectors")
             .select("id")
@@ -263,7 +254,7 @@ class SupabaseWriter:
         )
         data = row.data if hasattr(row, "data") else row.get("data")
         if not data:
-            raise RuntimeError("Failed to resolve connector id for LAQN.")
+            raise RuntimeError("Connector not found for LAQN. Run the list_stations job first.")
         return int(data["id"])
 
     def upsert_stations(self, rows: Iterable[Dict[str, Any]]) -> int:

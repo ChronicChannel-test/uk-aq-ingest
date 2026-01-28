@@ -392,9 +392,7 @@ class AirGradientClient {
   }
 }
 
-async function upsertConnector(connectorCode: string): Promise<ConnectorRow | null> {
-  const connectorLabel = AIRGRADIENT_SERVICE_LABEL;
-  const serviceUrl = AIRGRADIENT_BASE_URL;
+async function loadConnector(connectorCode: string): Promise<ConnectorRow | null> {
   const select = [
     "id",
     "connector_code",
@@ -402,33 +400,14 @@ async function upsertConnector(connectorCode: string): Promise<ConnectorRow | nu
     "service_url",
     "overwrite_station_name",
   ].join(",");
-
-  await postgrestRequest(
-    "POST",
-    "connectors",
-    { on_conflict: "connector_code" },
-    [
-      {
-        connector_code: connectorCode,
-        label: connectorLabel,
-        display_name: connectorLabel,
-        service_url: serviceUrl,
-        overwrite_station_name: false,
-        poll_enabled: false,
-        poll_interval_minutes: 15,
-        poll_window_hours: DEFAULT_WINDOW_HOURS,
-        stations_bbox_supported: false,
-        timeseries_station_filter_supported: false,
-      },
-    ],
-    "resolution=merge-duplicates,return=minimal",
-  );
-
-  const { data } = await postgrestRequest<ConnectorRow[]>("GET", "connectors", {
+  const { data, error } = await postgrestRequest<ConnectorRow[]>("GET", "connectors", {
     select,
     connector_code: `eq.${connectorCode}`,
     limit: "1",
   });
+  if (error) {
+    throw new Error(`Connector fetch failed: ${error.message}`);
+  }
   return data && data[0] ? data[0] : null;
 }
 
@@ -668,9 +647,9 @@ serve(async (req) => {
   const windowHours = Number(payload.window_hours ?? DEFAULT_WINDOW_HOURS);
   const dryRun = payload.dry_run ?? false;
 
-  const connector = await upsertConnector(connectorCode);
+  const connector = await loadConnector(connectorCode);
   if (!connector) {
-    return jsonResponse({ error: "Failed to resolve connector metadata." }, 500);
+    return jsonResponse({ error: "Connector not found." }, 404);
   }
 
   const connectorId = String(connector.id);

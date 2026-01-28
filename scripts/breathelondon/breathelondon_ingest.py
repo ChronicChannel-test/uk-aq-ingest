@@ -256,7 +256,9 @@ def main() -> int:
     api_key = load_api_key(args.api_key)
     client = BreatheLondonClient(api_key)
     writer = SupabaseWriter()
-    connector_id = writer.upsert_connector()
+    connector_id = writer.fetch_connector_id()
+    if connector_id is None:
+        raise SystemExit("Connector not found for Breathe London. Run the list_stations job first.")
 
     station_rows: List[Dict[str, Any]] = []
     metadata_by_ref: Dict[str, Dict[str, Any]] = {}

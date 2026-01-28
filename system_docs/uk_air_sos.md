@@ -35,6 +35,9 @@ Applied in `scripts/uk_air_sos/uk_air_sos_ingest.py`:
 - `categories`
 - `features`
 
+## Connector creation
+- Connector rows are created by the stations sync; ingests expect the connector to exist and do not create it.
+
 ## Station metadata and memberships
 - `station_metadata` and `station_network_memberships` are populated by the station listing/backfill scripts.
 - SOS station payloads do not currently expose `stationType`; use the site register CSV for membership backfills.

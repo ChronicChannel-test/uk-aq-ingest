@@ -216,6 +216,22 @@ class SupabaseWriter:
         self.raw = schemas.raw
 
     def upsert_connector(self) -> int:
+        existing = (
+            self.core.table("connectors")
+            .select("id,poll_enabled")
+            .eq("connector_code", BREATHELONDON_CONNECTOR_CODE)
+            .limit(1)
+            .execute()
+        )
+        existing_rows = existing.data if hasattr(existing, "data") else existing.get("data")
+        existing_row = (
+            existing_rows[0]
+            if isinstance(existing_rows, list) and existing_rows
+            else existing_rows
+            if isinstance(existing_rows, dict)
+            else None
+        )
+        poll_enabled = bool(existing_row.get("poll_enabled")) if isinstance(existing_row, dict) else False
         payload = {
             "connector_code": BREATHELONDON_CONNECTOR_CODE,
             "label": BREATHELONDON_SERVICE_LABEL,
@@ -223,6 +239,7 @@ class SupabaseWriter:
             "service_url": BREATHELONDON_BASE_URL,
             "stations_bbox_supported": False,
             "timeseries_station_filter_supported": False,
+            "poll_enabled": poll_enabled,
         }
         self.core.table("connectors").upsert(payload, on_conflict="connector_code").execute()
         row = (
@@ -236,6 +253,25 @@ class SupabaseWriter:
         if not data:
             raise RuntimeError("Failed to resolve connector id for Breathe London.")
         return int(data["id"])
+
+    def fetch_connector_id(self) -> Optional[int]:
+        resp = (
+            self.core.table("connectors")
+            .select("id")
+            .eq("connector_code", BREATHELONDON_CONNECTOR_CODE)
+            .limit(1)
+            .execute()
+        )
+        rows = resp.data if hasattr(resp, "data") else resp.get("data")
+        if not rows:
+            return None
+        row = rows[0] if isinstance(rows, list) else rows
+        if not isinstance(row, dict):
+            return None
+        try:
+            return int(row.get("id"))
+        except (TypeError, ValueError):
+            return None
 
     def update_connector_last_polled(self, connector_id: int) -> None:
         timestamp = datetime.now(timezone.utc).isoformat()

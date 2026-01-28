@@ -4,7 +4,7 @@ Sensor.Community ingestion helper (UK only).
 
 This script:
 1) Fetches recent sensor values from data.sensor.community for GB.
-2) Upserts connector + station metadata into Supabase.
+2) Reads connector + upserts station metadata into Supabase.
 3) Creates/updates timeseries per station + pollutant.
 4) Inserts observations for the latest values.
 
@@ -776,19 +776,6 @@ class SupabaseWriter:
         self.raw = schemas.raw
 
     def upsert_connector(self) -> Tuple[int, bool]:
-        payload = {
-            "connector_code": SCOMM_CONNECTOR_CODE,
-            "label": SCOMM_SERVICE_LABEL,
-            "display_name": SCOMM_SERVICE_LABEL,
-            "service_url": SCOMM_BASE_URL,
-            "overwrite_station_name": False,
-            "poll_enabled": True,
-            "poll_interval_minutes": 15,
-            "poll_window_hours": 1,
-            "stations_bbox_supported": False,
-            "timeseries_station_filter_supported": False,
-        }
-        self.core.table("connectors").upsert(payload, on_conflict="connector_code").execute()
         row = (
             self.core.table("connectors")
             .select("id,overwrite_station_name")
@@ -798,7 +785,7 @@ class SupabaseWriter:
         )
         data = row.data if hasattr(row, "data") else row.get("data")
         if not data:
-            raise RuntimeError("Failed to resolve connector id for Sensor.Community.")
+            raise RuntimeError("Connector not found for Sensor.Community. Run the list_stations job first.")
         overwrite_station_name = data.get("overwrite_station_name")
         return int(data["id"]), bool(overwrite_station_name)
 

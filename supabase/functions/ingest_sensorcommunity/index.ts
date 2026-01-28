@@ -572,8 +572,8 @@ function postgrestIn(values: string[]): string {
 async function loadConnector(
   connectorId: string | undefined,
   connectorCode: string,
-  connectorLabel: string,
-  serviceUrl: string,
+  _connectorLabel: string,
+  _serviceUrl: string,
 ): Promise<ConnectorRow | null> {
   const select = "id,connector_code,label,display_name,service_url,overwrite_station_name";
   if (connectorId) {
@@ -595,34 +595,7 @@ async function loadConnector(
   if (existing && existing[0]) {
     return existing[0];
   }
-
-  await postgrestRequest(
-    "POST",
-    "connectors",
-    { on_conflict: "connector_code" },
-    [
-      {
-        connector_code: connectorCode,
-        label: connectorLabel,
-        display_name: connectorLabel,
-        service_url: serviceUrl,
-        overwrite_station_name: false,
-        poll_enabled: false,
-        poll_interval_minutes: 15,
-        poll_window_hours: 1,
-        stations_bbox_supported: false,
-        timeseries_station_filter_supported: false,
-      },
-    ],
-    "resolution=merge-duplicates,return=minimal",
-  );
-
-  const { data } = await postgrestRequest<ConnectorRow[]>("GET", "connectors", {
-    select,
-    connector_code: `eq.${connectorCode}`,
-    limit: "1",
-  });
-  return data && data[0] ? data[0] : null;
+  return null;
 }
 
 async function upsertPhenomena(connectorId: string): Promise<Record<string, number>> {
@@ -1576,9 +1549,9 @@ serve(async (req) => {
         }
 
         if (status === 200 && !connector) {
-          status = 500;
-          responsePayload = { ok: false, error: "Connector not found or created." };
-          log.error("Connector not found or created.");
+          status = 404;
+          responsePayload = { ok: false, error: "Connector not found." };
+          log.error("Connector not found.");
         }
 
         let records: Array<Record<string, unknown>> = [];

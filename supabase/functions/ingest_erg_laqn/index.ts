@@ -704,39 +704,22 @@ function buildErgCsvPath(pollutant: string, dateStamp: string): string {
   return `${LAQN_CSV_DROPBOX_FOLDER}/erg_laqn_${pollutant}_${dateStamp}.csv`;
 }
 
-async function upsertConnector(
+async function loadConnector(
   connectorCode: string,
-  connectorLabel: string,
-  connectorDisplayName: string,
-  serviceUrl: string,
 ): Promise<ConnectorRow | null> {
-  const payload = {
-    connector_code: connectorCode,
-    label: connectorLabel,
-    display_name: connectorDisplayName,
-    service_url: serviceUrl,
-    stations_bbox_supported: false,
-    timeseries_station_filter_supported: false,
-  };
-  const { error: upsertError } = await postgrestRequest(
-    "POST",
-    "connectors",
-    { on_conflict: "connector_code" },
-    payload,
-    UPSERT_PREFER,
-  );
-  if (upsertError) {
-    throw new Error(`Connector upsert failed: ${upsertError.message}`);
-  }
   const { data, error } = await postgrestRequest<ConnectorRow[]>(
     "GET",
     "connectors",
-    { select: "id,connector_code,label,display_name,service_url", connector_code: `eq.${connectorCode}` },
+    {
+      select: "id,connector_code,label,display_name,service_url",
+      connector_code: `eq.${connectorCode}`,
+      limit: "1",
+    },
   );
-  if (error || !data?.length) {
-    throw new Error(`Connector fetch failed: ${error?.message ?? "missing connector"}`);
+  if (error) {
+    throw new Error(`Connector fetch failed: ${error.message}`);
   }
-  return data[0];
+  return data && data[0] ? data[0] : null;
 }
 
 async function upsertStations(rows: Record<string, unknown>[]): Promise<void> {
@@ -1770,15 +1753,10 @@ serve(async (req) => {
           dry_run: dryRun,
         });
       }
-    const connector = await upsertConnector(
-      connectorCode,
-      connectorLabel,
-      connectorDisplayName,
-      baseUrl,
-    );
+    const connector = await loadConnector(connectorCode);
     connectorId = connector?.id ?? null;
     if (!connectorId) {
-      throw new Error("Connector id missing after upsert.");
+      throw new Error("Connector not found.");
     }
 
     const stationsPayload = await fetchJson(

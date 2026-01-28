@@ -159,6 +159,9 @@ Key flags:
 - `--skip-station-metadata` to avoid station_metadata updates.
 - `--skip-timeseries` to avoid seeding timeseries rows for each station/species.
 
+Notes:
+- Connector upserts preserve existing `poll_enabled`; new connectors default to `poll_enabled=false`.
+
 Environment:
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
@@ -182,6 +185,9 @@ python3 scripts/airgradient/airgradient_list_stations.py
 python3 scripts/airgradient/airgradient_list_stations.py --format csv --output airgradient_stations.csv
 python3 scripts/airgradient/airgradient_list_stations.py --to-supabase
 ```
+
+Notes:
+- Connector upserts preserve existing `poll_enabled`; new connectors default to `poll_enabled=false`.
 
 Environment:
 - `SUPABASE_URL`
@@ -590,6 +596,9 @@ python3 scripts/uk_air_sos/uk_air_sos_list_stations.py --service-id-from-timeser
 python3 scripts/uk_air_sos/uk_air_sos_list_stations.py --check-timeseries-links --check-output uk_air_sos_timeseries_link_check.csv
 ```
 
+Notes:
+- Connector upserts preserve existing `poll_enabled`; new connectors default to `poll_enabled=false`.
+
 Default outputs:
 - `uk_air_sos_stations.json`
 - `uk_aq_stations_all.json` (when using `--no-filter`)
@@ -668,11 +677,12 @@ Writes to (when `--to-supabase` is set):
 Notes:
 - Uses `SCOMM_SERVICE_REF` (defaults to `SCOMM_CONNECTOR_CODE`) for `stations.service_ref`.
 - Sets `stations.station_exposure` to `indoor`/`outdoor` when `location.indoor` is present.
+- Connector upserts preserve existing `poll_enabled`; new connectors default to `poll_enabled=false`.
 
 ### `scripts/sensorcommunity/sensorcommunity_ingest.py`
 Purpose:
 - Fetch recent Sensor.Community values for `SCOMM_COUNTRY` (default `GB`).
-- Upsert connector + station metadata.
+- Read connector + upsert station metadata.
 - Insert latest observations for PM10 and PM2.5.
 
 Common commands:
@@ -683,7 +693,7 @@ python3 scripts/sensorcommunity/sensorcommunity_ingest.py --refresh-recent --raw
 ```
 
 Writes to:
-- `connectors`, `stations`, `timeseries`, `observations`
+- `stations`, `timeseries`, `observations`
 Notes:
 - Uses `SCOMM_SERVICE_REF` (defaults to `SCOMM_CONNECTOR_CODE`) for `stations.service_ref` and `timeseries.service_ref`.
 - Ensures `phenomena` rows for `pm10`/`pm2.5` and sets `timeseries.phenomenon_id`.
@@ -891,6 +901,9 @@ Environment:
 - `BREATHELONDON_CONNECTOR_CODE` / `BREATHELONDON_SERVICE_REF` (optional override)
 - `BREATHELONDON_SERVICE_LABEL` (optional override)
 - `BREATHELONDON_USER_AGENT` (optional override)
+
+Notes:
+- Connector upserts preserve existing `poll_enabled`; new connectors default to `poll_enabled=false`.
 
 ### `scripts/uk_aq_invoke_edge.py`
 Purpose:

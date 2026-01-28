@@ -396,6 +396,22 @@ class SupabaseWriter:
         primary = _select_primary_service(services_list)
         if primary is None or primary.get("id") is None:
             return None
+        existing = (
+            self.core.table("connectors")
+            .select("id,poll_enabled")
+            .eq("connector_code", UK_AIR_SOS_CONNECTOR_CODE)
+            .limit(1)
+            .execute()
+        )
+        existing_rows = existing.data if hasattr(existing, "data") else existing.get("data")
+        existing_row = (
+            existing_rows[0]
+            if isinstance(existing_rows, list) and existing_rows
+            else existing_rows
+            if isinstance(existing_rows, dict)
+            else None
+        )
+        poll_enabled = bool(existing_row.get("poll_enabled")) if isinstance(existing_row, dict) else False
         payload = [
             {
                 "connector_code": UK_AIR_SOS_CONNECTOR_CODE,
@@ -404,6 +420,7 @@ class SupabaseWriter:
                     primary.get("label") or primary.get("name")
                 ),
                 "service_url": primary.get("serviceUrl") or primary.get("url") or UK_AIR_SOS_BASE_URL,
+                "poll_enabled": poll_enabled,
             }
         ]
         self.core.table("connectors").upsert(payload, on_conflict="connector_code").execute()

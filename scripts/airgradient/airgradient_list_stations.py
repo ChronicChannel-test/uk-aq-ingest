@@ -186,6 +186,22 @@ class SupabaseWriter:
         self.core = schemas.core
 
     def upsert_connector(self) -> int:
+        existing = (
+            self.core.table("connectors")
+            .select("id,poll_enabled")
+            .eq("connector_code", AIRGRADIENT_CONNECTOR_CODE)
+            .limit(1)
+            .execute()
+        )
+        existing_rows = existing.data if hasattr(existing, "data") else existing.get("data")
+        existing_row = (
+            existing_rows[0]
+            if isinstance(existing_rows, list) and existing_rows
+            else existing_rows
+            if isinstance(existing_rows, dict)
+            else None
+        )
+        poll_enabled = bool(existing_row.get("poll_enabled")) if isinstance(existing_row, dict) else False
         payload = {
             "connector_code": AIRGRADIENT_CONNECTOR_CODE,
             "label": AIRGRADIENT_SERVICE_LABEL,
@@ -194,6 +210,7 @@ class SupabaseWriter:
             "overwrite_station_name": False,
             "stations_bbox_supported": False,
             "timeseries_station_filter_supported": False,
+            "poll_enabled": poll_enabled,
         }
         self.core.table("connectors").upsert(payload, on_conflict="connector_code").execute()
         row = (

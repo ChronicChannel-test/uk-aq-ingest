@@ -1284,7 +1284,7 @@ function parseYmd(value: string): Date | null {
 async function loadConnector(
   connectorId: string | undefined,
   connectorCode: string,
-  connectorLabel: string,
+  _connectorLabel: string,
 ): Promise<ConnectorRow | null> {
   const select =
     "id,connector_code,label,display_name,service_url,poll_enabled,poll_window_hours,poll_timeseries_batch_size";
@@ -1309,32 +1309,7 @@ async function loadConnector(
       return data[0];
     }
   }
-
-  if (!connectorCode) {
-    return null;
-  }
-
-  await postgrestRequest(
-    "POST",
-    "connectors",
-    { on_conflict: "connector_code" },
-    [
-      {
-        connector_code: connectorCode,
-        label: connectorLabel,
-        display_name: connectorLabel,
-        service_url: UK_AIR_SOS_BASE_URL,
-      },
-    ],
-    "resolution=merge-duplicates,return=minimal",
-  );
-
-  const { data } = await postgrestRequest<ConnectorRow[]>("GET", "connectors", {
-    select,
-    connector_code: `eq.${connectorCode}`,
-    limit: "1",
-  });
-  return data && data[0] ? data[0] : null;
+  return null;
 }
 
 async function loadTimeseries(

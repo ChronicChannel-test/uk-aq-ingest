@@ -525,8 +525,8 @@ async function getClarityData(
 async function loadConnector(
   connectorId: string | undefined,
   connectorCode: string,
-  connectorLabel: string,
-  serviceUrl: string,
+  _connectorLabel: string,
+  _serviceUrl: string,
 ): Promise<ConnectorRow | null> {
   const select = "id,connector_code,label,service_url";
   if (connectorId) {
@@ -547,31 +547,7 @@ async function loadConnector(
   if (existing && existing[0]) {
     return existing[0];
   }
-  await postgrestRequest(
-    "POST",
-    "connectors",
-    { on_conflict: "connector_code" },
-    [
-      {
-        connector_code: connectorCode,
-        label: connectorLabel,
-        display_name: connectorLabel,
-        service_url: serviceUrl,
-        stations_bbox_supported: false,
-        timeseries_station_filter_supported: false,
-        poll_enabled: false,
-        poll_interval_minutes: 15,
-        poll_window_hours: 1,
-      },
-    ],
-    "resolution=merge-duplicates,return=minimal",
-  );
-  const { data } = await postgrestRequest<ConnectorRow[]>("GET", "connectors", {
-    select,
-    connector_code: `eq.${connectorCode}`,
-    limit: "1",
-  });
-  return data && data[0] ? data[0] : null;
+  return null;
 }
 
 async function upsertStations(rows: Record<string, unknown>[]): Promise<number> {
@@ -1689,9 +1665,9 @@ serve(async (req) => {
         connector = await loadConnector(connectorId, connectorCode, connectorLabel, baseUrl);
         resolvedConnectorCode = connector?.connector_code ?? connectorCode;
         if (!connector) {
-          status = 500;
-          responsePayload = { error: "Failed to resolve connector id." };
-          log.warn("Failed to resolve connector.", {
+          status = 404;
+          responsePayload = { error: "Connector not found." };
+          log.warn("Connector not found.", {
             connector_id: connectorId ?? null,
             connector_code: connectorCode,
           });

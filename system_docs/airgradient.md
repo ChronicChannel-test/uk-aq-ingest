@@ -27,6 +27,8 @@ location before normalizing them into `stations`, `timeseries`, and
 The dispatcher (`uk_aq_dispatch_polls`) triggers `ingest_airgradient` and passes
 `window_hours` based on the connector polling configuration. By default, it
 polls every 15 minutes with a 1-hour window when `poll_enabled=true`.【F:supabase/functions/uk_aq_dispatch_polls/index.ts†L41-L110】【F:supabase/functions/uk_aq_dispatch_polls/index.ts†L842-L893】
+The ingest function requires the connector row to exist (created by the stations
+sync) and does not create connector records.
 
 ## Measurements
 The edge function maps common AirGradient measurement fields to AQ phenomena

@@ -43,6 +43,7 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
 - Triggered by: `uk_aq_dispatch_polls` (external scheduler). Helper RPCs live in `supabase/uk_aq_polling_helpers.sql`.
 - Note: Deploying the Edge Function does not create a schedule; use the Cloudflare Worker cron for regular runs.
 - Notes:
+  - Requires an existing connector row; the ingest does not create connectors.
   - Logs cron secret mismatch diagnostics (presence/length only) when authorization fails.
   - Skips timeseries with missing `last_value_at` or `last_value_at` older than the poll window.
   - Enforces a runtime budget and will return partial progress with `partial=true` when exceeded.
@@ -59,8 +60,9 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
 - Purpose: Poll Sensor.Community recent values and write stations, timeseries, and observations.
 - Triggered by: `uk_aq_dispatch_polls` (external scheduler). Helper RPCs live in `supabase/uk_aq_polling_helpers.sql`.
 - Writes:
-  - `connectors`, `stations`, `phenomena`, `timeseries`, `observations`
+  - `connectors` (last_polled_at updates), `stations`, `phenomena`, `timeseries`, `observations`
 - Notes:
+  - Requires an existing connector row; the ingest does not create connectors.
   - Uses `SCOMM_*` environment variables for base URL, service metadata, and country.
   - `SCOMM_INGEST_MET_FIELDS=true` enables temperature/humidity/pressure ingestion.
   - Filters to the UK bounding box by default; stations with missing coordinates are kept.
@@ -76,8 +78,9 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
 - Purpose: Poll AirGradient locations and recent measurements, writing stations, timeseries, and observations.
 - Triggered by: `uk_aq_dispatch_polls` (external scheduler).
 - Writes:
-  - `connectors`, `stations`, `phenomena`, `timeseries`, `observations`
+  - `stations`, `phenomena`, `timeseries`, `observations`
 - Notes:
+  - Requires an existing connector row; the ingest does not create connectors.
   - Uses `AIRGRADIENT_*` environment variables for base URL, API key, and endpoint paths.
   - If `station_refs` are provided, limits polling to those location ids.
   - Observation fields are mapped using common AirGradient keys (PM1/PM2.5/PM10, CO2, temperature, humidity).
@@ -88,9 +91,10 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
 - Purpose: Poll Breathe London Communities for hourly observations with checkpointing.
 - Triggered by: `uk_aq_dispatch_polls` (external scheduler). Helper RPCs live in `supabase/uk_aq_polling_helpers.sql`.
 - Writes:
-  - `connectors`, `stations`, `phenomena`, `timeseries`, `observations`
+  - `connectors` (last_polled_at updates), `stations`, `phenomena`, `timeseries`, `observations`
   - `breathelondon_timeseries_checkpoints` (per-station/species checkpoints)
 - Notes:
+  - Requires an existing connector row; the ingest does not create connectors.
   - Uses `BREATHELONDON_API_KEY` for every request.
   - Supports `skip_stations` to avoid station upserts; when set, stations are loaded from Supabase instead of `ListSensors`.
   - Supports `active_only` to limit polling to stations marked `enabled` or `site_active` in metadata.
@@ -116,6 +120,7 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
   - `connectors.last_polled_at` (update by id)
   - `erg_laqn_station_checkpoints` (update by station_id)
 - Notes:
+  - Requires an existing connector row; the ingest does not create connectors.
   - Request body supports `group`, `station_refs`, `species`, `days`, `start_date`, `end_date`, `batch_size`, `sleep_seconds`, `dry_run`, `csv_station_id`, and `csv_station_ref`.
   - Uses `/Information/MonitoringSites/GroupName={group}/Json` for stations.
   - Uses `/Data/SiteSpecies/SiteCode={code}/SpeciesCode={species}/StartDate={YYYY-MM-DD}/EndDate={YYYY-MM-DD}/Json` for raw data.
