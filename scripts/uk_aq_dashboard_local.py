@@ -161,6 +161,12 @@ def _normalize_token(value: str) -> str:
     return NON_ALNUM_RE.sub("", value.lower())
 
 
+def _is_truthy_flag(value: Any) -> bool:
+    if value is None:
+        return False
+    return str(value).strip().lower() in {"y", "yes", "true", "1"}
+
+
 def _extract_pollutant_key(row: Dict[str, Any]) -> Optional[str]:
     candidates: List[str] = []
     phenomenon = row.get("phenomenon") or {}
@@ -213,6 +219,47 @@ def _build_dashboard(base_url: str, service_role_key: str) -> Dict[str, Any]:
         for row in connectors
         if row.get("id") is not None
     }
+
+    stations = _fetch_all(
+        base_url,
+        headers,
+        "stations",
+        {
+            "select": "id,connector_id,service_ref,removed_at",
+        },
+    )
+    station_metadata = _fetch_all(
+        base_url,
+        headers,
+        "station_metadata",
+        {
+            "select": "station_id,attributes",
+        },
+    )
+    metadata_by_station = {
+        row.get("station_id"): row.get("attributes") or {}
+        for row in station_metadata
+        if row.get("station_id") is not None
+    }
+    active_station_keys: Dict[Tuple[int, int], bool] = {}
+    for row in stations:
+        station_id = row.get("id")
+        connector_id = row.get("connector_id")
+        if station_id is None or connector_id is None:
+            continue
+        if row.get("removed_at") is not None:
+            active_station_keys[(connector_id, station_id)] = False
+            continue
+        connector_meta = connector_map.get(connector_id, {})
+        connector_code = connector_meta.get("connector_code") or ""
+        service_ref = row.get("service_ref") or ""
+        if connector_code == "breathelondon" and service_ref == "breathelondon":
+            attributes = metadata_by_station.get(station_id, {})
+            enabled_ok = _is_truthy_flag(attributes.get("enabled"))
+            active_ok = _is_truthy_flag(attributes.get("site_active"))
+            active_station_keys[(connector_id, station_id)] = enabled_ok or active_ok
+        else:
+            active_station_keys[(connector_id, station_id)] = True
 
     now = datetime.now(timezone.utc)
     ingest_runs = _fetch_ingest_runs(base_url, headers)
@@ -273,6 +320,10 @@ def _build_dashboard(base_url: str, service_role_key: str) -> Dict[str, Any]:
         pollutant_key: {}
         for pollutant_key in POLLUTANTS.keys()
     }
+    active_by_pollutant: Dict[str, Dict[Tuple[int, int], bool]] = {
+        pollutant_key: {}
+        for pollutant_key in POLLUTANTS.keys()
+    }
 
     for row in timeseries_rows:
         station_id = row.get("station_id")
@@ -289,6 +340,8 @@ def _build_dashboard(base_url: str, service_role_key: str) -> Dict[str, Any]:
         current = latest_by_pollutant[pollutant_key].get(key)
         if current is None or latest_at > current:
             latest_by_pollutant[pollutant_key][key] = latest_at
+        if active_station_keys.get(key):
+            active_by_pollutant[pollutant_key][key] = True
 
     pollutants_payload: List[Dict[str, Any]] = []
 
@@ -303,6 +356,7 @@ def _build_dashboard(base_url: str, service_role_key: str) -> Dict[str, Any]:
                 "connector_code": meta.get("connector_code") or "",
                 "label": meta.get("label") or "",
                 "stations_with_pollutant": 0,
+                "active_stations_with_pollutant": 0,
                 "buckets": {bucket: 0 for bucket in BUCKETS},
             }
 
@@ -318,11 +372,14 @@ def _build_dashboard(base_url: str, service_role_key: str) -> Dict[str, Any]:
                     "connector_code": "",
                     "label": "",
                     "stations_with_pollutant": 0,
+                    "active_stations_with_pollutant": 0,
                     "buckets": {bucket_name: 0 for bucket_name in BUCKETS},
                 },
             )
             entry["stations_with_pollutant"] += 1
             entry["buckets"][bucket] += 1
+            if active_by_pollutant[pollutant_key].get((connector_id, _station_id)):
+                entry["active_stations_with_pollutant"] += 1
 
         connectors_payload = list(connector_counts.values())
         connectors_payload.sort(key=lambda row: row.get("connector_code") or "")

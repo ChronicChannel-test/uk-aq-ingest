@@ -551,6 +551,7 @@
               <tr>
                 <th>Connector</th>
                 <th>Stations</th>
+                <th>Active</th>
                 <th>0-3</th>
                 <th>3-6</th>
                 <th>6-24</th>
@@ -563,6 +564,7 @@
               ${pollutant.connectors
                 .map((row) => {
                   const total = row.stations_with_pollutant || 0;
+                  const active = row.active_stations_with_pollutant || 0;
                   const bucketCounts = bucketOrder.map((bucket) => row.buckets[bucket] || 0);
                   const segments = bucketCounts
                     .map((count, idx) => {
@@ -575,6 +577,7 @@
                     <tr>
                       <td class="connector-name">${row.label}</td>
                       <td>${total}</td>
+                      <td>${active}</td>
                       <td>${bucketCounts[0]}</td>
                       <td>${bucketCounts[1]}</td>
                       <td>${bucketCounts[2]}</td>
