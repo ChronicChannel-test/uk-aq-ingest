@@ -122,7 +122,7 @@ async function loadLatest({ region, pconCode, stationLike, connectorId, pollutan
   const phenomenonSelect = pollutantKey
     ? "phenomenon:phenomena!inner(id,label,notation,eionet_uri,pollutant_label)"
     : "phenomenon:phenomena(id,label,notation,eionet_uri,pollutant_label)";
-  const connectorSelect = "connector:connectors(id,connector_code,label,display_name,station_display_name_template)";
+  const connectorSelect = "connector:connectors!timeseries_connector_id_fkey(id,connector_code,label,display_name,station_display_name_template)";
   const stationSelect =
     "station:stations(id,station_ref,label,station_name,region,la_code,la_version,pcon_code,pcon_version,connector_id,station_network_memberships(network_code,network_label,is_primary))";
   const stationSelectInner =

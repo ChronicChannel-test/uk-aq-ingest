@@ -11,6 +11,7 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
 - Triggered by: External scheduler (Cloudflare Worker cron) calling the edge function directly.
 - Reads:
   - `connectors` (`poll_enabled`, `poll_interval_minutes`, `poll_window_hours`, `poll_timeseries_batch_size`, `last_polled_at`)
+  - `dispatcher_settings` (`dispatcher_parallel_ingest`, `max_runs_per_dispatch_call`)
 - Station batch helpers: `breathelondon_select_station_refs`, `erg_laqn_select_station_refs` (defined in `supabase/uk_aq_polling_helpers.sql`)
 - Calls:
   - `ingest_uk_air_sos` (`window_hours`)
@@ -22,7 +23,9 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
   - Uses the Supabase service role key to read connector settings.
   - Uses `SB_ANON_JWT` (falls back to service role) to call ingest functions.
   - Dispatches one due connector per run, selecting the oldest `last_polled_at` (null first).
+    - When `dispatcher_parallel_ingest` is true, dispatches up to `max_runs_per_dispatch_call` connectors per run (still max one per connector).
 - Skips dispatch if any connector is in-flight (`last_run_end` null within 10 minutes, and `last_run_start` is set) and marks `last_run_start` before dispatch.
+  - When `dispatcher_parallel_ingest` is true, in-flight checks are per connector; other connectors can still dispatch.
   - Stale in-flight runs (>10 minutes) are auto-closed as `failed` with `in_flight_timeout` and a `uk_aq_ingest_runs` row is inserted.
   - If a connector has `last_run_end` null but `last_polled_at` is newer than `last_run_start`, the run is reconciled as `succeeded` with `polled_reconciled` (no `uk_aq_ingest_runs` row is inserted).
   - Cloudflare worker cron runs every 2 minutes (`workers/uk_aq_dispatcher/wrangler.toml`).
@@ -119,6 +122,8 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
 - Triggered by: Web requests (read-only, no writes).
 - Returns: timeseries rows with station + phenomenon metadata, connector metadata (`connector_id`, `connector_code`, `connector_label` from `connectors.display_name`), `display_name`, latest values, and `station_network_memberships` (network_code, network_label, is_primary). Station payload includes `la_code`/`la_version` when present.
 - Params: `region`, `station_like`, `pollutant`, `connector_id`, `limit`, `pcon_code`.
+- Notes:
+  - Explicitly embeds `connectors` via `timeseries_connector_id_fkey` to avoid ambiguous PostgREST relationships after observations gained `connector_id`.
 - Memberships are returned as-is (no filtering by network membership).
 - `display_name` logic:
   - Uses `connectors.station_display_name_template` if present, with tokens `{station_name}`, `{station_label}`, `{station_ref}`.

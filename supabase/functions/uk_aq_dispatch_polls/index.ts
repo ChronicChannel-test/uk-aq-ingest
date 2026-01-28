@@ -15,6 +15,11 @@ type ConnectorRow = {
   last_run_status: string | null;
 };
 
+type DispatcherSettings = {
+  dispatcher_parallel_ingest: boolean;
+  max_runs_per_dispatch_call: number;
+};
+
 type DispatchResult = {
   connector_code: string;
   status: string;
@@ -84,6 +89,8 @@ const DEFAULT_BATCH_LIMIT: Record<string, number> = {
 };
 
 const IN_FLIGHT_TIMEOUT_MINUTES = 10;
+const DEFAULT_PARALLEL_INGEST = false;
+const DEFAULT_MAX_RUNS_PER_DISPATCH_CALL = 1;
 
 function postgrestHeaders(schema = UK_AQ_CORE_SCHEMA): Record<string, string> {
   const headers: Record<string, string> = {
@@ -327,6 +334,36 @@ function isDue(connector: ConnectorRow | null, connectorCode: string, now: Date)
   return elapsedMs >= intervalMinutes * 60 * 1000;
 }
 
+function normalizeDispatcherSettings(
+  settings: DispatcherSettings | null,
+): DispatcherSettings {
+  const parallel = settings?.dispatcher_parallel_ingest ?? DEFAULT_PARALLEL_INGEST;
+  const maxRuns = Number.isFinite(settings?.max_runs_per_dispatch_call)
+    ? Math.max(1, Math.floor(settings?.max_runs_per_dispatch_call ?? 1))
+    : DEFAULT_MAX_RUNS_PER_DISPATCH_CALL;
+  return {
+    dispatcher_parallel_ingest: Boolean(parallel),
+    max_runs_per_dispatch_call: maxRuns,
+  };
+}
+
+async function loadDispatcherSettings(): Promise<DispatcherSettings | null> {
+  const { data, error } = await postgrestRequest<DispatcherSettings[]>(
+    "GET",
+    "dispatcher_settings",
+    {
+      select: "dispatcher_parallel_ingest,max_runs_per_dispatch_call",
+      id: "eq.1",
+      limit: "1",
+    },
+  );
+  if (error) {
+    console.warn("Failed to load dispatcher_settings:", error.message);
+    return null;
+  }
+  return data && data.length ? data[0] : null;
+}
+
 function findRecentInFlightConnector(
   connectors: ConnectorRow[],
   now: Date,
@@ -364,6 +401,22 @@ function findRecentInFlightConnector(
     }
   }
   return candidate;
+}
+
+function isConnectorInFlight(connector: ConnectorRow | null, now: Date): boolean {
+  if (!connector || connector.last_run_end) {
+    return false;
+  }
+  const startedAt = parseDate(connector.last_run_start ?? null);
+  if (!startedAt) {
+    return true;
+  }
+  const ageMs = now.getTime() - startedAt.getTime();
+  if (!Number.isFinite(ageMs)) {
+    return true;
+  }
+  const timeoutMs = IN_FLIGHT_TIMEOUT_MINUTES * 60 * 1000;
+  return ageMs >= 0 && ageMs <= timeoutMs;
 }
 
 async function settleStaleInFlight(connectors: ConnectorRow[], now: Date): Promise<void> {
@@ -425,6 +478,43 @@ async function reconcileInFlightByLastPolled(
       last_run_message: "polled_reconciled",
     });
   }
+}
+
+function selectDueConnectors(
+  dueCandidates: {
+    connectorCode: string;
+    connector: ConnectorRow | null;
+    lastPolledMs: number;
+  }[],
+  maxRuns: number,
+): {
+  selected: {
+    connectorCode: string;
+    connector: ConnectorRow | null;
+    lastPolledMs: number;
+  }[];
+  skipped: {
+    connectorCode: string;
+    connector: ConnectorRow | null;
+  }[];
+} {
+  if (!dueCandidates.length) {
+    return { selected: [], skipped: [] };
+  }
+  const sorted = [...dueCandidates].sort((a, b) => {
+    if (a.lastPolledMs !== b.lastPolledMs) {
+      return a.lastPolledMs - b.lastPolledMs;
+    }
+    return a.connectorCode.localeCompare(b.connectorCode);
+  });
+  const limit = Math.max(1, Math.floor(maxRuns));
+  return {
+    selected: sorted.slice(0, limit),
+    skipped: sorted.slice(limit).map((item) => ({
+      connectorCode: item.connectorCode,
+      connector: item.connector,
+    })),
+  };
 }
 
 async function postgrestRequest<T>(
@@ -635,9 +725,11 @@ serve(async (req) => {
   await reconcileInFlightByLastPolled(connectors);
   await settleStaleInFlight(connectors, now);
 
+  const settings = normalizeDispatcherSettings(await loadDispatcherSettings());
+
   const connectorMap = new Map(connectors.map((row) => [row.connector_code, row]));
   const inFlight = findRecentInFlightConnector(connectors, now);
-  if (inFlight) {
+  if (inFlight && !settings.dispatcher_parallel_ingest) {
     for (const connectorCode of TARGET_CONNECTORS) {
       results.set(connectorCode, {
         connector_code: connectorCode,
@@ -660,6 +752,14 @@ serve(async (req) => {
 
   for (const connectorCode of TARGET_CONNECTORS) {
     const connector = connectorMap.get(connectorCode) ?? null;
+    if (isConnectorInFlight(connector, now)) {
+      results.set(connectorCode, {
+        connector_code: connectorCode,
+        status: "skipped",
+        detail: "in_flight",
+      });
+      continue;
+    }
     if (!isDue(connector, connectorCode, now)) {
       results.set(connectorCode, {
         connector_code: connectorCode,
@@ -682,15 +782,12 @@ serve(async (req) => {
     });
   }
 
-  dueCandidates.sort((a, b) => {
-    if (a.lastPolledMs !== b.lastPolledMs) {
-      return a.lastPolledMs - b.lastPolledMs;
-    }
-    return a.connectorCode.localeCompare(b.connectorCode);
-  });
+  const { selected, skipped } = selectDueConnectors(
+    dueCandidates,
+    settings.dispatcher_parallel_ingest ? settings.max_runs_per_dispatch_call : 1,
+  );
 
-  const selected = dueCandidates[0];
-  for (const candidate of dueCandidates.slice(1)) {
+  for (const candidate of skipped) {
     results.set(candidate.connectorCode, {
       connector_code: candidate.connectorCode,
       status: "skipped",
@@ -698,261 +795,264 @@ serve(async (req) => {
     });
   }
 
-  const connectorCode = selected.connectorCode;
-  const connector = selected.connector;
-  const runStart = new Date();
-  await updateConnectorRun(connector?.id ?? null, {
-    last_run_start: runStart.toISOString(),
-    last_run_end: null,
-    last_run_status: "running",
-    last_run_message: "dispatching",
-  });
-  let runStatus = "failed";
-  let runMessage = "";
-  let lastResponse: { status: number; body: unknown } | null = null;
-  const runScope: RunScope = {};
-
-  try {
-    if (connectorCode === "uk_air_sos") {
-      const windowHours = getWindowHours(connector, connectorCode);
-      const timeseriesLimit = getTimeseriesLimit(connector);
-      let timeseriesIds: string[] = [];
-      if (timeseriesLimit) {
-        timeseriesIds = await loadUkAirSosTimeseriesIds(timeseriesLimit);
-      }
-      runScope.timeseriesIds = timeseriesIds;
-      const payload: Record<string, unknown> = {
-        connector_code: connectorCode,
-        window_hours: windowHours,
-      };
-      if (timeseriesLimit) {
-        payload.timeseries_limit = timeseriesLimit;
-      }
-      if (timeseriesIds.length) {
-        payload.timeseries_ids = timeseriesIds;
-      }
-      const resp = await callEdgeFunction("ingest_uk_air_sos", payload);
-      lastResponse = { status: resp.status, body: resp.body };
-      if (!resp.ok) {
-        runStatus = "failed";
-        runMessage = `HTTP ${resp.status}`;
-        await logError({
-          severity: "error",
-          message: "ingest_uk_air_sos dispatch failed",
-          connector_id: connector?.id ?? null,
-          context: {
-            connector_code: connectorCode,
-            response_status: resp.status,
-            response_body: resp.body,
-          },
-        });
-      } else {
-        runStatus = "succeeded";
-        runMessage = "dispatched";
-      }
-      results.set(connectorCode, {
-        connector_code: connectorCode,
-        status: resp.ok ? "triggered" : "error",
-        response_status: resp.status,
-        detail: resp.ok ? "dispatched" : JSON.stringify(resp.body),
-      });
-    } else if (connectorCode === "sensorcommunity") {
-      const resp = await callEdgeFunction("ingest_sensorcommunity", {
-        connector_code: connectorCode,
-        country: "GB",
-      });
-      lastResponse = { status: resp.status, body: resp.body };
-      if (!resp.ok) {
-        runStatus = "failed";
-        runMessage = `HTTP ${resp.status}`;
-        await logError({
-          severity: "error",
-          message: "ingest_sensorcommunity dispatch failed",
-          connector_id: connector?.id ?? null,
-          context: {
-            connector_code: connectorCode,
-            response_status: resp.status,
-            response_body: resp.body,
-          },
-        });
-      } else {
-        runStatus = "succeeded";
-        runMessage = "dispatched";
-      }
-      results.set(connectorCode, {
-        connector_code: connectorCode,
-        status: resp.ok ? "triggered" : "error",
-        response_status: resp.status,
-        detail: resp.ok ? "dispatched" : JSON.stringify(resp.body),
-      });
-    } else if (connectorCode === "breathelondon") {
-      const batchLimit = getBatchLimit(connector, connectorCode);
-      const stationRefs = await loadStationRefs(
-        "breathelondon_select_station_refs",
-        batchLimit,
-        true,
-      );
-      runScope.stationRefs = stationRefs;
-      if (!stationRefs.length) {
-        runStatus = "skipped";
-        runMessage = "no_station_refs";
-        results.set(connectorCode, {
-          connector_code: connectorCode,
-          status: "skipped",
-          detail: "no_station_refs",
-        });
-      } else {
-        const windowHours = getWindowHours(connector, connectorCode);
-        const resp = await callEdgeFunction("ingest_breathelondon", {
-          connector_code: connectorCode,
-          service_ref: connectorCode,
-          station_refs: stationRefs,
-          skip_stations: true,
-          active_only: true,
-          initial_days: 2,
-          window_hours: windowHours,
-        });
-        lastResponse = { status: resp.status, body: resp.body };
-        if (!resp.ok) {
-          runStatus = "failed";
-          runMessage = `HTTP ${resp.status}`;
-          await logError({
-            severity: "error",
-            message: "ingest_breathelondon dispatch failed",
-            connector_id: connector?.id ?? null,
-            context: {
-              connector_code: connectorCode,
-              response_status: resp.status,
-              response_body: resp.body,
-            },
-          });
-        } else {
-          runStatus = "succeeded";
-          runMessage = "dispatched";
-        }
-        results.set(connectorCode, {
-          connector_code: connectorCode,
-          status: resp.ok ? "triggered" : "error",
-          response_status: resp.status,
-          detail: resp.ok ? "dispatched" : JSON.stringify(resp.body),
-        });
-      }
-    } else if (connectorCode === "erg_laqn") {
-      const batchLimit = getBatchLimit(connector, connectorCode);
-      const stationRefs = await loadStationRefs(
-        "erg_laqn_select_station_refs",
-        batchLimit,
-        true,
-      );
-      runScope.stationRefs = stationRefs;
-      if (!stationRefs.length) {
-        runStatus = "skipped";
-        runMessage = "no_station_refs";
-        results.set(connectorCode, {
-          connector_code: connectorCode,
-          status: "skipped",
-          detail: "no_station_refs",
-        });
-      } else {
-        const windowHours = getWindowHours(connector, connectorCode);
-        const resp = await callEdgeFunction("ingest_erg_laqn", {
-          connector_code: connectorCode,
-          service_ref: connectorCode,
-          group: "London",
-          days: windowHoursToDays(windowHours),
-          start_from_latest: true,
-          station_refs: stationRefs,
-        });
-        lastResponse = { status: resp.status, body: resp.body };
-        if (!resp.ok) {
-          runStatus = "failed";
-          runMessage = `HTTP ${resp.status}`;
-          await logError({
-            severity: "error",
-            message: "ingest_erg_laqn dispatch failed",
-            connector_id: connector?.id ?? null,
-            context: {
-              connector_code: connectorCode,
-              response_status: resp.status,
-              response_body: resp.body,
-            },
-          });
-        } else {
-          runStatus = "succeeded";
-          runMessage = "dispatched";
-        }
-        results.set(connectorCode, {
-          connector_code: connectorCode,
-          status: resp.ok ? "triggered" : "error",
-          response_status: resp.status,
-          detail: resp.ok ? "dispatched" : JSON.stringify(resp.body),
-        });
-      }
-    } else {
-      runStatus = "skipped";
-      runMessage = "unsupported_connector";
-      results.set(connectorCode, {
-        connector_code: connectorCode,
-        status: "skipped",
-        detail: "unsupported_connector",
-      });
-    }
-  } catch (error) {
-    runStatus = "failed";
-    runMessage = error instanceof Error ? error.message : String(error);
-    await logError({
-      severity: "error",
-      message: error instanceof Error ? error.message : String(error),
-      connector_id: connector?.id ?? null,
-      context: { connector_code: connectorCode, step: "dispatch" },
-    });
-    results.set(connectorCode, {
-      connector_code: connectorCode,
-      status: "error",
-      detail: error instanceof Error ? error.message : String(error),
-    });
-  } finally {
-    const runEnd = new Date();
+  for (const candidate of selected) {
+    const connectorCode = candidate.connectorCode;
+    const connector = candidate.connector;
+    const runStart = new Date();
     await updateConnectorRun(connector?.id ?? null, {
       last_run_start: runStart.toISOString(),
-      last_run_end: runEnd.toISOString(),
-      last_run_status: runStatus,
-      last_run_message: runMessage,
-      last_polled_at: runEnd.toISOString(),
+      last_run_end: null,
+      last_run_status: "running",
+      last_run_message: "dispatching",
     });
-    if (connectorCode) {
-      let lastObservedAt: string | null = null;
-      if (lastResponse) {
-        try {
-          lastObservedAt = await resolveLastObservedAt(connector?.id ?? null, runScope);
-        } catch (error) {
-          console.warn("Failed to resolve last_observed_at.", {
+    let runStatus = "failed";
+    let runMessage = "";
+    let lastResponse: { status: number; body: unknown } | null = null;
+    const runScope: RunScope = {};
+
+    try {
+      if (connectorCode === "uk_air_sos") {
+        const windowHours = getWindowHours(connector, connectorCode);
+        const timeseriesLimit = getTimeseriesLimit(connector);
+        let timeseriesIds: string[] = [];
+        if (timeseriesLimit) {
+          timeseriesIds = await loadUkAirSosTimeseriesIds(timeseriesLimit);
+        }
+        runScope.timeseriesIds = timeseriesIds;
+        const payload: Record<string, unknown> = {
+          connector_code: connectorCode,
+          window_hours: windowHours,
+        };
+        if (timeseriesLimit) {
+          payload.timeseries_limit = timeseriesLimit;
+        }
+        if (timeseriesIds.length) {
+          payload.timeseries_ids = timeseriesIds;
+        }
+        const resp = await callEdgeFunction("ingest_uk_air_sos", payload);
+        lastResponse = { status: resp.status, body: resp.body };
+        if (!resp.ok) {
+          runStatus = "failed";
+          runMessage = `HTTP ${resp.status}`;
+          await logError({
+            severity: "error",
+            message: "ingest_uk_air_sos dispatch failed",
+            connector_id: connector?.id ?? null,
+            context: {
+              connector_code: connectorCode,
+              response_status: resp.status,
+              response_body: resp.body,
+            },
+          });
+        } else {
+          runStatus = "succeeded";
+          runMessage = "dispatched";
+        }
+        results.set(connectorCode, {
+          connector_code: connectorCode,
+          status: resp.ok ? "triggered" : "error",
+          response_status: resp.status,
+          detail: resp.ok ? "dispatched" : JSON.stringify(resp.body),
+        });
+      } else if (connectorCode === "sensorcommunity") {
+        const resp = await callEdgeFunction("ingest_sensorcommunity", {
+          connector_code: connectorCode,
+          country: "GB",
+        });
+        lastResponse = { status: resp.status, body: resp.body };
+        if (!resp.ok) {
+          runStatus = "failed";
+          runMessage = `HTTP ${resp.status}`;
+          await logError({
+            severity: "error",
+            message: "ingest_sensorcommunity dispatch failed",
+            connector_id: connector?.id ?? null,
+            context: {
+              connector_code: connectorCode,
+              response_status: resp.status,
+              response_body: resp.body,
+            },
+          });
+        } else {
+          runStatus = "succeeded";
+          runMessage = "dispatched";
+        }
+        results.set(connectorCode, {
+          connector_code: connectorCode,
+          status: resp.ok ? "triggered" : "error",
+          response_status: resp.status,
+          detail: resp.ok ? "dispatched" : JSON.stringify(resp.body),
+        });
+      } else if (connectorCode === "breathelondon") {
+        const batchLimit = getBatchLimit(connector, connectorCode);
+        const stationRefs = await loadStationRefs(
+          "breathelondon_select_station_refs",
+          batchLimit,
+          true,
+        );
+        runScope.stationRefs = stationRefs;
+        if (!stationRefs.length) {
+          runStatus = "skipped";
+          runMessage = "no_station_refs";
+          results.set(connectorCode, {
             connector_code: connectorCode,
-            error: error instanceof Error ? error.message : String(error),
+            status: "skipped",
+            detail: "no_station_refs",
+          });
+        } else {
+          const windowHours = getWindowHours(connector, connectorCode);
+          const resp = await callEdgeFunction("ingest_breathelondon", {
+            connector_code: connectorCode,
+            service_ref: connectorCode,
+            station_refs: stationRefs,
+            skip_stations: true,
+            active_only: true,
+            initial_days: 2,
+            window_hours: windowHours,
+          });
+          lastResponse = { status: resp.status, body: resp.body };
+          if (!resp.ok) {
+            runStatus = "failed";
+            runMessage = `HTTP ${resp.status}`;
+            await logError({
+              severity: "error",
+              message: "ingest_breathelondon dispatch failed",
+              connector_id: connector?.id ?? null,
+              context: {
+                connector_code: connectorCode,
+                response_status: resp.status,
+                response_body: resp.body,
+              },
+            });
+          } else {
+            runStatus = "succeeded";
+            runMessage = "dispatched";
+          }
+          results.set(connectorCode, {
+            connector_code: connectorCode,
+            status: resp.ok ? "triggered" : "error",
+            response_status: resp.status,
+            detail: resp.ok ? "dispatched" : JSON.stringify(resp.body),
           });
         }
+      } else if (connectorCode === "erg_laqn") {
+        const batchLimit = getBatchLimit(connector, connectorCode);
+        const stationRefs = await loadStationRefs(
+          "erg_laqn_select_station_refs",
+          batchLimit,
+          true,
+        );
+        runScope.stationRefs = stationRefs;
+        if (!stationRefs.length) {
+          runStatus = "skipped";
+          runMessage = "no_station_refs";
+          results.set(connectorCode, {
+            connector_code: connectorCode,
+            status: "skipped",
+            detail: "no_station_refs",
+          });
+        } else {
+          const windowHours = getWindowHours(connector, connectorCode);
+          const resp = await callEdgeFunction("ingest_erg_laqn", {
+            connector_code: connectorCode,
+            service_ref: connectorCode,
+            group: "London",
+            days: windowHoursToDays(windowHours),
+            start_from_latest: true,
+            station_refs: stationRefs,
+          });
+          lastResponse = { status: resp.status, body: resp.body };
+          if (!resp.ok) {
+            runStatus = "failed";
+            runMessage = `HTTP ${resp.status}`;
+            await logError({
+              severity: "error",
+              message: "ingest_erg_laqn dispatch failed",
+              connector_id: connector?.id ?? null,
+              context: {
+                connector_code: connectorCode,
+                response_status: resp.status,
+                response_body: resp.body,
+              },
+            });
+          } else {
+            runStatus = "succeeded";
+            runMessage = "dispatched";
+          }
+          results.set(connectorCode, {
+            connector_code: connectorCode,
+            status: resp.ok ? "triggered" : "error",
+            response_status: resp.status,
+            detail: resp.ok ? "dispatched" : JSON.stringify(resp.body),
+          });
+        }
+      } else {
+        runStatus = "skipped";
+        runMessage = "unsupported_connector";
+        results.set(connectorCode, {
+          connector_code: connectorCode,
+          status: "skipped",
+          detail: "unsupported_connector",
+        });
       }
-      const metrics = extractRunMetrics(connectorCode, lastResponse?.body ?? null);
-      await insertIngestRun({
+    } catch (error) {
+      runStatus = "failed";
+      runMessage = error instanceof Error ? error.message : String(error);
+      await logError({
+        severity: "error",
+        message: error instanceof Error ? error.message : String(error),
         connector_id: connector?.id ?? null,
-        connector_code: connectorCode,
-        run_started_at: runStart.toISOString(),
-        run_ended_at: runEnd.toISOString(),
-        run_status: runStatus,
-        run_message: runMessage || null,
-        last_observed_at: lastObservedAt,
-        stations_updated: metrics.stations_updated,
-        observations_upserted: metrics.observations_upserted,
-        timeseries_updated: metrics.timeseries_updated,
-        series_polled: metrics.series_polled,
-        response_status: lastResponse?.status ?? null,
-        response_payload: lastResponse?.body ?? null,
+        context: { connector_code: connectorCode, step: "dispatch" },
       });
+      results.set(connectorCode, {
+        connector_code: connectorCode,
+        status: "error",
+        detail: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      const runEnd = new Date();
+      await updateConnectorRun(connector?.id ?? null, {
+        last_run_start: runStart.toISOString(),
+        last_run_end: runEnd.toISOString(),
+        last_run_status: runStatus,
+        last_run_message: runMessage,
+        last_polled_at: runEnd.toISOString(),
+      });
+      if (connectorCode) {
+        let lastObservedAt: string | null = null;
+        if (lastResponse) {
+          try {
+            lastObservedAt = await resolveLastObservedAt(connector?.id ?? null, runScope);
+          } catch (error) {
+            console.warn("Failed to resolve last_observed_at.", {
+              connector_code: connectorCode,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+        }
+        const metrics = extractRunMetrics(connectorCode, lastResponse?.body ?? null);
+        await insertIngestRun({
+          connector_id: connector?.id ?? null,
+          connector_code: connectorCode,
+          run_started_at: runStart.toISOString(),
+          run_ended_at: runEnd.toISOString(),
+          run_status: runStatus,
+          run_message: runMessage || null,
+          last_observed_at: lastObservedAt,
+          stations_updated: metrics.stations_updated,
+          observations_upserted: metrics.observations_upserted,
+          timeseries_updated: metrics.timeseries_updated,
+          series_polled: metrics.series_polled,
+          response_status: lastResponse?.status ?? null,
+          response_payload: lastResponse?.body ?? null,
+        });
+      }
     }
   }
 
   return jsonResponse({
     checked_at: now.toISOString(),
+    dispatcher_settings: settings,
     results: TARGET_CONNECTORS.map((code) => results.get(code)),
   });
 });
