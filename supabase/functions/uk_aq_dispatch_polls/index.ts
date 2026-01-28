@@ -68,6 +68,7 @@ const TARGET_CONNECTORS = [
   "sensorcommunity",
   "breathelondon",
   "erg_laqn",
+  "airgradient",
 ];
 
 const DEFAULT_INTERVAL_MINUTES: Record<string, number> = {
@@ -75,12 +76,14 @@ const DEFAULT_INTERVAL_MINUTES: Record<string, number> = {
   sensorcommunity: 15,
   breathelondon: 60,
   erg_laqn: 60,
+  airgradient: 15,
 };
 
 const DEFAULT_WINDOW_HOURS: Record<string, number> = {
   uk_air_sos: 6,
   breathelondon: 6,
   erg_laqn: 24,
+  airgradient: 1,
 };
 
 const DEFAULT_BATCH_LIMIT: Record<string, number> = {
@@ -866,6 +869,36 @@ serve(async (req) => {
           await logError({
             severity: "error",
             message: "ingest_sensorcommunity dispatch failed",
+            connector_id: connector?.id ?? null,
+            context: {
+              connector_code: connectorCode,
+              response_status: resp.status,
+              response_body: resp.body,
+            },
+          });
+        } else {
+          runStatus = "succeeded";
+          runMessage = "dispatched";
+        }
+        results.set(connectorCode, {
+          connector_code: connectorCode,
+          status: resp.ok ? "triggered" : "error",
+          response_status: resp.status,
+          detail: resp.ok ? "dispatched" : JSON.stringify(resp.body),
+        });
+      } else if (connectorCode === "airgradient") {
+        const windowHours = getWindowHours(connector, connectorCode);
+        const resp = await callEdgeFunction("ingest_airgradient", {
+          connector_code: connectorCode,
+          window_hours: windowHours,
+        });
+        lastResponse = { status: resp.status, body: resp.body };
+        if (!resp.ok) {
+          runStatus = "failed";
+          runMessage = `HTTP ${resp.status}`;
+          await logError({
+            severity: "error",
+            message: "ingest_airgradient dispatch failed",
             connector_id: connector?.id ?? null,
             context: {
               connector_code: connectorCode,
