@@ -414,7 +414,7 @@ async function upsertConnector(connectorCode: string): Promise<ConnectorRow | nu
         display_name: connectorLabel,
         service_url: serviceUrl,
         overwrite_station_name: false,
-        poll_enabled: true,
+        poll_enabled: false,
         poll_interval_minutes: 15,
         poll_window_hours: DEFAULT_WINDOW_HOURS,
         stations_bbox_supported: false,

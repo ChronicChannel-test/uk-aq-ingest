@@ -607,7 +607,7 @@ async function loadConnector(
         display_name: connectorLabel,
         service_url: serviceUrl,
         overwrite_station_name: false,
-        poll_enabled: true,
+        poll_enabled: false,
         poll_interval_minutes: 15,
         poll_window_hours: 1,
         stations_bbox_supported: false,

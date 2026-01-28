@@ -559,7 +559,7 @@ async function loadConnector(
         service_url: serviceUrl,
         stations_bbox_supported: false,
         timeseries_station_filter_supported: false,
-        poll_enabled: true,
+        poll_enabled: false,
         poll_interval_minutes: 15,
         poll_window_hours: 1,
       },

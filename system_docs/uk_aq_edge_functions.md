@@ -23,6 +23,7 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
   - Requires `X-Cron-Secret` when `SB_UK_AQ_CRON_SECRET` is set.
   - Uses the Supabase service role key to read connector settings.
   - Uses `SB_ANON_JWT` (falls back to service role) to call ingest functions.
+  - Only dispatches connectors with `poll_enabled=true` (null/false are skipped).
   - Dispatches one due connector per run, selecting the oldest `last_polled_at` (null first).
     - When `dispatcher_parallel_ingest` is true, dispatches up to `max_runs_per_dispatch_call` connectors per run (still max one per connector).
 - Skips dispatch if any connector is in-flight (`last_run_end` null within 10 minutes, and `last_run_start` is set) and marks `last_run_start` before dispatch.

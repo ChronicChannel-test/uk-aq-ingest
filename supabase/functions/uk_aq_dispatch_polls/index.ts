@@ -322,7 +322,7 @@ function getTimeseriesLimit(connector: ConnectorRow | null): number | null {
 }
 
 function isDue(connector: ConnectorRow | null, connectorCode: string, now: Date): boolean {
-  if (connector?.poll_enabled === false) {
+  if (connector?.poll_enabled !== true) {
     return false;
   }
   const intervalMinutes = getIntervalMinutes(connector, connectorCode);
