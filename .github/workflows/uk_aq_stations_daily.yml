@@ -108,6 +108,11 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           UK_AIR_SOS_BASE_URL: ${{ secrets.UK_AIR_SOS_BASE_URL }}
+          DROPBOX_APP_KEY: ${{ secrets.DROPBOX_APP_KEY }}
+          DROPBOX_APP_SECRET: ${{ secrets.DROPBOX_APP_SECRET }}
+          DROPBOX_REFRESH_TOKEN: ${{ secrets.DROPBOX_REFRESH_TOKEN }}
+          UK_AQ_DROPBOX_ROOT: ${{ secrets.UK_AQ_DROPBOX_ROOT }}
+          UK_AIR_ERROR_DROPBOX_FOLDER: ${{ secrets.UK_AIR_ERROR_DROPBOX_FOLDER }}
         run: |
           python3 scripts/uk_air_sos/uk_air_sos_ingest.py --discover
 
@@ -116,6 +121,11 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           UK_AIR_SOS_BASE_URL: ${{ secrets.UK_AIR_SOS_BASE_URL }}
+          DROPBOX_APP_KEY: ${{ secrets.DROPBOX_APP_KEY }}
+          DROPBOX_APP_SECRET: ${{ secrets.DROPBOX_APP_SECRET }}
+          DROPBOX_REFRESH_TOKEN: ${{ secrets.DROPBOX_REFRESH_TOKEN }}
+          UK_AQ_DROPBOX_ROOT: ${{ secrets.UK_AQ_DROPBOX_ROOT }}
+          UK_AIR_ERROR_DROPBOX_FOLDER: ${{ secrets.UK_AIR_ERROR_DROPBOX_FOLDER }}
         run: |
           python3 scripts/uk_air_sos/uk_air_sos_ingest.py --refresh-recent --hours 6
 
