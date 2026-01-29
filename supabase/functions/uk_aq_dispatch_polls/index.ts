@@ -412,7 +412,7 @@ function isConnectorInFlight(connector: ConnectorRow | null, now: Date): boolean
   }
   const startedAt = parseDate(connector.last_run_start ?? null);
   if (!startedAt) {
-    return true;
+    return false;
   }
   const ageMs = now.getTime() - startedAt.getTime();
   if (!Number.isFinite(ageMs)) {
