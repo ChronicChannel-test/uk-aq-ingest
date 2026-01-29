@@ -29,3 +29,9 @@ This network uses OpenAQ's API to pull UK monitoring locations and latest values
 ## Connector creation
 - Connector rows are created by the stations sync (`scripts/openaq/openaq_list_stations.py`).
 - The edge ingest expects the connector to exist and does not create it.
+
+## Dropbox logging (optional)
+- When Dropbox credentials and the OpenAQ allowlist env are set, `ingest_openaq` uploads:
+  - Logs to `/connectors/openaq/log/YYYY-MM-DD/` with prefix `uk_aq_log_edge_openaq_`.
+  - Raw payload ZIPs to `/connectors/openaq/raw_data/YYYY-MM-DD/` with prefix `uk_aq_raw_edge_openaq_`.
+- Enable with `OPENAQ_RAW_DROPBOX_ALLOWED_SUPABASE_URL` (or the shared `UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL`).

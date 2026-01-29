@@ -89,6 +89,10 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
   - Station names are prefixed with provider shortnames when configured (e.g., `London Air Quality Network` -> `LAQN`).
   - Updates `timeseries.last_value` and `timeseries.last_value_at` based on the most recent measurement.
   - Requires `X-Cron-Secret` when `SB_UK_AQ_CRON_SECRET` is set.
+- Logs:
+  - Writes a log file to Dropbox `/connectors/openaq/log/YYYY-MM-DD/` (prefix `uk_aq_log_edge_openaq_`).
+  - Writes raw payloads to Dropbox `/connectors/openaq/raw_data/YYYY-MM-DD/` as ZIP (prefix `uk_aq_raw_edge_openaq_`).
+  - Writes diagnostic entries to `error_logs` when Dropbox config is missing/mismatched or log/raw uploads fail.
 
 ### ingest_breathelondon
 - Purpose: Poll Breathe London Communities for hourly observations with checkpointing.
@@ -195,6 +199,7 @@ Dropbox (raw/log/error uploads):
 Dropbox folders:
   - `UK_AQ_DROPBOX_ROOT` (e.g., `/CIC-Test` or `/LIVE`)
 - `UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL` (required to enable raw uploads)
+- `OPENAQ_RAW_DROPBOX_ALLOWED_SUPABASE_URL` (optional allowlist override for OpenAQ)
 - `BREATHELONDON_DROPBOX_ROOT` (optional override for Breathe London)
 - `BREATHELONDON_RAW_DROPBOX_ALLOWED_SUPABASE_URL` (optional allowlist override for Breathe London)
 - `BREATHELONDON_ERROR_DROPBOX_ALLOWED_SUPABASE_URL` (optional allowlist override for Breathe London error uploads)

@@ -23,6 +23,36 @@ type ErrorLogEntry = {
   connector_id?: string | number | null;
 };
 
+type DropboxConfig = {
+  appKey: string;
+  appSecret: string;
+  refreshToken: string;
+};
+
+type DropboxDiagnostics = {
+  enabled: boolean;
+  reason: string | null;
+  has_app_key: boolean;
+  has_app_secret: boolean;
+  has_refresh_token: boolean;
+  supabase_url: string | null;
+  raw_allowed_supabase_url: string | null;
+  raw_allowed_match: boolean;
+  dropbox_root: string | null;
+};
+
+type RawRecorder = {
+  lines: string[];
+  responseCount: number;
+  recordEvent: (name: string, payload: Record<string, unknown>) => void;
+  recordResponse: (
+    path: string,
+    params: Record<string, string | number>,
+    statusCode: number,
+    payload: unknown,
+  ) => void;
+};
+
 type OpenAQLocation = {
   id?: number;
   name?: string | null;
@@ -83,6 +113,17 @@ const OPENAQ_BBOX = Deno.env.get("OPENAQ_BBOX") ?? DEFAULT_BBOX;
 const OPENAQ_PAGE_LIMIT = Number(Deno.env.get("OPENAQ_PAGE_LIMIT") ?? DEFAULT_PAGE_LIMIT);
 const OPENAQ_MAX_PAGES = Number(Deno.env.get("OPENAQ_MAX_PAGES") ?? DEFAULT_MAX_PAGES);
 const OPENAQ_CONCURRENCY = Number(Deno.env.get("OPENAQ_CONCURRENCY") ?? DEFAULT_CONCURRENCY);
+const UK_AQ_DROPBOX_ROOT = normalizeDropboxPath(Deno.env.get("UK_AQ_DROPBOX_ROOT") ?? "");
+const DROPBOX_APP_KEY = Deno.env.get("DROPBOX_APP_KEY") ?? "";
+const DROPBOX_APP_SECRET = Deno.env.get("DROPBOX_APP_SECRET") ?? "";
+const DROPBOX_REFRESH_TOKEN = Deno.env.get("DROPBOX_REFRESH_TOKEN") ?? "";
+const DROPBOX_ALLOWED_SUPABASE_URL = Deno.env.get("OPENAQ_RAW_DROPBOX_ALLOWED_SUPABASE_URL")
+  ?? Deno.env.get("UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL")
+  ?? "";
+const DROPBOX_LOG_FOLDER = "/connectors/openaq/log";
+const DROPBOX_RAW_FOLDER = "/connectors/openaq/raw_data";
+const DROPBOX_TOKEN_URL = "https://api.dropbox.com/oauth2/token";
+const DROPBOX_UPLOAD_URL = "https://content.dropboxapi.com/2/files/upload";
 
 const REST_BASE_URL = SUPABASE_URL
   ? `${SUPABASE_URL.replace(/\/$/, "")}/rest/v1`
@@ -135,6 +176,197 @@ function jsonResponse(body: unknown, status = 200): Response {
 
 function postgrestIn(values: string[]): string {
   return `in.(${values.map((value) => `"${value.replace(/\"/g, "\\\"")}"`).join(",")})`;
+}
+
+function normalizeDropboxPath(raw: string): string {
+  const cleaned = raw.trim();
+  if (!cleaned) {
+    return "";
+  }
+  const rooted = cleaned.startsWith("/") ? cleaned : `/${cleaned}`;
+  return rooted.replace(/\/$/, "");
+}
+
+function dropboxWithRoot(path: string): string {
+  const cleaned = normalizeDropboxPath(path);
+  if (!UK_AQ_DROPBOX_ROOT) {
+    return cleaned;
+  }
+  if (!cleaned) {
+    return UK_AQ_DROPBOX_ROOT;
+  }
+  if (cleaned === UK_AQ_DROPBOX_ROOT || cleaned.startsWith(`${UK_AQ_DROPBOX_ROOT}/`)) {
+    return cleaned;
+  }
+  return `${UK_AQ_DROPBOX_ROOT}${cleaned}`;
+}
+
+function formatCompactTimestamp(timestamp: Date): string {
+  return timestamp.toISOString().replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z");
+}
+
+function formatDateYmd(timestamp: Date): string {
+  return timestamp.toISOString().slice(0, 10);
+}
+
+function normalizeConnectorPrefix(connectorCode: string | null): string {
+  const cleaned = (connectorCode ?? "").trim().toLowerCase();
+  const normalized = cleaned.replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+  return normalized || "openaq";
+}
+
+function buildDropboxLogPath(connectorCode: string | null, timestamp: Date): string {
+  const stamp = formatCompactTimestamp(timestamp);
+  const dateFolder = formatDateYmd(timestamp);
+  const prefix = normalizeConnectorPrefix(connectorCode);
+  const base = dropboxWithRoot(DROPBOX_LOG_FOLDER);
+  return `${base}/${dateFolder}/uk_aq_log_edge_${prefix}_${stamp}.log`;
+}
+
+function buildDropboxRawPath(connectorCode: string | null, timestamp: Date): string {
+  const stamp = formatCompactTimestamp(timestamp);
+  const dateFolder = formatDateYmd(timestamp);
+  const prefix = normalizeConnectorPrefix(connectorCode);
+  const base = dropboxWithRoot(DROPBOX_RAW_FOLDER);
+  return `${base}/${dateFolder}/uk_aq_raw_edge_${prefix}_${stamp}.zip`;
+}
+
+function createRawRecorder(): RawRecorder {
+  const lines: string[] = [];
+  const write = (entry: Record<string, unknown>) => {
+    lines.push(JSON.stringify(entry));
+  };
+  const recorder: RawRecorder = {
+    lines,
+    responseCount: 0,
+    recordEvent: (name, payload) => {
+      write({
+        type: name,
+        recorded_at: new Date().toISOString(),
+        payload,
+      });
+    },
+    recordResponse: (path, params, statusCode, payload) => {
+      recorder.responseCount += 1;
+      write({
+        type: "response",
+        fetched_at: new Date().toISOString(),
+        path,
+        params,
+        status_code: statusCode,
+        payload,
+      });
+    },
+  };
+  write({ type: "meta", created_at: new Date().toISOString() });
+  return recorder;
+}
+
+function loadDropboxConfig(): DropboxConfig | null {
+  if (!DROPBOX_APP_KEY || !DROPBOX_APP_SECRET || !DROPBOX_REFRESH_TOKEN) {
+    return null;
+  }
+  if (!DROPBOX_ALLOWED_SUPABASE_URL || DROPBOX_ALLOWED_SUPABASE_URL !== SUPABASE_URL) {
+    return null;
+  }
+  return {
+    appKey: DROPBOX_APP_KEY,
+    appSecret: DROPBOX_APP_SECRET,
+    refreshToken: DROPBOX_REFRESH_TOKEN,
+  };
+}
+
+function buildDropboxDiagnostics(): DropboxDiagnostics {
+  const hasAppKey = Boolean(DROPBOX_APP_KEY);
+  const hasAppSecret = Boolean(DROPBOX_APP_SECRET);
+  const hasRefreshToken = Boolean(DROPBOX_REFRESH_TOKEN);
+  const supabaseUrl = SUPABASE_URL || null;
+  const rawAllowed = DROPBOX_ALLOWED_SUPABASE_URL || null;
+  const rawAllowedMatch = Boolean(rawAllowed) && rawAllowed === SUPABASE_URL;
+
+  let reason: string | null = null;
+  if (!SUPABASE_URL) {
+    reason = "missing_supabase_url";
+  } else if (!hasAppKey || !hasAppSecret || !hasRefreshToken) {
+    reason = "missing_dropbox_credentials";
+  } else if (!rawAllowed) {
+    reason = "missing_dropbox_allowed_supabase_url";
+  } else if (!rawAllowedMatch) {
+    reason = "dropbox_allowed_supabase_url_mismatch";
+  }
+
+  return {
+    enabled: reason === null,
+    reason,
+    has_app_key: hasAppKey,
+    has_app_secret: hasAppSecret,
+    has_refresh_token: hasRefreshToken,
+    supabase_url: supabaseUrl,
+    raw_allowed_supabase_url: rawAllowed,
+    raw_allowed_match: rawAllowedMatch,
+    dropbox_root: UK_AQ_DROPBOX_ROOT || null,
+  };
+}
+
+async function dropboxRefreshAccessToken(config: DropboxConfig): Promise<string> {
+  const body = new URLSearchParams({
+    grant_type: "refresh_token",
+    refresh_token: config.refreshToken,
+    client_id: config.appKey,
+    client_secret: config.appSecret,
+  });
+  const resp = await fetch(DROPBOX_TOKEN_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: body.toString(),
+  });
+  if (!resp.ok) {
+    throw new Error(`Dropbox token request failed (${resp.status})`);
+  }
+  const payload = await resp.json();
+  const token = payload?.access_token;
+  if (!token) {
+    throw new Error("Dropbox token response missing access_token.");
+  }
+  return String(token);
+}
+
+async function dropboxUploadFile(
+  accessToken: string,
+  path: string,
+  contents: Uint8Array | string,
+): Promise<void> {
+  const args = { path, mode: "add", autorename: true, mute: false };
+  const resp = await fetch(DROPBOX_UPLOAD_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Dropbox-API-Arg": JSON.stringify(args),
+      "Content-Type": "application/octet-stream",
+    },
+    body: typeof contents === "string" ? new TextEncoder().encode(contents) : contents,
+  });
+  if (!resp.ok) {
+    throw new Error(`Dropbox upload failed (${resp.status})`);
+  }
+}
+
+async function dropboxUploadFileWithRetry(
+  config: DropboxConfig,
+  path: string,
+  contents: Uint8Array | string,
+): Promise<void> {
+  let token = await dropboxRefreshAccessToken(config);
+  try {
+    await dropboxUploadFile(token, path, contents);
+  } catch (err) {
+    if (String(err).includes("401")) {
+      token = await dropboxRefreshAccessToken(config);
+      await dropboxUploadFile(token, path, contents);
+      return;
+    }
+    throw err;
+  }
 }
 
 async function postgrestRequest<T>(
@@ -200,7 +432,11 @@ function parseBbox(value: string): string {
   return numbers.join(",");
 }
 
-async function openaqRequest(path: string, params?: Record<string, string | number>): Promise<any> {
+async function openaqRequest(
+  path: string,
+  params?: Record<string, string | number>,
+  rawRecorder?: RawRecorder | null,
+): Promise<any> {
   const url = new URL(`${OPENAQ_BASE_URL}/${path.replace(/^\//, "")}`);
   for (const [key, value] of Object.entries(params ?? {})) {
     if (value !== undefined && value !== null) {
@@ -210,6 +446,9 @@ async function openaqRequest(path: string, params?: Record<string, string | numb
   const resp = await fetch(url.toString(), { headers: openaqHeaders() });
   const contentType = resp.headers.get("content-type") ?? "";
   const payload = contentType.includes("application/json") ? await resp.json() : await resp.text();
+  if (rawRecorder) {
+    rawRecorder.recordResponse(path, params ?? {}, resp.status, payload);
+  }
   if (!resp.ok) {
     const message = typeof payload === "string" ? payload : JSON.stringify(payload);
     throw new Error(`OpenAQ request failed (${resp.status}): ${message}`);
@@ -217,14 +456,14 @@ async function openaqRequest(path: string, params?: Record<string, string | numb
   return payload;
 }
 
-async function listLocations(bbox: string): Promise<OpenAQLocation[]> {
+async function listLocations(bbox: string, rawRecorder?: RawRecorder | null): Promise<OpenAQLocation[]> {
   const results: OpenAQLocation[] = [];
   const limit = Number.isFinite(OPENAQ_PAGE_LIMIT) && OPENAQ_PAGE_LIMIT > 0
     ? Math.min(OPENAQ_PAGE_LIMIT, 1000)
     : DEFAULT_PAGE_LIMIT;
   let page = 1;
   while (true) {
-    const payload = await openaqRequest("locations", { bbox, limit, page });
+    const payload = await openaqRequest("locations", { bbox, limit, page }, rawRecorder);
     const pageResults = Array.isArray(payload?.results) ? payload.results as OpenAQLocation[] : [];
     results.push(...pageResults);
     if (!pageResults.length) {
@@ -241,8 +480,15 @@ async function listLocations(bbox: string): Promise<OpenAQLocation[]> {
   return results;
 }
 
-async function listLatestForLocation(locationId: string): Promise<OpenAQLatestRecord[]> {
-  const payload = await openaqRequest(`locations/${locationId}/latest`, { limit: 1000 });
+async function listLatestForLocation(
+  locationId: string,
+  rawRecorder?: RawRecorder | null,
+): Promise<OpenAQLatestRecord[]> {
+  const payload = await openaqRequest(
+    `locations/${locationId}/latest`,
+    { limit: 1000 },
+    rawRecorder,
+  );
   return Array.isArray(payload?.results) ? payload.results as OpenAQLatestRecord[] : [];
 }
 
@@ -505,6 +751,30 @@ async function upsertTimeseries(rows: Array<Record<string, unknown>>): Promise<n
   return rows.length;
 }
 
+async function updateTimeseriesLastValues(
+  rows: Array<{ id: number; last_value: number; last_value_at: string }>,
+  errors: string[],
+): Promise<number> {
+  let updated = 0;
+  for (const row of rows) {
+    const { error } = await postgrestRequest(
+      "PATCH",
+      "timeseries",
+      { id: `eq.${row.id}` },
+      { last_value: row.last_value, last_value_at: row.last_value_at },
+      "return=minimal",
+    );
+    if (error) {
+      const message = `timeseries update failed id=${row.id}: ${error.message}`;
+      errors.push(message);
+      console.warn(message);
+      continue;
+    }
+    updated += 1;
+  }
+  return updated;
+}
+
 async function fetchTimeseriesIds(
   connectorId: string,
   serviceRef: string,
@@ -628,6 +898,21 @@ serve(async (req) => {
     : [];
   const windowHours = Number(payload.window_hours ?? DEFAULT_WINDOW_HOURS);
   const dryRun = payload.dry_run ?? false;
+  const logLines: string[] = [];
+  const logLine = (level: string, message: string, context?: Record<string, unknown>) => {
+    const stamp = new Date().toISOString();
+    const ctx = context ? ` ${JSON.stringify(context)}` : "";
+    logLines.push(`[${stamp}] ${level} ${message}${ctx}`);
+  };
+  const dropboxConfig = loadDropboxConfig();
+  const dropboxDiagnostics = buildDropboxDiagnostics();
+  const rawRecorder = dropboxConfig ? createRawRecorder() : null;
+  logLine("INFO", "OpenAQ ingest started", {
+    connector_code: connectorCode,
+    window_hours: windowHours,
+    dry_run: dryRun,
+    station_refs: stationRefs.length ? stationRefs.length : 0,
+  });
 
   const connector = await loadConnector(connectorCode);
   if (!connector) {
@@ -640,10 +925,17 @@ serve(async (req) => {
   } catch (err) {
     return jsonResponse({ error: String(err) }, 500);
   }
+  rawRecorder?.recordEvent("context", {
+    connector_code: connectorCode,
+    bbox,
+    window_hours: windowHours,
+    dry_run: dryRun,
+    station_refs: stationRefs,
+  });
 
   let locations: OpenAQLocation[] = [];
   try {
-    locations = await listLocations(bbox);
+    locations = await listLocations(bbox, rawRecorder);
   } catch (err) {
     await logError({
       severity: "error",
@@ -653,6 +945,7 @@ serve(async (req) => {
     });
     return jsonResponse({ error: String(err) }, 502);
   }
+  logLine("INFO", "Fetched OpenAQ locations", { count: locations.length });
 
   if (stationRefs.length) {
     locations = locations.filter((loc) => {
@@ -692,7 +985,7 @@ serve(async (req) => {
   await runPool(locationIds, OPENAQ_CONCURRENCY, async (locationId) => {
     let latest: OpenAQLatestRecord[] = [];
     try {
-      latest = await listLatestForLocation(locationId);
+      latest = await listLatestForLocation(locationId, rawRecorder);
     } catch (err) {
       await logError({
         severity: "warn",
@@ -745,8 +1038,6 @@ serve(async (req) => {
       connector_id: connectorId,
       service_ref: OPENAQ_SERVICE_REF,
       phenomenon_id: phenomenonId,
-      last_value_at: latest?.observed_at ?? null,
-      last_value: latest?.value ?? null,
     });
     timeseriesRefs.push(sensorId);
   }
@@ -754,6 +1045,8 @@ serve(async (req) => {
   let observationsUpserted = 0;
   let seriesPolled = 0;
   let lastObservedAt: string | null = null;
+  let timeseriesLastUpdated = 0;
+  const timeseriesErrors: string[] = [];
 
   if (!dryRun) {
     await upsertTimeseries(timeseriesRows);
@@ -783,6 +1076,76 @@ serve(async (req) => {
     }
 
     observationsUpserted = await upsertObservations(observationRows);
+    const timeseriesUpdates: Array<{ id: number; last_value: number; last_value_at: string }> = [];
+    for (const [sensorId, latest] of latestBySensor.entries()) {
+      const timeseriesId = timeseriesIdByRef[sensorId];
+      if (!timeseriesId) {
+        continue;
+      }
+      if (typeof latest.value !== "number") {
+        continue;
+      }
+      timeseriesUpdates.push({
+        id: timeseriesId,
+        last_value: latest.value,
+        last_value_at: latest.observed_at,
+      });
+    }
+    timeseriesLastUpdated = await updateTimeseriesLastValues(timeseriesUpdates, timeseriesErrors);
+  }
+
+  if (timeseriesErrors.length) {
+    await logError({
+      severity: "warn",
+      message: "Timeseries last_value updates failed",
+      connector_id: connector.id,
+      context: { errors: timeseriesErrors.slice(0, 10) },
+    });
+  }
+
+  logLine("INFO", "OpenAQ ingest complete", {
+    locations: locations.length,
+    stations_updated: stationsUpdated,
+    timeseries_updated: timeseriesRows.length,
+    timeseries_last_updated: timeseriesLastUpdated,
+    observations_upserted: observationsUpserted,
+    series_polled: seriesPolled,
+    last_observed_at: lastObservedAt,
+    raw_responses: rawRecorder?.responseCount ?? 0,
+  });
+
+  if (dropboxConfig) {
+    try {
+      if (rawRecorder) {
+        const rawPayload = rawRecorder.lines.join("\n") + "\n";
+        const stream = new Blob([rawPayload]).stream().pipeThrough(new CompressionStream("deflate-raw"));
+        const zipped = new Uint8Array(await new Response(stream).arrayBuffer());
+        await dropboxUploadFileWithRetry(
+          dropboxConfig,
+          buildDropboxRawPath(connectorCode, new Date()),
+          zipped,
+        );
+      }
+      await dropboxUploadFileWithRetry(
+        dropboxConfig,
+        buildDropboxLogPath(connectorCode, new Date()),
+        logLines.join("\n") + "\n",
+      );
+    } catch (err) {
+      await logError({
+        severity: "warn",
+        message: "Dropbox log/raw upload failed.",
+        connector_id: connector.id,
+        context: { error: String(err), dropbox: dropboxDiagnostics },
+      });
+    }
+  } else if (dropboxDiagnostics.reason) {
+    await logError({
+      severity: "warn",
+      message: "Dropbox log/raw uploads disabled.",
+      connector_id: connector.id,
+      context: { dropbox: dropboxDiagnostics },
+    });
   }
 
   return jsonResponse({
