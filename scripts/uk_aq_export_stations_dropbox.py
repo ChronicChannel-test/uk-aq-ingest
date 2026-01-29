@@ -134,6 +134,10 @@ def _error_log_date() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
 
+def _stations_month_folder() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m")
+
+
 def _error_log_dir() -> Path:
     log_dir = Path(DEFAULT_ERROR_LOG_DIR) / _error_log_date()
     log_dir.mkdir(parents=True, exist_ok=True)
@@ -283,6 +287,7 @@ def main() -> int:
         if not root:
             raise RuntimeError("UK_AQ_DROPBOX_ROOT must be set for stations export.")
         dropbox_dir = _join_dropbox_paths(root, args.dropbox_dir or "uk_aq_stations")
+        dropbox_dir = _join_dropbox_paths(dropbox_dir, _stations_month_folder())
         dropbox_path = f"{dropbox_dir}/{output_path.name}"
 
         stations: List[Dict[str, Any]] = []

@@ -16,7 +16,7 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
 - Calls:
   - `ingest_uk_air_sos` (`window_hours`)
   - `ingest_sensorcommunity` (`country=GB`)
-  - `ingest_airgradient` (`window_hours`)
+  - `ingest_openaq` (`window_hours`)
   - `ingest_breathelondon` (`station_refs`, `window_hours`, `initial_days=2`, `skip_stations=true`)
   - `ingest_erg_laqn` (`station_refs`, `days=ceil(poll_window_hours/24)`, `group=London`)
 - Notes:
@@ -75,16 +75,17 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
   - Writes raw payloads to Dropbox `/connectors/sensorcommunity/raw_data/YYYY-MM-DD/` as ZIP (prefix `uk_aq_raw_edge_scomm_`).
   - Writes errors to `error_logs` and `/error_log/YYYY-MM-DD/`.
 
-### ingest_airgradient
-- Purpose: Poll AirGradient locations and recent measurements, writing stations, timeseries, and observations.
+### ingest_openaq
+- Purpose: Poll OpenAQ locations within the UK bounding box and write stations, timeseries, and observations.
 - Triggered by: `uk_aq_dispatch_polls` (external scheduler).
 - Writes:
   - `stations`, `phenomena`, `timeseries`, `observations`
 - Notes:
   - Requires an existing connector row; the ingest does not create connectors.
-  - Uses `AIRGRADIENT_*` environment variables for base URL, API key/token, and endpoint paths.
+  - Uses `OPENAQ_*` environment variables for base URL, API key, and bbox paging.
+  - Fetches locations via `/v3/locations` (bbox) and latest values via `/v3/locations/{id}/latest`.
+  - Uses sensor IDs as `timeseries_ref` and `openaq:{parameter}` as `phenomena.eionet_uri`.
   - If `station_refs` are provided, limits polling to those location ids.
-  - Observation fields are mapped using common AirGradient keys (PM1/PM2.5/PM10, CO2, temperature, humidity).
   - Updates `timeseries.last_value` and `timeseries.last_value_at` based on the most recent measurement.
   - Requires `X-Cron-Secret` when `SB_UK_AQ_CRON_SECRET` is set.
 
@@ -208,16 +209,16 @@ Optional:
 - `SCOMM_ERROR_DROPBOX_ALLOWED_SUPABASE_URL` (optional allowlist for Sensor.Community error uploads)
 - `SCOMM_INGEST_MET_FIELDS` (defaults to `false`; set `true` to ingest temperature/humidity/pressure)
 - `SCOMM_MAX_RUNTIME_SECONDS` (optional; defaults to 110)
-- `AIRGRADIENT_BASE_URL` (optional; defaults to `https://api.airgradient.com/public/api/v1`)
-- `AIRGRADIENT_API_KEY` (required for `ingest_airgradient`)
-- `AIRGRADIENT_CONNECTOR_CODE` (optional; defaults to `airgradient`)
-- `AIRGRADIENT_SERVICE_REF` (optional; defaults to `AIRGRADIENT_CONNECTOR_CODE`)
-- `AIRGRADIENT_SERVICE_LABEL` (optional; defaults to `AirGradient`)
-- `AIRGRADIENT_LOCATIONS_PATH` (optional; defaults to `/locations`)
-- `AIRGRADIENT_MEASUREMENTS_PATH_TEMPLATE` (optional; defaults to `/locations/{location_id}/measures`)
-- `AIRGRADIENT_API_KEY_PARAM` (optional; defaults to `api_key`)
-- `AIRGRADIENT_API_KEY_HEADER` (optional; defaults to `X-API-KEY`)
-- `AIRGRADIENT_USER_AGENT` (optional; defaults to `uk-air-quality-networks`)
+- `OPENAQ_BASE_URL` (optional; defaults to `https://api.openaq.org/v3`)
+- `OPENAQ_API_KEY` (required for `ingest_openaq`)
+- `OPENAQ_CONNECTOR_CODE` (optional; defaults to `openaq`)
+- `OPENAQ_SERVICE_REF` (optional; defaults to `OPENAQ_CONNECTOR_CODE`)
+- `OPENAQ_SERVICE_LABEL` (optional; defaults to `OpenAQ`)
+- `OPENAQ_USER_AGENT` (optional; defaults to `uk-air-quality-networks`)
+- `OPENAQ_BBOX` (optional; defaults to `-8.623555,49.863222,1.763337,60.871222`)
+- `OPENAQ_PAGE_LIMIT` (optional; defaults to `1000`)
+- `OPENAQ_MAX_PAGES` (optional; defaults to `50`)
+- `OPENAQ_CONCURRENCY` (optional; defaults to `6`)
 - `BREATHELONDON_BASE_URL` (optional override for Breathe London API base URL)
 - `BREATHELONDON_CONNECTOR_CODE` / `BREATHELONDON_SERVICE_REF` (optional override)
 - `BREATHELONDON_SERVICE_LABEL` (optional override)

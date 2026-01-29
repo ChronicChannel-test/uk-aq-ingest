@@ -68,7 +68,7 @@ const TARGET_CONNECTORS = [
   "sensorcommunity",
   "breathelondon",
   "erg_laqn",
-  "airgradient",
+  "openaq",
 ];
 
 const DEFAULT_INTERVAL_MINUTES: Record<string, number> = {
@@ -76,14 +76,14 @@ const DEFAULT_INTERVAL_MINUTES: Record<string, number> = {
   sensorcommunity: 15,
   breathelondon: 60,
   erg_laqn: 60,
-  airgradient: 15,
+  openaq: 60,
 };
 
 const DEFAULT_WINDOW_HOURS: Record<string, number> = {
   uk_air_sos: 6,
   breathelondon: 6,
   erg_laqn: 24,
-  airgradient: 1,
+  openaq: 6,
 };
 
 const DEFAULT_BATCH_LIMIT: Record<string, number> = {
@@ -886,9 +886,9 @@ serve(async (req) => {
           response_status: resp.status,
           detail: resp.ok ? "dispatched" : JSON.stringify(resp.body),
         });
-      } else if (connectorCode === "airgradient") {
+      } else if (connectorCode === "openaq") {
         const windowHours = getWindowHours(connector, connectorCode);
-        const resp = await callEdgeFunction("ingest_airgradient", {
+        const resp = await callEdgeFunction("ingest_openaq", {
           connector_code: connectorCode,
           window_hours: windowHours,
         });
@@ -898,7 +898,7 @@ serve(async (req) => {
           runMessage = `HTTP ${resp.status}`;
           await logError({
             severity: "error",
-            message: "ingest_airgradient dispatch failed",
+            message: "ingest_openaq dispatch failed",
             connector_id: connector?.id ?? null,
             context: {
               connector_code: connectorCode,
