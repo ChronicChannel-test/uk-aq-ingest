@@ -86,6 +86,7 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
   - Fetches locations via `/v3/locations` (bbox) and latest values via `/v3/locations/{id}/latest`.
   - Uses sensor IDs as `timeseries_ref` and `openaq:{parameter}` as `phenomena.eionet_uri`.
   - If `station_refs` are provided, limits polling to those location ids.
+  - Station names are prefixed with provider shortnames when configured (e.g., `London Air Quality Network` -> `LAQN`).
   - Updates `timeseries.last_value` and `timeseries.last_value_at` based on the most recent measurement.
   - Requires `X-Cron-Secret` when `SB_UK_AQ_CRON_SECRET` is set.
 

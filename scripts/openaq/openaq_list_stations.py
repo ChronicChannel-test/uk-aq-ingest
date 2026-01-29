@@ -21,15 +21,12 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import requests
 from dotenv import load_dotenv
-from supabase import Client
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if PROJECT_ROOT.name == "scripts":
     PROJECT_ROOT = PROJECT_ROOT.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
-
-from scripts.uk_aq_supabase import SupabaseSchemas, create_supabase_client
 
 load_dotenv()
 
@@ -51,6 +48,11 @@ OPENAQ_USER_AGENT = os.getenv("OPENAQ_USER_AGENT") or "uk-air-quality-networks"
 OPENAQ_BBOX = os.getenv("OPENAQ_BBOX") or "-8.623555,49.863222,1.763337,60.871222"
 OPENAQ_PAGE_LIMIT = int(os.getenv("OPENAQ_PAGE_LIMIT") or "1000")
 OPENAQ_MAX_PAGES = int(os.getenv("OPENAQ_MAX_PAGES") or "0")
+SUPABASE_DB_URL = os.getenv("SUPABASE_DB_URL") or os.getenv("DATABASE_URL")
+
+PROVIDER_SHORTNAMES = {
+    "London Air Quality Network": "LAQN",
+}
 
 UK_BBOX = {
     "west": -8.623555,
@@ -85,6 +87,28 @@ def coerce_float(value: Any) -> Optional[float]:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _provider_name(location: Dict[str, Any]) -> Optional[str]:
+    provider = location.get("provider") if isinstance(location.get("provider"), dict) else {}
+    name = provider.get("name")
+    if isinstance(name, str) and name.strip():
+        return name.strip()
+    return None
+
+
+def _provider_short_name(provider_name: Optional[str]) -> Optional[str]:
+    if not provider_name:
+        return None
+    return PROVIDER_SHORTNAMES.get(provider_name, provider_name)
+
+
+def _station_name(location: Dict[str, Any]) -> Optional[str]:
+    name = _location_name(location)
+    provider = _provider_short_name(_provider_name(location))
+    if name and provider:
+        return f"{provider} {name}"
+    return name
 
 
 class OpenAQClient:
@@ -148,102 +172,139 @@ class OpenAQClient:
         return results
 
 
-class SupabaseWriter:
-    def __init__(self) -> None:
-        self.client: Client = create_supabase_client()
-        schemas = SupabaseSchemas.from_client(self.client)
-        self.core = schemas.core
+class DbWriter:
+    def __init__(self, dsn: str) -> None:
+        try:
+            import psycopg2  # type: ignore
+            from psycopg2.extras import execute_values  # type: ignore
+        except ImportError as exc:
+            raise RuntimeError(
+                "psycopg2 is required for --to-supabase. Install psycopg2-binary."
+            ) from exc
+        self._psycopg2 = psycopg2
+        self._execute_values = execute_values
+        self.conn = psycopg2.connect(dsn)
+
+    def close(self) -> None:
+        if self.conn:
+            self.conn.close()
 
     def upsert_connector(self) -> Tuple[int, bool]:
-        existing = (
-            self.core.table("connectors")
-            .select("id,poll_enabled,overwrite_station_name")
-            .eq("connector_code", OPENAQ_CONNECTOR_CODE)
-            .limit(1)
-            .execute()
-        )
-        existing_rows = existing.data if hasattr(existing, "data") else existing.get("data")
-        existing_row = (
-            existing_rows[0]
-            if isinstance(existing_rows, list) and existing_rows
-            else existing_rows
-            if isinstance(existing_rows, dict)
-            else None
-        )
-        poll_enabled = bool(existing_row.get("poll_enabled")) if isinstance(existing_row, dict) else False
-        overwrite_station_name = (
-            bool(existing_row.get("overwrite_station_name")) if isinstance(existing_row, dict) else False
-        )
-        payload = {
-            "connector_code": OPENAQ_CONNECTOR_CODE,
-            "label": OPENAQ_SERVICE_LABEL,
-            "display_name": OPENAQ_SERVICE_LABEL,
-            "service_url": OPENAQ_BASE_URL,
-            "stations_bbox_supported": False,
-            "timeseries_station_filter_supported": False,
-            "overwrite_station_name": overwrite_station_name,
-            "poll_enabled": poll_enabled,
-        }
-        self.core.table("connectors").upsert(payload, on_conflict="connector_code").execute()
-        row = (
-            self.core.table("connectors")
-            .select("id,overwrite_station_name")
-            .eq("connector_code", OPENAQ_CONNECTOR_CODE)
-            .single()
-            .execute()
-        )
-        data = row.data if hasattr(row, "data") else row.get("data")
-        if not data:
-            raise RuntimeError("Failed to resolve connector id for OpenAQ.")
-        overwrite_station_name = bool(data.get("overwrite_station_name"))
-        return int(data["id"]), overwrite_station_name
-
-    def fetch_station_names(
-        self, connector_id: int, service_ref: str, station_refs: Iterable[str]
-    ) -> Dict[str, Optional[str]]:
-        refs = [str(ref) for ref in station_refs if ref]
-        if not refs:
-            return {}
-        mapping: Dict[str, Optional[str]] = {}
-        for chunk in chunked(refs, 200):
-            resp = (
-                self.core.table("stations")
-                .select("station_ref,station_name")
-                .eq("connector_id", connector_id)
-                .eq("service_ref", str(service_ref))
-                .in_("station_ref", list(chunk))
-                .execute()
+        with self.conn, self.conn.cursor() as cursor:
+            cursor.execute(
+                """
+                select id, poll_enabled, overwrite_station_name
+                from uk_aq_core.connectors
+                where connector_code = %s
+                limit 1
+                """,
+                (OPENAQ_CONNECTOR_CODE,),
             )
-            rows = resp.data if hasattr(resp, "data") else resp.get("data")
-            for row in rows or []:
-                mapping[str(row.get("station_ref"))] = row.get("station_name")
-        return mapping
+            row = cursor.fetchone()
+            poll_enabled = bool(row[1]) if row else False
+            overwrite_station_name = True
+            cursor.execute(
+                """
+                insert into uk_aq_core.connectors (
+                  connector_code,
+                  label,
+                  display_name,
+                  service_url,
+                  stations_bbox_supported,
+                  timeseries_station_filter_supported,
+                  overwrite_station_name,
+                  poll_enabled
+                )
+                values (%s,%s,%s,%s,%s,%s,%s,%s)
+                on conflict (connector_code) do update set
+                  label = excluded.label,
+                  display_name = excluded.display_name,
+                  service_url = excluded.service_url,
+                  stations_bbox_supported = excluded.stations_bbox_supported,
+                  timeseries_station_filter_supported = excluded.timeseries_station_filter_supported,
+                  overwrite_station_name = excluded.overwrite_station_name,
+                  poll_enabled = excluded.poll_enabled
+                """,
+                (
+                    OPENAQ_CONNECTOR_CODE,
+                    OPENAQ_SERVICE_LABEL,
+                    OPENAQ_SERVICE_LABEL,
+                    OPENAQ_BASE_URL,
+                    False,
+                    False,
+                    overwrite_station_name,
+                    poll_enabled,
+                ),
+            )
+            cursor.execute(
+                """
+                select id, overwrite_station_name
+                from uk_aq_core.connectors
+                where connector_code = %s
+                """,
+                (OPENAQ_CONNECTOR_CODE,),
+            )
+            row = cursor.fetchone()
+            if not row:
+                raise RuntimeError("Failed to resolve connector id for OpenAQ.")
+            return int(row[0]), bool(row[1])
 
     def upsert_stations(
         self,
         locations: Iterable[Dict[str, Any]],
         connector_id: int,
         service_ref: str,
-        overwrite_station_name: bool,
     ) -> int:
         rows = [_station_row(location, connector_id, service_ref) for location in locations]
         rows = [row for row in rows if row.get("station_ref")]
         if not rows:
             return 0
-        if not overwrite_station_name:
-            existing_names = self.fetch_station_names(
-                connector_id,
-                service_ref,
-                [row.get("station_ref") for row in rows if row.get("station_ref")],
+        values: List[Tuple[Any, ...]] = []
+        for row in rows:
+            values.append(
+                (
+                    row.get("station_ref"),
+                    row.get("service_ref"),
+                    row.get("label"),
+                    row.get("station_name"),
+                    row.get("station_type"),
+                    row.get("region"),
+                    row.get("geometry"),
+                    row.get("connector_id"),
+                    row.get("last_seen_at"),
+                    row.get("removed_at"),
+                )
             )
-            for row in rows:
-                station_ref = row.get("station_ref")
-                if station_ref and existing_names.get(station_ref):
-                    row.pop("station_name", None)
-        self.core.table("stations").upsert(
-            rows,
-            on_conflict="connector_id,service_ref,station_ref",
-        ).execute()
+        insert_sql = """
+            insert into uk_aq_core.stations (
+              station_ref,
+              service_ref,
+              label,
+              station_name,
+              station_type,
+              region,
+              geometry,
+              connector_id,
+              last_seen_at,
+              removed_at
+            )
+            values %s
+            on conflict (connector_id, service_ref, station_ref) do update set
+              label = excluded.label,
+              station_name = excluded.station_name,
+              station_type = excluded.station_type,
+              region = excluded.region,
+              geometry = excluded.geometry,
+              last_seen_at = excluded.last_seen_at,
+              removed_at = excluded.removed_at
+        """
+        template = (
+            "(%s,%s,%s,%s,%s,%s,"
+            "ST_GeogFromText(%s),"
+            "%s,%s,%s)"
+        )
+        with self.conn, self.conn.cursor() as cursor:
+            self._execute_values(cursor, insert_sql, values, template=template)
         return len(rows)
 
 
@@ -251,6 +312,8 @@ def normalize_location(location: Dict[str, Any]) -> Dict[str, Any]:
     location_id = location.get("id")
     station_ref = str(location_id) if location_id is not None else None
     name = _location_name(location)
+    station_name = _station_name(location)
+    provider_name = _provider_name(location)
     coords = location.get("coordinates") if isinstance(location.get("coordinates"), dict) else {}
     longitude = coerce_float(coords.get("longitude"))
     latitude = coerce_float(coords.get("latitude"))
@@ -271,14 +334,14 @@ def normalize_location(location: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "station_ref": station_ref,
         "label": name or (f"OpenAQ {station_ref}" if station_ref else None),
-        "station_name": name,
+        "station_name": station_name,
         "station_type": "mobile" if location.get("isMobile") else "fixed",
         "region": location.get("locality") or country.get("name"),
         "longitude": longitude,
         "latitude": latitude,
         "country_code": country.get("code"),
         "country_name": country.get("name"),
-        "provider": provider.get("name"),
+        "provider": provider_name,
         "owner": owner.get("name"),
         "is_monitor": location.get("isMonitor"),
         "is_mobile": location.get("isMobile"),
@@ -303,6 +366,7 @@ def _station_row(location: Dict[str, Any], connector_id: int, service_ref: str) 
     location_id = location.get("id")
     station_ref = str(location_id) if location_id is not None else None
     name = _location_name(location)
+    station_name = _station_name(location)
     coords = location.get("coordinates") if isinstance(location.get("coordinates"), dict) else {}
     longitude = coerce_float(coords.get("longitude"))
     latitude = coerce_float(coords.get("latitude"))
@@ -316,7 +380,7 @@ def _station_row(location: Dict[str, Any], connector_id: int, service_ref: str) 
         "station_ref": station_ref,
         "service_ref": str(service_ref),
         "label": name or (f"OpenAQ {station_ref}" if station_ref else None),
-        "station_name": name,
+        "station_name": station_name,
         "station_type": "mobile" if location.get("isMobile") else "fixed",
         "region": location.get("locality") or country.get("name"),
         "geometry": geometry,
@@ -397,7 +461,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--to-supabase",
         action="store_true",
-        help="Upsert stations into Supabase (requires SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY).",
+        help="Upsert stations into Supabase (requires SUPABASE_DB_URL).",
     )
     return parser.parse_args()
 
@@ -416,14 +480,18 @@ def main() -> None:
     LOG.info("Locations missing coords=%s", missing_coords)
 
     if args.to_supabase:
-        writer = SupabaseWriter()
-        connector_id, overwrite_station_name = writer.upsert_connector()
-        inserted = writer.upsert_stations(
-            locations,
-            connector_id,
-            OPENAQ_SERVICE_REF,
-            overwrite_station_name,
-        )
+        if not SUPABASE_DB_URL:
+            raise RuntimeError("SUPABASE_DB_URL (or DATABASE_URL) is required for --to-supabase.")
+        writer = DbWriter(SUPABASE_DB_URL)
+        try:
+            connector_id, _ = writer.upsert_connector()
+            inserted = writer.upsert_stations(
+                locations,
+                connector_id,
+                OPENAQ_SERVICE_REF,
+            )
+        finally:
+            writer.close()
         LOG.info("Upserted %s stations into Supabase.", inserted)
 
     if args.format == "csv":

@@ -193,6 +193,7 @@ Notes:
 Environment:
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
+- `SUPABASE_DB_URL` (required when using `--to-supabase`)
 - `OPENAQ_BASE_URL` (optional; defaults to `https://api.openaq.org/v3`)
 - `OPENAQ_API_KEY` (required)
 - `OPENAQ_CONNECTOR_CODE` (optional; defaults to `openaq`)

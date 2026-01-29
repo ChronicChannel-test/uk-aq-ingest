@@ -31,6 +31,7 @@ type OpenAQLocation = {
   isMonitor?: boolean | null;
   coordinates?: { latitude?: number | null; longitude?: number | null } | null;
   country?: { code?: string | null; name?: string | null } | null;
+  provider?: { name?: string | null } | null;
   sensors?: Array<{
     id?: number;
     name?: string | null;
@@ -55,6 +56,9 @@ const DEFAULT_BBOX = "-8.623555,49.863222,1.763337,60.871222";
 const DEFAULT_PAGE_LIMIT = 1000;
 const DEFAULT_MAX_PAGES = 50;
 const DEFAULT_CONCURRENCY = 6;
+const PROVIDER_SHORTNAMES: Record<string, string> = {
+  "London Air Quality Network": "LAQN",
+};
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")
   ?? Deno.env.get("SB_SUPABASE_URL")
@@ -277,6 +281,21 @@ function resolveLocationName(location: OpenAQLocation): string | null {
   return null;
 }
 
+function resolveProviderName(location: OpenAQLocation): string | null {
+  if (location?.provider?.name && String(location.provider.name).trim()) {
+    const raw = String(location.provider.name).trim();
+    return PROVIDER_SHORTNAMES[raw] ?? raw;
+  }
+  return null;
+}
+
+function buildStationName(rawName: string | null, providerName: string | null): string | null {
+  if (rawName && providerName) {
+    return `${providerName} ${rawName}`;
+  }
+  return rawName;
+}
+
 function resolveCoordinates(location: OpenAQLocation): { longitude: number | null; latitude: number | null } {
   const longitude = location?.coordinates?.longitude;
   const latitude = location?.coordinates?.latitude;
@@ -368,11 +387,12 @@ async function upsertStations(
       continue;
     }
     const { longitude, latitude } = resolveCoordinates(location);
-    const stationName = resolveLocationName(location);
+    const rawName = resolveLocationName(location);
+    const stationName = buildStationName(rawName, resolveProviderName(location));
     const row: Record<string, unknown> = {
       station_ref: stationRef,
       service_ref: String(serviceRef),
-      label: stationName ?? `OpenAQ ${stationRef}`,
+      label: rawName ?? `OpenAQ ${stationRef}`,
       station_name: stationName,
       station_type: location?.isMobile ? "mobile" : "fixed",
       region: location?.locality ?? location?.country?.name ?? null,
