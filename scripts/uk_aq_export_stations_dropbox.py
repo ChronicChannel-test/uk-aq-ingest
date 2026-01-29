@@ -20,13 +20,10 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import requests
 from dotenv import load_dotenv
-from supabase import Client
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
-
-from scripts.uk_aq_supabase import SupabaseSchemas, create_supabase_client
 
 load_dotenv()
 
@@ -35,6 +32,13 @@ DROPBOX_UPLOAD_URL = "https://content.dropboxapi.com/2/files/upload"
 
 DEFAULT_PAGE_SIZE = 1000
 DEFAULT_DROPBOX_DIR = "uk_aq_stations"
+DEFAULT_SUMMARY_FILENAME = "daily_summary.json"
+
+SUPABASE_DB_URL = os.getenv("SUPABASE_DB_URL") or os.getenv("DATABASE_URL")
+
+OPENAQ_PROVIDER_SHORTNAMES = {
+    "London Air Quality Network": "LAQN",
+}
 
 DEFAULT_ERROR_LOG_DIR = "error_log"
 
@@ -58,6 +62,21 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=DEFAULT_PAGE_SIZE,
         help="Supabase page size (default: 1000).",
+    )
+    parser.add_argument(
+        "--summary-output",
+        default=DEFAULT_SUMMARY_FILENAME,
+        help="Daily summary JSON output filename (default: daily_summary.json).",
+    )
+    parser.add_argument(
+        "--summary-openaq-json",
+        default="openaq_stations.json",
+        help="Path to OpenAQ stations JSON for provider counts (default: openaq_stations.json).",
+    )
+    parser.add_argument(
+        "--skip-summary",
+        action="store_true",
+        help="Skip writing the daily summary JSON.",
     )
     return parser.parse_args()
 
@@ -158,6 +177,7 @@ def _error_log_payload(
         "env": {
             "SUPABASE_URL_set": bool(os.getenv("SUPABASE_URL")),
             "SUPABASE_SERVICE_ROLE_KEY_set": bool(os.getenv("SUPABASE_SERVICE_ROLE_KEY")),
+            "SUPABASE_DB_URL_set": bool(os.getenv("SUPABASE_DB_URL") or os.getenv("DATABASE_URL")),
             "DROPBOX_APP_KEY_set": bool(os.getenv("DROPBOX_APP_KEY")),
             "DROPBOX_APP_SECRET_set": bool(os.getenv("DROPBOX_APP_SECRET")),
             "DROPBOX_REFRESH_TOKEN_set": bool(os.getenv("DROPBOX_REFRESH_TOKEN")),
@@ -246,35 +266,170 @@ def _coords_from_geometry(value: Any) -> Tuple[Optional[float], Optional[float]]
     return None, None
 
 
+def _db_connect():
+    if not SUPABASE_DB_URL:
+        raise RuntimeError("Missing SUPABASE_DB_URL (or DATABASE_URL).")
+    try:
+        import psycopg2  # type: ignore
+    except ImportError as exc:
+        raise RuntimeError("psycopg2 is required to export stations.") from exc
+    return psycopg2.connect(SUPABASE_DB_URL)
+
+
 def _iter_stations(page_size: int) -> Iterable[Dict[str, Any]]:
-    supabase_url = os.getenv("SUPABASE_URL", "").strip()
-    service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
-    if not supabase_url or not service_role_key:
-        raise RuntimeError("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY.")
+    conn = _db_connect()
+    query = """
+        select
+          stn.id,
+          stn.station_ref,
+          stn.label,
+          stn.station_name,
+          stn.station_type,
+          stn.station_exposure,
+          stn.region,
+          stn.la_code,
+          stn.la_version,
+          stn.pcon_code,
+          stn.pcon_version,
+          stn.service_ref,
+          stn.connector_id,
+          stn.removed_at,
+          stn.last_seen_at,
+          stn.created_at,
+          st_x(stn.geometry::geometry) as longitude,
+          st_y(stn.geometry::geometry) as latitude,
+          st_asewkt(stn.geometry::geometry) as geometry,
+          c.connector_code
+        from uk_aq_core.stations stn
+        join uk_aq_core.connectors c on c.id = stn.connector_id
+        order by stn.id
+    """
+    try:
+        with conn, conn.cursor() as cursor:
+            cursor.itersize = page_size
+            cursor.execute(query)
+            cols = [desc[0] for desc in cursor.description]
+            while True:
+                rows = cursor.fetchmany(page_size)
+                if not rows:
+                    break
+                for row in rows:
+                    yield dict(zip(cols, row))
+    finally:
+        conn.close()
 
-    client: Client = create_supabase_client(supabase_url, service_role_key)
-    schemas = SupabaseSchemas.from_client(client)
-    offset = 0
-    while True:
-        resp = (
-            schemas.core.table("stations")
-            .select(
-                "id,station_ref,label,station_name,station_type,station_exposure,region,"
-                "la_code,la_version,pcon_code,pcon_version,service_ref,connector_id,geometry,"
-                "connector:connectors!connector_id(connector_code)"
 
-            )
-            .range(offset, offset + page_size - 1)
-            .execute()
-        )
-        rows = resp.data if hasattr(resp, "data") else resp.get("data")
-        if not rows:
-            break
-        for row in rows:
-            yield row
-        if len(rows) < page_size:
-            break
-        offset += page_size
+def _fetch_connector_counts(conn) -> List[Dict[str, Any]]:
+    query = """
+        select
+          c.connector_code,
+          count(*) as station_count,
+          count(*) filter (where s.removed_at is null) as active_count
+        from uk_aq_core.stations s
+        join uk_aq_core.connectors c on c.id = s.connector_id
+        group by c.connector_code
+        order by c.connector_code
+    """
+    with conn.cursor() as cursor:
+        cursor.execute(query)
+        rows = cursor.fetchall()
+    return [
+        {
+            "connector_code": row[0],
+            "station_count": int(row[1]),
+            "active_count": int(row[2]),
+        }
+        for row in rows
+    ]
+
+
+def _fetch_network_counts(conn) -> List[Dict[str, Any]]:
+    query = """
+        select
+          snm.network_code,
+          max(snm.network_label) as network_label,
+          count(distinct snm.station_id) as station_count,
+          count(distinct snm.station_id) filter (where s.removed_at is null) as active_count
+        from uk_aq_core.station_network_memberships snm
+        join uk_aq_core.stations s on s.id = snm.station_id
+        group by snm.network_code
+        order by snm.network_code
+    """
+    with conn.cursor() as cursor:
+        cursor.execute(query)
+        rows = cursor.fetchall()
+    return [
+        {
+            "network_code": row[0],
+            "network_label": row[1],
+            "station_count": int(row[2]),
+            "active_count": int(row[3]),
+        }
+        for row in rows
+    ]
+
+
+def _fetch_station_totals(conn) -> Dict[str, int]:
+    query = """
+        select
+          count(*) as station_count,
+          count(*) filter (where removed_at is null) as active_count
+        from uk_aq_core.stations
+    """
+    with conn.cursor() as cursor:
+        cursor.execute(query)
+        row = cursor.fetchone()
+    if not row:
+        return {"station_count": 0, "active_count": 0}
+    return {"station_count": int(row[0]), "active_count": int(row[1])}
+
+
+def _openaq_provider_counts(path: Path) -> Dict[str, Any]:
+    if not path.exists():
+        return {
+            "source": str(path),
+            "missing": True,
+            "providers": [],
+        }
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    stations = payload.get("stations") or []
+    counts: Dict[str, int] = {}
+    for station in stations:
+        provider = station.get("provider")
+        if provider is None:
+            continue
+        provider = str(provider).strip()
+        if not provider:
+            continue
+        provider = OPENAQ_PROVIDER_SHORTNAMES.get(provider, provider)
+        counts[provider] = counts.get(provider, 0) + 1
+    providers = [
+        {"provider": name, "station_count": count}
+        for name, count in sorted(counts.items(), key=lambda item: (-item[1], item[0].lower()))
+    ]
+    return {
+        "source": str(path),
+        "missing": False,
+        "providers": providers,
+    }
+
+
+def _build_summary(summary_openaq_path: Path) -> Dict[str, Any]:
+    conn = _db_connect()
+    try:
+        totals = _fetch_station_totals(conn)
+        connectors = _fetch_connector_counts(conn)
+        networks = _fetch_network_counts(conn)
+    finally:
+        conn.close()
+    return {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "active_definition": "stations.removed_at is null",
+        "station_totals": totals,
+        "connectors": connectors,
+        "networks": networks,
+        "openaq_providers": _openaq_provider_counts(summary_openaq_path),
+    }
 
 
 def main() -> int:
@@ -293,11 +448,13 @@ def main() -> int:
         stations: List[Dict[str, Any]] = []
         for row in _iter_stations(args.page_size):
             geometry = _normalize_geometry(row.get("geometry"))
-            lat, lon = _coords_from_geometry(geometry)
+            lat = row.get("latitude")
+            lon = row.get("longitude")
+            if lat is None or lon is None:
+                lat, lon = _coords_from_geometry(geometry)
             coordinates = None
             if lat is not None and lon is not None:
                 coordinates = f"{lat:.6f} {lon:.6f}"
-            connector = row.get("connector") or {}
             stations.append(
                 {
                     "id": row.get("id"),
@@ -315,7 +472,7 @@ def main() -> int:
                     "geometry": geometry,
                     "service_ref": row.get("service_ref"),
                     "connector_id": row.get("connector_id"),
-                    "connector_code": connector.get("connector_code"),
+                    "connector_code": row.get("connector_code"),
                 }
             )
 
@@ -331,6 +488,14 @@ def main() -> int:
         _dropbox_upload_file(access_token, output_path, dropbox_path)
         print(f"Dropbox root: {root}")
         print(f"Uploaded {output_path.name} to Dropbox: {dropbox_path}")
+
+        if not args.skip_summary:
+            summary_path = Path(args.summary_output or DEFAULT_SUMMARY_FILENAME)
+            summary_payload = _build_summary(Path(args.summary_openaq_json))
+            summary_path.write_text(json.dumps(summary_payload, indent=2), encoding="utf-8")
+            summary_dropbox_path = f"{dropbox_dir}/{summary_path.name}"
+            _dropbox_upload_file(access_token, summary_path, summary_dropbox_path)
+            print(f"Uploaded {summary_path.name} to Dropbox: {summary_dropbox_path}")
         return 0
     except Exception as exc:
         payload = _error_log_payload(exc, args)
