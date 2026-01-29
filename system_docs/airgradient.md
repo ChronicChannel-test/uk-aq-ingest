@@ -14,14 +14,14 @@ location before normalizing them into `stations`, `timeseries`, and
 
 ## Environment variables
 - `AIRGRADIENT_BASE_URL` (defaults to `https://api.airgradient.com/public/api/v1`)
-- `AIRGRADIENT_API_KEY` (required)
+- `AIRGRADIENT_API_KEY` (required; use the place access token)
 - `AIRGRADIENT_CONNECTOR_CODE` (optional; defaults to `airgradient`)
 - `AIRGRADIENT_SERVICE_REF` (optional; defaults to `AIRGRADIENT_CONNECTOR_CODE`)
 - `AIRGRADIENT_SERVICE_LABEL` (optional; defaults to `AirGradient`)
-- `AIRGRADIENT_LOCATIONS_PATH` (optional; defaults to `/locations`)
-- `AIRGRADIENT_MEASUREMENTS_PATH_TEMPLATE` (optional; defaults to `/locations/{location_id}/measures`)
-- `AIRGRADIENT_API_KEY_PARAM` (optional; defaults to `api_key`)
-- `AIRGRADIENT_API_KEY_HEADER` (optional; defaults to `X-API-KEY`)【F:supabase/functions/ingest_airgradient/index.ts†L35-L78】
+- `AIRGRADIENT_LOCATIONS_PATH` (optional; defaults to `/locations/measures/current`)
+- `AIRGRADIENT_MEASUREMENTS_PATH_TEMPLATE` (optional; defaults to `/locations/{location_id}/measures/current`)
+- `AIRGRADIENT_API_KEY_PARAM` (optional; defaults to `token`)
+- `AIRGRADIENT_API_KEY_HEADER` (optional; defaults to empty)【F:supabase/functions/ingest_airgradient/index.ts†L35-L78】
 
 ## Polling/dispatch
 The dispatcher (`uk_aq_dispatch_polls`) triggers `ingest_airgradient` and passes

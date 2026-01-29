@@ -193,13 +193,13 @@ Environment:
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `AIRGRADIENT_BASE_URL` (optional; defaults to `https://api.airgradient.com/public/api/v1`)
-- `AIRGRADIENT_API_KEY` (required)
+- `AIRGRADIENT_API_KEY` (required; place access token)
 - `AIRGRADIENT_CONNECTOR_CODE` (optional; defaults to `airgradient`)
 - `AIRGRADIENT_SERVICE_REF` (optional; defaults to `AIRGRADIENT_CONNECTOR_CODE`)
 - `AIRGRADIENT_SERVICE_LABEL` (optional; defaults to `AirGradient`)
-- `AIRGRADIENT_LOCATIONS_PATH` (optional; defaults to `/locations`)
-- `AIRGRADIENT_API_KEY_PARAM` (optional; defaults to `api_key`)
-- `AIRGRADIENT_API_KEY_HEADER` (optional; defaults to `X-API-KEY`)
+- `AIRGRADIENT_LOCATIONS_PATH` (optional; defaults to `/locations/measures/current`)
+- `AIRGRADIENT_API_KEY_PARAM` (optional; defaults to `token`)
+- `AIRGRADIENT_API_KEY_HEADER` (optional; defaults to empty)
 
 ### `scripts/erg_laqn/erg_laqn_ingest.py`
 Purpose:

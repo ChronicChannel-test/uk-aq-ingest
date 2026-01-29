@@ -43,10 +43,11 @@ const SB_UK_AQ_CRON_SECRET = Deno.env.get("SB_UK_AQ_CRON_SECRET") ?? "";
 
 const AIRGRADIENT_BASE_URL = (Deno.env.get("AIRGRADIENT_BASE_URL") ?? DEFAULT_BASE_URL)
   .replace(/\/$/, "");
-const AIRGRADIENT_LOCATIONS_PATH = Deno.env.get("AIRGRADIENT_LOCATIONS_PATH") ?? "/locations";
+const AIRGRADIENT_LOCATIONS_PATH = Deno.env.get("AIRGRADIENT_LOCATIONS_PATH")
+  ?? "/locations/measures/current";
 const AIRGRADIENT_MEASUREMENTS_PATH_TEMPLATE = Deno.env.get(
   "AIRGRADIENT_MEASUREMENTS_PATH_TEMPLATE",
-) ?? "/locations/{location_id}/measures";
+) ?? "/locations/{location_id}/measures/current";
 const AIRGRADIENT_CONNECTOR_CODE = Deno.env.get("AIRGRADIENT_CONNECTOR_CODE")
   ?? DEFAULT_CONNECTOR_CODE;
 const AIRGRADIENT_SERVICE_REF = Deno.env.get("AIRGRADIENT_SERVICE_REF")
@@ -56,8 +57,8 @@ const AIRGRADIENT_SERVICE_LABEL = Deno.env.get("AIRGRADIENT_SERVICE_LABEL")
 const AIRGRADIENT_USER_AGENT = Deno.env.get("AIRGRADIENT_USER_AGENT")
   ?? DEFAULT_USER_AGENT;
 const AIRGRADIENT_API_KEY = Deno.env.get("AIRGRADIENT_API_KEY") ?? "";
-const AIRGRADIENT_API_KEY_PARAM = Deno.env.get("AIRGRADIENT_API_KEY_PARAM") ?? "api_key";
-const AIRGRADIENT_API_KEY_HEADER = Deno.env.get("AIRGRADIENT_API_KEY_HEADER") ?? "X-API-KEY";
+const AIRGRADIENT_API_KEY_PARAM = Deno.env.get("AIRGRADIENT_API_KEY_PARAM") ?? "token";
+const AIRGRADIENT_API_KEY_HEADER = Deno.env.get("AIRGRADIENT_API_KEY_HEADER") ?? "";
 
 const REST_BASE_URL = SUPABASE_URL
   ? `${SUPABASE_URL.replace(/\/$/, "")}/rest/v1`

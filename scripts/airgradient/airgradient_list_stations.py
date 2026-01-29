@@ -46,14 +46,14 @@ logging.getLogger("postgrest").setLevel(getattr(logging, DEFAULT_LOG_LEVEL, logg
 AIRGRADIENT_BASE_URL = (
     os.getenv("AIRGRADIENT_BASE_URL") or "https://api.airgradient.com/public/api/v1"
 ).rstrip("/")
-AIRGRADIENT_LOCATIONS_PATH = os.getenv("AIRGRADIENT_LOCATIONS_PATH") or "/locations"
+AIRGRADIENT_LOCATIONS_PATH = os.getenv("AIRGRADIENT_LOCATIONS_PATH") or "/locations/measures/current"
 AIRGRADIENT_CONNECTOR_CODE = os.getenv("AIRGRADIENT_CONNECTOR_CODE") or "airgradient"
 AIRGRADIENT_SERVICE_REF = os.getenv("AIRGRADIENT_SERVICE_REF") or AIRGRADIENT_CONNECTOR_CODE
 AIRGRADIENT_SERVICE_LABEL = os.getenv("AIRGRADIENT_SERVICE_LABEL") or "AirGradient"
 AIRGRADIENT_USER_AGENT = os.getenv("AIRGRADIENT_USER_AGENT", "uk-air-quality-networks")
 AIRGRADIENT_API_KEY = (os.getenv("AIRGRADIENT_API_KEY") or "").strip()
-AIRGRADIENT_API_KEY_PARAM = os.getenv("AIRGRADIENT_API_KEY_PARAM") or "api_key"
-AIRGRADIENT_API_KEY_HEADER = os.getenv("AIRGRADIENT_API_KEY_HEADER") or "X-API-KEY"
+AIRGRADIENT_API_KEY_PARAM = os.getenv("AIRGRADIENT_API_KEY_PARAM") or "token"
+AIRGRADIENT_API_KEY_HEADER = os.getenv("AIRGRADIENT_API_KEY_HEADER") or ""
 
 UK_BBOX = {
     "west": -11.0,

@@ -81,7 +81,7 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
   - `stations`, `phenomena`, `timeseries`, `observations`
 - Notes:
   - Requires an existing connector row; the ingest does not create connectors.
-  - Uses `AIRGRADIENT_*` environment variables for base URL, API key, and endpoint paths.
+  - Uses `AIRGRADIENT_*` environment variables for base URL, API key/token, and endpoint paths.
   - If `station_refs` are provided, limits polling to those location ids.
   - Observation fields are mapped using common AirGradient keys (PM1/PM2.5/PM10, CO2, temperature, humidity).
   - Updates `timeseries.last_value` and `timeseries.last_value_at` based on the most recent measurement.
