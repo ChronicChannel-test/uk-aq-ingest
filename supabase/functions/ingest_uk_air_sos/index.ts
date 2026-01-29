@@ -381,23 +381,42 @@ serve(async (req) => {
               const points = parseDatapoints(data?.values, row.id);
               if (points.length) {
                 const connectorIdForObs = connector?.id ?? requestedConnectorId ?? null;
+                if (connectorIdForObs == null) {
+                  throw new Error("observations upsert failed: connector_id is required");
+                }
+                let droppedDuplicates = 0;
+                const deduped = new Map<string, { observed_at: string; value: number | null; status: string | null }>();
+                for (const point of points) {
+                  if (deduped.has(point.observed_at)) {
+                    droppedDuplicates += 1;
+                  }
+                  deduped.set(point.observed_at, point);
+                }
+                if (droppedDuplicates) {
+                  console.warn("Dropping duplicate observations", {
+                    timeseries_id: row.id,
+                    dropped: droppedDuplicates,
+                    total: points.length,
+                  });
+                }
+                const observationRows = Array.from(deduped.values()).map((point) => ({
+                  connector_id: connectorIdForObs,
+                  timeseries_id: row.id,
+                  observed_at: point.observed_at,
+                  value: point.value,
+                  status: point.status,
+                }));
                 const { error } = await postgrestRequest(
                   "POST",
                   "observations",
                   { on_conflict: "connector_id,timeseries_id,observed_at" },
-                  points.map((point) => ({
-                    connector_id: connectorIdForObs,
-                    timeseries_id: row.id,
-                    observed_at: point.observed_at,
-                    value: point.value,
-                    status: point.status,
-                  })),
+                  observationRows,
                   "resolution=merge-duplicates,return=minimal",
                 );
                 if (error) {
                   throw new Error(`observations upsert failed for ${row.id}: ${error.message}`);
                 }
-                observationsUpserted += points.length;
+                observationsUpserted += observationRows.length;
               }
               await upsertLastValue(
                 row.id,
