@@ -175,8 +175,8 @@ jobs:
 
       - name: Sync OpenAQ stations
         env:
-         SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-         SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           OPENAQ_BASE_URL: ${{ secrets.OPENAQ_BASE_URL }}
           OPENAQ_API_KEY: ${{ secrets.OPENAQ_API_KEY }}
         run: |
