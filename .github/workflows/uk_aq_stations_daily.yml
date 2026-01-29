@@ -173,14 +173,14 @@ jobs:
         run: |
           python3 scripts/erg_laqn/erg_laqn_list_stations.py --to-supabase
 
-      # - name: Sync OpenAQ stations
-      #   env:
-      #     SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-      #     SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-      #     OPENAQ_BASE_URL: ${{ secrets.OPENAQ_BASE_URL }}
-      #     OPENAQ_API_KEY: ${{ secrets.OPENAQ_API_KEY }}
-      #   run: |
-      #     python3 scripts/openaq/openaq_list_stations.py --to-supabase
+      - name: Sync OpenAQ stations
+        env:
+         SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+         SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          OPENAQ_BASE_URL: ${{ secrets.OPENAQ_BASE_URL }}
+          OPENAQ_API_KEY: ${{ secrets.OPENAQ_API_KEY }}
+        run: |
+          python3 scripts/openaq/openaq_list_stations.py --to-supabase
 
       - name: Discover Sensor.Community stations (optional)
         if: env.RUN_SCOMM_STATIONS_EXPORT == '1'
