@@ -48,6 +48,7 @@ OPENAQ_USER_AGENT = os.getenv("OPENAQ_USER_AGENT") or "uk-air-quality-networks"
 OPENAQ_BBOX = os.getenv("OPENAQ_BBOX") or "-8.623555,49.863222,1.763337,60.871222"
 OPENAQ_PAGE_LIMIT = int(os.getenv("OPENAQ_PAGE_LIMIT") or "1000")
 OPENAQ_MAX_PAGES = int(os.getenv("OPENAQ_MAX_PAGES") or "0")
+OPENAQ_RATE_LIMIT_PER_MIN = int(os.getenv("OPENAQ_RATE_LIMIT_PER_MIN") or "60")
 SUPABASE_DB_URL = os.getenv("SUPABASE_DB_URL") or os.getenv("DATABASE_URL")
 
 PROVIDER_SHORTNAMES = {
@@ -118,6 +119,10 @@ class OpenAQClient:
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
         self.retries = retries
+        self.last_request_at = 0.0
+        self.min_interval_seconds = 0.0
+        if OPENAQ_RATE_LIMIT_PER_MIN > 0:
+            self.min_interval_seconds = max(0.0, 60.0 / float(OPENAQ_RATE_LIMIT_PER_MIN))
         self.session = requests.Session()
         self.session.headers.update(
             {
@@ -127,15 +132,77 @@ class OpenAQClient:
             }
         )
 
+    def _rate_limit_info(self, resp: requests.Response) -> Dict[str, Optional[int]]:
+        def to_int(value: Optional[str]) -> Optional[int]:
+            if value is None:
+                return None
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                return None
+
+        headers = resp.headers
+        return {
+            "limit": to_int(headers.get("x-ratelimit-limit")),
+            "remaining": to_int(headers.get("x-ratelimit-remaining")),
+            "reset": to_int(headers.get("x-ratelimit-reset")),
+            "used": to_int(headers.get("x-ratelimit-used")),
+        }
+
+    def _rate_limit_delay_seconds(self, reset: Optional[int]) -> float:
+        if reset is None:
+            return 0.0
+        if reset > 1e12:
+            return max(0.0, reset / 1000.0 - time.time())
+        if reset > 1e9:
+            return max(0.0, reset - time.time())
+        return max(0.0, float(reset))
+
+    def _respect_min_interval(self) -> None:
+        if self.min_interval_seconds <= 0:
+            return
+        elapsed = time.time() - self.last_request_at
+        if elapsed < self.min_interval_seconds:
+            time.sleep(self.min_interval_seconds - elapsed)
+
+    def _maybe_sleep_for_rate_limit(self, resp: requests.Response) -> None:
+        info = self._rate_limit_info(resp)
+        remaining = info.get("remaining")
+        reset = info.get("reset")
+        if remaining is None or reset is None:
+            return
+        if remaining <= 1:
+            delay = self._rate_limit_delay_seconds(reset)
+            if delay > 0:
+                LOG.info(
+                    "OpenAQ rate limit low (remaining=%s). Sleeping %.1fs.",
+                    remaining,
+                    delay,
+                )
+                time.sleep(delay)
+
     def get(self, path: str, params: Optional[Dict[str, Any]] = None) -> Any:
         url = f"{self.base_url}/{path.lstrip('/')}"
         for attempt in range(1, self.retries + 1):
             try:
+                self._respect_min_interval()
                 resp = self.session.get(url, params=params, timeout=self.timeout)
+                self.last_request_at = time.time()
                 if resp.status_code in (429, 500, 502, 503, 504):
+                    if resp.status_code == 429:
+                        info = self._rate_limit_info(resp)
+                        delay = self._rate_limit_delay_seconds(info.get("reset")) or min(60, 2**attempt)
+                        LOG.warning(
+                            "OpenAQ rate limit hit (remaining=%s). Sleeping %.1fs.",
+                            info.get("remaining"),
+                            delay,
+                        )
+                        time.sleep(delay)
+                        continue
                     self._sleep(attempt)
                     continue
                 resp.raise_for_status()
+                self._maybe_sleep_for_rate_limit(resp)
                 return resp.json()
             except requests.RequestException as exc:
                 LOG.warning("Request failed (attempt %s/%s): %s", attempt, self.retries, exc)
@@ -248,6 +315,33 @@ class DbWriter:
             if not row:
                 raise RuntimeError("Failed to resolve connector id for OpenAQ.")
             return int(row[0]), bool(row[1])
+
+    def get_poll_enabled(self) -> Optional[bool]:
+        with self.conn, self.conn.cursor() as cursor:
+            cursor.execute(
+                """
+                select poll_enabled
+                from uk_aq_core.connectors
+                where connector_code = %s
+                limit 1
+                """,
+                (OPENAQ_CONNECTOR_CODE,),
+            )
+            row = cursor.fetchone()
+            if row is None:
+                return None
+            return bool(row[0])
+
+    def set_poll_enabled(self, poll_enabled: bool) -> None:
+        with self.conn, self.conn.cursor() as cursor:
+            cursor.execute(
+                """
+                update uk_aq_core.connectors
+                set poll_enabled = %s
+                where connector_code = %s
+                """,
+                (poll_enabled, OPENAQ_CONNECTOR_CODE),
+            )
 
     def upsert_stations(
         self,
@@ -463,6 +557,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Upsert stations into Supabase (requires SUPABASE_DB_URL).",
     )
+    parser.add_argument(
+        "--toggle-polling",
+        action="store_true",
+        help="Temporarily disable connector polling while the script runs (requires --to-supabase).",
+    )
     return parser.parse_args()
 
 
@@ -471,53 +570,69 @@ def main() -> None:
     run_at = utcnow()
     bbox_str, bbox_map = parse_bbox(args.bbox)
 
-    client = OpenAQClient()
-    locations = client.list_locations(bbox_str, args.limit, args.max_pages or None)
-    LOG.info("Fetched %s locations from OpenAQ.", len(locations))
-
-    normalized = [normalize_location(location) for location in locations]
-    missing_coords = sum(1 for row in normalized if row.get("longitude") is None or row.get("latitude") is None)
-    LOG.info("Locations missing coords=%s", missing_coords)
-
+    writer = None
+    original_poll_enabled = None
     if args.to_supabase:
         if not SUPABASE_DB_URL:
             raise RuntimeError("SUPABASE_DB_URL (or DATABASE_URL) is required for --to-supabase.")
         writer = DbWriter(SUPABASE_DB_URL)
-        try:
+        if args.toggle_polling:
+            original_poll_enabled = writer.get_poll_enabled()
+            if original_poll_enabled is None:
+                LOG.warning("OpenAQ connector not found; skipping poll_enabled toggle.")
+            else:
+                writer.set_poll_enabled(False)
+                LOG.info("Disabled OpenAQ polling while listing stations.")
+
+    try:
+        client = OpenAQClient()
+        locations = client.list_locations(bbox_str, args.limit, args.max_pages or None)
+        LOG.info("Fetched %s locations from OpenAQ.", len(locations))
+
+        normalized = [normalize_location(location) for location in locations]
+        missing_coords = sum(
+            1 for row in normalized if row.get("longitude") is None or row.get("latitude") is None
+        )
+        LOG.info("Locations missing coords=%s", missing_coords)
+
+        if args.to_supabase:
             connector_id, _ = writer.upsert_connector()
             inserted = writer.upsert_stations(
                 locations,
                 connector_id,
                 OPENAQ_SERVICE_REF,
             )
-        finally:
-            writer.close()
-        LOG.info("Upserted %s stations into Supabase.", inserted)
+            LOG.info("Upserted %s stations into Supabase.", inserted)
 
-    if args.format == "csv":
-        _write_csv(args.output, normalized)
-    else:
-        raw_payload = None
-        if args.raw_output:
-            raw_payload = {
+        if args.format == "csv":
+            _write_csv(args.output, normalized)
+        else:
+            if args.raw_output:
+                raw_payload = {
+                    "source": OPENAQ_BASE_URL,
+                    "fetched_at": run_at.isoformat(),
+                    "bbox": bbox_map,
+                    "count": len(locations),
+                    "locations": locations,
+                }
+                _write_json(args.raw_output, raw_payload)
+            payload = {
                 "source": OPENAQ_BASE_URL,
                 "fetched_at": run_at.isoformat(),
                 "bbox": bbox_map,
-                "count": len(locations),
-                "locations": locations,
+                "count": len(normalized),
+                "connector_code": OPENAQ_CONNECTOR_CODE,
+                "service_ref": OPENAQ_SERVICE_REF,
+                "stations": normalized,
             }
-            _write_json(args.raw_output, raw_payload)
-        payload = {
-            "source": OPENAQ_BASE_URL,
-            "fetched_at": run_at.isoformat(),
-            "bbox": bbox_map,
-            "count": len(normalized),
-            "connector_code": OPENAQ_CONNECTOR_CODE,
-            "service_ref": OPENAQ_SERVICE_REF,
-            "stations": normalized,
-        }
-        _write_json(args.output, payload)
-    LOG.info("Wrote %s", args.output)
+            _write_json(args.output, payload)
+        LOG.info("Wrote %s", args.output)
+    finally:
+        if writer and args.toggle_polling and original_poll_enabled is not None:
+            writer.set_poll_enabled(original_poll_enabled)
+            LOG.info("Restored OpenAQ polling to %s.", original_poll_enabled)
+        if writer:
+            writer.close()
 
 
 def chunked(values: List[str], size: int) -> Iterable[List[str]]:

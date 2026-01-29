@@ -162,6 +162,8 @@ Key flags:
 
 Notes:
 - Connector upserts preserve existing `poll_enabled`; new connectors default to `poll_enabled=false`.
+- Requests are rate-limited to `OPENAQ_RATE_LIMIT_PER_MIN` (default 60/min) and will pause when the OpenAQ rate-limit headers indicate low remaining budget.
+- Use `--toggle-polling` with `--to-supabase` to temporarily disable OpenAQ polling during the run (restored on exit).
 
 Environment:
 - `SUPABASE_URL`
@@ -203,6 +205,7 @@ Environment:
 - `OPENAQ_BBOX` (optional; defaults to `-8.623555,49.863222,1.763337,60.871222`)
 - `OPENAQ_PAGE_LIMIT` (optional; defaults to `1000`)
 - `OPENAQ_MAX_PAGES` (optional; defaults to `0` meaning no cap)
+- `OPENAQ_RATE_LIMIT_PER_MIN` (optional; defaults to `60`)
 - `OPENAQ_LOG_LEVEL` (optional; defaults to `INFO`)
 
 ### `scripts/erg_laqn/erg_laqn_ingest.py`

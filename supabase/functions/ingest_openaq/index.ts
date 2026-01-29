@@ -87,6 +87,7 @@ const DEFAULT_PAGE_LIMIT = 1000;
 const DEFAULT_MAX_PAGES = 50;
 const DEFAULT_CONCURRENCY = 6;
 const DEFAULT_MAX_RUNTIME_SECONDS = 110;
+const DEFAULT_RATE_LIMIT_RETRIES = 3;
 const PROVIDER_SHORTNAMES: Record<string, string> = {
   "London Air Quality Network": "LAQN",
 };
@@ -114,6 +115,9 @@ const OPENAQ_MAX_PAGES = Number(Deno.env.get("OPENAQ_MAX_PAGES") ?? DEFAULT_MAX_
 const OPENAQ_CONCURRENCY = Number(Deno.env.get("OPENAQ_CONCURRENCY") ?? DEFAULT_CONCURRENCY);
 const OPENAQ_MAX_RUNTIME_SECONDS = Number(
   Deno.env.get("OPENAQ_MAX_RUNTIME_SECONDS") ?? DEFAULT_MAX_RUNTIME_SECONDS,
+);
+const OPENAQ_RATE_LIMIT_RETRIES = Number(
+  Deno.env.get("OPENAQ_RATE_LIMIT_RETRIES") ?? DEFAULT_RATE_LIMIT_RETRIES,
 );
 const UK_AQ_DROPBOX_ROOT = normalizeDropboxPath(Deno.env.get("UK_AQ_DROPBOX_ROOT") ?? "");
 const DROPBOX_APP_KEY = Deno.env.get("DROPBOX_APP_KEY") ?? "";
@@ -427,6 +431,72 @@ function parseBbox(value: string): string {
   return numbers.join(",");
 }
 
+function sleep(ms: number): Promise<void> {
+  if (!Number.isFinite(ms) || ms <= 0) {
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function parseRateLimitHeaders(headers: Headers): {
+  limit: number | null;
+  remaining: number | null;
+  reset: number | null;
+  used: number | null;
+} {
+  const toNumber = (value: string | null): number | null => {
+    if (!value) {
+      return null;
+    }
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+  return {
+    limit: toNumber(headers.get("x-ratelimit-limit")),
+    remaining: toNumber(headers.get("x-ratelimit-remaining")),
+    reset: toNumber(headers.get("x-ratelimit-reset")),
+    used: toNumber(headers.get("x-ratelimit-used")),
+  };
+}
+
+function rateLimitDelayMs(reset: number | null): number {
+  if (!Number.isFinite(reset) || reset === null) {
+    return 0;
+  }
+  if (reset > 1e12) {
+    return Math.max(0, reset - Date.now());
+  }
+  if (reset > 1e9) {
+    return Math.max(0, reset * 1000 - Date.now());
+  }
+  return Math.max(0, reset * 1000);
+}
+
+async function maybeSleepForRateLimit(
+  headers: Headers,
+  rawRecorder?: RawRecorder | null,
+  status?: number,
+): Promise<void> {
+  const info = parseRateLimitHeaders(headers);
+  if (info.remaining === null || info.reset === null) {
+    return;
+  }
+  if (info.remaining <= 1) {
+    const delayMs = rateLimitDelayMs(info.reset);
+    if (rawRecorder) {
+      rawRecorder.recordEvent("rate_limit", {
+        status: status ?? null,
+        remaining: info.remaining,
+        limit: info.limit,
+        used: info.used,
+        reset: info.reset,
+        sleep_ms: delayMs,
+      });
+    }
+    await sleep(delayMs);
+  }
+}
+
 async function openaqRequest(
   path: string,
   params?: Record<string, string | number>,
@@ -438,17 +508,40 @@ async function openaqRequest(
       url.searchParams.set(key, String(value));
     }
   }
-  const resp = await fetch(url.toString(), { headers: openaqHeaders() });
-  const contentType = resp.headers.get("content-type") ?? "";
-  const payload = contentType.includes("application/json") ? await resp.json() : await resp.text();
-  if (rawRecorder) {
-    rawRecorder.recordResponse(path, params ?? {}, resp.status, payload);
+  const retries = Number.isFinite(OPENAQ_RATE_LIMIT_RETRIES)
+    ? Math.max(1, OPENAQ_RATE_LIMIT_RETRIES)
+    : DEFAULT_RATE_LIMIT_RETRIES;
+  for (let attempt = 1; attempt <= retries; attempt += 1) {
+    const resp = await fetch(url.toString(), { headers: openaqHeaders() });
+    const contentType = resp.headers.get("content-type") ?? "";
+    const payload = contentType.includes("application/json") ? await resp.json() : await resp.text();
+    if (rawRecorder) {
+      rawRecorder.recordResponse(path, params ?? {}, resp.status, payload);
+    }
+    if (resp.status === 429) {
+      const info = parseRateLimitHeaders(resp.headers);
+      const delayMs = rateLimitDelayMs(info.reset) || Math.min(60000, 1000 * attempt);
+      if (rawRecorder) {
+        rawRecorder.recordEvent("rate_limit", {
+          status: resp.status,
+          remaining: info.remaining,
+          limit: info.limit,
+          used: info.used,
+          reset: info.reset,
+          sleep_ms: delayMs,
+        });
+      }
+      await sleep(delayMs);
+      continue;
+    }
+    if (!resp.ok) {
+      const message = typeof payload === "string" ? payload : JSON.stringify(payload);
+      throw new Error(`OpenAQ request failed (${resp.status}): ${message}`);
+    }
+    await maybeSleepForRateLimit(resp.headers, rawRecorder, resp.status);
+    return payload;
   }
-  if (!resp.ok) {
-    const message = typeof payload === "string" ? payload : JSON.stringify(payload);
-    throw new Error(`OpenAQ request failed (${resp.status}): ${message}`);
-  }
-  return payload;
+  throw new Error(`OpenAQ request failed (429): rate limit retries exceeded`);
 }
 
 async function listLocations(bbox: string, rawRecorder?: RawRecorder | null): Promise<OpenAQLocation[]> {

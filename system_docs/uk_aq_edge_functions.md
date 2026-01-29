@@ -228,6 +228,7 @@ Optional:
 - `OPENAQ_MAX_PAGES` (optional; defaults to `50`)
 - `OPENAQ_CONCURRENCY` (optional; defaults to `6`)
 - `OPENAQ_MAX_RUNTIME_SECONDS` (optional; defaults to `110`)
+- `OPENAQ_RATE_LIMIT_RETRIES` (optional; defaults to `3`)
 - `BREATHELONDON_BASE_URL` (optional override for Breathe London API base URL)
 - `BREATHELONDON_CONNECTOR_CODE` / `BREATHELONDON_SERVICE_REF` (optional override)
 - `BREATHELONDON_SERVICE_LABEL` (optional override)
