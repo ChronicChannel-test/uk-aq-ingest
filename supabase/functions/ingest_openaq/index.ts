@@ -99,8 +99,6 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")
   ?? "";
 const UK_AQ_CORE_SCHEMA = Deno.env.get("UK_AQ_CORE_SCHEMA")
   ?? "uk_aq_core";
-const UK_AQ_RAW_SCHEMA = Deno.env.get("UK_AQ_RAW_SCHEMA")
-  ?? "uk_aq_raw";
 const SB_UK_AQ_CRON_SECRET = Deno.env.get("SB_UK_AQ_CRON_SECRET") ?? "";
 
 const OPENAQ_BASE_URL = (Deno.env.get("OPENAQ_BASE_URL") ?? DEFAULT_BASE_URL)
@@ -178,8 +176,33 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
-function postgrestIn(values: string[]): string {
-  return `in.(${values.map((value) => `"${value.replace(/\"/g, "\\\"")}"`).join(",")})`;
+async function rpcRequest<T>(
+  fn: string,
+  args?: Record<string, unknown>,
+): Promise<{ data: T | null; error: { message: string } | null }> {
+  if (!REST_BASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    return { data: null, error: { message: "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY." } };
+  }
+  try {
+    const url = new URL(`${REST_BASE_URL}/rpc/${fn}`);
+    const resp = await fetch(url.toString(), {
+      method: "POST",
+      headers: postgrestHeaders(undefined, "public"),
+      body: JSON.stringify(args ?? {}),
+    });
+    let payload: unknown = null;
+    if (resp.status !== 204) {
+      const contentType = resp.headers.get("content-type") ?? "";
+      payload = contentType.includes("application/json") ? await resp.json() : await resp.text();
+    }
+    if (!resp.ok) {
+      const message = typeof payload === "string" ? payload : JSON.stringify(payload);
+      return { data: null, error: { message } };
+    }
+    return { data: payload as T, error: null };
+  } catch (err) {
+    return { data: null, error: { message: String(err) } };
+  }
 }
 
 function normalizeDropboxPath(raw: string): string {
@@ -373,55 +396,20 @@ async function dropboxUploadFileWithRetry(
   }
 }
 
-async function postgrestRequest<T>(
-  method: string,
-  table: string,
-  params?: Record<string, string>,
-  body?: unknown,
-  prefer?: string,
-  schema?: string,
-): Promise<{ data: T | null; error: { message: string } | null }> {
-  if (!REST_BASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-    return { data: null, error: { message: "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY." } };
-  }
-  const url = new URL(`${REST_BASE_URL}/${table}`);
-  for (const [key, value] of Object.entries(params ?? {})) {
-    if (value !== undefined && value !== null) {
-      url.searchParams.set(key, String(value));
-    }
-  }
-  const resp = await fetch(url.toString(), {
-    method,
-    headers: postgrestHeaders(prefer, schema),
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
-  let payload: unknown = null;
-  if (resp.status !== 204) {
-    const contentType = resp.headers.get("content-type") ?? "";
-    payload = contentType.includes("application/json") ? await resp.json() : await resp.text();
-  }
-  if (!resp.ok) {
-    const message = typeof payload === "string" ? payload : JSON.stringify(payload);
-    return { data: null, error: { message } };
-  }
-  return { data: payload as T, error: null };
-}
-
 async function logError(entry: ErrorLogEntry): Promise<void> {
-  await postgrestRequest(
-    "POST",
-    "error_logs",
-    undefined,
-    {
-      source: "ingest_openaq",
-      severity: entry.severity,
-      message: entry.message,
-      context: entry.context ?? null,
-      connector_id: entry.connector_id ?? null,
-    },
-    "resolution=merge-duplicates,return=minimal",
-    UK_AQ_RAW_SCHEMA,
-  );
+  try {
+    await rpcRequest<Array<{ id: string }>>("uk_aq_rpc_error_log_insert", {
+      entry: {
+        source: "ingest_openaq",
+        severity: entry.severity,
+        message: entry.message,
+        context: entry.context ?? null,
+        connector_id: entry.connector_id ?? null,
+      },
+    });
+  } catch (_err) {
+    // Best-effort logging; never throw from logError.
+  }
 }
 
 function parseBbox(value: string): string {
@@ -560,17 +548,8 @@ function resolveCoordinates(location: OpenAQLocation): { longitude: number | nul
 }
 
 async function loadConnector(connectorCode: string): Promise<ConnectorRow | null> {
-  const select = [
-    "id",
-    "connector_code",
-    "label",
-    "service_url",
-    "overwrite_station_name",
-  ].join(",");
-  const { data, error } = await postgrestRequest<ConnectorRow[]>("GET", "connectors", {
-    select,
-    connector_code: `eq.${connectorCode}`,
-    limit: "1",
+  const { data, error } = await rpcRequest<ConnectorRow[]>("uk_aq_rpc_connector_select", {
+    connector_code: connectorCode,
   });
   if (error) {
     throw new Error(`Connector fetch failed: ${error.message}`);
@@ -586,14 +565,12 @@ async function fetchStationNames(
   const mapping: Record<string, string | null> = {};
   for (let idx = 0; idx < stationRefs.length; idx += 200) {
     const chunk = stationRefs.slice(idx, idx + 200);
-    const { data } = await postgrestRequest<Array<{ station_ref: string; station_name: string | null }>>(
-      "GET",
-      "stations",
+    const { data } = await rpcRequest<Array<{ station_ref: string; station_name: string | null }>>(
+      "uk_aq_rpc_station_names",
       {
-        select: "station_ref,station_name",
-        connector_id: `eq.${connectorId}`,
-        service_ref: `eq.${serviceRef}`,
-        station_ref: postgrestIn(chunk),
+        connector_id: Number(connectorId),
+        service_ref: serviceRef,
+        station_refs: chunk,
       },
     );
     for (const row of data ?? []) {
@@ -611,14 +588,12 @@ async function fetchStationIds(
   const mapping: Record<string, number> = {};
   for (let idx = 0; idx < stationRefs.length; idx += 200) {
     const chunk = stationRefs.slice(idx, idx + 200);
-    const { data } = await postgrestRequest<Array<{ id: number; station_ref: string }>>(
-      "GET",
-      "stations",
+    const { data } = await rpcRequest<Array<{ id: number; station_ref: string }>>(
+      "uk_aq_rpc_station_ids",
       {
-        select: "id,station_ref",
-        connector_id: `eq.${connectorId}`,
-        service_ref: `eq.${serviceRef}`,
-        station_ref: postgrestIn(chunk),
+        connector_id: Number(connectorId),
+        service_ref: serviceRef,
+        station_refs: chunk,
       },
     );
     for (const row of data ?? []) {
@@ -684,14 +659,14 @@ async function upsertStations(
       }
     }
   }
-  await postgrestRequest(
-    "POST",
-    "stations",
-    { on_conflict: "connector_id,service_ref,station_ref" },
-    rows,
-    "resolution=merge-duplicates,return=minimal",
+  const { data, error } = await rpcRequest<Array<{ stations_upserted: number }>>(
+    "uk_aq_rpc_stations_upsert",
+    { rows },
   );
-  return rows.length;
+  if (error) {
+    throw new Error(`Stations upsert failed: ${error.message}`);
+  }
+  return data?.[0]?.stations_upserted ?? 0;
 }
 
 type ParameterMeta = { name: string; displayName: string | null; units: string | null };
@@ -708,25 +683,23 @@ async function upsertPhenomena(
     pollutant_label: meta.name,
   }));
   if (payload.length) {
-    await postgrestRequest(
-      "POST",
-      "phenomena",
-      { on_conflict: "connector_id,eionet_uri" },
-      payload,
-      "resolution=merge-duplicates,return=minimal",
+    const { error } = await rpcRequest<Array<{ phenomena_upserted: number }>>(
+      "uk_aq_rpc_phenomena_upsert",
+      { rows: payload },
     );
+    if (error) {
+      throw new Error(`Phenomena upsert failed: ${error.message}`);
+    }
   }
   const eionetUris = Object.values(parameters).map((meta) => `openaq:${meta.name}`);
   if (!eionetUris.length) {
     return {};
   }
-  const { data } = await postgrestRequest<Array<{ id: number; eionet_uri: string }>>(
-    "GET",
-    "phenomena",
+  const { data } = await rpcRequest<Array<{ id: number; eionet_uri: string }>>(
+    "uk_aq_rpc_phenomena_ids",
     {
-      select: "id,eionet_uri",
-      connector_id: `eq.${connectorId}`,
-      eionet_uri: postgrestIn(eionetUris),
+      connector_id: Number(connectorId),
+      eionet_uris: eionetUris,
     },
   );
   const idsByUri: Record<string, number> = {};
@@ -749,38 +722,34 @@ async function upsertTimeseries(rows: Array<Record<string, unknown>>): Promise<n
   if (!rows.length) {
     return 0;
   }
-  await postgrestRequest(
-    "POST",
-    "timeseries",
-    { on_conflict: "connector_id,service_ref,timeseries_ref" },
-    rows,
-    "resolution=merge-duplicates,return=minimal",
+  const { data, error } = await rpcRequest<Array<{ timeseries_upserted: number }>>(
+    "uk_aq_rpc_timeseries_upsert",
+    { rows },
   );
-  return rows.length;
+  if (error) {
+    throw new Error(`Timeseries upsert failed: ${error.message}`);
+  }
+  return data?.[0]?.timeseries_upserted ?? 0;
 }
 
 async function updateTimeseriesLastValues(
   rows: Array<{ id: number; last_value: number; last_value_at: string }>,
   errors: string[],
 ): Promise<number> {
-  let updated = 0;
-  for (const row of rows) {
-    const { error } = await postgrestRequest(
-      "PATCH",
-      "timeseries",
-      { id: `eq.${row.id}` },
-      { last_value: row.last_value, last_value_at: row.last_value_at },
-      "return=minimal",
-    );
-    if (error) {
-      const message = `timeseries update failed id=${row.id}: ${error.message}`;
-      errors.push(message);
-      console.warn(message);
-      continue;
-    }
-    updated += 1;
+  if (!rows.length) {
+    return 0;
   }
-  return updated;
+  const { data, error } = await rpcRequest<Array<{ timeseries_updated: number }>>(
+    "uk_aq_rpc_timeseries_last_values_update",
+    { rows },
+  );
+  if (error) {
+    const message = `timeseries update failed: ${error.message}`;
+    errors.push(message);
+    console.warn(message);
+    return 0;
+  }
+  return data?.[0]?.timeseries_updated ?? 0;
 }
 
 async function fetchTimeseriesIds(
@@ -791,14 +760,12 @@ async function fetchTimeseriesIds(
   const mapping: Record<string, number> = {};
   for (let idx = 0; idx < timeseriesRefs.length; idx += 200) {
     const chunk = timeseriesRefs.slice(idx, idx + 200);
-    const { data } = await postgrestRequest<Array<{ id: number; timeseries_ref: string }>>(
-      "GET",
-      "timeseries",
+    const { data } = await rpcRequest<Array<{ id: number; timeseries_ref: string }>>(
+      "uk_aq_rpc_timeseries_ids",
       {
-        select: "id,timeseries_ref",
-        connector_id: `eq.${connectorId}`,
-        service_ref: `eq.${serviceRef}`,
-        timeseries_ref: postgrestIn(chunk),
+        connector_id: Number(connectorId),
+        service_ref: serviceRef,
+        timeseries_refs: chunk,
       },
     );
     for (const row of data ?? []) {
@@ -812,14 +779,14 @@ async function upsertObservations(rows: Array<Record<string, unknown>>): Promise
   if (!rows.length) {
     return 0;
   }
-  await postgrestRequest(
-    "POST",
-    "observations",
-    { on_conflict: "connector_id,timeseries_id,observed_at" },
-    rows,
-    "resolution=merge-duplicates,return=minimal",
+  const { data, error } = await rpcRequest<Array<{ observations_upserted: number }>>(
+    "uk_aq_rpc_observations_upsert",
+    { rows },
   );
-  return rows.length;
+  if (error) {
+    throw new Error(`Observations upsert failed: ${error.message}`);
+  }
+  return data?.[0]?.observations_upserted ?? 0;
 }
 
 function collectParameters(locations: OpenAQLocation[]): Record<string, ParameterMeta> {

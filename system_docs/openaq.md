@@ -22,6 +22,7 @@ This network uses OpenAQ's API to pull UK monitoring locations and latest values
 - Phenomena rows are created using `eionet_uri = openaq:{parameter}` and `pollutant_label` set to the OpenAQ parameter name.
 - Timeseries rows use `timeseries_ref` = OpenAQ sensor id and `phenomenon_id` resolved from the parameter name.
 - Observations are inserted for the latest values per sensor with `observed_at` from the OpenAQ payload.
+- Edge ingest uses public RPCs for DB writes because `uk_aq_core`/`uk_aq_raw` are not exposed via PostgREST.
 
 ## Poll cadence
 - Intended polling cadence: every 60 minutes with a 6-hour window (configurable via connector settings).
