@@ -185,9 +185,9 @@ async function rpcRequest<T>(
   }
   try {
     const url = new URL(`${REST_BASE_URL}/rpc/${fn}`);
-    const headers = postgrestHeaders(undefined, "public");
-    headers["Accept-Profile"] = "public";
-    headers["Content-Profile"] = "public";
+    const headers = postgrestHeaders(undefined, "uk_aq_public");
+    headers["Accept-Profile"] = "uk_aq_public";
+    headers["Content-Profile"] = "uk_aq_public";
     const resp = await fetch(url.toString(), {
       method: "POST",
       headers,
