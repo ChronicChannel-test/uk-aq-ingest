@@ -140,7 +140,7 @@ function postgrestHeaders(prefer?: string, schema = UK_AQ_CORE_SCHEMA): Record<s
   if (prefer) {
     headers.Prefer = prefer;
   }
-  if (schema && schema !== "public") {
+  if (schema) {
     headers["Accept-Profile"] = schema;
     headers["Content-Profile"] = schema;
   }

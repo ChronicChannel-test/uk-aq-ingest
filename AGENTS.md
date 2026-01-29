@@ -1,5 +1,9 @@
 # Agent Notes
 
+## Schema
+- Permission confirmed: all files under `/Users/mikehinford/Library/CloudStorage/Dropbox/Projects/CIC Website/CIC Air Quality Networks/CIC-test-uk-aq-schema/uk-aq-schema` may be edited (except `archive/`).
+- Read the schema files at the start of the session.
+
 ## Naming
 - Prefer `uk_aq` in filenames, scripts, and docs (avoid `ukair`).
 - `UK-AIR SOS` is a service name and must never be changed to `UK-AQ SOS`.
@@ -22,7 +26,6 @@
 ## Archive
 - Files in `archive/` can be referenced for context but must never be modified once created. Adding new files/directories under `archive/` is allowed.
 - For `/Users/mikehinford/Library/CloudStorage/Dropbox/Projects/CIC Website/CIC Air Quality Networks/CIC-test-uk-aq-schema/uk-aq-schema` and `/Users/mikehinford/Library/CloudStorage/Dropbox/Projects/CIC Website/CIC Air Quality Networks/CIC-test-uk-aq-history/uk-aq-history`, edits are allowed for any file except under `archive/` directories. Archive files are read-only; new files may be added under `archive/` but must never be modified once created.
-- Permission confirmed: all files under `/Users/mikehinford/Library/CloudStorage/Dropbox/Projects/CIC Website/CIC Air Quality Networks/CIC-test-uk-aq-schema/uk-aq-schema` may be edited (except `archive/`).
 - The agent has permission to read files under `/Users/mikehinford/Library/CloudStorage/Dropbox/Apps/github-uk-air-quality-networks/CIC-Test` (including subdirectories).
 
 ## Code removal
