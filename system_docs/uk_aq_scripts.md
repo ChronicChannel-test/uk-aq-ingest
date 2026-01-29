@@ -929,5 +929,5 @@ Environment:
 ## Keys
 - `stations` uses bigint `id` with `station_ref` for upstream identifiers (unique by `connector_id, service_ref, station_ref`).
 - `timeseries` uses bigint `id` with `timeseries_ref` for upstream identifiers (unique by `connector_id, service_ref, timeseries_ref`).
-- `observations` references `timeseries.id` (bigint) and uses `(timeseries_id, observed_at)` as the primary key.
+- `observations` references `timeseries.id` (bigint) and uses `(connector_id, timeseries_id, observed_at)` as the primary key.
 - External identifiers that arrive as text (even if numeric) use `*_ref`; internal joins always use bigint `*_id`.

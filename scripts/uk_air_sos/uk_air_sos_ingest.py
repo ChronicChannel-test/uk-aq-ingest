@@ -1285,8 +1285,13 @@ class SupabaseWriter:
         return index
 
     def upsert_observations(
-        self, series_id: int, datapoints: Iterable[Dict[str, Any]]
+        self,
+        series_id: int,
+        datapoints: Iterable[Dict[str, Any]],
+        connector_id: Optional[int] = None,
     ) -> None:
+        if connector_id is None:
+            raise ValueError("connector_id is required for observations upsert.")
         deduped: Dict[str, Dict[str, Any]] = {}
         observed_points = 0
         for point in datapoints:
@@ -1301,6 +1306,7 @@ class SupabaseWriter:
                 observed_key = str(observed_at)
                 observed_value = observed_at
             deduped[observed_key] = {
+                "connector_id": connector_id,
                 "timeseries_id": series_id,
                 "observed_at": observed_value,
                 "value": point.get("value"),
@@ -1317,7 +1323,7 @@ class SupabaseWriter:
             for attempt in range(1, 4):
                 try:
                     self.core.table("observations").upsert(
-                        rows, on_conflict="timeseries_id,observed_at"
+                        rows, on_conflict="connector_id,timeseries_id,observed_at"
                     ).execute()
                     break
                 except Exception as exc:
@@ -1758,7 +1764,9 @@ class UkAirIngestor:
                     timespan = f"{chunk_start.isoformat()}/{chunk_end.isoformat()}"
                     data = self.client.timeseries_data(str(ts_ref), timespan)
                     points = _parse_datapoints(data.get("values", []))
-                    self.writer.upsert_observations(ts_db_id, points)
+                    self.writer.upsert_observations(
+                        ts_db_id, points, connector_id=connector_id
+                    )
                     if points:
                         last_val = points[-1]["value"]
                         last_at = points[-1]["observed_at"]
@@ -1800,7 +1808,9 @@ class UkAirIngestor:
                 LOG.debug("Refreshing recent window for %s (%sh)", ts_ref, hours)
                 data = self.client.timeseries_data(str(ts_ref), timespan)
                 points = _parse_datapoints(data.get("values", []))
-                self.writer.upsert_observations(ts_db_id, points)
+                self.writer.upsert_observations(
+                    ts_db_id, points, connector_id=connector_id
+                )
                 if points:
                     last_val = points[-1]["value"]
                     last_at = points[-1]["observed_at"]

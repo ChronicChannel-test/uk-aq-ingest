@@ -7,7 +7,7 @@ This page summarizes how SOS data lands in tables and how stations map to multip
 - `stations`: station metadata ingested from SOS (one row per `station_ref`).
 - `timeseries`: per-station, per-phenomenon SOS time series metadata (`timeseries_ref`).
 - `phenomena`: pollutant definitions tied to a connector.
-- `observations`: time/value pairs keyed by `timeseries_id`.
+- `observations`: time/value pairs keyed by `connector_id` + `timeseries_id` + `observed_at`.
 - Placeholder SOS station refs (for example `9999999999`) are skipped during ingest and flagged via `station_metadata.exclude_from_ui=true`.
 - `uk_air_sos_site_register`: UK-AIR site register snapshot (includes `uk_air_id` + source network labels).
 - `uk_air_sos_networks`: network lookup (source label -> internal `network_code` + UI display name).
@@ -34,7 +34,7 @@ This page summarizes how SOS data lands in tables and how stations map to multip
 
 ## Polling Flow (Observations)
 - 15-minute polling uses `timeseries_ref` to resolve `timeseries.id`.
-- Each sample is stored in `observations` keyed by `timeseries_id` + `observed_at`.
+- Each sample is stored in `observations` keyed by `connector_id` + `timeseries_id` + `observed_at`.
 - `uk_air_sos_timeseries_checkpoints` records `last_polled_at` so the dispatcher rotates batches even if stations go stale.
 
 ## Why Coordinate Matching Exists

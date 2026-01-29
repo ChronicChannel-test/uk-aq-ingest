@@ -15,7 +15,7 @@
 - For each timeseries, request `/timeseries/{id}/getData?timespan=2025-01-01/2026-01-01&format=tvp`.
 - If API spans are limited, chunk by month or week.
 - Convert epoch ms → timestamptz; store status flags (V/P/N/S).
-- Upsert into `observations` keyed by (timeseries_id, observed_at).
+- Upsert into `observations` keyed by (connector_id, timeseries_id, observed_at).
 4) Handle paging/limits
 - Use smaller timespans and retries; respect any rate limits.
 

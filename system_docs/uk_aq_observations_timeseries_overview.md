@@ -12,7 +12,7 @@ This note describes how the `timeseries` and `observations` tables work, how to 
 
 ### `observations`
 - Stores the actual time-value measurements for each series.
-- Each row is a single reading at a specific time: `(timeseries_id, observed_at)` is the primary key.
+- Each row is a single reading at a specific time: `(connector_id, timeseries_id, observed_at)` is the primary key.
 - `observations.timeseries_id` points back to `timeseries.id`, so observations are always attached to a single series.
 
 ## How `timeseries`, `observations`, and `stations` interact
@@ -82,6 +82,6 @@ The typical ingest sequence is:
 1) Discover SOS services and stations.
 2) Fetch timeseries metadata (with `expanded=true`).
 3) Backfill or poll `/timeseries/{id}/getData` from the SOS API.
-4) Upsert into `observations` keyed by `(timeseries_id, observed_at)`.
+4) Upsert into `observations` keyed by `(connector_id, timeseries_id, observed_at)`.
 
 The Edge Function `ingest_uk_air_sos` also polls recent observations using existing `timeseries` rows.
