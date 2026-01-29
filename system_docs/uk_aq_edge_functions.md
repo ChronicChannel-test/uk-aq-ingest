@@ -88,6 +88,7 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
   - If `station_refs` are provided, limits polling to those location ids.
   - Station names are prefixed with provider shortnames when configured (e.g., `London Air Quality Network` -> `LAQN`).
   - Updates `timeseries.last_value` and `timeseries.last_value_at` based on the most recent measurement.
+  - Enforces a runtime budget (default 110s) and returns `partial=true` when exceeded.
   - Requires `X-Cron-Secret` when `SB_UK_AQ_CRON_SECRET` is set.
 - Logs:
   - Writes a log file to Dropbox `/connectors/openaq/log/YYYY-MM-DD/` (prefix `uk_aq_log_edge_openaq_`).
@@ -225,6 +226,7 @@ Optional:
 - `OPENAQ_PAGE_LIMIT` (optional; defaults to `1000`)
 - `OPENAQ_MAX_PAGES` (optional; defaults to `50`)
 - `OPENAQ_CONCURRENCY` (optional; defaults to `6`)
+- `OPENAQ_MAX_RUNTIME_SECONDS` (optional; defaults to `110`)
 - `BREATHELONDON_BASE_URL` (optional override for Breathe London API base URL)
 - `BREATHELONDON_CONNECTOR_CODE` / `BREATHELONDON_SERVICE_REF` (optional override)
 - `BREATHELONDON_SERVICE_LABEL` (optional override)

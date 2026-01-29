@@ -86,6 +86,7 @@ const DEFAULT_BBOX = "-8.623555,49.863222,1.763337,60.871222";
 const DEFAULT_PAGE_LIMIT = 1000;
 const DEFAULT_MAX_PAGES = 50;
 const DEFAULT_CONCURRENCY = 6;
+const DEFAULT_MAX_RUNTIME_SECONDS = 110;
 const PROVIDER_SHORTNAMES: Record<string, string> = {
   "London Air Quality Network": "LAQN",
 };
@@ -113,6 +114,9 @@ const OPENAQ_BBOX = Deno.env.get("OPENAQ_BBOX") ?? DEFAULT_BBOX;
 const OPENAQ_PAGE_LIMIT = Number(Deno.env.get("OPENAQ_PAGE_LIMIT") ?? DEFAULT_PAGE_LIMIT);
 const OPENAQ_MAX_PAGES = Number(Deno.env.get("OPENAQ_MAX_PAGES") ?? DEFAULT_MAX_PAGES);
 const OPENAQ_CONCURRENCY = Number(Deno.env.get("OPENAQ_CONCURRENCY") ?? DEFAULT_CONCURRENCY);
+const OPENAQ_MAX_RUNTIME_SECONDS = Number(
+  Deno.env.get("OPENAQ_MAX_RUNTIME_SECONDS") ?? DEFAULT_MAX_RUNTIME_SECONDS,
+);
 const UK_AQ_DROPBOX_ROOT = normalizeDropboxPath(Deno.env.get("UK_AQ_DROPBOX_ROOT") ?? "");
 const DROPBOX_APP_KEY = Deno.env.get("DROPBOX_APP_KEY") ?? "";
 const DROPBOX_APP_SECRET = Deno.env.get("DROPBOX_APP_SECRET") ?? "";
@@ -496,10 +500,14 @@ async function runPool<T>(
   items: T[],
   concurrency: number,
   worker: (item: T) => Promise<void>,
+  shouldStop?: () => boolean,
 ): Promise<void> {
   const pool = new Set<Promise<void>>();
   const limit = Number.isFinite(concurrency) && concurrency > 0 ? Math.floor(concurrency) : 1;
   for (const item of items) {
+    if (shouldStop && shouldStop()) {
+      break;
+    }
     const task = worker(item);
     pool.add(task);
     task.finally(() => pool.delete(task));
@@ -898,6 +906,13 @@ serve(async (req) => {
     : [];
   const windowHours = Number(payload.window_hours ?? DEFAULT_WINDOW_HOURS);
   const dryRun = payload.dry_run ?? false;
+  const runStartedAt = Date.now();
+  const maxRuntimeSeconds = Number.isFinite(OPENAQ_MAX_RUNTIME_SECONDS)
+    ? Math.max(30, OPENAQ_MAX_RUNTIME_SECONDS)
+    : DEFAULT_MAX_RUNTIME_SECONDS;
+  const runtimeDeadline = runStartedAt + maxRuntimeSeconds * 1000;
+  const shouldStop = () => Date.now() >= runtimeDeadline;
+  let timeBudgetHit = false;
   const logLines: string[] = [];
   const logLine = (level: string, message: string, context?: Record<string, unknown>) => {
     const stamp = new Date().toISOString();
@@ -912,6 +927,7 @@ serve(async (req) => {
     window_hours: windowHours,
     dry_run: dryRun,
     station_refs: stationRefs.length ? stationRefs.length : 0,
+    max_runtime_seconds: maxRuntimeSeconds,
   });
 
   const connector = await loadConnector(connectorCode);
@@ -983,6 +999,10 @@ serve(async (req) => {
     .filter((id): id is string => Boolean(id));
 
   await runPool(locationIds, OPENAQ_CONCURRENCY, async (locationId) => {
+    if (shouldStop()) {
+      timeBudgetHit = true;
+      return;
+    }
     let latest: OpenAQLatestRecord[] = [];
     try {
       latest = await listLatestForLocation(locationId, rawRecorder);
@@ -1015,6 +1035,12 @@ serve(async (req) => {
         latestBySensor.set(key, { observed_at: observedAt, value: value ?? null });
       }
     }
+  }, () => {
+    if (shouldStop()) {
+      timeBudgetHit = true;
+      return true;
+    }
+    return false;
   });
 
   const timeseriesRows: Array<Record<string, unknown>> = [];
@@ -1111,6 +1137,8 @@ serve(async (req) => {
     observations_upserted: observationsUpserted,
     series_polled: seriesPolled,
     last_observed_at: lastObservedAt,
+    partial: timeBudgetHit,
+    stopped_reason: timeBudgetHit ? "runtime_budget_exceeded" : null,
     raw_responses: rawRecorder?.responseCount ?? 0,
   });
 
@@ -1156,6 +1184,8 @@ serve(async (req) => {
     series_polled: seriesPolled,
     window_hours: windowHours,
     last_observed_at: lastObservedAt,
+    partial: timeBudgetHit,
+    stopped_reason: timeBudgetHit ? "runtime_budget_exceeded" : null,
     dry_run: dryRun,
   });
 });

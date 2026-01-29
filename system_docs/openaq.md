@@ -25,6 +25,7 @@ This network uses OpenAQ's API to pull UK monitoring locations and latest values
 
 ## Poll cadence
 - Intended polling cadence: every 60 minutes with a 6-hour window (configurable via connector settings).
+- Runtime budget: default 110s (`OPENAQ_MAX_RUNTIME_SECONDS`).
 
 ## Connector creation
 - Connector rows are created by the stations sync (`scripts/openaq/openaq_list_stations.py`).
