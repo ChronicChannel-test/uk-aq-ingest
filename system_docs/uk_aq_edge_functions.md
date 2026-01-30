@@ -87,7 +87,8 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
   - Uses sensor IDs as `timeseries_ref` and `openaq:{parameter}` as `phenomena.eionet_uri`.
   - If `station_refs` are provided, limits polling to those location ids; otherwise uses a tiered selector (`uk_aq_rpc_openaq_select_station_refs`).
   - Tracks per-station scheduling in `uk_aq_raw.openaq_station_checkpoints` (next due, last observed, sample arrays, last polled); `next_due_at` is set once on checkpoint creation and uses a 15-minute default interval until 10 interval samples exist. If no observations are returned and `next_due_at` is null, it is set to `now() + 15 minutes`.
-  - Station names are prefixed with provider shortnames when configured (e.g., `London Air Quality Network` -> `LAQN`).
+  - Station names are prefixed with provider shortnames when configured (e.g., `London Air Quality Network` -> `LAQN`), and append owner when present and not `Unknown*`.
+  - Stores OpenAQ owner in `station_metadata.attributes.openaq_owner` when present and not `Unknown*`.
   - Updates `timeseries.last_value` and `timeseries.last_value_at` based on the most recent measurement.
   - Uses public RPCs for database writes (schemas are not exposed via PostgREST).
   - Enforces a runtime budget (default 110s) and returns `partial=true` when exceeded.

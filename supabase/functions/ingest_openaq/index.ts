@@ -62,6 +62,7 @@ type OpenAQLocation = {
   coordinates?: { latitude?: number | null; longitude?: number | null } | null;
   country?: { code?: string | null; name?: string | null } | null;
   provider?: { name?: string | null } | null;
+  owner?: { name?: string | null } | string | null;
   sensors?: Array<{
     id?: number;
     name?: string | null;
@@ -754,11 +755,46 @@ function resolveProviderName(location: OpenAQLocation): string | null {
   return null;
 }
 
-function buildStationName(rawName: string | null, providerName: string | null): string | null {
-  if (rawName && providerName) {
-    return `${providerName} ${rawName}`;
+function resolveOwnerName(location: OpenAQLocation): string | null {
+  const owner = location?.owner;
+  if (typeof owner === "string") {
+    const raw = owner.trim();
+    return raw ? raw : null;
   }
-  return rawName;
+  if (owner && typeof owner === "object" && "name" in owner) {
+    const raw = String((owner as { name?: string | null }).name ?? "").trim();
+    return raw ? raw : null;
+  }
+  return null;
+}
+
+function normalizeOwnerName(ownerName: string | null): string | null {
+  if (!ownerName) {
+    return null;
+  }
+  const trimmed = ownerName.trim();
+  if (!trimmed) {
+    return null;
+  }
+  if (trimmed.toLowerCase().startsWith("unknown")) {
+    return null;
+  }
+  return trimmed;
+}
+
+function buildStationName(
+  rawName: string | null,
+  providerName: string | null,
+  ownerName: string | null,
+): string | null {
+  const baseName = rawName && providerName ? `${providerName} ${rawName}` : rawName;
+  if (!baseName) {
+    return baseName;
+  }
+  if (ownerName) {
+    return `${baseName} - ${ownerName}`;
+  }
+  return baseName;
 }
 
 function resolveCoordinates(location: OpenAQLocation): { longitude: number | null; latitude: number | null } {
@@ -826,6 +862,28 @@ async function fetchStationIds(
   return mapping;
 }
 
+async function upsertStationMetadata(
+  attributesByStation: Record<number, Record<string, unknown>>,
+): Promise<number> {
+  const stationIds = Object.keys(attributesByStation).map(Number);
+  if (!stationIds.length) {
+    return 0;
+  }
+  const rows = stationIds.map((stationId) => ({
+    station_id: stationId,
+    attributes: attributesByStation[stationId],
+    updated_at: new Date().toISOString(),
+  }));
+  const { data, error } = await rpcRequest<Array<{ station_metadata_upserted: number }>>(
+    "uk_aq_rpc_station_metadata_upsert",
+    { rows },
+  );
+  if (error) {
+    throw new Error(`Station metadata upsert failed: ${error.message}`);
+  }
+  return data?.[0]?.station_metadata_upserted ?? 0;
+}
+
 async function upsertStations(
   locations: OpenAQLocation[],
   connectorId: string,
@@ -833,6 +891,7 @@ async function upsertStations(
   overwriteStationName: boolean,
 ): Promise<number> {
   const rowsByRef: Record<string, Record<string, unknown>> = {};
+  const ownerByRef: Record<string, string> = {};
   for (const location of locations) {
     const stationRef = resolveLocationId(location);
     if (!stationRef) {
@@ -840,7 +899,9 @@ async function upsertStations(
     }
     const { longitude, latitude } = resolveCoordinates(location);
     const rawName = resolveLocationName(location);
-    const stationName = buildStationName(rawName, resolveProviderName(location));
+    const providerName = resolveProviderName(location);
+    const ownerName = normalizeOwnerName(resolveOwnerName(location));
+    const stationName = buildStationName(rawName, providerName, ownerName);
     const row: Record<string, unknown> = {
       station_ref: stationRef,
       service_ref: String(serviceRef),
@@ -858,6 +919,9 @@ async function upsertStations(
     rowsByRef[stationRef] = rowsByRef[stationRef]
       ? { ...rowsByRef[stationRef], ...row }
       : row;
+    if (ownerName) {
+      ownerByRef[stationRef] = ownerName;
+    }
   }
   const rows = Object.values(rowsByRef);
   if (!rows.length) {
@@ -888,6 +952,22 @@ async function upsertStations(
   );
   if (error) {
     throw new Error(`Stations upsert failed: ${error.message}`);
+  }
+  if (Object.keys(ownerByRef).length) {
+    const stationIds = await fetchStationIds(
+      connectorId,
+      serviceRef,
+      Object.keys(ownerByRef),
+    );
+    const attributesByStation: Record<number, Record<string, unknown>> = {};
+    for (const [stationRef, ownerName] of Object.entries(ownerByRef)) {
+      const stationId = stationIds[stationRef];
+      if (!stationId) {
+        continue;
+      }
+      attributesByStation[stationId] = { openaq_owner: ownerName };
+    }
+    await upsertStationMetadata(attributesByStation);
   }
   return data?.[0]?.stations_upserted ?? 0;
 }

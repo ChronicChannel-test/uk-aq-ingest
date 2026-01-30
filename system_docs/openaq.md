@@ -15,8 +15,10 @@ This network uses OpenAQ's API to pull UK monitoring locations and latest values
 - Stations are stored in `stations` with:
   - `station_ref` = OpenAQ location id (string)
   - `label` = location name or fallback `OpenAQ {id}`
-  - `station_name` = `{provider} {location name}` when provider is available (unless `overwrite_station_name=false`)
+  - `station_name` = `{provider} {location name} - {owner}` when owner is present and not `Unknown*`
+    (falls back to `{provider} {location name}`; unless `overwrite_station_name=false`)
   - `provider` shortname mapping: `London Air Quality Network` -> `LAQN` in station_name prefix
+  - `station_metadata.attributes.openaq_owner` stores the owner when it is present and not `Unknown*`
   - `station_type` = `mobile` when `isMobile=true`, else `fixed`
   - `geometry` = point from `coordinates`
 - Phenomena rows are created using `eionet_uri = openaq:{parameter}` and `pollutant_label` set to the OpenAQ parameter name.
