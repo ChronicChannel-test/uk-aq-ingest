@@ -1442,8 +1442,8 @@ serve(async (req) => {
             nextDueAt = nowIso;
           }
         }
-      } else if (isNewCheckpoint && !previousNextDue) {
-        nextDueAt = nowIso;
+      } else if (!previousNextDue) {
+        nextDueAt = new Date(nowMsForLag + 15 * 60 * 1000).toISOString();
       }
 
       checkpointRows.push({

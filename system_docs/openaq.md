@@ -29,7 +29,8 @@ This network uses OpenAQ's API to pull UK monitoring locations and latest values
 - Runtime budget: default 110s (`OPENAQ_MAX_RUNTIME_SECONDS`).
 - Uses per-station scheduling in `uk_aq_raw.openaq_station_checkpoints` (next_due_at, last_observed_at, sample arrays).
   `next_due_at` is set on first checkpoint creation using the last observed time plus a 15-minute
-  default interval (until 10 interval samples exist) and median ingest lag.
+  default interval (until 10 interval samples exist) and median ingest lag. If no observations
+  are returned and `next_due_at` is null, it is set to `now() + 15 minutes`.
 - Tiered station selection: 50 overdue + 10 stale (configurable via `OPENAQ_TIERED_LIMIT`/`OPENAQ_STALE_LIMIT`).
 - Uses OpenAQ rate-limit headers as a guardrail and stops issuing new requests when remaining is low.
 - When `OPENAQ_INGEST_STATION_FETCH=true`, the ingest performs the bbox station fetch; otherwise it only polls latest values using cached metadata.
