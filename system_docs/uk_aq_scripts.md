@@ -76,6 +76,7 @@ Notes:
 Environment:
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
+- `UK_AQ_POSTGREST_SCHEMA` (optional; defaults to `uk_aq_public`)
 
 ### `scripts/uk_aq_dashboard_local.py`
 Purpose:
@@ -89,6 +90,7 @@ python3 scripts/uk_aq_dashboard_local.py --port 8045
 Notes:
 - Serves the UI at `http://127.0.0.1:8045` and JSON at `/api/dashboard`.
 - The HTML lives at `data/uk_aq_dashboard/uk_aq_dashboard.html`.
+- Requires a service role key (anon/authenticated JWTs will be rejected).
 
 Environment:
 - `SUPABASE_URL`

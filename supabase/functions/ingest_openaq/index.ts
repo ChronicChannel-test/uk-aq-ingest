@@ -1429,9 +1429,17 @@ serve(async (req) => {
         if (Number.isFinite(lagSeconds)) {
           lagSamples = appendSample(lagSamples, lagSeconds);
         }
-        const median = medianSeconds(observSamples);
-        const expectedMinutes = median ? Math.max(1, Math.ceil(median / 60)) : 60;
-        nextDueAt = new Date(nowMsForLag + expectedMinutes * 60 * 1000).toISOString();
+        if (!previousNextDue) {
+          const medianInterval = medianSeconds(observSamples);
+          const intervalSeconds = medianInterval ?? 60 * 60;
+          const medianLag = medianSeconds(lagSamples) ?? 0;
+          const baseMs = Date.parse(updatedLastObserved ?? latestObserved);
+          if (Number.isFinite(baseMs)) {
+            nextDueAt = new Date(baseMs + (intervalSeconds + medianLag) * 1000).toISOString();
+          } else {
+            nextDueAt = nowIso;
+          }
+        }
       } else if (isNewCheckpoint && !previousNextDue) {
         nextDueAt = nowIso;
       }

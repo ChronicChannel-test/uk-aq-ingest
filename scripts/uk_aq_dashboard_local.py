@@ -6,6 +6,7 @@ Run a local HTTP dashboard for UK AQ freshness buckets (PM2.5 + PM10).
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import os
 import re
@@ -53,15 +54,32 @@ def _load_env(path: Path) -> None:
 
 
 def _postgrest_headers(service_role_key: str, write: bool = False) -> Dict[str, str]:
-    core_schema = os.getenv("UK_AQ_CORE_SCHEMA", "uk_aq_core")
+    postgrest_schema = os.getenv("UK_AQ_POSTGREST_SCHEMA", "uk_aq_public")
     headers = {
         "apikey": service_role_key,
         "Authorization": f"Bearer {service_role_key}",
-        "Accept-Profile": core_schema,
+        "Accept-Profile": postgrest_schema,
     }
     if write:
-        headers["Content-Profile"] = core_schema
+        headers["Content-Profile"] = postgrest_schema
     return headers
+
+
+def _base64url_decode(value: str) -> bytes:
+    padding = "=" * (-len(value) % 4)
+    return base64.urlsafe_b64decode(value + padding)
+
+
+def _jwt_role(token: str) -> Optional[str]:
+    parts = token.split(".")
+    if len(parts) != 3:
+        return None
+    try:
+        payload = json.loads(_base64url_decode(parts[1]).decode("utf-8"))
+    except (ValueError, json.JSONDecodeError):
+        return None
+    role = payload.get("role")
+    return role if isinstance(role, str) else None
 
 
 def _project_ref_from_base_url(base_url: str) -> Optional[str]:
@@ -669,6 +687,12 @@ def main() -> None:
     service_role_key = (args.service_role_key or "").strip()
     if not supabase_url or not service_role_key:
         raise SystemExit("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required.")
+    role = _jwt_role(service_role_key)
+    if role and role != "service_role":
+        raise SystemExit(
+            "SUPABASE_SERVICE_ROLE_KEY must be a service role key; "
+            f"current token role is '{role}'."
+        )
 
     html_path = Path(args.html)
     if not html_path.exists():

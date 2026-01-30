@@ -13,4 +13,6 @@ Columns:
 - `created_at`, `updated_at`: audit timestamps.
 
 Notes:
-- Sampling arrays store seconds for precision; scheduler derives minutes via `ceil(seconds / 60)` when setting `next_due_at`.
+- Sampling arrays store seconds for precision.
+- `next_due_at` is only set when a checkpoint is created; it is derived from
+  `last_observed_at + median(observ_interval_samples) + median(ingest_lag_samples)`.
