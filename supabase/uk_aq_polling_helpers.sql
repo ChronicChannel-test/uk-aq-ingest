@@ -110,8 +110,8 @@ end;
 $$;
 
 create or replace function uk_aq_core.openaq_select_station_refs(
-  batch_limit integer default 50,
-  stale_limit integer default 10
+  batch_limit integer default 56,
+  stale_limit integer default 4
 )
 returns text[]
 language plpgsql

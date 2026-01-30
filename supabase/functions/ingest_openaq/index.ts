@@ -1434,7 +1434,7 @@ serve(async (req) => {
             observSamples.length >= 10
               ? (medianSeconds(observSamples) ?? 15 * 60)
               : 15 * 60;
-          const medianLag = medianSeconds(lagSamples) ?? 0;
+          const medianLag = lagSamples.length >= 10 ? (medianSeconds(lagSamples) ?? 15 * 60) : 15 * 60;
           const baseMs = Date.parse(updatedLastObserved ?? latestObserved);
           if (Number.isFinite(baseMs)) {
             nextDueAt = new Date(baseMs + (intervalSeconds + medianLag) * 1000).toISOString();
