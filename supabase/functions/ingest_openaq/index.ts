@@ -1536,7 +1536,7 @@ serve(async (req) => {
         if (observSamples.length < 10 || lagSamples.length < 10) {
           nextDueAt = new Date(nowMsForLag + 5 * 60 * 1000).toISOString();
         } else {
-          const intervalSeconds = minSeconds(observSamples) ?? 5 * 60;
+          const intervalSeconds = Math.min(minSeconds(observSamples) ?? 5 * 60, 60 * 60);
           const lagSeconds = minSeconds(lagSamples) ?? 5 * 60;
           const baseMs = Date.parse(updatedLastObserved ?? latestObserved);
           if (Number.isFinite(baseMs)) {

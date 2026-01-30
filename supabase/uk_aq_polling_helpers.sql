@@ -161,7 +161,8 @@ begin
     select
       station_id,
       station_ref,
-      due_at
+      due_at,
+      last_polled_at
     from candidates
     where due_at <= now()
       and due_at >= now() - interval '3 hours'
@@ -170,7 +171,8 @@ begin
     select
       station_id,
       station_ref,
-      due_at
+      due_at,
+      last_polled_at
     from candidates
     where due_at < now() - interval '3 hours'
       and due_at >= now() - interval '24 hours'
@@ -179,7 +181,7 @@ begin
   tiered_limited as (
     select *
     from tiered
-    order by due_at asc
+    order by due_at asc, last_polled_at asc nulls first
     limit batch_limit
   ),
   stale as (

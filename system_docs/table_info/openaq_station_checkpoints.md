@@ -15,7 +15,7 @@ Columns:
 Notes:
 - Sampling arrays store seconds for precision.
 - `next_due_at` is set whenever `last_observed_at` advances (based on the latest observation).
-- Uses a 5-minute default interval until at least 10 interval samples exist, then uses the minimum interval.
+- Uses a 5-minute default interval until at least 10 interval samples exist, then uses the minimum interval capped at 1 hour.
 - Uses a 5-minute default lag until at least 10 lag samples exist, then uses the minimum lag.
 - Lag samples are only recorded when a new interval sample is recorded.
 - If either interval or lag has fewer than 10 samples, `next_due_at` is set to `now() + 5 minutes`.
