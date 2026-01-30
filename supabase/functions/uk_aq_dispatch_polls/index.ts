@@ -15,6 +15,14 @@ type ConnectorRow = {
   last_run_status: string | null;
 };
 
+type IngestRunRow = {
+  connector_id: string | null;
+  connector_code: string | null;
+  run_started_at: string | null;
+  run_ended_at: string | null;
+  run_status: string | null;
+};
+
 type DispatcherSettings = {
   dispatcher_parallel_ingest: boolean;
   max_runs_per_dispatch_call: number;
@@ -369,16 +377,16 @@ async function loadDispatcherSettings(): Promise<DispatcherSettings | null> {
 }
 
 function findRecentInFlightConnector(
-  connectors: ConnectorRow[],
+  latestRuns: Map<string, IngestRunRow>,
   now: Date,
 ): { connector_code: string; last_run_start: string; age_minutes: number } | null {
   const timeoutMs = IN_FLIGHT_TIMEOUT_MINUTES * 60 * 1000;
   let candidate: { connector_code: string; last_run_start: string; age_minutes: number } | null = null;
-  for (const connector of connectors) {
-    if (!connector || connector.last_run_end) {
+  for (const [connectorCode, run] of latestRuns.entries()) {
+    if (!run || run.run_ended_at) {
       continue;
     }
-    const startedAt = parseDate(connector.last_run_start ?? null);
+    const startedAt = parseDate(run.run_started_at ?? null);
     if (!startedAt) {
       continue;
     }
@@ -388,7 +396,7 @@ function findRecentInFlightConnector(
     }
     if (ageMs < 0) {
       return {
-        connector_code: connector.connector_code,
+        connector_code: connectorCode,
         last_run_start: startedAt.toISOString(),
         age_minutes: 0,
       };
@@ -397,7 +405,7 @@ function findRecentInFlightConnector(
       const ageMinutes = Math.floor(ageMs / 60000);
       if (!candidate || ageMs < candidate.age_minutes * 60000) {
         candidate = {
-          connector_code: connector.connector_code,
+          connector_code: connectorCode,
           last_run_start: startedAt.toISOString(),
           age_minutes: ageMinutes,
         };
@@ -407,11 +415,15 @@ function findRecentInFlightConnector(
   return candidate;
 }
 
-function isConnectorInFlight(connector: ConnectorRow | null, now: Date): boolean {
-  if (!connector || connector.last_run_end) {
+function isConnectorInFlight(
+  connector: ConnectorRow | null,
+  latestRun: IngestRunRow | null,
+  now: Date,
+): boolean {
+  if (!latestRun || latestRun.run_ended_at) {
     return false;
   }
-  const startedAt = parseDate(connector.last_run_start ?? null);
+  const startedAt = parseDate(latestRun.run_started_at ?? null);
   if (!startedAt) {
     return false;
   }
@@ -423,13 +435,21 @@ function isConnectorInFlight(connector: ConnectorRow | null, now: Date): boolean
   return ageMs >= 0 && ageMs <= timeoutMs;
 }
 
-async function settleStaleInFlight(connectors: ConnectorRow[], now: Date): Promise<void> {
+async function settleStaleInFlight(
+  connectors: ConnectorRow[],
+  latestRuns: Map<string, IngestRunRow>,
+  now: Date,
+): Promise<void> {
   const timeoutMs = IN_FLIGHT_TIMEOUT_MINUTES * 60 * 1000;
   for (const connector of connectors) {
-    if (!connector || connector.last_run_end) {
+    if (!connector) {
       continue;
     }
-    const startedAt = parseDate(connector.last_run_start ?? null);
+    const latestRun = latestRuns.get(connector.connector_code ?? "");
+    if (!latestRun || latestRun.run_ended_at) {
+      continue;
+    }
+    const startedAt = parseDate(latestRun.run_started_at ?? null);
     if (!startedAt) {
       continue;
     }
@@ -480,6 +500,26 @@ async function reconcileInFlightByLastPolled(
       last_run_end: lastPolled.toISOString(),
       last_run_status: "succeeded",
       last_run_message: "polled_reconciled",
+    });
+  }
+}
+
+async function reconcileInFlightByLatestRun(
+  connectors: ConnectorRow[],
+  latestRuns: Map<string, IngestRunRow>,
+): Promise<void> {
+  for (const connector of connectors) {
+    if (!connector || connector.last_run_end) {
+      continue;
+    }
+    const latestRun = latestRuns.get(connector.connector_code ?? "");
+    if (!latestRun || !latestRun.run_ended_at) {
+      continue;
+    }
+    await updateConnectorRun(connector.id ?? null, {
+      last_run_end: latestRun.run_ended_at,
+      last_run_status: latestRun.run_status ?? "succeeded",
+      last_run_message: "ingest_runs_reconciled",
     });
   }
 }
@@ -615,6 +655,26 @@ async function loadConnectorConfigs(): Promise<ConnectorRow[]> {
   return data ?? [];
 }
 
+async function loadLatestIngestRuns(): Promise<Map<string, IngestRunRow>> {
+  const { data, error } = await postgrestRequest<IngestRunRow[]>("GET", "uk_aq_ingest_runs", {
+    select: "connector_id,connector_code,run_started_at,run_ended_at,run_status",
+    connector_code: postgrestIn(TARGET_CONNECTORS),
+    order: "run_started_at.desc",
+    limit: "200",
+  });
+  if (error) {
+    throw new Error(`Failed to load uk_aq_ingest_runs: ${error.message}`);
+  }
+  const latest = new Map<string, IngestRunRow>();
+  for (const row of data ?? []) {
+    const code = row.connector_code ?? "";
+    if (!code || latest.has(code)) {
+      continue;
+    }
+    latest.set(code, row);
+  }
+  return latest;
+}
 async function loadStationRefs(
   fn: string,
   batchLimit: number,
@@ -715,8 +775,10 @@ serve(async (req) => {
   const now = new Date();
   const results = new Map<string, DispatchResult>();
   let connectors: ConnectorRow[] = [];
+  let latestRuns = new Map<string, IngestRunRow>();
   try {
     connectors = await loadConnectorConfigs();
+    latestRuns = await loadLatestIngestRuns();
   } catch (error) {
     await logError({
       severity: "error",
@@ -726,13 +788,13 @@ serve(async (req) => {
     return jsonResponse({ error: error instanceof Error ? error.message : String(error) }, 500);
   }
 
-  await reconcileInFlightByLastPolled(connectors);
-  await settleStaleInFlight(connectors, now);
+  await reconcileInFlightByLatestRun(connectors, latestRuns);
+  await settleStaleInFlight(connectors, latestRuns, now);
 
   const settings = normalizeDispatcherSettings(await loadDispatcherSettings());
 
   const connectorMap = new Map(connectors.map((row) => [row.connector_code, row]));
-  const inFlight = findRecentInFlightConnector(connectors, now);
+  const inFlight = findRecentInFlightConnector(latestRuns, now);
   if (inFlight && !settings.dispatcher_parallel_ingest) {
     for (const connectorCode of TARGET_CONNECTORS) {
       results.set(connectorCode, {
@@ -756,7 +818,8 @@ serve(async (req) => {
 
   for (const connectorCode of TARGET_CONNECTORS) {
     const connector = connectorMap.get(connectorCode) ?? null;
-    if (isConnectorInFlight(connector, now)) {
+    const latestRun = latestRuns.get(connectorCode) ?? null;
+    if (isConnectorInFlight(connector, latestRun, now)) {
       results.set(connectorCode, {
         connector_code: connectorCode,
         status: "skipped",

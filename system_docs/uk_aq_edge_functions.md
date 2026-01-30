@@ -26,10 +26,10 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
   - Only dispatches connectors with `poll_enabled=true` (null/false are skipped).
   - Dispatches one due connector per run, selecting the oldest `last_polled_at` (null first).
     - When `dispatcher_parallel_ingest` is true, dispatches up to `max_runs_per_dispatch_call` connectors per run (still max one per connector).
-- Skips dispatch if any connector is in-flight (`last_run_end` null within 10 minutes, and `last_run_start` is set) and marks `last_run_start` before dispatch.
+- Skips dispatch if any connector is in-flight (latest `uk_aq_ingest_runs` row has null `run_ended_at` within 10 minutes), and marks `last_run_start` before dispatch.
   - When `dispatcher_parallel_ingest` is true, in-flight checks are per connector; other connectors can still dispatch.
   - Stale in-flight runs (>10 minutes) are auto-closed as `failed` with `in_flight_timeout` and a `uk_aq_ingest_runs` row is inserted.
-  - If a connector has `last_run_end` null but `last_polled_at` is newer than `last_run_start`, the run is reconciled as `succeeded` with `polled_reconciled` (no `uk_aq_ingest_runs` row is inserted).
+  - If a connector has `last_run_end` null but the latest `uk_aq_ingest_runs` row has `run_ended_at`, the connector row is reconciled as `ingest_runs_reconciled`.
   - Cloudflare worker cron runs every 2 minutes (`workers/uk_aq_dispatcher/wrangler.toml`).
   - For `uk_air_sos`, uses `poll_timeseries_batch_size` with `uk_air_sos_select_timeseries_ids` (`uk_air_sos_timeseries_checkpoints`) and passes `timeseries_ids`/`timeseries_limit`.
   - Updates `connectors.last_run_start`, `last_run_end`, `last_run_status`, `last_run_message`, and `last_polled_at` for each attempted dispatch.
