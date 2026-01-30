@@ -1509,18 +1509,16 @@ serve(async (req) => {
         if (Number.isFinite(lagSeconds)) {
           lagSamples = appendSample(lagSamples, lagSeconds);
         }
-        if (!previousNextDue) {
-          const intervalSeconds =
-            observSamples.length >= 10
-              ? (medianSeconds(observSamples) ?? 15 * 60)
-              : 15 * 60;
-          const medianLag = lagSamples.length >= 10 ? (medianSeconds(lagSamples) ?? 15 * 60) : 15 * 60;
-          const baseMs = Date.parse(updatedLastObserved ?? latestObserved);
-          if (Number.isFinite(baseMs)) {
-            nextDueAt = new Date(baseMs + (intervalSeconds + medianLag) * 1000).toISOString();
-          } else {
-            nextDueAt = nowIso;
-          }
+        const intervalSeconds =
+          observSamples.length >= 10
+            ? (medianSeconds(observSamples) ?? 15 * 60)
+            : 15 * 60;
+        const medianLag = lagSamples.length >= 10 ? (medianSeconds(lagSamples) ?? 15 * 60) : 15 * 60;
+        const baseMs = Date.parse(updatedLastObserved ?? latestObserved);
+        if (Number.isFinite(baseMs)) {
+          nextDueAt = new Date(baseMs + (intervalSeconds + medianLag) * 1000).toISOString();
+        } else {
+          nextDueAt = nowIso;
         }
       } else if (!previousNextDue) {
         nextDueAt = new Date(nowMsForLag + 15 * 60 * 1000).toISOString();
