@@ -148,10 +148,10 @@ function extractRunMetrics(connectorCode: string, payload: unknown): RunMetrics 
   const data = asPayloadObject(payload);
   const observations = getPayloadNumber(data, ["observations_upserted", "observations"]);
   const stations = getPayloadNumber(data, [
-    "stations_updated",
-    "stations_processed",
     "stations_polled",
+    "stations_processed",
     "stations_selected",
+    "stations_updated",
     "stations",
   ]);
   const timeseries = getPayloadNumber(data, ["timeseries_updated", "timeseries"]);
