@@ -203,7 +203,7 @@ begin
     select station_ref, 2 as group_order, null as sort_at
     from stale
   )
-  select array_agg(station_ref order by group_order, sort_at nulls last)
+  select array_agg(combined.station_ref order by group_order, sort_at nulls last)
   into station_refs
   from combined;
 
