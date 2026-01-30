@@ -54,14 +54,14 @@ def _load_env(path: Path) -> None:
 
 
 def _postgrest_headers(service_role_key: str, write: bool = False) -> Dict[str, str]:
-    postgrest_schema = os.getenv("UK_AQ_POSTGREST_SCHEMA", "uk_aq_public")
+    core_schema = os.getenv("UK_AQ_CORE_SCHEMA", "uk_aq_core")
     headers = {
         "apikey": service_role_key,
         "Authorization": f"Bearer {service_role_key}",
-        "Accept-Profile": postgrest_schema,
+        "Accept-Profile": core_schema,
     }
     if write:
-        headers["Content-Profile"] = postgrest_schema
+        headers["Content-Profile"] = core_schema
     return headers
 
 

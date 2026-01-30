@@ -14,5 +14,6 @@ Columns:
 
 Notes:
 - Sampling arrays store seconds for precision.
-- `next_due_at` is only set when a checkpoint is created; it is derived from
-  `last_observed_at + median(observ_interval_samples) + median(ingest_lag_samples)`.
+- `next_due_at` is only set when a checkpoint is created.
+- Uses a 15-minute default interval until at least 10 interval samples exist, then uses the median interval.
+- `next_due_at` is derived from `last_observed_at + interval + median(ingest_lag_samples)`.

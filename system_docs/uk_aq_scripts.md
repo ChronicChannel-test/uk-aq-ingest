@@ -76,7 +76,6 @@ Notes:
 Environment:
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
-- `UK_AQ_POSTGREST_SCHEMA` (optional; defaults to `uk_aq_public`)
 
 ### `scripts/uk_aq_dashboard_local.py`
 Purpose:

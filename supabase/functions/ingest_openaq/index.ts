@@ -1430,8 +1430,10 @@ serve(async (req) => {
           lagSamples = appendSample(lagSamples, lagSeconds);
         }
         if (!previousNextDue) {
-          const medianInterval = medianSeconds(observSamples);
-          const intervalSeconds = medianInterval ?? 60 * 60;
+          const intervalSeconds =
+            observSamples.length >= 10
+              ? (medianSeconds(observSamples) ?? 15 * 60)
+              : 15 * 60;
           const medianLag = medianSeconds(lagSamples) ?? 0;
           const baseMs = Date.parse(updatedLastObserved ?? latestObserved);
           if (Number.isFinite(baseMs)) {
