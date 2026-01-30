@@ -593,6 +593,39 @@ async function postgrestRequest<T>(
   return { data: payload as T, error: null };
 }
 
+async function dispatchClaim(
+  connectorCode: string,
+  runStartedAt: string,
+  timeoutMinutes: number,
+): Promise<boolean> {
+  const { data, error } = await postgrestRequest<
+    Array<{
+      claimed: boolean;
+      connector_id: number | null;
+      last_run_start: string | null;
+      last_run_end: string | null;
+    }>
+  >(
+    "POST",
+    "rpc/uk_aq_rpc_dispatch_claim",
+    undefined,
+    {
+      p_connector_code: connectorCode,
+      p_run_started_at: runStartedAt,
+      p_timeout_minutes: timeoutMinutes,
+    },
+    "uk_aq_public",
+  );
+  if (error) {
+    console.warn("dispatch claim failed:", error.message);
+    return false;
+  }
+  if (!Array.isArray(data) || data.length === 0) {
+    return false;
+  }
+  return Boolean(data[0]?.claimed);
+}
+
 async function updateConnectorRun(
   connectorId: string | null,
   payload: Record<string, unknown>,
@@ -866,12 +899,19 @@ serve(async (req) => {
     const connectorCode = candidate.connectorCode;
     const connector = candidate.connector;
     const runStart = new Date();
-    await updateConnectorRun(connector?.id ?? null, {
-      last_run_start: runStart.toISOString(),
-      last_run_end: null,
-      last_run_status: "running",
-      last_run_message: "dispatching",
-    });
+    const claimed = await dispatchClaim(
+      connectorCode,
+      runStart.toISOString(),
+      IN_FLIGHT_TIMEOUT_MINUTES,
+    );
+    if (!claimed) {
+      results.set(connectorCode, {
+        connector_code: connectorCode,
+        status: "skipped",
+        detail: "in_flight_claimed",
+      });
+      continue;
+    }
     let runStatus = "failed";
     let runMessage = "";
     let lastResponse: { status: number; body: unknown } | null = null;

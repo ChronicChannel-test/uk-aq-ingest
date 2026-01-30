@@ -1513,6 +1513,7 @@ serve(async (req) => {
 
       if (latestObserved && (!previousLastObserved || latestObserved > previousLastObserved)) {
         updatedLastObserved = latestObserved;
+        let intervalSampleAdded = false;
         if (previousLastObserved) {
           const intervalSeconds = Math.max(
             0,
@@ -1520,14 +1521,17 @@ serve(async (req) => {
           );
           if (Number.isFinite(intervalSeconds) && intervalSeconds > 0) {
             observSamples = appendSample(observSamples, intervalSeconds);
+            intervalSampleAdded = true;
           }
         }
-        const lagSeconds = Math.max(
-          0,
-          Math.round((nowMsForLag - Date.parse(latestObserved)) / 1000),
-        );
-        if (Number.isFinite(lagSeconds)) {
-          lagSamples = appendSample(lagSamples, lagSeconds);
+        if (intervalSampleAdded) {
+          const lagSeconds = Math.max(
+            0,
+            Math.round((nowMsForLag - Date.parse(latestObserved)) / 1000),
+          );
+          if (Number.isFinite(lagSeconds)) {
+            lagSamples = appendSample(lagSamples, lagSeconds);
+          }
         }
         if (observSamples.length < 10 || lagSamples.length < 10) {
           nextDueAt = new Date(nowMsForLag + 5 * 60 * 1000).toISOString();
