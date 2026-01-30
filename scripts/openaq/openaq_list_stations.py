@@ -104,11 +104,35 @@ def _provider_short_name(provider_name: Optional[str]) -> Optional[str]:
     return PROVIDER_SHORTNAMES.get(provider_name, provider_name)
 
 
+def _owner_name(location: Dict[str, Any]) -> Optional[str]:
+    owner = location.get("owner")
+    if isinstance(owner, str):
+        return owner.strip() or None
+    if isinstance(owner, dict):
+        name = owner.get("name")
+        if isinstance(name, str):
+            return name.strip() or None
+    return None
+
+
+def _normalize_owner_name(owner_name: Optional[str]) -> Optional[str]:
+    if not owner_name:
+        return None
+    trimmed = owner_name.strip()
+    if not trimmed:
+        return None
+    if trimmed.lower().startswith("unknown"):
+        return None
+    return trimmed
+
+
 def _station_name(location: Dict[str, Any]) -> Optional[str]:
     name = _location_name(location)
     provider = _provider_short_name(_provider_name(location))
+    owner = _normalize_owner_name(_owner_name(location))
     if name and provider:
-        return f"{provider} {name}"
+        base = f"{provider} {name}"
+        return f"{base} - {owner}" if owner else base
     return name
 
 
@@ -353,6 +377,14 @@ class DbWriter:
         rows = [row for row in rows if row.get("station_ref")]
         if not rows:
             return 0
+        owner_by_ref: Dict[str, str] = {}
+        for location in locations:
+            station_ref = str(location.get("id")) if location.get("id") is not None else None
+            if not station_ref:
+                continue
+            owner = _normalize_owner_name(_owner_name(location))
+            if owner:
+                owner_by_ref[station_ref] = owner
         values: List[Tuple[Any, ...]] = []
         for row in rows:
             values.append(
@@ -399,6 +431,38 @@ class DbWriter:
         )
         with self.conn, self.conn.cursor() as cursor:
             self._execute_values(cursor, insert_sql, values, template=template)
+            if owner_by_ref:
+                station_refs = list(owner_by_ref.keys())
+                cursor.execute(
+                    """
+                    select id, station_ref
+                    from uk_aq_core.stations
+                    where connector_id = %s
+                      and service_ref = %s
+                      and station_ref = any(%s)
+                    """,
+                    (connector_id, service_ref, station_refs),
+                )
+                id_map = {str(row[1]): int(row[0]) for row in cursor.fetchall()}
+                metadata_rows = []
+                for station_ref, owner in owner_by_ref.items():
+                    station_id = id_map.get(station_ref)
+                    if not station_id:
+                        continue
+                    metadata_rows.append(
+                        (station_id, json.dumps({"openaq_owner": owner}), utcnow())
+                    )
+                if metadata_rows:
+                    cursor.executemany(
+                        """
+                        insert into uk_aq_core.station_metadata (station_id, attributes, updated_at)
+                        values (%s, %s::jsonb, %s)
+                        on conflict (station_id) do update set
+                          attributes = uk_aq_core.station_metadata.attributes || excluded.attributes,
+                          updated_at = excluded.updated_at
+                        """,
+                        metadata_rows,
+                    )
         return len(rows)
 
 
@@ -422,7 +486,7 @@ def normalize_location(location: Dict[str, Any]) -> Dict[str, Any]:
     )
     country = location.get("country") if isinstance(location.get("country"), dict) else {}
     provider = location.get("provider") if isinstance(location.get("provider"), dict) else {}
-    owner = location.get("owner") if isinstance(location.get("owner"), dict) else {}
+    owner_name = _normalize_owner_name(_owner_name(location))
     datetime_first = location.get("datetimeFirst") if isinstance(location.get("datetimeFirst"), dict) else {}
     datetime_last = location.get("datetimeLast") if isinstance(location.get("datetimeLast"), dict) else {}
     return {
@@ -436,7 +500,7 @@ def normalize_location(location: Dict[str, Any]) -> Dict[str, Any]:
         "country_code": country.get("code"),
         "country_name": country.get("name"),
         "provider": provider_name,
-        "owner": owner.get("name"),
+        "owner": owner_name,
         "is_monitor": location.get("isMonitor"),
         "is_mobile": location.get("isMobile"),
         "sensor_parameters": ",".join(parameters),
