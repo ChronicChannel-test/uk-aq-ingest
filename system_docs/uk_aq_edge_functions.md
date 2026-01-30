@@ -30,7 +30,6 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
   - When `dispatcher_parallel_ingest` is true, in-flight checks are per connector; other connectors can still dispatch.
   - Stale in-flight runs (>10 minutes) are auto-closed as `failed` with `in_flight_timeout` and a `uk_aq_ingest_runs` row is inserted.
   - If a connector has `last_run_end` null but the latest `uk_aq_ingest_runs` row has `run_ended_at`, the connector row is reconciled as `ingest_runs_reconciled`.
-  - Dispatch attempts use a conditional claim on `connectors` to prevent duplicate starts across overlapping cron invocations.
   - Cloudflare worker cron runs every 2 minutes (`workers/uk_aq_dispatcher/wrangler.toml`).
   - For `uk_air_sos`, uses `poll_timeseries_batch_size` with `uk_air_sos_select_timeseries_ids` (`uk_air_sos_timeseries_checkpoints`) and passes `timeseries_ids`/`timeseries_limit`.
   - Updates `connectors.last_run_start`, `last_run_end`, `last_run_status`, `last_run_message`, and `last_polled_at` for each attempted dispatch.

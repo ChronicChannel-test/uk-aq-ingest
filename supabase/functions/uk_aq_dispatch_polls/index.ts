@@ -103,15 +103,12 @@ const IN_FLIGHT_TIMEOUT_MINUTES = 10;
 const DEFAULT_PARALLEL_INGEST = false;
 const DEFAULT_MAX_RUNS_PER_DISPATCH_CALL = 1;
 
-function postgrestHeaders(schema = UK_AQ_CORE_SCHEMA, prefer?: string): Record<string, string> {
+function postgrestHeaders(schema = UK_AQ_CORE_SCHEMA): Record<string, string> {
   const headers: Record<string, string> = {
     apikey: SUPABASE_SERVICE_ROLE_KEY,
     Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
     "Content-Type": "application/json",
   };
-  if (prefer) {
-    headers.Prefer = prefer;
-  }
   if (schema && schema !== "public") {
     headers["Accept-Profile"] = schema;
     headers["Content-Profile"] = schema;
@@ -570,7 +567,6 @@ async function postgrestRequest<T>(
   params?: Record<string, string>,
   body?: unknown,
   schema?: string,
-  prefer?: string,
 ): Promise<{ data: T | null; error: { message: string } | null }> {
   if (!REST_BASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
     return { data: null, error: { message: "Missing REST_BASE_URL or SUPABASE_SERVICE_ROLE_KEY." } };
@@ -583,7 +579,7 @@ async function postgrestRequest<T>(
   }
   const resp = await fetch(url.toString(), {
     method,
-    headers: postgrestHeaders(schema, prefer),
+    headers: postgrestHeaders(schema),
     body: body ? JSON.stringify(body) : undefined,
   });
   const contentType = resp.headers.get("content-type") ?? "";
@@ -595,38 +591,6 @@ async function postgrestRequest<T>(
     return { data: null, error: { message: String(message) } };
   }
   return { data: payload as T, error: null };
-}
-
-async function claimConnectorRun(
-  connectorId: string | null,
-  runStartIso: string,
-  now: Date,
-): Promise<boolean> {
-  if (!connectorId) {
-    return false;
-  }
-  const cutoff = new Date(now.getTime() - IN_FLIGHT_TIMEOUT_MINUTES * 60 * 1000).toISOString();
-  const { data, error } = await postgrestRequest<ConnectorRow[]>(
-    "PATCH",
-    "connectors",
-    {
-      id: `eq.${connectorId}`,
-      or: `(last_run_end.not.is.null,last_run_start.is.null,last_run_start.lte.${cutoff})`,
-    },
-    {
-      last_run_start: runStartIso,
-      last_run_end: null,
-      last_run_status: "running",
-      last_run_message: "dispatching",
-    },
-    undefined,
-    "return=representation",
-  );
-  if (error) {
-    console.warn("connectors claim failed:", error.message);
-    return false;
-  }
-  return Array.isArray(data) && data.length > 0;
 }
 
 async function updateConnectorRun(
@@ -902,15 +866,12 @@ serve(async (req) => {
     const connectorCode = candidate.connectorCode;
     const connector = candidate.connector;
     const runStart = new Date();
-    const claimed = await claimConnectorRun(connector?.id ?? null, runStart.toISOString(), now);
-    if (!claimed) {
-      results.set(connectorCode, {
-        connector_code: connectorCode,
-        status: "skipped",
-        detail: "in_flight_claimed",
-      });
-      continue;
-    }
+    await updateConnectorRun(connector?.id ?? null, {
+      last_run_start: runStart.toISOString(),
+      last_run_end: null,
+      last_run_status: "running",
+      last_run_message: "dispatching",
+    });
     let runStatus = "failed";
     let runMessage = "";
     let lastResponse: { status: number; body: unknown } | null = null;

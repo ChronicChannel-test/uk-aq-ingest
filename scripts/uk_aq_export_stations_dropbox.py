@@ -32,7 +32,7 @@ DROPBOX_UPLOAD_URL = "https://content.dropboxapi.com/2/files/upload"
 
 DEFAULT_PAGE_SIZE = 1000
 DEFAULT_DROPBOX_DIR = "uk_aq_stations"
-DEFAULT_SUMMARY_FILENAME = "daily_summary_{date}.json"
+DEFAULT_SUMMARY_FILENAME = "daily_summary.json"
 
 SUPABASE_DB_URL = os.getenv("SUPABASE_DB_URL") or os.getenv("DATABASE_URL")
 
@@ -66,7 +66,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--summary-output",
         default=DEFAULT_SUMMARY_FILENAME,
-        help="Daily summary JSON output filename (default: daily_summary_{YYYY-MM-DD}.json).",
+        help="Daily summary JSON output filename (default: daily_summary.json).",
     )
     parser.add_argument(
         "--summary-openaq-json",
@@ -490,9 +490,7 @@ def main() -> int:
         print(f"Uploaded {output_path.name} to Dropbox: {dropbox_path}")
 
         if not args.skip_summary:
-            summary_name = (args.summary_output or DEFAULT_SUMMARY_FILENAME)
-            summary_name = summary_name.replace("{YYYY-MM-DD}", date_tag).replace("{date}", date_tag)
-            summary_path = Path(summary_name)
+            summary_path = Path(args.summary_output or DEFAULT_SUMMARY_FILENAME)
             summary_payload = _build_summary(Path(args.summary_openaq_json))
             summary_path.write_text(json.dumps(summary_payload, indent=2), encoding="utf-8")
             summary_dropbox_path = f"{dropbox_dir}/{summary_path.name}"
