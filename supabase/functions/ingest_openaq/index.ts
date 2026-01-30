@@ -542,6 +542,26 @@ function medianSeconds(values: number[] | null): number | null {
   return Math.round((sorted[mid - 1] + sorted[mid]) / 2);
 }
 
+function minSeconds(values: number[] | null): number | null {
+  if (!Array.isArray(values) || values.length === 0) {
+    return null;
+  }
+  let minValue = Number.POSITIVE_INFINITY;
+  for (const value of values) {
+    if (!Number.isFinite(value)) {
+      continue;
+    }
+    const rounded = Math.max(0, Math.round(value));
+    if (rounded < minValue) {
+      minValue = rounded;
+    }
+  }
+  if (!Number.isFinite(minValue)) {
+    return null;
+  }
+  return minValue;
+}
+
 function parseRateLimitHeaders(headers: Headers): {
   limit: number | null;
   remaining: number | null;
@@ -1509,19 +1529,20 @@ serve(async (req) => {
         if (Number.isFinite(lagSeconds)) {
           lagSamples = appendSample(lagSamples, lagSeconds);
         }
-        const intervalSeconds =
-          observSamples.length >= 10
-            ? (medianSeconds(observSamples) ?? 15 * 60)
-            : 15 * 60;
-        const medianLag = lagSamples.length >= 10 ? (medianSeconds(lagSamples) ?? 15 * 60) : 15 * 60;
-        const baseMs = Date.parse(updatedLastObserved ?? latestObserved);
-        if (Number.isFinite(baseMs)) {
-          nextDueAt = new Date(baseMs + (intervalSeconds + medianLag) * 1000).toISOString();
+        if (observSamples.length < 10 || lagSamples.length < 10) {
+          nextDueAt = new Date(nowMsForLag + 5 * 60 * 1000).toISOString();
         } else {
-          nextDueAt = nowIso;
+          const intervalSeconds = minSeconds(observSamples) ?? 5 * 60;
+          const lagSeconds = minSeconds(lagSamples) ?? 5 * 60;
+          const baseMs = Date.parse(updatedLastObserved ?? latestObserved);
+          if (Number.isFinite(baseMs)) {
+            nextDueAt = new Date(baseMs + (intervalSeconds + lagSeconds) * 1000).toISOString();
+          } else {
+            nextDueAt = nowIso;
+          }
         }
       } else if (!previousNextDue) {
-        nextDueAt = new Date(nowMsForLag + 15 * 60 * 1000).toISOString();
+        nextDueAt = new Date(nowMsForLag + 5 * 60 * 1000).toISOString();
       }
 
       checkpointRows.push({

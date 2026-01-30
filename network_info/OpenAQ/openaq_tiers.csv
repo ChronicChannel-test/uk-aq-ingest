@@ -1,0 +1,6 @@
+tier,tier1,tier2,stale
+description,Due within last 3 hours,Due between 3 and 24 hours,Stale (no recent obs) and not already selected
+due_at,<= now() AND >= now() - 3 hours,< now() - 3 hours AND >= now() - 24 hours,(not used)
+last_polled_at,IS NULL OR <= now() - 15 minutes,IS NULL OR <= now() - 1 hour,IS NULL OR <= now() - 12 hours
+last_observed_at,(no constraint),(no constraint),IS NULL OR <= now() - 24 hours
+other,"candidates: connector=openaq, service_ref='openaq', station_ref not null, removed_at is null","candidates: connector=openaq, service_ref='openaq', station_ref not null, removed_at is null",candidates + not in tiered_limited
