@@ -77,6 +77,15 @@ type OpenAQLatestRecord = {
   coordinates?: { latitude?: number | null; longitude?: number | null } | null;
 };
 
+type OpenAQStationCheckpoint = {
+  station_id: number;
+  next_due_at: string | null;
+  last_observed_at: string | null;
+  observ_interval_samples: number[] | null;
+  ingest_lag_samples: number[] | null;
+  last_polled_at: string | null;
+};
+
 const DEFAULT_BASE_URL = "https://api.openaq.org/v3";
 const DEFAULT_CONNECTOR_CODE = "openaq";
 const DEFAULT_SERVICE_LABEL = "OpenAQ";
@@ -88,6 +97,9 @@ const DEFAULT_MAX_PAGES = 50;
 const DEFAULT_CONCURRENCY = 6;
 const DEFAULT_MAX_RUNTIME_SECONDS = 110;
 const DEFAULT_RATE_LIMIT_RETRIES = 3;
+const DEFAULT_TIERED_LIMIT = 50;
+const DEFAULT_STALE_LIMIT = 10;
+const DEFAULT_RATE_LIMIT_STOP_THRESHOLD = 5;
 const PROVIDER_SHORTNAMES: Record<string, string> = {
   "London Air Quality Network": "LAQN",
 };
@@ -118,6 +130,18 @@ const OPENAQ_MAX_RUNTIME_SECONDS = Number(
 );
 const OPENAQ_RATE_LIMIT_RETRIES = Number(
   Deno.env.get("OPENAQ_RATE_LIMIT_RETRIES") ?? DEFAULT_RATE_LIMIT_RETRIES,
+);
+const OPENAQ_TIERED_LIMIT = Number(
+  Deno.env.get("OPENAQ_TIERED_LIMIT") ?? DEFAULT_TIERED_LIMIT,
+);
+const OPENAQ_STALE_LIMIT = Number(
+  Deno.env.get("OPENAQ_STALE_LIMIT") ?? DEFAULT_STALE_LIMIT,
+);
+const OPENAQ_RATE_LIMIT_STOP_THRESHOLD = Number(
+  Deno.env.get("OPENAQ_RATE_LIMIT_STOP_THRESHOLD") ?? DEFAULT_RATE_LIMIT_STOP_THRESHOLD,
+);
+const OPENAQ_INGEST_STATION_FETCH = ["1", "true", "yes"].includes(
+  String(Deno.env.get("OPENAQ_INGEST_STATION_FETCH") ?? "").toLowerCase(),
 );
 const UK_AQ_DROPBOX_ROOT = normalizeDropboxPath(Deno.env.get("UK_AQ_DROPBOX_ROOT") ?? "");
 const DROPBOX_APP_KEY = Deno.env.get("DROPBOX_APP_KEY") ?? "";
@@ -210,6 +234,61 @@ async function rpcRequest<T>(
   } catch (err) {
     return { data: null, error: { message: String(err) } };
   }
+}
+
+async function loadOpenaqStationRefs(
+  batchLimit: number,
+  staleLimit: number,
+): Promise<string[]> {
+  const { data, error } = await rpcRequest<Array<{ station_ref: string }>>(
+    "uk_aq_rpc_openaq_select_station_refs",
+    {
+      batch_limit: batchLimit,
+      stale_limit: staleLimit,
+    },
+  );
+  if (error) {
+    throw new Error(`OpenAQ station selection failed: ${error.message}`);
+  }
+  return (data ?? []).map((row) => String(row.station_ref));
+}
+
+async function fetchOpenaqStationCheckpoints(
+  stationIds: number[],
+): Promise<Record<number, OpenAQStationCheckpoint>> {
+  if (!stationIds.length) {
+    return {};
+  }
+  const { data, error } = await rpcRequest<OpenAQStationCheckpoint[]>(
+    "uk_aq_rpc_openaq_station_checkpoints_select",
+    {
+      station_ids: stationIds,
+    },
+  );
+  if (error) {
+    throw new Error(`OpenAQ checkpoints fetch failed: ${error.message}`);
+  }
+  const mapping: Record<number, OpenAQStationCheckpoint> = {};
+  for (const row of data ?? []) {
+    mapping[Number(row.station_id)] = row;
+  }
+  return mapping;
+}
+
+async function upsertOpenaqStationCheckpoints(
+  rows: Array<Record<string, unknown>>,
+): Promise<number> {
+  if (!rows.length) {
+    return 0;
+  }
+  const { data, error } = await rpcRequest<Array<{ rows_upserted: number }>>(
+    "uk_aq_rpc_openaq_station_checkpoints_upsert",
+    { rows },
+  );
+  if (error) {
+    throw new Error(`OpenAQ checkpoints upsert failed: ${error.message}`);
+  }
+  return data && data[0] ? Number(data[0].rows_upserted) : 0;
 }
 
 function normalizeDropboxPath(raw: string): string {
@@ -438,6 +517,30 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function appendSample(values: number[] | null, value: number, maxSamples = 30): number[] {
+  const cleaned = Array.isArray(values) ? values.filter((v) => Number.isFinite(v)) : [];
+  const next = [...cleaned, value].slice(-maxSamples);
+  return next;
+}
+
+function medianSeconds(values: number[] | null): number | null {
+  if (!Array.isArray(values) || values.length === 0) {
+    return null;
+  }
+  const sorted = values
+    .filter((v) => Number.isFinite(v))
+    .map((v) => Math.max(0, Math.round(v)))
+    .sort((a, b) => a - b);
+  if (!sorted.length) {
+    return null;
+  }
+  const mid = Math.floor(sorted.length / 2);
+  if (sorted.length % 2 === 1) {
+    return sorted[mid];
+  }
+  return Math.round((sorted[mid - 1] + sorted[mid]) / 2);
+}
+
 function parseRateLimitHeaders(headers: Headers): {
   limit: number | null;
   remaining: number | null;
@@ -458,6 +561,12 @@ function parseRateLimitHeaders(headers: Headers): {
     used: toNumber(headers.get("x-ratelimit-used")),
   };
 }
+
+let rateLimitRemaining: number | null = null;
+let rateLimitStop = false;
+let rateLimitStopReason: string | null = null;
+let rateLimitLimit: number | null = null;
+let rateLimitFirstRemaining: number | null = null;
 
 function rateLimitDelayMs(reset: number | null): number {
   if (!Number.isFinite(reset) || reset === null) {
@@ -515,12 +624,27 @@ async function openaqRequest(
     const resp = await fetch(url.toString(), { headers: openaqHeaders() });
     const contentType = resp.headers.get("content-type") ?? "";
     const payload = contentType.includes("application/json") ? await resp.json() : await resp.text();
+    const info = parseRateLimitHeaders(resp.headers);
+    if (info.remaining !== null && Number.isFinite(info.remaining)) {
+      rateLimitRemaining = info.remaining;
+      if (rateLimitFirstRemaining === null) {
+        rateLimitFirstRemaining = info.remaining;
+      }
+      if (info.limit !== null && Number.isFinite(info.limit)) {
+        rateLimitLimit = info.limit;
+      }
+      if (info.remaining <= OPENAQ_RATE_LIMIT_STOP_THRESHOLD) {
+        rateLimitStop = true;
+        rateLimitStopReason = "remaining_low";
+      }
+    }
     if (rawRecorder) {
       rawRecorder.recordResponse(path, params ?? {}, resp.status, payload);
     }
     if (resp.status === 429) {
-      const info = parseRateLimitHeaders(resp.headers);
       const delayMs = rateLimitDelayMs(info.reset) || Math.min(60000, 1000 * attempt);
+      rateLimitStop = true;
+      rateLimitStopReason = "rate_limit_429";
       if (rawRecorder) {
         rawRecorder.recordEvent("rate_limit", {
           status: resp.status,
@@ -551,6 +675,9 @@ async function listLocations(bbox: string, rawRecorder?: RawRecorder | null): Pr
     : DEFAULT_PAGE_LIMIT;
   let page = 1;
   while (true) {
+    if (rateLimitStop) {
+      break;
+    }
     const payload = await openaqRequest("locations", { bbox, limit, page }, rawRecorder);
     const pageResults = Array.isArray(payload?.results) ? payload.results as OpenAQLocation[] : [];
     results.push(...pageResults);
@@ -946,6 +1073,11 @@ serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 204 });
   }
+  rateLimitRemaining = null;
+  rateLimitStop = false;
+  rateLimitStopReason = null;
+  rateLimitLimit = null;
+  rateLimitFirstRemaining = null;
   const authResponse = requireCronSecret(req);
   if (authResponse) {
     return authResponse;
@@ -964,9 +1096,11 @@ serve(async (req) => {
   }
 
   const connectorCode = payload.connector_code ?? OPENAQ_CONNECTOR_CODE;
-  const stationRefs = Array.isArray(payload.station_refs)
+  const hasRequestedRefs = Array.isArray(payload.station_refs) && payload.station_refs.length > 0;
+  let stationRefs = Array.isArray(payload.station_refs)
     ? payload.station_refs.map((ref) => String(ref))
     : [];
+  const stationsRequested = hasRequestedRefs ? stationRefs.length : 0;
   const windowHours = Number(payload.window_hours ?? DEFAULT_WINDOW_HOURS);
   const dryRun = payload.dry_run ?? false;
   const runStartedAt = Date.now();
@@ -974,7 +1108,7 @@ serve(async (req) => {
     ? Math.max(30, OPENAQ_MAX_RUNTIME_SECONDS)
     : DEFAULT_MAX_RUNTIME_SECONDS;
   const runtimeDeadline = runStartedAt + maxRuntimeSeconds * 1000;
-  const shouldStop = () => Date.now() >= runtimeDeadline;
+  const shouldStop = () => Date.now() >= runtimeDeadline || rateLimitStop;
   let timeBudgetHit = false;
   const logLines: string[] = [];
   const logLine = (level: string, message: string, context?: Record<string, unknown>) => {
@@ -1012,21 +1146,51 @@ serve(async (req) => {
     station_refs: stationRefs,
   });
 
-  let locations: OpenAQLocation[] = [];
-  try {
-    locations = await listLocations(bbox, rawRecorder);
-  } catch (err) {
-    await logError({
-      severity: "error",
-      message: "OpenAQ location fetch failed",
-      connector_id: connector.id,
-      context: { error: String(err) },
+  if (!stationRefs.length) {
+    try {
+      stationRefs = await loadOpenaqStationRefs(OPENAQ_TIERED_LIMIT, OPENAQ_STALE_LIMIT);
+    } catch (err) {
+      await logError({
+        severity: "error",
+        message: "OpenAQ station selection failed",
+        connector_id: connector.id,
+        context: { error: String(err) },
+      });
+      return jsonResponse({ error: String(err) }, 502);
+    }
+    rawRecorder?.recordEvent("selection", {
+      tiered_limit: OPENAQ_TIERED_LIMIT,
+      stale_limit: OPENAQ_STALE_LIMIT,
+      station_refs: stationRefs,
     });
-    return jsonResponse({ error: String(err) }, 502);
+    if (!stationRefs.length) {
+      logLine("INFO", "No OpenAQ station refs selected", {
+        tiered_limit: OPENAQ_TIERED_LIMIT,
+        stale_limit: OPENAQ_STALE_LIMIT,
+      });
+      return jsonResponse({ status: "no_station_refs_selected" }, 200);
+    }
   }
-  logLine("INFO", "Fetched OpenAQ locations", { count: locations.length });
+  const stationsSelected = stationRefs.length;
 
-  if (stationRefs.length) {
+  const locationsFetched = OPENAQ_INGEST_STATION_FETCH;
+  let locations: OpenAQLocation[] = [];
+  if (locationsFetched) {
+    try {
+      locations = await listLocations(bbox, rawRecorder);
+    } catch (err) {
+      await logError({
+        severity: "error",
+        message: "OpenAQ location fetch failed",
+        connector_id: connector.id,
+        context: { error: String(err) },
+      });
+      return jsonResponse({ error: String(err) }, 502);
+    }
+    logLine("INFO", "Fetched OpenAQ locations", { count: locations.length });
+  }
+
+  if (locationsFetched && stationRefs.length) {
     locations = locations.filter((loc) => {
       const locationId = resolveLocationId(loc);
       return locationId ? stationRefs.includes(locationId) : false;
@@ -1035,36 +1199,63 @@ serve(async (req) => {
 
   const connectorId = String(connector.id);
   const overwriteStationName = connector.overwrite_station_name ?? false;
-  const stationsUpdated = dryRun
+  const stationsUpdated = locationsFetched && !dryRun
+    ? await upsertStations(locations, connectorId, OPENAQ_SERVICE_REF, overwriteStationName)
+    : locationsFetched && dryRun
     ? locations.length
-    : await upsertStations(locations, connectorId, OPENAQ_SERVICE_REF, overwriteStationName);
+    : 0;
 
+  const stationRefsForIds = locationsFetched
+    ? locations
+      .map((location) => resolveLocationId(location))
+      .filter((id): id is string => Boolean(id))
+    : stationRefs;
   const stationIdByRef = await fetchStationIds(
     connectorId,
     OPENAQ_SERVICE_REF,
-    locations
-      .map((location) => resolveLocationId(location))
-      .filter((id): id is string => Boolean(id)),
+    stationRefsForIds,
   );
 
-  const parameters = collectParameters(locations);
-  const sensorMap = collectSensors(locations);
-  const phenomenonIds = await upsertPhenomena(connectorId, parameters);
+  const stationIds = Object.values(stationIdByRef).map((id) => Number(id));
+  let checkpointByStationId: Record<number, OpenAQStationCheckpoint> = {};
+  try {
+    checkpointByStationId = await fetchOpenaqStationCheckpoints(stationIds);
+  } catch (err) {
+    await logError({
+      severity: "warn",
+      message: "OpenAQ checkpoints fetch failed",
+      connector_id: connector.id,
+      context: { error: String(err) },
+    });
+    checkpointByStationId = {};
+  }
+
+  const parameters = locationsFetched ? collectParameters(locations) : {};
+  const sensorMap = locationsFetched ? collectSensors(locations) : new Map();
+  const phenomenonIds = locationsFetched ? await upsertPhenomena(connectorId, parameters) : {};
 
   const latestBySensor = new Map<string, { observed_at: string; value: number | null }>();
+  const latestObservedByStationId = new Map<number, string>();
+  const polledStationIds = new Set<number>();
   const nowMs = Date.now();
   const windowMs = Number.isFinite(windowHours) && windowHours > 0
     ? windowHours * 60 * 60 * 1000
     : null;
 
-  const locationIds = locations
-    .map((location) => resolveLocationId(location))
-    .filter((id): id is string => Boolean(id));
+  const locationIds = locationsFetched
+    ? locations
+      .map((location) => resolveLocationId(location))
+      .filter((id): id is string => Boolean(id))
+    : stationRefs;
 
   await runPool(locationIds, OPENAQ_CONCURRENCY, async (locationId) => {
     if (shouldStop()) {
       timeBudgetHit = true;
       return;
+    }
+    const stationId = stationIdByRef[locationId];
+    if (stationId) {
+      polledStationIds.add(Number(stationId));
     }
     let latest: OpenAQLatestRecord[] = [];
     try {
@@ -1097,6 +1288,12 @@ serve(async (req) => {
       if (!existing || observedAt > existing.observed_at) {
         latestBySensor.set(key, { observed_at: observedAt, value: value ?? null });
       }
+      if (stationId) {
+        const current = latestObservedByStationId.get(Number(stationId));
+        if (!current || observedAt > current) {
+          latestObservedByStationId.set(Number(stationId), observedAt);
+        }
+      }
     }
   }, () => {
     if (shouldStop()) {
@@ -1108,27 +1305,32 @@ serve(async (req) => {
 
   const timeseriesRows: Array<Record<string, unknown>> = [];
   const timeseriesRefs: string[] = [];
-  for (const [sensorId, meta] of sensorMap.entries()) {
-    const stationId = stationIdByRef[meta.locationId];
-    if (!stationId) {
-      continue;
+  if (locationsFetched) {
+    for (const [sensorId, meta] of sensorMap.entries()) {
+      const stationId = stationIdByRef[meta.locationId];
+      if (!stationId) {
+        continue;
+      }
+      const phenomenonId = phenomenonIds[meta.parameter.name];
+      if (!phenomenonId) {
+        continue;
+      }
+      const label = `${meta.locationId} ${meta.parameter.displayName ?? meta.parameter.name}`;
+      timeseriesRows.push({
+        timeseries_ref: sensorId,
+        label,
+        uom: meta.parameter.units ?? null,
+        station_id: stationId,
+        connector_id: connectorId,
+        service_ref: OPENAQ_SERVICE_REF,
+        phenomenon_id: phenomenonId,
+      });
+      timeseriesRefs.push(sensorId);
     }
-    const phenomenonId = phenomenonIds[meta.parameter.name];
-    if (!phenomenonId) {
-      continue;
+  } else {
+    for (const sensorId of latestBySensor.keys()) {
+      timeseriesRefs.push(sensorId);
     }
-    const latest = latestBySensor.get(sensorId);
-    const label = `${meta.locationId} ${meta.parameter.displayName ?? meta.parameter.name}`;
-    timeseriesRows.push({
-      timeseries_ref: sensorId,
-      label,
-      uom: meta.parameter.units ?? null,
-      station_id: stationId,
-      connector_id: connectorId,
-      service_ref: OPENAQ_SERVICE_REF,
-      phenomenon_id: phenomenonId,
-    });
-    timeseriesRefs.push(sensorId);
   }
 
   let observationsUpserted = 0;
@@ -1138,7 +1340,9 @@ serve(async (req) => {
   const timeseriesErrors: string[] = [];
 
   if (!dryRun) {
-    await upsertTimeseries(timeseriesRows);
+    if (locationsFetched) {
+      await upsertTimeseries(timeseriesRows);
+    }
     const timeseriesIdByRef = await fetchTimeseriesIds(
       connectorId,
       OPENAQ_SERVICE_REF,
@@ -1192,17 +1396,107 @@ serve(async (req) => {
     });
   }
 
+  if (!dryRun && polledStationIds.size) {
+    const checkpointRows: Array<Record<string, unknown>> = [];
+    const nowIso = new Date().toISOString();
+    const nowMsForLag = Date.now();
+    for (const stationId of polledStationIds) {
+      const checkpoint = checkpointByStationId[stationId];
+      const isNewCheckpoint = checkpoint === undefined;
+      const previousLastObserved = checkpoint?.last_observed_at ?? null;
+      const previousNextDue = checkpoint?.next_due_at ?? null;
+      let observSamples = checkpoint?.observ_interval_samples ?? [];
+      let lagSamples = checkpoint?.ingest_lag_samples ?? [];
+      let updatedLastObserved = previousLastObserved;
+      let nextDueAt = previousNextDue;
+      const latestObserved = latestObservedByStationId.get(stationId) ?? null;
+
+      if (latestObserved && (!previousLastObserved || latestObserved > previousLastObserved)) {
+        updatedLastObserved = latestObserved;
+        if (previousLastObserved) {
+          const intervalSeconds = Math.max(
+            0,
+            Math.round((Date.parse(latestObserved) - Date.parse(previousLastObserved)) / 1000),
+          );
+          if (Number.isFinite(intervalSeconds) && intervalSeconds > 0) {
+            observSamples = appendSample(observSamples, intervalSeconds);
+          }
+        }
+        const lagSeconds = Math.max(
+          0,
+          Math.round((nowMsForLag - Date.parse(latestObserved)) / 1000),
+        );
+        if (Number.isFinite(lagSeconds)) {
+          lagSamples = appendSample(lagSamples, lagSeconds);
+        }
+        const median = medianSeconds(observSamples);
+        const expectedMinutes = median ? Math.max(1, Math.ceil(median / 60)) : 60;
+        nextDueAt = new Date(nowMsForLag + expectedMinutes * 60 * 1000).toISOString();
+      } else if (isNewCheckpoint && !previousNextDue) {
+        nextDueAt = nowIso;
+      }
+
+      checkpointRows.push({
+        station_id: stationId,
+        next_due_at: nextDueAt,
+        last_observed_at: updatedLastObserved,
+        observ_interval_samples: observSamples,
+        ingest_lag_samples: lagSamples,
+        last_polled_at: nowIso,
+      });
+    }
+
+    try {
+      await upsertOpenaqStationCheckpoints(checkpointRows);
+    } catch (err) {
+      await logError({
+        severity: "warn",
+        message: "OpenAQ checkpoints upsert failed",
+        connector_id: connector.id,
+        context: { error: String(err) },
+      });
+    }
+  }
+
+  const stoppedReason = timeBudgetHit
+    ? "runtime_budget_exceeded"
+    : rateLimitStop
+    ? (rateLimitStopReason ?? "rate_limit_guard")
+    : null;
+  const rateLimitUsedEstimate = rateLimitLimit !== null && rateLimitRemaining !== null
+    ? Math.max(0, rateLimitLimit - rateLimitRemaining)
+    : null;
+
   logLine("INFO", "OpenAQ ingest complete", {
     locations: locations.length,
+    locations_fetch_skipped: !locationsFetched,
+    station_fetch_enabled: locationsFetched,
+    station_fetch_enabled: locationsFetched,
+    stations_selected: stationsSelected,
+    stations_polled: polledStationIds.size,
     stations_updated: stationsUpdated,
     timeseries_updated: timeseriesRows.length,
     timeseries_last_updated: timeseriesLastUpdated,
     observations_upserted: observationsUpserted,
     series_polled: seriesPolled,
     last_observed_at: lastObservedAt,
+    rate_limit_remaining: rateLimitRemaining,
+    rate_limit_stop: rateLimitStop,
+    rate_limit_stop_reason: rateLimitStopReason,
     partial: timeBudgetHit,
-    stopped_reason: timeBudgetHit ? "runtime_budget_exceeded" : null,
+    stopped_reason: stoppedReason,
     raw_responses: rawRecorder?.responseCount ?? 0,
+  });
+
+  logLine("INFO", "OpenAQ rate limit summary", {
+    rate_limit_limit: rateLimitLimit,
+    rate_limit_remaining_first: rateLimitFirstRemaining,
+    rate_limit_remaining_last: rateLimitRemaining,
+    rate_limit_used_estimate: rateLimitUsedEstimate,
+    requests_total: rawRecorder?.responseCount ?? 0,
+    stations_selected: stationsSelected,
+    stations_polled: polledStationIds.size,
+    stopped_reason: stoppedReason,
   });
 
   if (dropboxConfig) {
@@ -1241,14 +1535,25 @@ serve(async (req) => {
 
   return jsonResponse({
     connector_code: connectorCode,
+    stations_requested: stationsRequested,
+    stations_selected: stationsSelected,
+    stations_polled: polledStationIds.size,
     stations_updated: stationsUpdated,
     timeseries_updated: timeseriesRows.length,
     observations_upserted: observationsUpserted,
     series_polled: seriesPolled,
     window_hours: windowHours,
     last_observed_at: lastObservedAt,
+    locations_fetch_skipped: !locationsFetched,
     partial: timeBudgetHit,
-    stopped_reason: timeBudgetHit ? "runtime_budget_exceeded" : null,
+    stopped_reason: stoppedReason,
+    rate_limit_remaining: rateLimitRemaining,
+    rate_limit_limit: rateLimitLimit,
+    rate_limit_remaining_first: rateLimitFirstRemaining,
+    rate_limit_stop: rateLimitStop,
+    rate_limit_stop_reason: rateLimitStopReason,
+    rate_limit_used_estimate: rateLimitUsedEstimate,
+    requests_total: rawRecorder?.responseCount ?? 0,
     dry_run: dryRun,
   });
 });

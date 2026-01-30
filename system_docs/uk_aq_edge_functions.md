@@ -85,12 +85,14 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
   - Uses `OPENAQ_*` environment variables for base URL, API key, and bbox paging.
   - Fetches locations via `/v3/locations` (bbox) and latest values via `/v3/locations/{id}/latest`.
   - Uses sensor IDs as `timeseries_ref` and `openaq:{parameter}` as `phenomena.eionet_uri`.
-  - If `station_refs` are provided, limits polling to those location ids.
+  - If `station_refs` are provided, limits polling to those location ids; otherwise uses a tiered selector (`uk_aq_rpc_openaq_select_station_refs`).
+  - Tracks per-station scheduling in `uk_aq_raw.openaq_station_checkpoints` (next due, last observed, sample arrays, last polled).
   - Station names are prefixed with provider shortnames when configured (e.g., `London Air Quality Network` -> `LAQN`).
   - Updates `timeseries.last_value` and `timeseries.last_value_at` based on the most recent measurement.
   - Uses public RPCs for database writes (schemas are not exposed via PostgREST).
   - Enforces a runtime budget (default 110s) and returns `partial=true` when exceeded.
   - Requires `X-Cron-Secret` when `SB_UK_AQ_CRON_SECRET` is set.
+  - Stops issuing new requests when rate-limit remaining drops below the threshold (default 5) or on HTTP 429.
 - Logs:
   - Writes a log file to Dropbox `/connectors/openaq/log/YYYY-MM-DD/` (prefix `uk_aq_log_edge_openaq_`).
   - Writes raw payloads to Dropbox `/connectors/openaq/raw_data/YYYY-MM-DD/` as ZIP (prefix `uk_aq_raw_edge_openaq_`).
@@ -229,6 +231,10 @@ Optional:
 - `OPENAQ_CONCURRENCY` (optional; defaults to `6`)
 - `OPENAQ_MAX_RUNTIME_SECONDS` (optional; defaults to `110`)
 - `OPENAQ_RATE_LIMIT_RETRIES` (optional; defaults to `3`)
+- `OPENAQ_INGEST_STATION_FETCH` (optional; defaults to `false`)
+- `OPENAQ_TIERED_LIMIT` (optional; defaults to `50`)
+- `OPENAQ_STALE_LIMIT` (optional; defaults to `10`)
+- `OPENAQ_RATE_LIMIT_STOP_THRESHOLD` (optional; defaults to `5`)
 - `BREATHELONDON_BASE_URL` (optional override for Breathe London API base URL)
 - `BREATHELONDON_CONNECTOR_CODE` / `BREATHELONDON_SERVICE_REF` (optional override)
 - `BREATHELONDON_SERVICE_LABEL` (optional override)

@@ -27,7 +27,10 @@ This network uses OpenAQ's API to pull UK monitoring locations and latest values
 ## Poll cadence
 - Intended polling cadence: every 60 minutes with a 6-hour window (configurable via connector settings).
 - Runtime budget: default 110s (`OPENAQ_MAX_RUNTIME_SECONDS`).
-- Uses OpenAQ rate-limit headers to pause when the remaining request budget is low.
+- Uses per-station scheduling in `uk_aq_raw.openaq_station_checkpoints` (next_due_at, last_observed_at, sample arrays).
+- Tiered station selection: 50 overdue + 10 stale (configurable via `OPENAQ_TIERED_LIMIT`/`OPENAQ_STALE_LIMIT`).
+- Uses OpenAQ rate-limit headers as a guardrail and stops issuing new requests when remaining is low.
+- When `OPENAQ_INGEST_STATION_FETCH=true`, the ingest performs the bbox station fetch; otherwise it only polls latest values using cached metadata.
 
 ## Connector creation
 - Connector rows are created by the stations sync (`scripts/openaq/openaq_list_stations.py`).

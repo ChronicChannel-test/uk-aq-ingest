@@ -181,7 +181,7 @@ jobs:
           OPENAQ_BASE_URL: ${{ secrets.OPENAQ_BASE_URL }}
           OPENAQ_API_KEY: ${{ secrets.OPENAQ_API_KEY }}
         run: |
-          python3 scripts/openaq/openaq_list_stations.py --to-supabase
+          python3 scripts/openaq/openaq_list_stations.py --to-supabase --toggle-polling
 
       - name: Discover Sensor.Community stations (optional)
         if: env.RUN_SCOMM_STATIONS_EXPORT == '1'
