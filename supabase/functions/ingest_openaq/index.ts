@@ -562,6 +562,135 @@ function minSeconds(values: number[] | null): number | null {
   return minValue;
 }
 
+const CRC_TABLE = (() => {
+  const table = new Uint32Array(256);
+  for (let i = 0; i < table.length; i += 1) {
+    let c = i;
+    for (let k = 0; k < 8; k += 1) {
+      c = (c & 1) ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    }
+    table[i] = c >>> 0;
+  }
+  return table;
+})();
+
+function crc32(data: Uint8Array): number {
+  let crc = 0xffffffff;
+  for (const byte of data) {
+    const idx = (crc ^ byte) & 0xff;
+    crc = CRC_TABLE[idx] ^ (crc >>> 8);
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function toDosDateTime(date: Date): { dosTime: number; dosDate: number } {
+  const year = Math.max(1980, date.getUTCFullYear());
+  const month = date.getUTCMonth() + 1;
+  const day = date.getUTCDate();
+  const hour = date.getUTCHours();
+  const minute = date.getUTCMinutes();
+  const second = date.getUTCSeconds();
+  const dosTime = (hour << 11) | (minute << 5) | Math.floor(second / 2);
+  const dosDate = ((year - 1980) << 9) | (month << 5) | day;
+  return { dosTime, dosDate };
+}
+
+async function deflateRaw(data: Uint8Array): Promise<Uint8Array> {
+  const stream = new Blob([data]).stream().pipeThrough(new CompressionStream("deflate-raw"));
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+
+async function zipTextCompressed(filename: string, content: string): Promise<Uint8Array> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(content);
+  const nameBytes = encoder.encode(filename);
+  const crc = crc32(data);
+  const fileSize = data.length;
+  const compressed = await deflateRaw(data);
+  const compressedSize = compressed.length;
+  const { dosTime, dosDate } = toDosDateTime(new Date());
+
+  const header: number[] = [];
+  const push16 = (value: number) => {
+    header.push(value & 0xff, (value >>> 8) & 0xff);
+  };
+  const push32 = (value: number) => {
+    header.push(value & 0xff, (value >>> 8) & 0xff, (value >>> 16) & 0xff, (value >>> 24) & 0xff);
+  };
+
+  // Local file header.
+  push32(0x04034b50);
+  push16(20);
+  push16(0);
+  push16(8);
+  push16(dosTime);
+  push16(dosDate);
+  push32(crc);
+  push32(compressedSize);
+  push32(fileSize);
+  push16(nameBytes.length);
+  push16(0);
+
+  const localHeader = new Uint8Array([...header, ...nameBytes]);
+  const localOffset = 0;
+  const centralOffset = localHeader.length + compressedSize;
+
+  const central: number[] = [];
+  const c16 = (value: number) => {
+    central.push(value & 0xff, (value >>> 8) & 0xff);
+  };
+  const c32 = (value: number) => {
+    central.push(value & 0xff, (value >>> 8) & 0xff, (value >>> 16) & 0xff, (value >>> 24) & 0xff);
+  };
+
+  // Central directory header.
+  c32(0x02014b50);
+  c16(20);
+  c16(20);
+  c16(0);
+  c16(8);
+  c16(dosTime);
+  c16(dosDate);
+  c32(crc);
+  c32(compressedSize);
+  c32(fileSize);
+  c16(nameBytes.length);
+  c16(0);
+  c16(0);
+  c16(0);
+  c16(0);
+  c32(0);
+  c32(localOffset);
+
+  const centralHeader = new Uint8Array([...central, ...nameBytes]);
+
+  const end: number[] = [];
+  const e16 = (value: number) => {
+    end.push(value & 0xff, (value >>> 8) & 0xff);
+  };
+  const e32 = (value: number) => {
+    end.push(value & 0xff, (value >>> 8) & 0xff, (value >>> 16) & 0xff, (value >>> 24) & 0xff);
+  };
+  e32(0x06054b50);
+  e16(0);
+  e16(0);
+  e16(1);
+  e16(1);
+  e32(centralHeader.length);
+  e32(centralOffset);
+  e16(0);
+
+  const endHeader = new Uint8Array(end);
+  const output = new Uint8Array(
+    localHeader.length + compressedSize + centralHeader.length + endHeader.length,
+  );
+  output.set(localHeader, 0);
+  output.set(compressed, localHeader.length);
+  output.set(centralHeader, localHeader.length + compressedSize);
+  output.set(endHeader, localHeader.length + compressedSize + centralHeader.length);
+  return output;
+}
+
 function parseRateLimitHeaders(headers: Headers): {
   limit: number | null;
   remaining: number | null;
@@ -1616,8 +1745,8 @@ serve(async (req) => {
     try {
       if (rawRecorder) {
         const rawPayload = rawRecorder.lines.join("\n") + "\n";
-        const stream = new Blob([rawPayload]).stream().pipeThrough(new CompressionStream("deflate-raw"));
-        const zipped = new Uint8Array(await new Response(stream).arrayBuffer());
+        const jsonlName = buildDropboxRawPath(connectorCode, new Date()).replace(/\.zip$/i, ".jsonl");
+        const zipped = await zipTextCompressed(jsonlName.split("/").slice(-1)[0], rawPayload);
         await dropboxUploadFileWithRetry(
           dropboxConfig,
           buildDropboxRawPath(connectorCode, new Date()),

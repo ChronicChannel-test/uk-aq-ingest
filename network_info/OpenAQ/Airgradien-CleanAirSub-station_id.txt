@@ -1,1 +1,2 @@
-189841
+station.id = 189841
+station_ref = 5200392
