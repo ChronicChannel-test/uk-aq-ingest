@@ -1,9 +1,10 @@
 -- Helper RPCs for the dispatcher (no pg_cron schedules).
 -- Functions live in uk_aq_core and read uk_aq_raw checkpoints.
 
+drop function if exists uk_aq_core.breathelondon_select_station_refs(integer, boolean);
+
 create or replace function uk_aq_core.breathelondon_select_station_refs(
   batch_limit integer default 10,
-  active_only boolean default true,
   stale_limit integer default 4
 )
 returns text[]
@@ -52,8 +53,7 @@ begin
       and stn.station_ref is not null
       and stn.removed_at is null
       and (
-        not active_only
-        or lower(coalesce(sm.attributes->>'enabled', '')) in ('y','yes','true','1')
+        lower(coalesce(sm.attributes->>'enabled', '')) in ('y','yes','true','1')
         or lower(coalesce(sm.attributes->>'site_active', '')) in ('y','yes','true','1')
       )
   ),

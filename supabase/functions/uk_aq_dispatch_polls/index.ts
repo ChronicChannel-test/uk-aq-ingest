@@ -710,13 +710,16 @@ async function loadLatestIngestRuns(): Promise<Map<string, IngestRunRow>> {
 }
 async function loadStationRefs(
   fn: string,
-  batchLimit: number,
-  activeOnly: boolean,
+  params: { batchLimit: number; activeOnly?: boolean; staleLimit?: number },
 ): Promise<string[]> {
-  const { data, error } = await postgrestRpcRequest<string[] | null>(fn, {
-    batch_limit: batchLimit,
-    active_only: activeOnly,
-  });
+  const payload: Record<string, unknown> = { batch_limit: params.batchLimit };
+  if (params.activeOnly !== undefined) {
+    payload.active_only = params.activeOnly;
+  }
+  if (params.staleLimit !== undefined) {
+    payload.stale_limit = params.staleLimit;
+  }
+  const { data, error } = await postgrestRpcRequest<string[] | null>(fn, payload);
   if (error) {
     throw new Error(`Failed to load station refs via ${fn}: ${error.message}`);
   }
@@ -1022,11 +1025,10 @@ serve(async (req) => {
         });
       } else if (connectorCode === "breathelondon") {
         const batchLimit = getBatchLimit(connector, connectorCode);
-        const stationRefs = await loadStationRefs(
-          "breathelondon_select_station_refs",
+        const stationRefs = await loadStationRefs("breathelondon_select_station_refs", {
           batchLimit,
-          true,
-        );
+          staleLimit: 4,
+        });
         runScope.stationRefs = stationRefs;
         if (!stationRefs.length) {
           runStatus = "skipped";
@@ -1074,11 +1076,10 @@ serve(async (req) => {
         }
       } else if (connectorCode === "erg_laqn") {
         const batchLimit = getBatchLimit(connector, connectorCode);
-        const stationRefs = await loadStationRefs(
-          "erg_laqn_select_station_refs",
+        const stationRefs = await loadStationRefs("erg_laqn_select_station_refs", {
           batchLimit,
-          true,
-        );
+          activeOnly: true,
+        });
         runScope.stationRefs = stationRefs;
         if (!stationRefs.length) {
           runStatus = "skipped";
