@@ -17,7 +17,7 @@ import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import requests
 from supabase import Client
@@ -184,29 +184,31 @@ def _chunk(values: List[Any], size: int) -> Iterable[List[Any]]:
         yield values[idx : idx + size]
 
 
-def _load_oldest_fetch_map(client, station_ids: List[int]) -> Dict[int, Optional[datetime]]:
-    fetch_map: Dict[int, Optional[datetime]] = {station_id: None for station_id in station_ids}
+def _load_oldest_fetch_map(
+    client, station_ids: List[int]
+) -> Dict[int, Tuple[Optional[datetime], Optional[datetime]]]:
+    fetch_map: Dict[int, Tuple[Optional[datetime], Optional[datetime]]] = {
+        station_id: (None, None) for station_id in station_ids
+    }
     if not station_ids:
         return fetch_map
     for chunk in _chunk(station_ids, 500):
         resp = (
-            client.table("breathelondon_timeseries_checkpoints")
-            .select("station_id,last_fetch_at")
+            client.table("breathelondon_station_checkpoints")
+            .select("station_id,next_due_at,last_polled_at")
             .in_("station_id", list(chunk))
             .execute()
         )
         rows = _response_data(resp) or []
+        now = datetime.now(timezone.utc)
         for row in rows:
             station_id = row.get("station_id")
             if station_id is None:
                 continue
-            parsed = _parse_timestamp(row.get("last_fetch_at"))
-            if not parsed:
-                continue
             station_key = int(station_id)
-            existing = fetch_map.get(station_key)
-            if existing is None or parsed < existing:
-                fetch_map[station_key] = parsed
+            last_polled = _parse_timestamp(row.get("last_polled_at"))
+            next_due = _parse_timestamp(row.get("next_due_at")) or now
+            fetch_map[station_key] = (last_polled, next_due)
     return fetch_map
 
 
@@ -262,7 +264,8 @@ def main() -> int:
     station_rows.sort(
         key=lambda row: (
             0 if fetch_map.get(int(row["id"])) is None else 1,
-            fetch_map.get(int(row["id"])) or min_stamp,
+            (fetch_map.get(int(row["id"])) or (None, None))[0] or min_stamp,
+            (fetch_map.get(int(row["id"])) or (None, None))[1] or min_stamp,
             str(row.get("station_ref") or ""),
         )
     )

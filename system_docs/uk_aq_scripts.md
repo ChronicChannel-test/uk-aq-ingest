@@ -888,7 +888,7 @@ Environment:
 Notes:
 - `--active-only` honors `station_metadata.attributes.enabled` or `station_metadata.attributes.site_active`.
 - `--skip-stations` avoids `ListSensors` and uses the Supabase station list instead.
-- Stations are ordered by oldest `breathelondon_timeseries_checkpoints.last_fetch_at` (nulls first).
+- Stations are ordered by `breathelondon_station_checkpoints.last_polled_at` (nulls first), then `next_due_at`.
 
 ### `scripts/breathelondon/breathelondon_list_stations.py`
 Purpose:

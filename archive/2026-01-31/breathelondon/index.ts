@@ -457,32 +457,6 @@ async function sleep(ms: number): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function appendSample(values: number[] | null, value: number, maxSamples = 30): number[] {
-  const cleaned = Array.isArray(values) ? values.filter((v) => Number.isFinite(v)) : [];
-  const next = [...cleaned, value].slice(-maxSamples);
-  return next;
-}
-
-function minSeconds(values: number[] | null): number | null {
-  if (!Array.isArray(values) || values.length === 0) {
-    return null;
-  }
-  let minValue = Number.POSITIVE_INFINITY;
-  for (const value of values) {
-    if (!Number.isFinite(value)) {
-      continue;
-    }
-    const rounded = Math.max(0, Math.round(value));
-    if (rounded < minValue) {
-      minValue = rounded;
-    }
-  }
-  if (!Number.isFinite(minValue)) {
-    return null;
-  }
-  return minValue;
-}
-
 async function fetchJson(
   url: string,
   headers: Record<string, string>,
@@ -854,21 +828,23 @@ async function fetchTimeseriesIds(
   return mapping;
 }
 
-async function fetchStationCheckpoints(
+async function fetchCheckpoints(
   stationIds: number[],
-): Promise<Record<number, Record<string, unknown>>> {
-  if (!stationIds.length) {
+  speciesList: string[],
+): Promise<Record<string, Record<string, unknown>>> {
+  if (!stationIds.length || !speciesList.length) {
     return {};
   }
-  const checkpoints: Record<number, Record<string, unknown>> = {};
+  const checkpoints: Record<string, Record<string, unknown>> = {};
   for (let idx = 0; idx < stationIds.length; idx += 200) {
     const chunk = stationIds.slice(idx, idx + 200).map(String);
     const { data } = await postgrestRequest<Array<Record<string, unknown>>>(
       "GET",
-      "breathelondon_station_checkpoints",
+      "breathelondon_timeseries_checkpoints",
       {
-        select: "station_id,next_due_at,last_observed_at,ingest_lag_samples,last_polled_at",
+        select: "station_id,species,timeseries_id,last_observed_at,last_fetch_at,last_error",
         station_id: postgrestIn(chunk),
+        species: postgrestIn(speciesList),
       },
       undefined,
       undefined,
@@ -876,23 +852,24 @@ async function fetchStationCheckpoints(
     );
     for (const row of data ?? []) {
       const stationId = Number(row.station_id);
-      if (!Number.isFinite(stationId)) {
+      const species = String(row.species);
+      if (!Number.isFinite(stationId) || !species) {
         continue;
       }
-      checkpoints[stationId] = row;
+      checkpoints[`${stationId}:${species}`] = row;
     }
   }
   return checkpoints;
 }
 
-async function upsertStationCheckpoints(rows: Record<string, unknown>[]): Promise<number> {
+async function upsertCheckpoints(rows: Record<string, unknown>[]): Promise<number> {
   if (!rows.length) {
     return 0;
   }
   await postgrestRequest(
     "POST",
-    "breathelondon_station_checkpoints",
-    { on_conflict: "station_id" },
+    "breathelondon_timeseries_checkpoints",
+    { on_conflict: "station_id,species" },
     rows,
     "resolution=merge-duplicates,return=minimal",
     UK_AQ_RAW_SCHEMA,
@@ -1864,7 +1841,7 @@ serve(async (req) => {
               );
 
               const stationIds = Array.from(new Set(Object.values(stationIdMap)));
-              const checkpoints = await fetchStationCheckpoints(stationIds);
+              const checkpoints = await fetchCheckpoints(stationIds, speciesList);
 
               const now = floorToHour(new Date());
               const timeseriesUpdates: Array<{ id: number; last_value: number; last_value_at: string }> = [];
@@ -1872,8 +1849,6 @@ serve(async (req) => {
               observationsUpserted = 0;
               let timeBudgetHit = false;
               let stationsProcessed = 0;
-              const nowIso = new Date().toISOString();
-              const nowMsForLag = Date.now();
 
               const flushUpdates = async () => {
                 if (dryRun) {
@@ -1883,7 +1858,7 @@ serve(async (req) => {
                   timeseriesUpdated += await updateTimeseriesLastValues(timeseriesUpdates.splice(0), errors);
                 }
                 if (checkpointRows.length) {
-                  checkpointsUpserted += await upsertStationCheckpoints(checkpointRows.splice(0));
+                  checkpointsUpserted += await upsertCheckpoints(checkpointRows.splice(0));
                 }
               };
 
@@ -1893,26 +1868,20 @@ serve(async (req) => {
                 if (!stationId) {
                   continue;
                 }
-                const checkpoint = checkpoints[stationId] ?? {};
-                const previousLastObserved = parseObservationTimestamp(checkpoint.last_observed_at);
-                const previousNextDue = asString(checkpoint.next_due_at);
-                let updatedLastObserved = previousLastObserved ?? null;
-                let nextDueAt = previousNextDue ?? null;
-                let lagSamples = Array.isArray(checkpoint.ingest_lag_samples)
-                  ? checkpoint.ingest_lag_samples.filter((value) => Number.isFinite(value))
-                  : [];
-                let stationLatestObserved = previousLastObserved ?? null;
-                let stationHasNewObservation = false;
-
                 for (const species of speciesList) {
                   const timeseriesRef = `${stationRef}:${species}`;
                   const timeseriesId = timeseriesIdMap[timeseriesRef];
                   if (!timeseriesId) {
                     continue;
                   }
-                  const checkpointDate = previousLastObserved ? new Date(previousLastObserved) : null;
-                  let lastObserved = previousLastObserved ?? null;
+                  const checkpointKey = `${stationId}:${species}`;
+                  const checkpoint = checkpoints[checkpointKey] ?? {};
+                  const checkpointObserved = parseObservationTimestamp(checkpoint.last_observed_at);
+                  const checkpointDate = checkpointObserved ? new Date(checkpointObserved) : null;
+                  let lastObserved = checkpointObserved ?? null;
                   let lastValue: number | null = null;
+                  let lastError: string | null = null;
+
                   let startTime: Date;
                   if (checkpointDate) {
                     startTime = checkpointDate;
@@ -1930,6 +1899,7 @@ serve(async (req) => {
 
                   while (cursor < now) {
                     if (shouldStop()) {
+                      lastError = "runtime_budget_exceeded";
                       timeBudgetHit = true;
                       break;
                     }
@@ -1961,6 +1931,7 @@ serve(async (req) => {
                         lastValue = windowValue;
                       }
                     } catch (error) {
+                      lastError = error instanceof Error ? error.message : String(error);
                       break;
                     }
                     cursor = endTime;
@@ -1978,50 +1949,20 @@ serve(async (req) => {
                     seriesPolled += 1;
                   }
 
-                  if (lastObserved && (!stationLatestObserved || lastObserved > stationLatestObserved)) {
-                    stationLatestObserved = lastObserved;
-                    stationHasNewObservation = true;
-                  }
+                  checkpointRows.push({
+                    station_id: stationId,
+                    species,
+                    timeseries_id: timeseriesId,
+                    last_observed_at: lastObserved,
+                    last_fetch_at: new Date().toISOString(),
+                    last_error: lastError,
+                    updated_at: new Date().toISOString(),
+                  });
                 }
 
                 if (timeBudgetHit) {
                   break;
                 }
-
-                if (stationLatestObserved && (!updatedLastObserved || stationLatestObserved > updatedLastObserved)) {
-                  updatedLastObserved = stationLatestObserved;
-                }
-
-                if (stationHasNewObservation && updatedLastObserved) {
-                  const lagSeconds = Math.max(
-                    0,
-                    Math.round((nowMsForLag - Date.parse(updatedLastObserved)) / 1000),
-                  );
-                  if (Number.isFinite(lagSeconds)) {
-                    lagSamples = appendSample(lagSamples, lagSeconds);
-                  }
-                  if (lagSamples.length < 10) {
-                    nextDueAt = new Date(nowMsForLag + 5 * 60 * 1000).toISOString();
-                  } else {
-                    const lagSecondsMin = minSeconds(lagSamples) ?? 5 * 60;
-                    const baseMs = Date.parse(updatedLastObserved);
-                    if (Number.isFinite(baseMs)) {
-                      nextDueAt = new Date(baseMs + (3600 + lagSecondsMin) * 1000).toISOString();
-                    } else {
-                      nextDueAt = nowIso;
-                    }
-                  }
-                } else if (!previousNextDue) {
-                  nextDueAt = new Date(nowMsForLag + 5 * 60 * 1000).toISOString();
-                }
-
-                checkpointRows.push({
-                  station_id: stationId,
-                  next_due_at: nextDueAt,
-                  last_observed_at: updatedLastObserved,
-                  ingest_lag_samples: lagSamples,
-                  last_polled_at: nowIso,
-                });
 
                 stationsProcessed += 1;
 

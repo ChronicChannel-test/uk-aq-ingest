@@ -106,14 +106,15 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
 - Triggered by: `uk_aq_dispatch_polls` (external scheduler). Helper RPCs live in `supabase/uk_aq_polling_helpers.sql`.
 - Writes:
   - `connectors` (last_polled_at updates), `stations`, `phenomena`, `timeseries`, `observations`
-  - `breathelondon_timeseries_checkpoints` (per-station/species checkpoints)
+  - `breathelondon_station_checkpoints` (per-station checkpoints)
 - Notes:
   - Requires an existing connector row; the ingest does not create connectors.
   - Uses `BREATHELONDON_API_KEY` for every request.
   - Supports `skip_stations` to avoid station upserts; when set, stations are loaded from Supabase instead of `ListSensors`.
   - Supports `active_only` to limit polling to stations marked `enabled` or `site_active` in metadata.
-  - Supports `station_refs` to limit polling to a specific set of station refs.
-  - Supports `debug=true` to include a debug block in the response (Dropbox config status, no secrets).
+- Supports `station_refs` to limit polling to a specific set of station refs.
+- Uses `uk_aq_raw.breathelondon_station_checkpoints` for per-station scheduling (`next_due_at`, `ingest_lag_samples`).
+- Supports `debug=true` to include a debug block in the response (Dropbox config status, no secrets).
   - Logs cron secret mismatch diagnostics (presence/length only) when authorization fails.
   - Logs incoming request auth header presence (no secrets) for debugging.
   - Response includes `stations_requested`/`stations_selected` when station refs are supplied.

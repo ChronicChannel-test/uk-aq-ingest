@@ -16,7 +16,7 @@
 
 ## Ingest notes
 - Observations are pulled per SiteCode and species (`IPM25`, `INO2`) in hourly windows.
-- Checkpoints live in `breathelondon_timeseries_checkpoints` to avoid re-fetching history.
+- Checkpoints live in `breathelondon_station_checkpoints` to avoid re-fetching history.
 - Set a modest polling cadence and window sizes to comply with the fair-use terms.
 - Connector rows are created by the stations sync; ingests expect the connector to exist and do not create it.
 
@@ -30,9 +30,10 @@
 - `timeseries.timeseries_ref`: internal ref (`<station_ref>:<species>`).
 - `timeseries.last_value_at`: timestamp of the most recent observation stored for that timeseries.
 - `observations.observed_at`: timestamp of each observation row.
-- `breathelondon_timeseries_checkpoints.last_fetch_at`: when the ingest last attempted to fetch for a station/species (written even if no data).
-- `breathelondon_timeseries_checkpoints.last_observed_at`: newest observation timestamp successfully fetched for that station/species.
-- `breathelondon_timeseries_checkpoints.last_error`: most recent error message during fetch (if any).
+- `breathelondon_station_checkpoints.next_due_at`: next scheduled poll time.
+- `breathelondon_station_checkpoints.last_observed_at`: newest observation timestamp successfully fetched for the station.
+- `breathelondon_station_checkpoints.ingest_lag_samples`: recent ingest lag samples (seconds).
+- `breathelondon_station_checkpoints.last_polled_at`: last time the station was polled.
 
 ## Terms highlights
 - Attribution required: "Powered by Breathe London Communities" linked to `https://breathelondon-communities.org`.

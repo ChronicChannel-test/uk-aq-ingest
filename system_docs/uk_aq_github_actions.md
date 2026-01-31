@@ -40,7 +40,7 @@ SB_UK_AQ_CRON_SECRET=...
 - Schedule: manual only (cron handles production batch polling).
 - Purpose: batch station refs and invoke `ingest_breathelondon` per chunk for manual runs.
 - Script: `python3 scripts/breathelondon/breathelondon_batch.py --connector-code breathelondon --batch-size 10 --active-only --skip-stations`.
-- Order: oldest `breathelondon_timeseries_checkpoints.last_fetch_at` first (nulls first).
+- Order: `breathelondon_station_checkpoints.last_polled_at` asc (nulls first), then `next_due_at` asc.
 - Secrets: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SB_ANON_JWT`, `SB_UK_AQ_CRON_SECRET`.
 
 ### `uk_aq_stations_daily.yml`

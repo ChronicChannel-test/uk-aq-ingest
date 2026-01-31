@@ -100,6 +100,21 @@ create table if not exists breathelondon_timeseries_checkpoints (
 create index if not exists breathelondon_timeseries_checkpoints_last_obs_idx
   on breathelondon_timeseries_checkpoints(last_observed_at);
 
+create table if not exists breathelondon_station_checkpoints (
+  station_id bigint primary key references stations(id) on delete cascade,
+  next_due_at timestamptz,
+  last_observed_at timestamptz,
+  ingest_lag_samples int[] not null default '{}'::int[],
+  last_polled_at timestamptz,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+create index if not exists breathelondon_station_checkpoints_next_due_at_idx
+  on breathelondon_station_checkpoints(next_due_at);
+create index if not exists breathelondon_station_checkpoints_last_polled_at_idx
+  on breathelondon_station_checkpoints(last_polled_at);
+
 create table if not exists erg_laqn_station_checkpoints (
   station_id bigint primary key references stations(id) on delete cascade,
   last_polled_at timestamptz,
