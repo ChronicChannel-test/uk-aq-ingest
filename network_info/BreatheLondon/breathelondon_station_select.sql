@@ -20,7 +20,6 @@ candidates as (
     osc.station_id as checkpoint_station_id,
     osc.next_due_at,
     osc.last_observed_at,
-    osc.observ_interval_samples,
     osc.ingest_lag_samples,
     osc.last_polled_at,
     osc.created_at,

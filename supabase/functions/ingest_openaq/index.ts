@@ -2030,8 +2030,6 @@ serve(async (req) => {
 
   logLine("INFO", "OpenAQ ingest complete", {
     locations: locations.length,
-    locations_fetch_skipped: !locationsFetched,
-    station_fetch_enabled: locationsFetched,
     station_fetch_enabled: locationsFetched,
     stations_selected: stationsSelected,
     stations_polled: polledStationIds.size,
@@ -2105,7 +2103,7 @@ serve(async (req) => {
     series_polled: seriesPolled,
     window_hours: windowHours,
     last_observed_at: lastObservedAt,
-    locations_fetch_skipped: !locationsFetched,
+    station_fetch_enabled: locationsFetched,
     partial: timeBudgetHit,
     stopped_reason: stoppedReason,
     rate_limit_remaining: rateLimitRemaining,
