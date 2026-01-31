@@ -176,7 +176,7 @@ function extractRunMetrics(connectorCode: string, payload: unknown): RunMetrics 
     stations_updated: stations,
     observations_upserted: observations,
     timeseries_updated: timeseries,
-    series_polled: null,
+    series_polled: seriesPolled,
   };
 }
 

@@ -35,6 +35,7 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
   - Uses `uk_aq_public.uk_aq_rpc_dispatch_claim` to atomically claim a connector slot before dispatch.
   - Updates `connectors.last_run_start`, `last_run_end`, `last_run_status`, `last_run_message`, and `last_polled_at` for each attempted dispatch.
   - Inserts per-run summaries into `uk_aq_ingest_runs` (status, counts, last_observed_at, response payload) for dashboard feeds.
+  - Stores `series_polled` from ingest responses when available (used by OpenAQ and Breathe London).
   - Logs whether the cron secret is present (boolean + length) for debugging.
   - Logs each dispatched edge call with the target function name and cron secret presence (length only).
   - Writes dispatch errors to `error_logs`.
@@ -116,6 +117,7 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
   - Logs cron secret mismatch diagnostics (presence/length only) when authorization fails.
   - Logs incoming request auth header presence (no secrets) for debugging.
   - Response includes `stations_requested`/`stations_selected` when station refs are supplied.
+  - Response includes `series_polled` (timeseries with last-value updates during the run).
   - Enforces a runtime budget and will return partial progress with `partial=true` when exceeded.
   - Updates `connectors.last_polled_at` on successful non-dry runs.
 - Logs:

@@ -14,7 +14,7 @@ Stores per-run dispatcher summaries for dashboard ingest feeds.
 - stations_updated: Count of stations updated (when available).
 - observations_upserted: Count of observations upserted (when available).
 - timeseries_updated: Count of timeseries updated (when available).
-- series_polled: Count of timeseries polled (UK-AIR SOS).
+- series_polled: Count of timeseries polled (UK-AIR SOS, OpenAQ, Breathe London when reported).
 - response_status: HTTP status returned by the ingest edge function.
 - response_payload: Raw response payload from the ingest edge function.
 - created_at: Row creation timestamp (default now()).

@@ -1564,6 +1564,7 @@ serve(async (req) => {
   let connector: ConnectorRow | null = null;
   let resolvedConnectorCode: string | null = null;
   let observationsUpserted = 0;
+  let seriesPolled = 0;
   let timeseriesUpdated = 0;
   let checkpointsUpserted = 0;
   let stationsSelected = 0;
@@ -1945,6 +1946,7 @@ serve(async (req) => {
 
                   if (lastObserved && lastValue !== null) {
                     timeseriesUpdates.push({ id: timeseriesId, last_value: lastValue, last_value_at: lastObserved });
+                    seriesPolled += 1;
                   }
 
                   checkpointRows.push({
@@ -1982,6 +1984,7 @@ serve(async (req) => {
                 species: speciesList,
                 observations_upserted: observationsUpserted,
                 timeseries_updated: timeseriesUpdated,
+                series_polled: seriesPolled,
                 checkpoints_upserted: checkpointsUpserted,
                 dry_run: dryRun,
                 partial: timeBudgetHit,
@@ -2045,6 +2048,7 @@ serve(async (req) => {
     stations_selected: stationsSelected,
     observations_upserted: observationsUpserted,
     timeseries_updated: timeseriesUpdated,
+    series_polled: seriesPolled,
     checkpoints_upserted: checkpointsUpserted,
     errors: errors.length,
   });
