@@ -940,6 +940,11 @@ function buildStationName(
   if (!baseName) {
     return baseName;
   }
+  const providerToken = providerName ? providerName.trim().toLowerCase() : null;
+  const ownerToken = ownerName ? ownerName.trim().toLowerCase() : null;
+  if (ownerName && ownerToken && providerToken && ownerToken === providerToken) {
+    return baseName;
+  }
   if (ownerName) {
     return `${baseName} - ${ownerName}`;
   }

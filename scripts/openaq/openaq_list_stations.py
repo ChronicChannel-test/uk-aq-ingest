@@ -132,6 +132,8 @@ def _station_name(location: Dict[str, Any]) -> Optional[str]:
     owner = _normalize_owner_name(_owner_name(location))
     if name and provider:
         base = f"{provider} {name}"
+        if owner and owner.strip().lower() == provider.strip().lower():
+            return base
         return f"{base} - {owner}" if owner else base
     return name
 
