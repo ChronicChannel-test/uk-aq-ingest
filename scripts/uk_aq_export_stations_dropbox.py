@@ -157,6 +157,10 @@ def _stations_month_folder() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m")
 
 
+def _summary_date() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+
 def _error_log_dir() -> Path:
     log_dir = Path(DEFAULT_ERROR_LOG_DIR) / _error_log_date()
     log_dir.mkdir(parents=True, exist_ok=True)
@@ -490,6 +494,7 @@ def main() -> int:
         print(f"Uploaded {output_path.name} to Dropbox: {dropbox_path}")
 
         if not args.skip_summary:
+            date_tag = _summary_date()
             summary_name = (args.summary_output or DEFAULT_SUMMARY_FILENAME)
             summary_name = summary_name.replace("{YYYY-MM-DD}", date_tag).replace("{date}", date_tag)
             summary_path = Path(summary_name)
