@@ -889,6 +889,15 @@ serve(async (req) => {
     dueCandidates,
     settings.dispatcher_parallel_ingest ? settings.max_runs_per_dispatch_call : 1,
   );
+  console.log("dispatch_selection", {
+    max_runs: settings.dispatcher_parallel_ingest ? settings.max_runs_per_dispatch_call : 1,
+    due_candidates: dueCandidates.map((item) => ({
+      connector_code: item.connectorCode,
+      last_polled_ms: item.lastPolledMs,
+    })),
+    selected: selected.map((item) => item.connectorCode),
+    skipped: skipped.map((item) => item.connectorCode),
+  });
 
   for (const candidate of skipped) {
     results.set(candidate.connectorCode, {
@@ -902,12 +911,13 @@ serve(async (req) => {
     const connectorCode = candidate.connectorCode;
     const connector = candidate.connector;
     const runStart = new Date();
-    const claimed = await dispatchClaim(
-      connectorCode,
-      runStart.toISOString(),
-      IN_FLIGHT_TIMEOUT_MINUTES,
-    );
+      const claimed = await dispatchClaim(
+        connectorCode,
+        runStart.toISOString(),
+        IN_FLIGHT_TIMEOUT_MINUTES,
+      );
     if (!claimed) {
+      console.warn("dispatch_claim_failed", { connector_code: connectorCode });
       results.set(connectorCode, {
         connector_code: connectorCode,
         status: "skipped",
@@ -1028,6 +1038,10 @@ serve(async (req) => {
         const stationRefs = await loadStationRefs("breathelondon_select_station_refs", {
           batchLimit,
           staleLimit: 4,
+        });
+        console.log("breathelondon_station_refs", {
+          count: stationRefs.length,
+          batch_limit: batchLimit,
         });
         runScope.stationRefs = stationRefs;
         if (!stationRefs.length) {
