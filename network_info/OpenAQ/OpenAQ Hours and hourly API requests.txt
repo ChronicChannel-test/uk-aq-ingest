@@ -1,0 +1,127 @@
+Ah got it — **OpenAQ**, not Breathe London Communities 👍
+Yes, **it is essentially the same idea**, and in OpenAQ it *is* documented, just not very loudly.
+
+I’ll be precise.
+
+---
+
+## OpenAQ v3: what those two endpoints mean
+
+### `/v3/sensors/{sensors_id}/measurements/hourly`
+
+**This returns the data.**
+
+* Hourly **aggregated measurements**
+* Each row includes:
+
+  * `datetime`
+  * `parameter` (pm25, pm10, no2, etc.)
+  * `value`
+  * `unit`
+  * `location_id`, `sensor_id`, etc.
+
+This is the endpoint you use to:
+
+* Ingest observations
+* Plot time series
+* Calculate stats
+
+Think:
+**“Give me the hourly air quality readings.”**
+
+---
+
+### `/v3/sensors/{sensors_id}/hours`
+
+**This returns availability metadata, not values.**
+
+* A list of **hours for which OpenAQ has data**
+* Typically just timestamps or hour buckets
+* No pollutant concentrations
+
+This exists to answer:
+
+* “Which hours exist for this sensor?”
+* “Are there gaps?”
+* “What range should I backfill?”
+
+Think:
+**“Tell me which hourly slots have data.”**
+
+---
+
+## Why OpenAQ split them
+
+This is a deliberate OpenAQ design choice, mainly for:
+
+### 1. Efficient backfilling
+
+You can:
+
+1. Call `/hours`
+2. Diff against your DB
+3. Fetch only missing hours via `/measurements/hourly`
+
+This avoids hammering the API for empty or already-ingested periods.
+
+### 2. Rate limits
+
+`/hours` responses are:
+
+* Much smaller
+* Cheaper against rate limits
+* Ideal for planning queries
+
+### 3. Consistency across resolutions
+
+OpenAQ does the same pattern for:
+
+* `measurements/latest`
+* `measurements/daily`
+* time-index endpoints like `hours`, `days`
+
+---
+
+## Does OpenAQ say this explicitly?
+
+Yes, but **indirectly**.
+
+In the OpenAQ v3 docs and schema descriptions:
+
+* `measurements/*` endpoints are described as **data retrieval**
+* `hours` is described as **time coverage / availability**
+
+It’s clearer if you read the API as:
+
+> “Measurements endpoints return observations.
+> Time-index endpoints describe when observations exist.”
+
+But you’re right — if you just look at the endpoint list, the distinction is **not obvious at all**.
+
+---
+
+## Practical guidance (what you should do)
+
+If you’re building ingestion logic:
+
+* Use `/hours` to:
+
+  * Check completeness
+  * Detect gaps
+  * Drive backfill jobs
+* Use `/measurements/hourly` only when you actually need values
+
+This pattern fits perfectly with:
+
+* OpenAQ’s 60 requests/min limit
+* Large multi-sensor backfills
+* Idempotent ingestion pipelines
+
+---
+
+## One-line OpenAQ answer
+
+* **`/hours` = coverage index**
+* **`/measurements/hourly` = actual data**
+
+If you want, I can sketch a **clean OpenAQ backfill algorithm** that works across *all* networks (including PurpleAir, AirGradient, LAQN, Breathe London) without special cases.

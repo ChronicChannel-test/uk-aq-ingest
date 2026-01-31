@@ -87,6 +87,21 @@ type OpenAQStationCheckpoint = {
   last_polled_at: string | null;
 };
 
+type OpenAQTimeseriesCheckpoint = {
+  station_id: number;
+  timeseries_id: number;
+  next_due_at: string | null;
+  last_observed_at: string | null;
+  ingest_lag_samples: number[] | null;
+  last_polled_at: string | null;
+};
+
+type OpenAQHourlyRecord = {
+  datetime?: { utc?: string | null } | null;
+  value?: number | null;
+  sensorsId?: number | null;
+};
+
 const DEFAULT_BASE_URL = "https://api.openaq.org/v3";
 const DEFAULT_CONNECTOR_CODE = "openaq";
 const DEFAULT_SERVICE_LABEL = "OpenAQ";
@@ -288,6 +303,44 @@ async function upsertOpenaqStationCheckpoints(
   );
   if (error) {
     throw new Error(`OpenAQ checkpoints upsert failed: ${error.message}`);
+  }
+  return data && data[0] ? Number(data[0].rows_upserted) : 0;
+}
+
+async function fetchOpenaqTimeseriesCheckpoints(
+  stationIds: number[],
+): Promise<Record<number, OpenAQTimeseriesCheckpoint>> {
+  if (!stationIds.length) {
+    return {};
+  }
+  const { data, error } = await rpcRequest<OpenAQTimeseriesCheckpoint[]>(
+    "uk_aq_rpc_openaq_timeseries_checkpoints_select",
+    {
+      station_ids: stationIds,
+    },
+  );
+  if (error) {
+    throw new Error(`OpenAQ timeseries checkpoints fetch failed: ${error.message}`);
+  }
+  const mapping: Record<number, OpenAQTimeseriesCheckpoint> = {};
+  for (const row of data ?? []) {
+    mapping[Number(row.timeseries_id)] = row;
+  }
+  return mapping;
+}
+
+async function upsertOpenaqTimeseriesCheckpoints(
+  rows: Array<Record<string, unknown>>,
+): Promise<number> {
+  if (!rows.length) {
+    return 0;
+  }
+  const { data, error } = await rpcRequest<Array<{ rows_upserted: number }>>(
+    "uk_aq_rpc_openaq_timeseries_checkpoints_upsert",
+    { rows },
+  );
+  if (error) {
+    throw new Error(`OpenAQ timeseries checkpoints upsert failed: ${error.message}`);
   }
   return data && data[0] ? Number(data[0].rows_upserted) : 0;
 }
@@ -857,6 +910,48 @@ async function listLatestForLocation(
   return Array.isArray(payload?.results) ? payload.results as OpenAQLatestRecord[] : [];
 }
 
+async function listHourlyMeasurements(
+  sensorId: string,
+  datetimeFrom: string | null,
+  datetimeTo: string | null,
+  rawRecorder?: RawRecorder | null,
+): Promise<OpenAQHourlyRecord[]> {
+  const results: OpenAQHourlyRecord[] = [];
+  const limit = Number.isFinite(OPENAQ_PAGE_LIMIT) && OPENAQ_PAGE_LIMIT > 0
+    ? Math.min(OPENAQ_PAGE_LIMIT, 1000)
+    : DEFAULT_PAGE_LIMIT;
+  let page = 1;
+  while (true) {
+    if (rateLimitStop) {
+      break;
+    }
+    const params: Record<string, string | number> = { limit, page };
+    if (datetimeFrom) {
+      params.datetime_from = datetimeFrom;
+    }
+    if (datetimeTo) {
+      params.datetime_to = datetimeTo;
+    }
+    const payload = await openaqRequest(
+      `sensors/${sensorId}/measurements/hourly`,
+      params,
+      rawRecorder,
+    );
+    const pageResults = Array.isArray(payload?.results)
+      ? payload.results as OpenAQHourlyRecord[]
+      : [];
+    results.push(...pageResults);
+    if (!pageResults.length || pageResults.length < limit) {
+      break;
+    }
+    page += 1;
+    if (Number.isFinite(OPENAQ_MAX_PAGES) && OPENAQ_MAX_PAGES > 0 && page > OPENAQ_MAX_PAGES) {
+      break;
+    }
+  }
+  return results;
+}
+
 async function runPool<T>(
   items: T[],
   concurrency: number,
@@ -877,6 +972,46 @@ async function runPool<T>(
     }
   }
   await Promise.all(pool);
+}
+
+function recordObservation(
+  observationsBySensor: Map<string, Map<string, number | null>>,
+  latestBySensor: Map<string, { observed_at: string; value: number | null }>,
+  latestObservedByStationId: Map<number, string>,
+  sensorId: string,
+  observedAt: string,
+  value: number | null,
+  stationId: number | null,
+  nowMs: number,
+  windowMs: number | null,
+): void {
+  const observedMs = Date.parse(observedAt);
+  if (!Number.isFinite(observedMs)) {
+    return;
+  }
+  if (windowMs && observedMs < nowMs - windowMs) {
+    return;
+  }
+  let sensorObservations = observationsBySensor.get(sensorId);
+  if (!sensorObservations) {
+    sensorObservations = new Map();
+    observationsBySensor.set(sensorId, sensorObservations);
+  }
+  if (!sensorObservations.has(observedAt)) {
+    sensorObservations.set(observedAt, value);
+  } else if (sensorObservations.get(observedAt) === null && value !== null) {
+    sensorObservations.set(observedAt, value);
+  }
+  const existing = latestBySensor.get(sensorId);
+  if (!existing || observedAt > existing.observed_at) {
+    latestBySensor.set(sensorId, { observed_at: observedAt, value });
+  }
+  if (stationId !== null) {
+    const current = latestObservedByStationId.get(stationId);
+    if (!current || observedAt > current) {
+      latestObservedByStationId.set(stationId, observedAt);
+    }
+  }
 }
 
 function resolveLocationId(location: OpenAQLocation): string | null {
@@ -1468,77 +1603,27 @@ serve(async (req) => {
   const sensorMap = locationsFetched ? collectSensors(locations) : new Map();
   const phenomenonIds = locationsFetched ? await upsertPhenomena(connectorId, parameters) : {};
 
-  const latestBySensor = new Map<string, { observed_at: string; value: number | null }>();
-  const latestObservedByStationId = new Map<number, string>();
-  const polledStationIds = new Set<number>();
-  const nowMs = Date.now();
-  const windowMs = Number.isFinite(windowHours) && windowHours > 0
-    ? windowHours * 60 * 60 * 1000
-    : null;
-
-  const locationIds = locationsFetched
-    ? locations
-      .map((location) => resolveLocationId(location))
-      .filter((id): id is string => Boolean(id))
-    : stationRefs;
-
-  await runPool(locationIds, OPENAQ_CONCURRENCY, async (locationId) => {
-    if (shouldStop()) {
-      timeBudgetHit = true;
-      return;
-    }
-    const stationId = stationIdByRef[locationId];
-    if (stationId) {
-      polledStationIds.add(Number(stationId));
-    }
-    let latest: OpenAQLatestRecord[] = [];
-    try {
-      latest = await listLatestForLocation(locationId, rawRecorder);
-    } catch (err) {
-      await logError({
-        severity: "warn",
-        message: "OpenAQ latest fetch failed",
-        connector_id: connector.id,
-        context: { location_id: locationId, error: String(err) },
-      });
-      return;
-    }
-    for (const record of latest) {
-      const sensorId = record?.sensorsId;
-      const observedAt = record?.datetime?.utc;
-      if (!sensorId || !observedAt) {
+  const sensorIdsByStationId = new Map<number, string[]>();
+  const stationIdBySensorId = new Map<string, number>();
+  if (locationsFetched) {
+    for (const [sensorId, meta] of sensorMap.entries()) {
+      const stationId = Number(stationIdByRef[meta.locationId]);
+      if (!Number.isFinite(stationId)) {
         continue;
       }
-      const observedMs = Date.parse(observedAt);
-      if (!Number.isFinite(observedMs)) {
-        continue;
-      }
-      if (windowMs && observedMs < nowMs - windowMs) {
-        continue;
-      }
-      const value = record?.value;
-      const key = String(sensorId);
-      const existing = latestBySensor.get(key);
-      if (!existing || observedAt > existing.observed_at) {
-        latestBySensor.set(key, { observed_at: observedAt, value: value ?? null });
-      }
-      if (stationId) {
-        const current = latestObservedByStationId.get(Number(stationId));
-        if (!current || observedAt > current) {
-          latestObservedByStationId.set(Number(stationId), observedAt);
-        }
+      stationIdBySensorId.set(sensorId, stationId);
+      const existing = sensorIdsByStationId.get(stationId);
+      if (existing) {
+        existing.push(sensorId);
+      } else {
+        sensorIdsByStationId.set(stationId, [sensorId]);
       }
     }
-  }, () => {
-    if (shouldStop()) {
-      timeBudgetHit = true;
-      return true;
-    }
-    return false;
-  });
+  }
 
   const timeseriesRows: Array<Record<string, unknown>> = [];
   const timeseriesRefs: string[] = [];
+  let timeseriesIdByRef: Record<string, number> = {};
   if (locationsFetched) {
     for (const [sensorId, meta] of sensorMap.entries()) {
       const stationId = stationIdByRef[meta.locationId];
@@ -1561,44 +1646,197 @@ serve(async (req) => {
       });
       timeseriesRefs.push(sensorId);
     }
-  } else {
-    for (const sensorId of latestBySensor.keys()) {
+    if (!dryRun) {
+      await upsertTimeseries(timeseriesRows);
+    }
+    if (timeseriesRefs.length) {
+      timeseriesIdByRef = await fetchTimeseriesIds(
+        connectorId,
+        OPENAQ_SERVICE_REF,
+        timeseriesRefs,
+      );
+    }
+  }
+
+  let timeseriesCheckpointById: Record<number, OpenAQTimeseriesCheckpoint> = {};
+  if (locationsFetched && stationIds.length) {
+    try {
+      timeseriesCheckpointById = await fetchOpenaqTimeseriesCheckpoints(stationIds);
+    } catch (err) {
+      await logError({
+        severity: "warn",
+        message: "OpenAQ timeseries checkpoints fetch failed",
+        connector_id: connector.id,
+        context: { error: String(err) },
+      });
+      timeseriesCheckpointById = {};
+    }
+  }
+
+  const latestBySensor = new Map<string, { observed_at: string; value: number | null }>();
+  const observationsBySensor = new Map<string, Map<string, number | null>>();
+  const latestObservedByStationId = new Map<number, string>();
+  const polledStationIds = new Set<number>();
+  const nowMs = Date.now();
+  const windowMs = Number.isFinite(windowHours) && windowHours > 0
+    ? windowHours * 60 * 60 * 1000
+    : null;
+
+  const locationIds = locationsFetched
+    ? locations
+      .map((location) => resolveLocationId(location))
+      .filter((id): id is string => Boolean(id))
+    : stationRefs;
+
+  const fallbackStationIds = new Set<number>();
+  if (locationsFetched) {
+    for (const stationId of stationIds) {
+      const checkpoint = checkpointByStationId[stationId];
+      const lastObservedAt = checkpoint?.last_observed_at ?? null;
+      if (!lastObservedAt) {
+        continue;
+      }
+      const lastObservedMs = Date.parse(lastObservedAt);
+      if (!Number.isFinite(lastObservedMs)) {
+        continue;
+      }
+      if (nowMs - lastObservedMs >= 2 * 60 * 60 * 1000) {
+        fallbackStationIds.add(stationId);
+      }
+    }
+  }
+
+  await runPool(locationIds, OPENAQ_CONCURRENCY, async (locationId) => {
+    if (shouldStop()) {
+      timeBudgetHit = true;
+      return;
+    }
+    const stationIdValue = stationIdByRef[locationId];
+    const stationId = stationIdValue ? Number(stationIdValue) : null;
+    if (stationId !== null && Number.isFinite(stationId)) {
+      polledStationIds.add(stationId);
+    }
+
+    if (locationsFetched && stationId !== null && fallbackStationIds.has(stationId)) {
+      const stationCheckpoint = checkpointByStationId[stationId];
+      const sensorIds = sensorIdsByStationId.get(stationId) ?? [];
+      for (const sensorId of sensorIds) {
+        if (shouldStop()) {
+          timeBudgetHit = true;
+          return;
+        }
+        const timeseriesId = timeseriesIdByRef[sensorId];
+        const tsCheckpoint = timeseriesId ? timeseriesCheckpointById[timeseriesId] : null;
+        const baseObservedAt = tsCheckpoint?.last_observed_at ?? stationCheckpoint?.last_observed_at
+          ?? null;
+        const datetimeFrom = baseObservedAt
+          ?? (windowMs ? new Date(nowMs - windowMs).toISOString() : null);
+        const datetimeTo = new Date(nowMs).toISOString();
+        let hourly: OpenAQHourlyRecord[] = [];
+        try {
+          hourly = await listHourlyMeasurements(sensorId, datetimeFrom, datetimeTo, rawRecorder);
+        } catch (err) {
+          await logError({
+            severity: "warn",
+            message: "OpenAQ hourly measurements fetch failed",
+            connector_id: connector.id,
+            context: { sensor_id: sensorId, error: String(err) },
+          });
+          continue;
+        }
+        for (const record of hourly) {
+          const observedAt = record?.datetime?.utc;
+          if (!observedAt) {
+            continue;
+          }
+          recordObservation(
+            observationsBySensor,
+            latestBySensor,
+            latestObservedByStationId,
+            String(record?.sensorsId ?? sensorId),
+            observedAt,
+            record?.value ?? null,
+            stationId,
+            nowMs,
+            windowMs,
+          );
+        }
+      }
+      return;
+    }
+
+    let latest: OpenAQLatestRecord[] = [];
+    try {
+      latest = await listLatestForLocation(locationId, rawRecorder);
+    } catch (err) {
+      await logError({
+        severity: "warn",
+        message: "OpenAQ latest fetch failed",
+        connector_id: connector.id,
+        context: { location_id: locationId, error: String(err) },
+      });
+      return;
+    }
+    for (const record of latest) {
+      const sensorId = record?.sensorsId;
+      const observedAt = record?.datetime?.utc;
+      if (!sensorId || !observedAt) {
+        continue;
+      }
+      recordObservation(
+        observationsBySensor,
+        latestBySensor,
+        latestObservedByStationId,
+        String(sensorId),
+        observedAt,
+        record?.value ?? null,
+        stationId,
+        nowMs,
+        windowMs,
+      );
+    }
+  }, () => {
+    if (shouldStop()) {
+      timeBudgetHit = true;
+      return true;
+    }
+    return false;
+  });
+
+  if (!locationsFetched) {
+    for (const sensorId of observationsBySensor.keys()) {
       timeseriesRefs.push(sensorId);
+    }
+    if (!dryRun && timeseriesRefs.length) {
+      timeseriesIdByRef = await fetchTimeseriesIds(
+        connectorId,
+        OPENAQ_SERVICE_REF,
+        timeseriesRefs,
+      );
     }
   }
 
   let observationsUpserted = 0;
-  let seriesPolled = 0;
+  let seriesPolled = observationsBySensor.size;
   let lastObservedAt: string | null = null;
   let timeseriesLastUpdated = 0;
   const timeseriesErrors: string[] = [];
 
   if (!dryRun) {
-    if (locationsFetched) {
-      await upsertTimeseries(timeseriesRows);
-    }
-    const timeseriesIdByRef = await fetchTimeseriesIds(
-      connectorId,
-      OPENAQ_SERVICE_REF,
-      timeseriesRefs,
-    );
-
     const observationRows: Array<Record<string, unknown>> = [];
-    for (const [sensorId, latest] of latestBySensor.entries()) {
+    for (const [sensorId, observations] of observationsBySensor.entries()) {
       const timeseriesId = timeseriesIdByRef[sensorId];
       if (!timeseriesId) {
         continue;
       }
-      observationRows.push({
-        connector_id: connectorId,
-        timeseries_id: timeseriesId,
-        observed_at: latest.observed_at,
-        value: latest.value,
-        status: null,
-      });
-      seriesPolled += 1;
-      if (!lastObservedAt || latest.observed_at > lastObservedAt) {
-        lastObservedAt = latest.observed_at;
+      for (const [observedAt, value] of observations.entries()) {
+        observationRows.push({
+          connector_id: connectorId,
+          timeseries_id: timeseriesId,
+          observed_at: observedAt,
+          value,
+          status: null,
+        });
       }
     }
 
@@ -1619,6 +1857,12 @@ serve(async (req) => {
       });
     }
     timeseriesLastUpdated = await updateTimeseriesLastValues(timeseriesUpdates, timeseriesErrors);
+  }
+
+  for (const latest of latestBySensor.values()) {
+    if (!lastObservedAt || latest.observed_at > lastObservedAt) {
+      lastObservedAt = latest.observed_at;
+    }
   }
 
   if (timeseriesErrors.length) {
@@ -1702,6 +1946,76 @@ serve(async (req) => {
         connector_id: connector.id,
         context: { error: String(err) },
       });
+    }
+
+    if (locationsFetched && latestBySensor.size) {
+      const timeseriesCheckpointRows: Array<Record<string, unknown>> = [];
+      for (const [sensorId, latest] of latestBySensor.entries()) {
+        const timeseriesId = timeseriesIdByRef[sensorId];
+        if (!timeseriesId) {
+          continue;
+        }
+        const stationId = stationIdBySensorId.get(sensorId);
+        if (!stationId) {
+          continue;
+        }
+        const checkpoint = timeseriesCheckpointById[timeseriesId];
+        const previousLastObserved = checkpoint?.last_observed_at ?? null;
+        const previousNextDue = checkpoint?.next_due_at ?? null;
+        let lagSamples = checkpoint?.ingest_lag_samples ?? [];
+        let updatedLastObserved = previousLastObserved;
+        let nextDueAt = previousNextDue;
+        const latestObserved = latest?.observed_at ?? null;
+        let hasNewObservation = false;
+
+        if (latestObserved && (!previousLastObserved || latestObserved > previousLastObserved)) {
+          updatedLastObserved = latestObserved;
+          hasNewObservation = true;
+          const lagSeconds = Math.max(
+            0,
+            Math.round((nowMsForLag - Date.parse(latestObserved)) / 1000),
+          );
+          if (Number.isFinite(lagSeconds)) {
+            lagSamples = appendSample(lagSamples, lagSeconds);
+          }
+        }
+
+        if (hasNewObservation || !previousNextDue) {
+          if (lagSamples.length < 10) {
+            nextDueAt = new Date(nowMsForLag + 5 * 60 * 1000).toISOString();
+          } else {
+            const lagSeconds = minSeconds(lagSamples) ?? 5 * 60;
+            const baseMs = Date.parse(updatedLastObserved ?? latestObserved ?? "");
+            if (Number.isFinite(baseMs)) {
+              nextDueAt = new Date(baseMs + (60 * 60 + lagSeconds) * 1000).toISOString();
+            } else {
+              nextDueAt = nowIso;
+            }
+          }
+        }
+
+        timeseriesCheckpointRows.push({
+          station_id: stationId,
+          timeseries_id: timeseriesId,
+          next_due_at: nextDueAt,
+          last_observed_at: updatedLastObserved,
+          ingest_lag_samples: lagSamples,
+          last_polled_at: nowIso,
+        });
+      }
+
+      if (timeseriesCheckpointRows.length) {
+        try {
+          await upsertOpenaqTimeseriesCheckpoints(timeseriesCheckpointRows);
+        } catch (err) {
+          await logError({
+            severity: "warn",
+            message: "OpenAQ timeseries checkpoints upsert failed",
+            connector_id: connector.id,
+            context: { error: String(err) },
+          });
+        }
+      }
     }
   }
 

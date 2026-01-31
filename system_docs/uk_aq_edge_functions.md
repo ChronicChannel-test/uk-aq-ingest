@@ -82,13 +82,16 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
 - Triggered by: `uk_aq_dispatch_polls` (external scheduler).
 - Writes:
   - `stations`, `phenomena`, `timeseries`, `observations`
+  - `openaq_station_checkpoints`, `openaq_timeseries_checkpoints`
 - Notes:
   - Requires an existing connector row; the ingest does not create connectors.
   - Uses `OPENAQ_*` environment variables for base URL, API key, and bbox paging.
   - Fetches locations via `/v3/locations` (bbox) and latest values via `/v3/locations/{id}/latest`.
+  - When a station `last_observed_at` lags by >= 2 hours, polls `/v3/sensors/{id}/measurements/hourly` instead and uses per-timeseries checkpoints to drive hourly lookups.
   - Uses sensor IDs as `timeseries_ref` and `openaq:{parameter}` as `phenomena.eionet_uri`.
   - If `station_refs` are provided, limits polling to those location ids; otherwise uses a tiered selector (`uk_aq_rpc_openaq_select_station_refs`).
   - Tracks per-station scheduling in `uk_aq_raw.openaq_station_checkpoints` (next due, last observed, sample arrays, last polled); when fewer than 10 interval/lag samples exist, `next_due_at` is set to `now() + 5 minutes`. Otherwise it uses the minimum interval (capped at 1 hour) plus minimum lag from samples. If no observations are returned and `next_due_at` is null, it is set to `now() + 5 minutes`.
+  - Tracks per-timeseries scheduling in `uk_aq_raw.openaq_timeseries_checkpoints` (next due, last observed, lag samples, last polled); when fewer than 10 lag samples exist, `next_due_at` is set to `now() + 5 minutes`. Otherwise it uses `last_observed_at + 3600s + min(lag)` and only updates `next_due_at` on new observations or when null.
   - Station names are prefixed with provider shortnames when configured (e.g., `London Air Quality Network` -> `LAQN`), and append owner when present and not `Unknown*`.
   - Stores OpenAQ owner in `station_metadata.attributes.openaq_owner` when present and not `Unknown*`.
   - Updates `timeseries.last_value` and `timeseries.last_value_at` based on the most recent measurement.
