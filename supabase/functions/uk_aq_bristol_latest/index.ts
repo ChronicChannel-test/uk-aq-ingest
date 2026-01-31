@@ -80,6 +80,7 @@ serve(async (req) => {
   const region = normalizeText(url.searchParams.get("region"));
   const stationLikeParam = normalizeText(url.searchParams.get("station_like"));
   const scopeParam = normalizeText(url.searchParams.get("scope"));
+  const debug = normalizeText(url.searchParams.get("debug")) === "true";
   const includeAll = scopeParam === "all" || stationLikeParam === "all";
   const stationLike = includeAll
     ? stationLikeParam && stationLikeParam !== "all"
@@ -91,7 +92,7 @@ serve(async (req) => {
   const limit = parseLimit(url.searchParams.get("limit"), DEFAULT_LIMIT);
 
   try {
-    const rows = await loadLatest({ region, stationLike, connectorId, pollutant, limit });
+    const rows = await loadLatest({ region, stationLike, connectorId, pollutant, limit, debug });
     return json({
       region,
       pollutant,
@@ -100,7 +101,13 @@ serve(async (req) => {
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    return json({ error: message }, 500);
+    const debugPayload = err && typeof err === "object" && "debug" in err
+      ? (err as { debug?: unknown }).debug
+      : null;
+    return json(
+      debug ? { error: message, debug: debugPayload } : { error: message },
+      500,
+    );
   }
 });
 
@@ -110,9 +117,10 @@ type LoadOptions = {
   connectorId: string | null;
   pollutant: string | null;
   limit: number;
+  debug: boolean;
 };
 
-async function loadLatest({ region, stationLike, connectorId, pollutant, limit }: LoadOptions) {
+async function loadLatest({ region, stationLike, connectorId, pollutant, limit, debug }: LoadOptions) {
   const pollutantKey = normalizePollutant(pollutant);
   const phenomenonSelect = pollutantKey
     ? "phenomenon:phenomena!inner(id,label,notation,eionet_uri,pollutant_label)"
@@ -148,6 +156,11 @@ async function loadLatest({ region, stationLike, connectorId, pollutant, limit }
       limit: String(limit),
     });
     if (error) {
+      if (debug) {
+        const err = new Error(error.message) as Error & { debug?: unknown };
+        err.debug = { request: { ...baseParams, ...extra, select: useStationInner ? selectStationInner : baseParams.select, limit: String(limit) }, error };
+        throw err;
+      }
       throw new Error(error.message);
     }
     return data ?? [];
