@@ -1592,6 +1592,7 @@ serve(async (req) => {
   let checkpointsUpserted = 0;
   let stationsSelected = 0;
   let stationsRequested: number | null = null;
+  let stationFetchEnabled: boolean | null = null;
   const runStartedAt = Date.now();
   const maxRuntimeSeconds = Number.isFinite(BREATHELONDON_MAX_RUNTIME_SECONDS)
     ? Math.max(30, BREATHELONDON_MAX_RUNTIME_SECONDS)
@@ -1627,6 +1628,7 @@ serve(async (req) => {
       const skipStations = asBoolean(request.skip_stations, false) ?? false;
       const activeOnly = asBoolean(request.active_only, false) ?? false;
       const dryRun = asBoolean(request.dry_run, false) ?? false;
+      stationFetchEnabled = !skipStations;
       debug = asBoolean(request.debug, false) ?? false;
       const apiKey = asString(request.api_key) ?? BREATHELONDON_API_KEY;
       const startDateOverride = parseStartDate(asString(request.start_date));
@@ -2174,6 +2176,12 @@ serve(async (req) => {
     responsePayload = {
       ...responsePayload,
       debug: debugInfo ?? { dropbox: dropboxDiagnostics },
+    };
+  }
+  if (stationFetchEnabled !== null) {
+    responsePayload = {
+      ...responsePayload,
+      station_fetch_enabled: stationFetchEnabled,
     };
   }
   return new Response(JSON.stringify(responsePayload, null, 2), {
