@@ -181,7 +181,7 @@ begin
   tiered_limited as (
     select *
     from tiered
-    order by due_at asc, last_polled_at asc nulls first
+    order by last_polled_at asc nulls first, due_at asc
     limit batch_limit
   ),
   stale as (
