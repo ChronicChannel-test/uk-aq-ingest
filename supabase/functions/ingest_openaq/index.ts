@@ -2029,7 +2029,7 @@ serve(async (req) => {
           }
         }
         for (const record of hourly) {
-          const observedAt = record?.datetime?.utc;
+          const observedAt = record?.datetime?.utc ?? record?.period?.datetimeFrom?.utc ?? null;
           if (!observedAt) {
             continue;
           }
