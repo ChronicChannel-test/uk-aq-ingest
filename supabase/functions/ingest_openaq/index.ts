@@ -1690,21 +1690,6 @@ serve(async (req) => {
       );
     }
   }
-  if (!locationsFetched && Object.keys(timeseriesIdByRef).length) {
-    try {
-      stationIdByTimeseriesId = await fetchTimeseriesStationIds(
-        Object.values(timeseriesIdByRef),
-      );
-    } catch (err) {
-      await logError({
-        severity: "warn",
-        message: "OpenAQ timeseries station lookup failed",
-        connector_id: connector.id,
-        context: { error: String(err) },
-      });
-      stationIdByTimeseriesId = {};
-    }
-  }
 
   let timeseriesCheckpointById: Record<number, OpenAQTimeseriesCheckpoint> = {};
   if (locationsFetched && stationIds.length) {
@@ -1933,6 +1918,21 @@ serve(async (req) => {
         OPENAQ_SERVICE_REF,
         timeseriesRefs,
       );
+    }
+  }
+  if (!locationsFetched && Object.keys(timeseriesIdByRef).length) {
+    try {
+      stationIdByTimeseriesId = await fetchTimeseriesStationIds(
+        Object.values(timeseriesIdByRef),
+      );
+    } catch (err) {
+      await logError({
+        severity: "warn",
+        message: "OpenAQ timeseries station lookup failed",
+        connector_id: connector.id,
+        context: { error: String(err) },
+      });
+      stationIdByTimeseriesId = {};
     }
   }
 
