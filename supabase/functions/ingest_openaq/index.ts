@@ -1957,6 +1957,12 @@ serve(async (req) => {
         }
         const timeseriesId = timeseriesIdByRef[timeseriesRef];
         const tsCheckpoint = timeseriesId ? timeseriesCheckpointById[timeseriesId] : null;
+        if (tsCheckpoint?.last_observed_at) {
+          const tsObservedMs = Date.parse(tsCheckpoint.last_observed_at);
+          if (Number.isFinite(tsObservedMs) && nowMs - tsObservedMs < 60 * 60 * 1000) {
+            continue;
+          }
+        }
         const baseObservedAt = tsCheckpoint?.last_observed_at ?? stationCheckpoint?.last_observed_at
           ?? null;
         const datetimeFrom = baseObservedAt
@@ -1979,14 +1985,14 @@ serve(async (req) => {
           if (!observedAt) {
             continue;
           }
-          recordObservation(
-            observationsByTimeseries,
-            latestByTimeseries,
-            latestObservedByStationId,
-            String(record?.sensorsId ?? timeseriesRef),
-            observedAt,
-            record?.value ?? null,
-            stationId,
+        recordObservation(
+          observationsByTimeseries,
+          latestByTimeseries,
+          latestObservedByStationId,
+          String(record?.sensorsId ?? timeseriesRef),
+          observedAt,
+          record?.value ?? null,
+          stationId,
             nowMs,
             windowMs,
           );
@@ -2145,6 +2151,33 @@ serve(async (req) => {
     const checkpointRows: Array<Record<string, unknown>> = [];
     const nowIso = new Date().toISOString();
     const nowMsForLag = Date.now();
+    const stationObservedSample: Array<{
+      station_id: number;
+      min_observed_at: string | null;
+      latest_observed_at: string | null;
+    }> = [];
+    const resolveStationMinObservedAt = (stationId: number): string | null => {
+      const timeseriesRefs = timeseriesRefsByStationId.get(stationId);
+      if (!timeseriesRefs?.length) {
+        return null;
+      }
+      let minObserved: string | null = null;
+      for (const timeseriesRef of timeseriesRefs) {
+        const latestObserved = latestByTimeseries.get(timeseriesRef)?.observed_at ?? null;
+        const timeseriesId = timeseriesIdByRef[timeseriesRef];
+        const checkpointObserved = timeseriesId
+          ? timeseriesCheckpointById[timeseriesId]?.last_observed_at ?? null
+          : null;
+        const candidate = latestObserved ?? checkpointObserved;
+        if (!candidate) {
+          continue;
+        }
+        if (!minObserved || candidate < minObserved) {
+          minObserved = candidate;
+        }
+      }
+      return minObserved;
+    };
     for (const stationId of polledStationIds) {
       const checkpoint = checkpointByStationId[stationId];
       const isNewCheckpoint = checkpoint === undefined;
@@ -2154,15 +2187,31 @@ serve(async (req) => {
       let lagSamples = checkpoint?.ingest_lag_samples ?? [];
       let updatedLastObserved = previousLastObserved;
       let nextDueAt = previousNextDue;
-      const latestObserved = latestObservedByStationId.get(stationId) ?? null;
+      const latestObservedForScheduling = latestObservedByStationId.get(stationId) ?? null;
+      const minObservedForStation = resolveStationMinObservedAt(stationId);
 
-      if (latestObserved && (!previousLastObserved || latestObserved > previousLastObserved)) {
-        updatedLastObserved = latestObserved;
+      if (minObservedForStation) {
+        updatedLastObserved = minObservedForStation;
+      }
+      if (stationObservedSample.length < 10 && (minObservedForStation || latestObservedForScheduling)) {
+        stationObservedSample.push({
+          station_id: stationId,
+          min_observed_at: minObservedForStation,
+          latest_observed_at: latestObservedForScheduling,
+        });
+      }
+
+      if (
+        latestObservedForScheduling
+        && (!previousLastObserved || latestObservedForScheduling > previousLastObserved)
+      ) {
         let intervalSampleAdded = false;
         if (previousLastObserved) {
           const intervalSeconds = Math.max(
             0,
-            Math.round((Date.parse(latestObserved) - Date.parse(previousLastObserved)) / 1000),
+            Math.round(
+              (Date.parse(latestObservedForScheduling) - Date.parse(previousLastObserved)) / 1000,
+            ),
           );
           if (Number.isFinite(intervalSeconds) && intervalSeconds > 0) {
             observSamples = appendSample(observSamples, intervalSeconds);
@@ -2172,7 +2221,7 @@ serve(async (req) => {
         if (intervalSampleAdded) {
           const lagSeconds = Math.max(
             0,
-            Math.round((nowMsForLag - Date.parse(latestObserved)) / 1000),
+            Math.round((nowMsForLag - Date.parse(latestObservedForScheduling)) / 1000),
           );
           if (Number.isFinite(lagSeconds)) {
             lagSamples = appendSample(lagSamples, lagSeconds);
@@ -2183,7 +2232,7 @@ serve(async (req) => {
         } else {
           const intervalSeconds = Math.min(minSeconds(observSamples) ?? 5 * 60, 60 * 60);
           const lagSeconds = minSeconds(lagSamples) ?? 5 * 60;
-          const baseMs = Date.parse(updatedLastObserved ?? latestObserved);
+          const baseMs = Date.parse(latestObservedForScheduling);
           if (Number.isFinite(baseMs)) {
             nextDueAt = new Date(baseMs + (intervalSeconds + lagSeconds) * 1000).toISOString();
           } else {
@@ -2209,6 +2258,7 @@ serve(async (req) => {
       logLine("INFO", "OpenAQ station checkpoints upserted", {
         rows_prepared: checkpointRows.length,
         rows_upserted: rowsUpserted,
+        station_observed_sample: stationObservedSample,
       });
     } catch (err) {
       await logError({
