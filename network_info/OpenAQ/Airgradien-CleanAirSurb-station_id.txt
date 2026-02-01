@@ -17,7 +17,7 @@ curl -sS \
   -H "x-cron-secret: ${SB_UK_AQ_CRON_SECRET}" \
   -H "Content-Type: application/json" \
   "${SUPABASE_URL}/functions/v1/ingest_openaq" \
-  -d '{"station_refs":["CLEANAIRSURB_ST_REF"],"window_hours":12,"dry_run":false}'
+  -d '{"station_refs":[CLEANAIRSURB_ST_REF],"window_hours":12,"dry_run":false}'
   
   
   

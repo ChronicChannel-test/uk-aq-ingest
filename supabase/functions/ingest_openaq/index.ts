@@ -2016,10 +2016,13 @@ serve(async (req) => {
   const latestByTimeseries = new Map<string, { observed_at: string; value: number | null }>();
   const observationsByTimeseries = new Map<string, Map<string, number | null>>();
   const latestObservedByStationId = new Map<number, string>();
+  const gapContigEndByTimeseriesRef = new Map<string, string>();
+  const gapHasRecentGapByTimeseriesRef = new Map<string, boolean>();
   const polledStationIds = new Set<number>();
   const windowMs = Number.isFinite(windowHours) && windowHours > 0
     ? windowHours * 60 * 60 * 1000
     : null;
+  const recentGapThresholdMs = nowMs - 24 * 60 * 60 * 1000;
 
   const locationIds = locationsFetched
     ? locations
@@ -2160,6 +2163,30 @@ serve(async (req) => {
               returned.add(observed.toISOString());
             }
             const missing = expected.filter((hour) => !returned.has(hour));
+            if (expected.length > 0) {
+              let contigEnd: string | null = null;
+              if (missing.length > 0) {
+                const firstMissing = missing[0];
+                const firstIndex = expected.indexOf(firstMissing);
+                if (firstIndex > 0) {
+                  contigEnd = expected[firstIndex - 1];
+                }
+              } else {
+                contigEnd = expected[expected.length - 1];
+              }
+              if (contigEnd) {
+                gapContigEndByTimeseriesRef.set(timeseriesRef, contigEnd);
+              }
+              if (missing.length > 0) {
+                const hasRecentGap = missing.some((hour) => {
+                  const hourMs = Date.parse(hour);
+                  return Number.isFinite(hourMs) && hourMs >= recentGapThresholdMs;
+                });
+                if (hasRecentGap) {
+                  gapHasRecentGapByTimeseriesRef.set(timeseriesRef, true);
+                }
+              }
+            }
             if (missing.length > 0) {
               logLine("INFO", "OpenAQ hourly gap detected", {
                 station_id: stationId,
@@ -2354,14 +2381,21 @@ serve(async (req) => {
     const stationObservedSample: Array<{
       station_id: number;
       min_observed_at: string | null;
+      recent_gap_min_observed_at: string | null;
+      station_last_observed_at: string | null;
       latest_observed_at: string | null;
     }> = [];
-    const resolveStationMinObservedAt = (stationId: number): string | null => {
+    const resolveStationObservedForCheckpoint = (stationId: number): {
+      minObserved: string | null;
+      recentGapMinObserved: string | null;
+    } => {
       const timeseriesRefs = timeseriesRefsByStationId.get(stationId);
       if (!timeseriesRefs?.length) {
-        return null;
+        return { minObserved: null, recentGapMinObserved: null };
       }
       let minObserved: string | null = null;
+      let recentGapMinObserved: string | null = null;
+      let hasRecentGap = false;
       for (const timeseriesRef of timeseriesRefs) {
         const latestObserved = latestByTimeseries.get(timeseriesRef)?.observed_at ?? null;
         const timeseriesId = timeseriesIdByRef[timeseriesRef];
@@ -2375,8 +2409,18 @@ serve(async (req) => {
         if (!minObserved || candidate < minObserved) {
           minObserved = candidate;
         }
+        if (gapHasRecentGapByTimeseriesRef.get(timeseriesRef)) {
+          hasRecentGap = true;
+          const contigEnd = gapContigEndByTimeseriesRef.get(timeseriesRef) ?? candidate;
+          if (contigEnd && (!recentGapMinObserved || contigEnd < recentGapMinObserved)) {
+            recentGapMinObserved = contigEnd;
+          }
+        }
       }
-      return minObserved;
+      if (!hasRecentGap) {
+        return { minObserved, recentGapMinObserved: null };
+      }
+      return { minObserved, recentGapMinObserved };
     };
     for (const stationId of polledStationIds) {
       const checkpoint = checkpointByStationId[stationId];
@@ -2388,7 +2432,8 @@ serve(async (req) => {
       let updatedLastObserved = previousLastObserved;
       let nextDueAt = previousNextDue;
       const latestObservedForScheduling = latestObservedByStationId.get(stationId) ?? null;
-      const minObservedForStation = resolveStationMinObservedAt(stationId);
+      const { minObserved, recentGapMinObserved } = resolveStationObservedForCheckpoint(stationId);
+      const minObservedForStation = recentGapMinObserved ?? minObserved;
 
       if (minObservedForStation) {
         updatedLastObserved = minObservedForStation;
@@ -2396,7 +2441,9 @@ serve(async (req) => {
       if (stationObservedSample.length < 10 && (minObservedForStation || latestObservedForScheduling)) {
         stationObservedSample.push({
           station_id: stationId,
-          min_observed_at: minObservedForStation,
+          min_observed_at: minObserved,
+          recent_gap_min_observed_at: recentGapMinObserved,
+          station_last_observed_at: minObservedForStation,
           latest_observed_at: latestObservedForScheduling,
         });
       }

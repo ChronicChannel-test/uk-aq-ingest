@@ -80,7 +80,11 @@ In gap mode, hourly records are recorded without a "recent-window" filter:
 
 After observations are upserted:
 
-- `openaq_station_checkpoints.last_observed_at` advances to the latest observed hour seen for that station in the run.
+- `openaq_station_checkpoints.last_observed_at` is normally set to the minimum
+  observed hour across the station's series.
+- If a recent gap is detected (missing hour within the last 24 hours),
+  `last_observed_at` is clamped to the last contiguous hour before that gap
+  (station-wide min across series).
 - `openaq_timeseries_checkpoints.last_observed_at` advances to the latest observed hour seen for each timeseries in the run.
 
 Because gap mode is chunked, multiple runs are required to fully backfill a long gap.
