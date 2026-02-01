@@ -170,6 +170,7 @@ const DROPBOX_ALLOWED_SUPABASE_URL = Deno.env.get("OPENAQ_RAW_DROPBOX_ALLOWED_SU
   ?? Deno.env.get("UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL")
   ?? "";
 const DROPBOX_LOG_FOLDER = "/connectors/openaq/log";
+const DROPBOX_ERROR_FOLDER = "/connectors/openaq/error_log";
 const DROPBOX_RAW_FOLDER = "/connectors/openaq/raw_data";
 const DROPBOX_TOKEN_URL = "https://api.dropbox.com/oauth2/token";
 const DROPBOX_UPLOAD_URL = "https://content.dropboxapi.com/2/files/upload";
@@ -482,6 +483,14 @@ function buildDropboxRawPath(connectorCode: string | null, timestamp: Date): str
   return `${base}/${dateFolder}/uk_aq_raw_edge_${prefix}_${stamp}.zip`;
 }
 
+function buildDropboxErrorPath(connectorCode: string | null, timestamp: Date): string {
+  const stamp = formatCompactTimestamp(timestamp);
+  const dateFolder = formatDateYmd(timestamp);
+  const prefix = normalizeConnectorPrefix(connectorCode);
+  const base = dropboxWithRoot(DROPBOX_ERROR_FOLDER);
+  return `${base}/${dateFolder}/uk_aq_error_edge_${prefix}_${stamp}.log`;
+}
+
 function createRawRecorder(): RawRecorder {
   const lines: string[] = [];
   const write = (entry: Record<string, unknown>) => {
@@ -620,7 +629,28 @@ async function dropboxUploadFileWithRetry(
   }
 }
 
+let errorLogLines: string[] | null = null;
+
+function recordErrorLogLine(entry: ErrorLogEntry): void {
+  if (!errorLogLines) {
+    return;
+  }
+  const stamp = new Date().toISOString();
+  let context = entry.context ? { ...entry.context } : undefined;
+  if (entry.connector_id !== undefined && entry.connector_id !== null) {
+    if (context) {
+      context.connector_id = entry.connector_id;
+    } else {
+      context = { connector_id: entry.connector_id };
+    }
+  }
+  const ctx = context ? ` ${JSON.stringify(context)}` : "";
+  const severity = entry.severity || "error";
+  errorLogLines.push(`[${stamp}] ${severity.toUpperCase()} ${entry.message}${ctx}`);
+}
+
 async function logError(entry: ErrorLogEntry): Promise<void> {
+  recordErrorLogLine(entry);
   try {
     await rpcRequest<Array<{ id: string }>>("uk_aq_rpc_error_log_insert", {
       entry: {
@@ -999,12 +1029,13 @@ async function listHourlyMeasurements(
   datetimeFrom: string | null,
   datetimeTo: string | null,
   rawRecorder?: RawRecorder | null,
-): Promise<OpenAQHourlyRecord[]> {
+): Promise<{ records: OpenAQHourlyRecord[]; pages: number; limit: number }> {
   const results: OpenAQHourlyRecord[] = [];
   const limit = Number.isFinite(OPENAQ_PAGE_LIMIT) && OPENAQ_PAGE_LIMIT > 0
     ? Math.min(OPENAQ_PAGE_LIMIT, 1000)
     : DEFAULT_PAGE_LIMIT;
   let page = 1;
+  let pages = 0;
   while (true) {
     if (rateLimitStop) {
       break;
@@ -1021,6 +1052,7 @@ async function listHourlyMeasurements(
       params,
       rawRecorder,
     );
+    pages += 1;
     const pageResults = Array.isArray(payload?.results)
       ? payload.results as OpenAQHourlyRecord[]
       : [];
@@ -1033,7 +1065,7 @@ async function listHourlyMeasurements(
       break;
     }
   }
-  return results;
+  return { records: results, pages, limit };
 }
 
 async function runPool<T>(
@@ -1600,6 +1632,7 @@ serve(async (req) => {
   const shouldStop = () => Date.now() >= runtimeDeadline || rateLimitStop;
   let timeBudgetHit = false;
   const logLines: string[] = [];
+  errorLogLines = [];
   const logLine = (level: string, message: string, context?: Record<string, unknown>) => {
     const stamp = new Date().toISOString();
     const ctx = context ? ` ${JSON.stringify(context)}` : "";
@@ -2047,7 +2080,14 @@ serve(async (req) => {
           ?? null;
         const datetimeFrom = baseObservedAt
           ?? (windowMs ? new Date(nowMs - windowMs).toISOString() : null);
-        const datetimeTo = new Date(nowMs).toISOString();
+        let datetimeTo = new Date(nowMs).toISOString();
+        if (datetimeFrom && windowMs) {
+          const fromMs = Date.parse(datetimeFrom);
+          if (Number.isFinite(fromMs)) {
+            const cappedMs = Math.min(nowMs, fromMs + windowMs);
+            datetimeTo = new Date(cappedMs).toISOString();
+          }
+        }
         if (stationId === debugStationId) {
           logLine("INFO", "OpenAQ debug timeseries fetch", {
             station_id: stationId,
@@ -2060,7 +2100,24 @@ serve(async (req) => {
         }
         let hourly: OpenAQHourlyRecord[] = [];
         try {
-          hourly = await listHourlyMeasurements(timeseriesRef, datetimeFrom, datetimeTo, rawRecorder);
+          const hourlyResult = await listHourlyMeasurements(
+            timeseriesRef,
+            datetimeFrom,
+            datetimeTo,
+            rawRecorder,
+          );
+          hourly = hourlyResult.records;
+          if (hourlyResult.pages > 1 || stationId === debugStationId) {
+            logLine("INFO", "OpenAQ hourly paging info", {
+              station_id: stationId,
+              timeseries_ref: timeseriesRef,
+              datetime_from: datetimeFrom,
+              datetime_to: datetimeTo,
+              pages: hourlyResult.pages,
+              page_limit: hourlyResult.limit,
+              records_count: hourly.length,
+            });
+          }
         } catch (err) {
           await logError({
             severity: "warn",
@@ -2122,16 +2179,16 @@ serve(async (req) => {
           if (!observedAt) {
             continue;
           }
-        recordObservation(
-          observationsByTimeseries,
-          latestByTimeseries,
-          latestObservedByStationId,
-          String(record?.sensorsId ?? timeseriesRef),
-          observedAt,
-          record?.value ?? null,
-          stationId,
+          recordObservation(
+            observationsByTimeseries,
+            latestByTimeseries,
+            latestObservedByStationId,
+            String(record?.sensorsId ?? timeseriesRef),
+            observedAt,
+            record?.value ?? null,
+            stationId,
             nowMs,
-            windowMs,
+            null,
           );
         }
       }
@@ -2578,6 +2635,13 @@ serve(async (req) => {
           dropboxConfig,
           buildDropboxRawPath(connectorCode, new Date()),
           zipped,
+        );
+      }
+      if (errorLogLines && errorLogLines.length) {
+        await dropboxUploadFileWithRetry(
+          dropboxConfig,
+          buildDropboxErrorPath(connectorCode, new Date()),
+          errorLogLines.join("\n") + "\n",
         );
       }
       await dropboxUploadFileWithRetry(
