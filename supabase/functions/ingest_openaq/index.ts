@@ -1615,6 +1615,18 @@ serve(async (req) => {
       ...extra,
     });
   };
+  const populateStationIdByTimeseriesIdFromRefs = (
+    refMapping: Record<string, number>,
+    stationMapping: Map<string, number>,
+    target: Record<number, number>,
+  ) => {
+    for (const [timeseriesRef, timeseriesId] of Object.entries(refMapping)) {
+      const stationId = stationMapping.get(timeseriesRef);
+      if (stationId) {
+        target[Number(timeseriesId)] = stationId;
+      }
+    }
+  };
   const dropboxConfig = loadDropboxConfig();
   const dropboxDiagnostics = buildDropboxDiagnostics();
   const rawRecorder = dropboxConfig ? createRawRecorder() : null;
@@ -1797,10 +1809,10 @@ serve(async (req) => {
         sensorIdsByStationId.set(stationId, [sensorId]);
       }
     }
-    logLine("INFO", "OpenAQ sensor mapping", {
-      sensors_total: sensorMap.size,
+    logLine("INFO", "OpenAQ timeseries mapping", {
+      timeseries_total: sensorMap.size,
       station_ids_mapped: stationIdBySensorId.size,
-      stations_with_sensors: sensorIdsByStationId.size,
+      stations_with_timeseries: sensorIdsByStationId.size,
     });
   } else if (stationIds.length) {
     try {
@@ -1815,7 +1827,11 @@ serve(async (req) => {
         if (!Number.isFinite(stationId) || !refs.length) {
           continue;
         }
-        sensorIdsByStationId.set(stationId, refs.map((ref) => String(ref)));
+        const normalizedRefs = refs.map((ref) => String(ref));
+        sensorIdsByStationId.set(stationId, normalizedRefs);
+        for (const ref of normalizedRefs) {
+          stationIdBySensorId.set(ref, stationId);
+        }
         perStationCounts[stationIdRaw] = refs.length;
       }
       logLine("INFO", "OpenAQ timeseries refs loaded", {
@@ -1871,6 +1887,11 @@ serve(async (req) => {
         timeseriesRefs,
       );
     }
+    populateStationIdByTimeseriesIdFromRefs(
+      timeseriesIdByRef,
+      stationIdBySensorId,
+      stationIdByTimeseriesId,
+    );
     logTimeseriesRefMapping(timeseriesRefs, timeseriesIdByRef, {
       locations_fetched: locationsFetched,
       dry_run: dryRun,
@@ -1896,8 +1917,8 @@ serve(async (req) => {
     }
   }
 
-  const latestBySensor = new Map<string, { observed_at: string; value: number | null }>();
-  const observationsBySensor = new Map<string, Map<string, number | null>>();
+  const latestByTimeseries = new Map<string, { observed_at: string; value: number | null }>();
+  const observationsByTimeseries = new Map<string, Map<string, number | null>>();
   const latestObservedByStationId = new Map<number, string>();
   const polledStationIds = new Set<number>();
   const windowMs = Number.isFinite(windowHours) && windowHours > 0
@@ -1944,7 +1965,7 @@ serve(async (req) => {
             severity: "warn",
             message: "OpenAQ hourly measurements fetch failed",
             connector_id: connector.id,
-            context: { sensor_id: sensorId, error: String(err) },
+            context: { timeseries_ref: sensorId, error: String(err) },
           });
           continue;
         }
@@ -1954,8 +1975,8 @@ serve(async (req) => {
             continue;
           }
           recordObservation(
-            observationsBySensor,
-            latestBySensor,
+            observationsByTimeseries,
+            latestByTimeseries,
             latestObservedByStationId,
             String(record?.sensorsId ?? sensorId),
             observedAt,
@@ -1988,8 +2009,8 @@ serve(async (req) => {
         continue;
       }
       recordObservation(
-        observationsBySensor,
-        latestBySensor,
+        observationsByTimeseries,
+        latestByTimeseries,
         latestObservedByStationId,
         String(sensorId),
         observedAt,
@@ -2008,8 +2029,8 @@ serve(async (req) => {
   });
 
   if (!locationsFetched) {
-    for (const sensorId of observationsBySensor.keys()) {
-      timeseriesRefs.push(sensorId);
+    for (const timeseriesRef of observationsByTimeseries.keys()) {
+      timeseriesRefs.push(timeseriesRef);
     }
     if (!dryRun && timeseriesRefs.length) {
       timeseriesIdByRef = await fetchTimeseriesIds(
@@ -2018,6 +2039,11 @@ serve(async (req) => {
         timeseriesRefs,
       );
     }
+    populateStationIdByTimeseriesIdFromRefs(
+      timeseriesIdByRef,
+      stationIdBySensorId,
+      stationIdByTimeseriesId,
+    );
     logTimeseriesRefMapping(timeseriesRefs, timeseriesIdByRef, {
       locations_fetched: locationsFetched,
       dry_run: dryRun,
@@ -2045,23 +2071,23 @@ serve(async (req) => {
   logLine("INFO", "OpenAQ polling summary", {
     stations_selected: stationsSelected,
     stations_polled: polledStationIds.size,
-    latest_sensors: latestBySensor.size,
-    observations_sensors: observationsBySensor.size,
+    latest_timeseries: latestByTimeseries.size,
+    observations_timeseries: observationsByTimeseries.size,
     timeseries_refs: timeseriesRefs.length,
     timeseries_ids: Object.keys(timeseriesIdByRef).length,
     timeseries_station_ids: Object.keys(stationIdByTimeseriesId).length,
   });
 
   let observationsUpserted = 0;
-  let seriesPolled = observationsBySensor.size;
+  let seriesPolled = observationsByTimeseries.size;
   let lastObservedAt: string | null = null;
   let timeseriesLastUpdated = 0;
   const timeseriesErrors: string[] = [];
 
   if (!dryRun) {
     const observationRows: Array<Record<string, unknown>> = [];
-    for (const [sensorId, observations] of observationsBySensor.entries()) {
-      const timeseriesId = timeseriesIdByRef[sensorId];
+    for (const [timeseriesRef, observations] of observationsByTimeseries.entries()) {
+      const timeseriesId = timeseriesIdByRef[timeseriesRef];
       if (!timeseriesId) {
         continue;
       }
@@ -2078,8 +2104,8 @@ serve(async (req) => {
 
     observationsUpserted = await upsertObservations(observationRows);
     const timeseriesUpdates: Array<{ id: number; last_value: number; last_value_at: string }> = [];
-    for (const [sensorId, latest] of latestBySensor.entries()) {
-      const timeseriesId = timeseriesIdByRef[sensorId];
+    for (const [timeseriesRef, latest] of latestByTimeseries.entries()) {
+      const timeseriesId = timeseriesIdByRef[timeseriesRef];
       if (!timeseriesId) {
         continue;
       }
@@ -2095,7 +2121,7 @@ serve(async (req) => {
     timeseriesLastUpdated = await updateTimeseriesLastValues(timeseriesUpdates, timeseriesErrors);
   }
 
-  for (const latest of latestBySensor.values()) {
+  for (const latest of latestByTimeseries.values()) {
     if (!lastObservedAt || latest.observed_at > lastObservedAt) {
       lastObservedAt = latest.observed_at;
     }
@@ -2188,36 +2214,36 @@ serve(async (req) => {
       });
     }
 
-    if (latestBySensor.size) {
+    if (latestByTimeseries.size) {
       const timeseriesCheckpointRows: Array<Record<string, unknown>> = [];
       const timeseriesCheckpointStats = {
-        latest_sensors: latestBySensor.size,
+        latest_timeseries: latestByTimeseries.size,
         rows_prepared: 0,
         skipped_missing_timeseries_id: 0,
         skipped_missing_station_id: 0,
         missing_timeseries_id_sample: [] as string[],
-        missing_station_id_sample: [] as Array<{ sensor_id: string; timeseries_id: number }>,
+        missing_station_id_sample: [] as Array<{ timeseries_ref: string; timeseries_id: number }>,
         new_checkpoints: 0,
         existing_checkpoints: 0,
         new_observations: 0,
         next_due_updated: 0,
       };
-      for (const [sensorId, latest] of latestBySensor.entries()) {
-        const timeseriesId = timeseriesIdByRef[sensorId];
+      for (const [timeseriesRef, latest] of latestByTimeseries.entries()) {
+        const timeseriesId = timeseriesIdByRef[timeseriesRef];
         if (!timeseriesId) {
           timeseriesCheckpointStats.skipped_missing_timeseries_id += 1;
           if (timeseriesCheckpointStats.missing_timeseries_id_sample.length < 10) {
-            timeseriesCheckpointStats.missing_timeseries_id_sample.push(sensorId);
+            timeseriesCheckpointStats.missing_timeseries_id_sample.push(timeseriesRef);
           }
           continue;
         }
-        const stationId = stationIdBySensorId.get(sensorId)
+        const stationId = stationIdBySensorId.get(timeseriesRef)
           ?? stationIdByTimeseriesId[timeseriesId];
         if (!stationId) {
           timeseriesCheckpointStats.skipped_missing_station_id += 1;
           if (timeseriesCheckpointStats.missing_station_id_sample.length < 10) {
             timeseriesCheckpointStats.missing_station_id_sample.push({
-              sensor_id: sensorId,
+              timeseries_ref: timeseriesRef,
               timeseries_id: timeseriesId,
             });
           }
@@ -2300,7 +2326,7 @@ serve(async (req) => {
   } else if (!dryRun) {
     logLine("INFO", "OpenAQ checkpoint updates skipped", {
       stations_polled: polledStationIds.size,
-      latest_sensors: latestBySensor.size,
+      latest_timeseries: latestByTimeseries.size,
       dry_run: dryRun,
     });
   }
