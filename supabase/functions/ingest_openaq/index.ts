@@ -1616,6 +1616,18 @@ serve(async (req) => {
     OPENAQ_SERVICE_REF,
     stationRefsForIds,
   );
+  {
+    const missingStationRefs = stationRefsForIds.filter(
+      (ref) => stationIdByRef[ref] === undefined,
+    );
+    logLine("INFO", "OpenAQ station ref mapping", {
+      station_refs_total: stationRefsForIds.length,
+      station_ids_mapped: Object.keys(stationIdByRef).length,
+      station_refs_missing: missingStationRefs.length,
+      station_refs_missing_sample: missingStationRefs.slice(0, 10),
+      locations_fetched: locationsFetched,
+    });
+  }
 
   const stationIds = Object.values(stationIdByRef).map((id) => Number(id));
   let checkpointByStationId: Record<number, OpenAQStationCheckpoint> = {};
