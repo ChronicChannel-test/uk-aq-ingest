@@ -63,6 +63,7 @@ type OpenAQLocation = {
   country?: { code?: string | null; name?: string | null } | null;
   provider?: { name?: string | null } | null;
   owner?: { name?: string | null } | string | null;
+  // OpenAQ uses "sensors"; we treat sensor.id as timeseries_ref internally.
   sensors?: Array<{
     id?: number;
     name?: string | null;
@@ -73,6 +74,7 @@ type OpenAQLocation = {
 type OpenAQLatestRecord = {
   datetime?: { utc?: string | null } | null;
   value?: number | null;
+  // OpenAQ uses sensorsId; we treat it as timeseries_ref internally.
   sensorsId?: number | null;
   locationsId?: number | null;
   coordinates?: { latitude?: number | null; longitude?: number | null } | null;
@@ -99,6 +101,7 @@ type OpenAQTimeseriesCheckpoint = {
 type OpenAQHourlyRecord = {
   datetime?: { utc?: string | null } | null;
   value?: number | null;
+  // OpenAQ uses sensorsId; we treat it as timeseries_ref internally.
   sensorsId?: number | null;
 };
 
@@ -953,7 +956,7 @@ async function listLatestForLocation(
 }
 
 async function listHourlyMeasurements(
-  sensorId: string,
+  timeseriesRef: string,
   datetimeFrom: string | null,
   datetimeTo: string | null,
   rawRecorder?: RawRecorder | null,
@@ -975,7 +978,7 @@ async function listHourlyMeasurements(
       params.datetime_to = datetimeTo;
     }
     const payload = await openaqRequest(
-      `sensors/${sensorId}/measurements/hourly`,
+      `sensors/${timeseriesRef}/measurements/hourly`,
       params,
       rawRecorder,
     );
@@ -1017,10 +1020,10 @@ async function runPool<T>(
 }
 
 function recordObservation(
-  observationsBySensor: Map<string, Map<string, number | null>>,
-  latestBySensor: Map<string, { observed_at: string; value: number | null }>,
+  observationsByTimeseriesRef: Map<string, Map<string, number | null>>,
+  latestByTimeseriesRef: Map<string, { observed_at: string; value: number | null }>,
   latestObservedByStationId: Map<number, string>,
-  sensorId: string,
+  timeseriesRef: string,
   observedAt: string,
   value: number | null,
   stationId: number | null,
@@ -1034,19 +1037,19 @@ function recordObservation(
   if (windowMs && observedMs < nowMs - windowMs) {
     return;
   }
-  let sensorObservations = observationsBySensor.get(sensorId);
-  if (!sensorObservations) {
-    sensorObservations = new Map();
-    observationsBySensor.set(sensorId, sensorObservations);
+  let timeseriesObservations = observationsByTimeseriesRef.get(timeseriesRef);
+  if (!timeseriesObservations) {
+    timeseriesObservations = new Map();
+    observationsByTimeseriesRef.set(timeseriesRef, timeseriesObservations);
   }
-  if (!sensorObservations.has(observedAt)) {
-    sensorObservations.set(observedAt, value);
-  } else if (sensorObservations.get(observedAt) === null && value !== null) {
-    sensorObservations.set(observedAt, value);
+  if (!timeseriesObservations.has(observedAt)) {
+    timeseriesObservations.set(observedAt, value);
+  } else if (timeseriesObservations.get(observedAt) === null && value !== null) {
+    timeseriesObservations.set(observedAt, value);
   }
-  const existing = latestBySensor.get(sensorId);
+  const existing = latestByTimeseriesRef.get(timeseriesRef);
   if (!existing || observedAt > existing.observed_at) {
-    latestBySensor.set(sensorId, { observed_at: observedAt, value });
+    latestByTimeseriesRef.set(timeseriesRef, { observed_at: observedAt, value });
   }
   if (stationId !== null) {
     const current = latestObservedByStationId.get(stationId);
@@ -1458,8 +1461,8 @@ async function upsertObservations(rows: Array<Record<string, unknown>>): Promise
 function collectParameters(locations: OpenAQLocation[]): Record<string, ParameterMeta> {
   const parameters: Record<string, ParameterMeta> = {};
   for (const location of locations) {
-    for (const sensor of location?.sensors ?? []) {
-      const paramName = sensor?.parameter?.name;
+    for (const timeseries of location?.sensors ?? []) {
+      const paramName = timeseries?.parameter?.name;
       if (!paramName || !String(paramName).trim()) {
         continue;
       }
@@ -1467,11 +1470,11 @@ function collectParameters(locations: OpenAQLocation[]): Record<string, Paramete
       if (!parameters[name]) {
         parameters[name] = {
           name,
-          displayName: sensor?.parameter?.displayName
-            ? String(sensor.parameter.displayName)
+          displayName: timeseries?.parameter?.displayName
+            ? String(timeseries.parameter.displayName)
             : null,
-          units: sensor?.parameter?.units
-            ? String(sensor.parameter.units)
+          units: timeseries?.parameter?.units
+            ? String(timeseries.parameter.units)
             : null,
         };
       }
@@ -1480,17 +1483,19 @@ function collectParameters(locations: OpenAQLocation[]): Record<string, Paramete
   return parameters;
 }
 
-function collectSensors(locations: OpenAQLocation[]): Map<string, { locationId: string; parameter: ParameterMeta }> {
-  const sensors = new Map<string, { locationId: string; parameter: ParameterMeta }>();
+function collectTimeseriesRefs(
+  locations: OpenAQLocation[],
+): Map<string, { locationId: string; parameter: ParameterMeta }> {
+  const timeseriesRefs = new Map<string, { locationId: string; parameter: ParameterMeta }>();
   for (const location of locations) {
     const locationId = resolveLocationId(location);
     if (!locationId) {
       continue;
     }
-    for (const sensor of location?.sensors ?? []) {
-      const sensorId = sensor?.id;
-      const paramName = sensor?.parameter?.name;
-      if (!sensorId || !paramName) {
+    for (const timeseries of location?.sensors ?? []) {
+      const timeseriesRef = timeseries?.id;
+      const paramName = timeseries?.parameter?.name;
+      if (!timeseriesRef || !paramName) {
         continue;
       }
       const name = String(paramName).trim();
@@ -1499,17 +1504,17 @@ function collectSensors(locations: OpenAQLocation[]): Map<string, { locationId: 
       }
       const parameter: ParameterMeta = {
         name,
-        displayName: sensor?.parameter?.displayName
-          ? String(sensor.parameter.displayName)
+        displayName: timeseries?.parameter?.displayName
+          ? String(timeseries.parameter.displayName)
           : null,
-        units: sensor?.parameter?.units
-          ? String(sensor.parameter.units)
+        units: timeseries?.parameter?.units
+          ? String(timeseries.parameter.units)
           : null,
       };
-      sensors.set(String(sensorId), { locationId, parameter });
+      timeseriesRefs.set(String(timeseriesRef), { locationId, parameter });
     }
   }
-  return sensors;
+  return timeseriesRefs;
 }
 
 serve(async (req) => {
@@ -1790,29 +1795,29 @@ serve(async (req) => {
   });
 
   const parameters = locationsFetched ? collectParameters(locations) : {};
-  const sensorMap = locationsFetched ? collectSensors(locations) : new Map();
+  const timeseriesRefMap = locationsFetched ? collectTimeseriesRefs(locations) : new Map();
   const phenomenonIds = locationsFetched ? await upsertPhenomena(connectorId, parameters) : {};
 
-  const sensorIdsByStationId = new Map<number, string[]>();
-  const stationIdBySensorId = new Map<string, number>();
+  const timeseriesRefsByStationId = new Map<number, string[]>();
+  const stationIdByTimeseriesRef = new Map<string, number>();
   if (locationsFetched) {
-    for (const [sensorId, meta] of sensorMap.entries()) {
+    for (const [timeseriesRef, meta] of timeseriesRefMap.entries()) {
       const stationId = Number(stationIdByRef[meta.locationId]);
       if (!Number.isFinite(stationId)) {
         continue;
       }
-      stationIdBySensorId.set(sensorId, stationId);
-      const existing = sensorIdsByStationId.get(stationId);
+      stationIdByTimeseriesRef.set(timeseriesRef, stationId);
+      const existing = timeseriesRefsByStationId.get(stationId);
       if (existing) {
-        existing.push(sensorId);
+        existing.push(timeseriesRef);
       } else {
-        sensorIdsByStationId.set(stationId, [sensorId]);
+        timeseriesRefsByStationId.set(stationId, [timeseriesRef]);
       }
     }
     logLine("INFO", "OpenAQ timeseries mapping", {
-      timeseries_total: sensorMap.size,
-      station_ids_mapped: stationIdBySensorId.size,
-      stations_with_timeseries: sensorIdsByStationId.size,
+      timeseries_total: timeseriesRefMap.size,
+      station_ids_mapped: stationIdByTimeseriesRef.size,
+      stations_with_timeseries: timeseriesRefsByStationId.size,
     });
   } else if (stationIds.length) {
     try {
@@ -1828,15 +1833,15 @@ serve(async (req) => {
           continue;
         }
         const normalizedRefs = refs.map((ref) => String(ref));
-        sensorIdsByStationId.set(stationId, normalizedRefs);
+        timeseriesRefsByStationId.set(stationId, normalizedRefs);
         for (const ref of normalizedRefs) {
-          stationIdBySensorId.set(ref, stationId);
+          stationIdByTimeseriesRef.set(ref, stationId);
         }
         perStationCounts[stationIdRaw] = refs.length;
       }
       logLine("INFO", "OpenAQ timeseries refs loaded", {
         station_ids: stationIds.length,
-        stations_with_timeseries: sensorIdsByStationId.size,
+        stations_with_timeseries: timeseriesRefsByStationId.size,
         timeseries_per_station_sample: Object.entries(perStationCounts)
           .slice(0, 10)
           .map(([station_id, count]) => ({ station_id: Number(station_id), count })),
@@ -1856,7 +1861,7 @@ serve(async (req) => {
   let timeseriesIdByRef: Record<string, number> = {};
   let stationIdByTimeseriesId: Record<number, number> = {};
   if (locationsFetched) {
-    for (const [sensorId, meta] of sensorMap.entries()) {
+    for (const [timeseriesRef, meta] of timeseriesRefMap.entries()) {
       const stationId = stationIdByRef[meta.locationId];
       if (!stationId) {
         continue;
@@ -1867,7 +1872,7 @@ serve(async (req) => {
       }
       const label = `${meta.locationId} ${meta.parameter.displayName ?? meta.parameter.name}`;
       timeseriesRows.push({
-        timeseries_ref: sensorId,
+        timeseries_ref: timeseriesRef,
         label,
         uom: meta.parameter.units ?? null,
         station_id: stationId,
@@ -1875,7 +1880,7 @@ serve(async (req) => {
         service_ref: OPENAQ_SERVICE_REF,
         phenomenon_id: phenomenonId,
       });
-      timeseriesRefs.push(sensorId);
+      timeseriesRefs.push(timeseriesRef);
     }
     if (!dryRun) {
       await upsertTimeseries(timeseriesRows);
@@ -1889,7 +1894,7 @@ serve(async (req) => {
     }
     populateStationIdByTimeseriesIdFromRefs(
       timeseriesIdByRef,
-      stationIdBySensorId,
+      stationIdByTimeseriesRef,
       stationIdByTimeseriesId,
     );
     logTimeseriesRefMapping(timeseriesRefs, timeseriesIdByRef, {
@@ -1944,13 +1949,13 @@ serve(async (req) => {
 
     if (stationId !== null && gapStationIds.has(stationId)) {
       const stationCheckpoint = checkpointByStationId[stationId];
-      const sensorIds = sensorIdsByStationId.get(stationId) ?? [];
-      for (const sensorId of sensorIds) {
+      const timeseriesRefs = timeseriesRefsByStationId.get(stationId) ?? [];
+      for (const timeseriesRef of timeseriesRefs) {
         if (shouldStop()) {
           timeBudgetHit = true;
           return;
         }
-        const timeseriesId = timeseriesIdByRef[sensorId];
+        const timeseriesId = timeseriesIdByRef[timeseriesRef];
         const tsCheckpoint = timeseriesId ? timeseriesCheckpointById[timeseriesId] : null;
         const baseObservedAt = tsCheckpoint?.last_observed_at ?? stationCheckpoint?.last_observed_at
           ?? null;
@@ -1959,13 +1964,13 @@ serve(async (req) => {
         const datetimeTo = new Date(nowMs).toISOString();
         let hourly: OpenAQHourlyRecord[] = [];
         try {
-          hourly = await listHourlyMeasurements(sensorId, datetimeFrom, datetimeTo, rawRecorder);
+          hourly = await listHourlyMeasurements(timeseriesRef, datetimeFrom, datetimeTo, rawRecorder);
         } catch (err) {
           await logError({
             severity: "warn",
             message: "OpenAQ hourly measurements fetch failed",
             connector_id: connector.id,
-            context: { timeseries_ref: sensorId, error: String(err) },
+            context: { timeseries_ref: timeseriesRef, error: String(err) },
           });
           continue;
         }
@@ -1978,7 +1983,7 @@ serve(async (req) => {
             observationsByTimeseries,
             latestByTimeseries,
             latestObservedByStationId,
-            String(record?.sensorsId ?? sensorId),
+            String(record?.sensorsId ?? timeseriesRef),
             observedAt,
             record?.value ?? null,
             stationId,
@@ -2003,16 +2008,16 @@ serve(async (req) => {
       return;
     }
     for (const record of latest) {
-      const sensorId = record?.sensorsId;
+      const timeseriesRef = record?.sensorsId;
       const observedAt = record?.datetime?.utc;
-      if (!sensorId || !observedAt) {
+      if (!timeseriesRef || !observedAt) {
         continue;
       }
       recordObservation(
         observationsByTimeseries,
         latestByTimeseries,
         latestObservedByStationId,
-        String(sensorId),
+        String(timeseriesRef),
         observedAt,
         record?.value ?? null,
         stationId,
@@ -2041,7 +2046,7 @@ serve(async (req) => {
     }
     populateStationIdByTimeseriesIdFromRefs(
       timeseriesIdByRef,
-      stationIdBySensorId,
+      stationIdByTimeseriesRef,
       stationIdByTimeseriesId,
     );
     logTimeseriesRefMapping(timeseriesRefs, timeseriesIdByRef, {
@@ -2237,7 +2242,7 @@ serve(async (req) => {
           }
           continue;
         }
-        const stationId = stationIdBySensorId.get(timeseriesRef)
+        const stationId = stationIdByTimeseriesRef.get(timeseriesRef)
           ?? stationIdByTimeseriesId[timeseriesId];
         if (!stationId) {
           timeseriesCheckpointStats.skipped_missing_station_id += 1;
