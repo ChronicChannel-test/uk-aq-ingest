@@ -3,11 +3,13 @@
 ## Schema
 - Permission confirmed: all files under `/Users/mikehinford/Library/CloudStorage/Dropbox/Projects/CIC Website/CIC Air Quality Networks/CIC-test-uk-aq-schema/uk-aq-schema` may be edited (except `archive/`).
 - Read the schema files at the start of the session.
+- Schema edits in the allowed paths do not require extra confirmation (except under `archive/`).
 
 ## Naming
 - Prefer `uk_aq` in filenames, scripts, and docs (avoid `ukair`).
 - `UK-AIR SOS` is a service name and must never be changed to `UK-AQ SOS`.
 - AQ means Air Quality in this project.
+- Use project terminology: "timeseries" (not "sensors") in code, docs, and discussion.
 - For SOS-derived UK networks, use `gov_uk_<network>_` prefixes (e.g., `gov_uk_aurn_`) and place them under `scripts/gov_uk_<network>/`.
 - For non-SOS networks, use the network prefix (e.g., `sensorcommunity_`) and place them under a matching `scripts/<network>/` directory.
 - Connectors represent data sources; SOS networks live in `uk_air_sos_networks` (use `network_display_name` for UI) and must not be added to `connectors`. Non-SOS connectors are 1:1 with their network.
@@ -21,7 +23,7 @@
 - When writing regex patterns, avoid double-escaping (`\\d`) inside raw strings; use `\d` so year matching works correctly.
 
 ## Supabase API
-- `uk_aq_core` and `uk_aq_raw` are not exposed to PostgREST; use `public` RPCs/views for any edge-function access instead of direct `/rest/v1` calls to those schemas.
+- `uk_aq_core`, `uk_aq_raw`, and `uk_aq_public` are exposed to PostgREST.
 
 ## Archive
 - Files in `archive/` can be referenced for context but must never be modified once created. Adding new files/directories under `archive/` is allowed.

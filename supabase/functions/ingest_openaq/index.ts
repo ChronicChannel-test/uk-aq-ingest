@@ -255,8 +255,10 @@ async function rpcRequest<T>(
 async function loadOpenaqStationRefs(
   batchLimit: number,
   staleLimit: number,
-): Promise<string[]> {
-  const { data, error } = await rpcRequest<Array<{ station_ref: string }>>(
+): Promise<Array<{ station_ref: string; station_id: number | null }>> {
+  const { data, error } = await rpcRequest<
+    Array<{ station_ref: string; station_id: number | null }>
+  >(
     "uk_aq_rpc_openaq_select_station_refs",
     {
       batch_limit: batchLimit,
@@ -266,7 +268,10 @@ async function loadOpenaqStationRefs(
   if (error) {
     throw new Error(`OpenAQ station selection failed: ${error.message}`);
   }
-  return (data ?? []).map((row) => String(row.station_ref));
+  return (data ?? []).map((row) => ({
+    station_ref: String(row.station_ref),
+    station_id: row.station_id === null ? null : Number(row.station_id),
+  }));
 }
 
 async function fetchOpenaqStationCheckpoints(
@@ -325,6 +330,43 @@ async function fetchOpenaqTimeseriesCheckpoints(
   const mapping: Record<number, OpenAQTimeseriesCheckpoint> = {};
   for (const row of data ?? []) {
     mapping[Number(row.timeseries_id)] = row;
+  }
+  return mapping;
+}
+
+async function fetchOpenaqTimeseriesRefsByStationIds(
+  connectorId: string,
+  serviceRef: string,
+  stationIds: number[],
+): Promise<Record<number, string[]>> {
+  if (!stationIds.length) {
+    return {};
+  }
+  const mapping: Record<number, string[]> = {};
+  for (let idx = 0; idx < stationIds.length; idx += 200) {
+    const chunk = stationIds.slice(idx, idx + 200);
+    const { data, error } = await rpcRequest<
+      Array<{ station_id: number; timeseries_ref: string }>
+    >(
+      "uk_aq_rpc_timeseries_refs_by_station_ids",
+      {
+        connector_id: Number(connectorId),
+        service_ref: serviceRef,
+        station_ids: chunk,
+      },
+    );
+    if (error) {
+      throw new Error(`OpenAQ timeseries refs fetch failed: ${error.message}`);
+    }
+    for (const row of data ?? []) {
+      const stationId = Number(row.station_id);
+      const ref = String(row.timeseries_ref);
+      if (!mapping[stationId]) {
+        mapping[stationId] = [ref];
+      } else {
+        mapping[stationId].push(ref);
+      }
+    }
   }
   return mapping;
 }
@@ -1501,6 +1543,8 @@ serve(async (req) => {
   let stationRefs = Array.isArray(payload.station_refs)
     ? payload.station_refs.map((ref) => String(ref))
     : [];
+  let stationIdByRef: Record<string, number> = {};
+  let selectedStations: Array<{ station_ref: string; station_id: number | null }> = [];
   const stationsRequested = hasRequestedRefs ? stationRefs.length : 0;
   const windowHours = Number(payload.window_hours ?? DEFAULT_WINDOW_HOURS);
   const dryRun = payload.dry_run ?? false;
@@ -1603,7 +1647,13 @@ serve(async (req) => {
 
   if (!stationRefs.length) {
     try {
-      stationRefs = await loadOpenaqStationRefs(OPENAQ_TIERED_LIMIT, OPENAQ_STALE_LIMIT);
+      selectedStations = await loadOpenaqStationRefs(OPENAQ_TIERED_LIMIT, OPENAQ_STALE_LIMIT);
+      stationRefs = selectedStations.map((row) => row.station_ref);
+      for (const row of selectedStations) {
+        if (row.station_id !== null && Number.isFinite(row.station_id)) {
+          stationIdByRef[row.station_ref] = row.station_id;
+        }
+      }
     } catch (err) {
       await logError({
         severity: "error",
@@ -1665,11 +1715,17 @@ serve(async (req) => {
       .map((location) => resolveLocationId(location))
       .filter((id): id is string => Boolean(id))
     : stationRefs;
-  const stationIdByRef = await fetchStationIds(
-    connectorId,
-    OPENAQ_SERVICE_REF,
-    stationRefsForIds,
+  const missingRefsForIds = stationRefsForIds.filter(
+    (ref) => stationIdByRef[ref] === undefined,
   );
+  if (missingRefsForIds.length) {
+    const fetchedIds = await fetchStationIds(
+      connectorId,
+      OPENAQ_SERVICE_REF,
+      missingRefsForIds,
+    );
+    stationIdByRef = { ...stationIdByRef, ...fetchedIds };
+  }
   {
     const missingStationRefs = stationRefsForIds.filter(
       (ref) => stationIdByRef[ref] === undefined,
@@ -1701,6 +1757,26 @@ serve(async (req) => {
     checkpointByStationId = {};
   }
 
+  const nowMs = Date.now();
+  const gapStationIds = new Set<number>();
+  for (const stationId of stationIds) {
+    const lastObservedAt = checkpointByStationId[stationId]?.last_observed_at ?? null;
+    if (!lastObservedAt) {
+      continue;
+    }
+    const lastObservedMs = Date.parse(lastObservedAt);
+    if (!Number.isFinite(lastObservedMs)) {
+      continue;
+    }
+    if (nowMs - lastObservedMs >= 2 * 60 * 60 * 1000) {
+      gapStationIds.add(stationId);
+    }
+  }
+  logLine("INFO", "OpenAQ gap precheck", {
+    station_ids: stationIds.length,
+    gap_station_ids: gapStationIds.size,
+  });
+
   const parameters = locationsFetched ? collectParameters(locations) : {};
   const sensorMap = locationsFetched ? collectSensors(locations) : new Map();
   const phenomenonIds = locationsFetched ? await upsertPhenomena(connectorId, parameters) : {};
@@ -1726,6 +1802,37 @@ serve(async (req) => {
       station_ids_mapped: stationIdBySensorId.size,
       stations_with_sensors: sensorIdsByStationId.size,
     });
+  } else if (stationIds.length) {
+    try {
+      const refsByStation = await fetchOpenaqTimeseriesRefsByStationIds(
+        connectorId,
+        OPENAQ_SERVICE_REF,
+        stationIds,
+      );
+      const perStationCounts: Record<string, number> = {};
+      for (const [stationIdRaw, refs] of Object.entries(refsByStation)) {
+        const stationId = Number(stationIdRaw);
+        if (!Number.isFinite(stationId) || !refs.length) {
+          continue;
+        }
+        sensorIdsByStationId.set(stationId, refs.map((ref) => String(ref)));
+        perStationCounts[stationIdRaw] = refs.length;
+      }
+      logLine("INFO", "OpenAQ timeseries refs loaded", {
+        station_ids: stationIds.length,
+        stations_with_timeseries: sensorIdsByStationId.size,
+        timeseries_per_station_sample: Object.entries(perStationCounts)
+          .slice(0, 10)
+          .map(([station_id, count]) => ({ station_id: Number(station_id), count })),
+      });
+    } catch (err) {
+      await logError({
+        severity: "warn",
+        message: "OpenAQ timeseries refs fetch failed",
+        connector_id: connector.id,
+        context: { error: String(err) },
+      });
+    }
   }
 
   const timeseriesRows: Array<Record<string, unknown>> = [];
@@ -1771,7 +1878,7 @@ serve(async (req) => {
   }
 
   let timeseriesCheckpointById: Record<number, OpenAQTimeseriesCheckpoint> = {};
-  if (locationsFetched && stationIds.length) {
+  if (stationIds.length) {
     try {
       timeseriesCheckpointById = await fetchOpenaqTimeseriesCheckpoints(stationIds);
       logLine("INFO", "OpenAQ timeseries checkpoints fetched", {
@@ -1793,8 +1900,6 @@ serve(async (req) => {
   const observationsBySensor = new Map<string, Map<string, number | null>>();
   const latestObservedByStationId = new Map<number, string>();
   const polledStationIds = new Set<number>();
-  const gapFallbackStationIds = new Set<number>();
-  const nowMs = Date.now();
   const windowMs = Number.isFinite(windowHours) && windowHours > 0
     ? windowHours * 60 * 60 * 1000
     : null;
@@ -1804,24 +1909,6 @@ serve(async (req) => {
       .map((location) => resolveLocationId(location))
       .filter((id): id is string => Boolean(id))
     : stationRefs;
-
-  const fallbackStationIds = new Set<number>();
-  if (locationsFetched) {
-    for (const stationId of stationIds) {
-      const checkpoint = checkpointByStationId[stationId];
-      const lastObservedAt = checkpoint?.last_observed_at ?? null;
-      if (!lastObservedAt) {
-        continue;
-      }
-      const lastObservedMs = Date.parse(lastObservedAt);
-      if (!Number.isFinite(lastObservedMs)) {
-        continue;
-      }
-      if (nowMs - lastObservedMs >= 2 * 60 * 60 * 1000) {
-        fallbackStationIds.add(stationId);
-      }
-    }
-  }
 
   await runPool(locationIds, OPENAQ_CONCURRENCY, async (locationId) => {
     if (shouldStop()) {
@@ -1834,7 +1921,7 @@ serve(async (req) => {
       polledStationIds.add(stationId);
     }
 
-    if (locationsFetched && stationId !== null && fallbackStationIds.has(stationId)) {
+    if (stationId !== null && gapStationIds.has(stationId)) {
       const stationCheckpoint = checkpointByStationId[stationId];
       const sensorIds = sensorIdsByStationId.get(stationId) ?? [];
       for (const sensorId of sensorIds) {
@@ -1919,77 +2006,6 @@ serve(async (req) => {
     }
     return false;
   });
-
-  if (locationsFetched) {
-    for (const [stationId, latestObserved] of latestObservedByStationId.entries()) {
-      const checkpoint = checkpointByStationId[stationId];
-      const previousLastObserved = checkpoint?.last_observed_at ?? null;
-      if (!previousLastObserved) {
-        continue;
-      }
-      const latestMs = Date.parse(latestObserved);
-      const previousMs = Date.parse(previousLastObserved);
-      if (!Number.isFinite(latestMs) || !Number.isFinite(previousMs)) {
-        continue;
-      }
-      if (latestMs - previousMs >= 2 * 60 * 60 * 1000) {
-        gapFallbackStationIds.add(stationId);
-      }
-    }
-  }
-
-  if (locationsFetched && gapFallbackStationIds.size) {
-    for (const stationId of gapFallbackStationIds) {
-      if (fallbackStationIds.has(stationId)) {
-        continue;
-      }
-      const stationCheckpoint = checkpointByStationId[stationId];
-      const sensorIds = sensorIdsByStationId.get(stationId) ?? [];
-      const latestObserved = latestObservedByStationId.get(stationId) ?? null;
-      const datetimeTo = latestObserved ?? new Date(nowMs).toISOString();
-      for (const sensorId of sensorIds) {
-        if (shouldStop()) {
-          timeBudgetHit = true;
-          break;
-        }
-        const timeseriesId = timeseriesIdByRef[sensorId];
-        const tsCheckpoint = timeseriesId ? timeseriesCheckpointById[timeseriesId] : null;
-        const baseObservedAt = tsCheckpoint?.last_observed_at ?? stationCheckpoint?.last_observed_at
-          ?? null;
-        const datetimeFrom = baseObservedAt
-          ?? (windowMs ? new Date(nowMs - windowMs).toISOString() : null);
-        let hourly: OpenAQHourlyRecord[] = [];
-        try {
-          hourly = await listHourlyMeasurements(sensorId, datetimeFrom, datetimeTo, rawRecorder);
-        } catch (err) {
-          await logError({
-            severity: "warn",
-            message: "OpenAQ hourly measurements fetch failed",
-            connector_id: connector.id,
-            context: { sensor_id: sensorId, error: String(err) },
-          });
-          continue;
-        }
-        for (const record of hourly) {
-          const observedAt = record?.datetime?.utc;
-          if (!observedAt) {
-            continue;
-          }
-          recordObservation(
-            observationsBySensor,
-            latestBySensor,
-            latestObservedByStationId,
-            String(record?.sensorsId ?? sensorId),
-            observedAt,
-            record?.value ?? null,
-            stationId,
-            nowMs,
-            windowMs,
-          );
-        }
-      }
-    }
-  }
 
   if (!locationsFetched) {
     for (const sensorId of observationsBySensor.keys()) {
