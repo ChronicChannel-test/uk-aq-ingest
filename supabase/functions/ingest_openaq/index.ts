@@ -1789,6 +1789,14 @@ serve(async (req) => {
       gapStationIds.add(stationId);
     }
   }
+  const debugStationId = 189841;
+  if (Number.isFinite(stationIdByRef?.[debugStationId])) {
+    logLine("INFO", "OpenAQ gap precheck debug", {
+      station_id: debugStationId,
+      last_observed_at: checkpointByStationId[debugStationId]?.last_observed_at ?? null,
+      gap_flagged: gapStationIds.has(debugStationId),
+    });
+  }
   logLine("INFO", "OpenAQ gap precheck", {
     station_ids: stationIds.length,
     gap_station_ids: gapStationIds.size,
