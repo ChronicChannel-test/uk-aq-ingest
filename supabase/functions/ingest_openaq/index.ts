@@ -223,6 +223,45 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
+async function postgrestRequest<T>(
+  method: "GET" | "POST" | "PATCH" | "DELETE",
+  path: string,
+  params?: Record<string, string>,
+  body?: unknown,
+  schema = UK_AQ_CORE_SCHEMA,
+  prefer?: string,
+): Promise<{ data: T | null; error: { message: string } | null }> {
+  if (!REST_BASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    return { data: null, error: { message: "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY." } };
+  }
+  try {
+    const url = new URL(`${REST_BASE_URL}/${path.replace(/^\//, "")}`);
+    if (params) {
+      for (const [key, value] of Object.entries(params)) {
+        url.searchParams.set(key, value);
+      }
+    }
+    const headers = postgrestHeaders(prefer, schema);
+    const resp = await fetch(url.toString(), {
+      method,
+      headers,
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    let payload: unknown = null;
+    if (resp.status !== 204) {
+      const contentType = resp.headers.get("content-type") ?? "";
+      payload = contentType.includes("application/json") ? await resp.json() : await resp.text();
+    }
+    if (!resp.ok) {
+      const message = typeof payload === "string" ? payload : JSON.stringify(payload);
+      return { data: null, error: { message } };
+    }
+    return { data: payload as T, error: null };
+  } catch (err) {
+    return { data: null, error: { message: String(err) } };
+  }
+}
+
 async function rpcRequest<T>(
   fn: string,
   args?: Record<string, unknown>,
