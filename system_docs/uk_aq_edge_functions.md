@@ -103,6 +103,7 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
   - Writes a log file to Dropbox `/connectors/openaq/log/YYYY-MM-DD/` (prefix `uk_aq_log_edge_openaq_`).
   - Writes raw payloads to Dropbox `/connectors/openaq/raw_data/YYYY-MM-DD/` as ZIP (prefix `uk_aq_raw_edge_openaq_`).
   - Writes diagnostic entries to `error_logs` when Dropbox config is missing/mismatched or log/raw uploads fail.
+  - Logs timeseries mapping diagnostics (missing refs/station ids samples) to aid checkpoint debugging.
 
 ### ingest_breathelondon
 - Purpose: Poll Breathe London Communities for hourly observations with checkpointing.

@@ -1517,6 +1517,60 @@ serve(async (req) => {
     const ctx = context ? ` ${JSON.stringify(context)}` : "";
     logLines.push(`[${stamp}] ${level} ${message}${ctx}`);
   };
+  const logTimeseriesRefMapping = (
+    refs: string[],
+    mapping: Record<string, number>,
+    extra?: Record<string, unknown>,
+  ) => {
+    if (!refs.length) {
+      return;
+    }
+    const uniqueRefs = Array.from(new Set(refs));
+    const missingSample: string[] = [];
+    let missingCount = 0;
+    for (const ref of uniqueRefs) {
+      if (mapping[ref] === undefined) {
+        missingCount += 1;
+        if (missingSample.length < 10) {
+          missingSample.push(ref);
+        }
+      }
+    }
+    logLine("INFO", "OpenAQ timeseries ref mapping", {
+      timeseries_refs_total: uniqueRefs.length,
+      timeseries_ids_mapped: Object.keys(mapping).length,
+      timeseries_refs_missing: missingCount,
+      timeseries_refs_missing_sample: missingSample,
+      ...extra,
+    });
+  };
+  const logTimeseriesStationMapping = (
+    refMapping: Record<string, number>,
+    stationMapping: Record<number, number>,
+    extra?: Record<string, unknown>,
+  ) => {
+    const entries = Object.entries(refMapping);
+    if (!entries.length) {
+      return;
+    }
+    const missingSample: Array<{ timeseries_ref: string; timeseries_id: number }> = [];
+    let missingCount = 0;
+    for (const [ref, id] of entries) {
+      if (stationMapping[id] === undefined) {
+        missingCount += 1;
+        if (missingSample.length < 10) {
+          missingSample.push({ timeseries_ref: ref, timeseries_id: id });
+        }
+      }
+    }
+    logLine("INFO", "OpenAQ timeseries station mapping", {
+      timeseries_ids_total: entries.length,
+      station_ids_mapped: Object.keys(stationMapping).length,
+      station_ids_missing: missingCount,
+      station_ids_missing_sample: missingSample,
+      ...extra,
+    });
+  };
   const dropboxConfig = loadDropboxConfig();
   const dropboxDiagnostics = buildDropboxDiagnostics();
   const rawRecorder = dropboxConfig ? createRawRecorder() : null;
@@ -1633,6 +1687,10 @@ serve(async (req) => {
   let checkpointByStationId: Record<number, OpenAQStationCheckpoint> = {};
   try {
     checkpointByStationId = await fetchOpenaqStationCheckpoints(stationIds);
+    logLine("INFO", "OpenAQ station checkpoints fetched", {
+      station_ids: stationIds.length,
+      checkpoints: Object.keys(checkpointByStationId).length,
+    });
   } catch (err) {
     await logError({
       severity: "warn",
@@ -1663,6 +1721,11 @@ serve(async (req) => {
         sensorIdsByStationId.set(stationId, [sensorId]);
       }
     }
+    logLine("INFO", "OpenAQ sensor mapping", {
+      sensors_total: sensorMap.size,
+      station_ids_mapped: stationIdBySensorId.size,
+      stations_with_sensors: sensorIdsByStationId.size,
+    });
   }
 
   const timeseriesRows: Array<Record<string, unknown>> = [];
@@ -1701,12 +1764,20 @@ serve(async (req) => {
         timeseriesRefs,
       );
     }
+    logTimeseriesRefMapping(timeseriesRefs, timeseriesIdByRef, {
+      locations_fetched: locationsFetched,
+      dry_run: dryRun,
+    });
   }
 
   let timeseriesCheckpointById: Record<number, OpenAQTimeseriesCheckpoint> = {};
   if (locationsFetched && stationIds.length) {
     try {
       timeseriesCheckpointById = await fetchOpenaqTimeseriesCheckpoints(stationIds);
+      logLine("INFO", "OpenAQ timeseries checkpoints fetched", {
+        station_ids: stationIds.length,
+        checkpoints: Object.keys(timeseriesCheckpointById).length,
+      });
     } catch (err) {
       await logError({
         severity: "warn",
@@ -1931,12 +2002,19 @@ serve(async (req) => {
         timeseriesRefs,
       );
     }
+    logTimeseriesRefMapping(timeseriesRefs, timeseriesIdByRef, {
+      locations_fetched: locationsFetched,
+      dry_run: dryRun,
+    });
   }
   if (!locationsFetched && Object.keys(timeseriesIdByRef).length) {
     try {
       stationIdByTimeseriesId = await fetchTimeseriesStationIds(
         Object.values(timeseriesIdByRef),
       );
+      logTimeseriesStationMapping(timeseriesIdByRef, stationIdByTimeseriesId, {
+        locations_fetched: locationsFetched,
+      });
     } catch (err) {
       await logError({
         severity: "warn",
@@ -1947,6 +2025,16 @@ serve(async (req) => {
       stationIdByTimeseriesId = {};
     }
   }
+
+  logLine("INFO", "OpenAQ polling summary", {
+    stations_selected: stationsSelected,
+    stations_polled: polledStationIds.size,
+    latest_sensors: latestBySensor.size,
+    observations_sensors: observationsBySensor.size,
+    timeseries_refs: timeseriesRefs.length,
+    timeseries_ids: Object.keys(timeseriesIdByRef).length,
+    timeseries_station_ids: Object.keys(stationIdByTimeseriesId).length,
+  });
 
   let observationsUpserted = 0;
   let seriesPolled = observationsBySensor.size;
@@ -2070,7 +2158,11 @@ serve(async (req) => {
     }
 
     try {
-      await upsertOpenaqStationCheckpoints(checkpointRows);
+      const rowsUpserted = await upsertOpenaqStationCheckpoints(checkpointRows);
+      logLine("INFO", "OpenAQ station checkpoints upserted", {
+        rows_prepared: checkpointRows.length,
+        rows_upserted: rowsUpserted,
+      });
     } catch (err) {
       await logError({
         severity: "warn",
@@ -2082,17 +2174,45 @@ serve(async (req) => {
 
     if (latestBySensor.size) {
       const timeseriesCheckpointRows: Array<Record<string, unknown>> = [];
+      const timeseriesCheckpointStats = {
+        latest_sensors: latestBySensor.size,
+        rows_prepared: 0,
+        skipped_missing_timeseries_id: 0,
+        skipped_missing_station_id: 0,
+        missing_timeseries_id_sample: [] as string[],
+        missing_station_id_sample: [] as Array<{ sensor_id: string; timeseries_id: number }>,
+        new_checkpoints: 0,
+        existing_checkpoints: 0,
+        new_observations: 0,
+        next_due_updated: 0,
+      };
       for (const [sensorId, latest] of latestBySensor.entries()) {
         const timeseriesId = timeseriesIdByRef[sensorId];
         if (!timeseriesId) {
+          timeseriesCheckpointStats.skipped_missing_timeseries_id += 1;
+          if (timeseriesCheckpointStats.missing_timeseries_id_sample.length < 10) {
+            timeseriesCheckpointStats.missing_timeseries_id_sample.push(sensorId);
+          }
           continue;
         }
         const stationId = stationIdBySensorId.get(sensorId)
           ?? stationIdByTimeseriesId[timeseriesId];
         if (!stationId) {
+          timeseriesCheckpointStats.skipped_missing_station_id += 1;
+          if (timeseriesCheckpointStats.missing_station_id_sample.length < 10) {
+            timeseriesCheckpointStats.missing_station_id_sample.push({
+              sensor_id: sensorId,
+              timeseries_id: timeseriesId,
+            });
+          }
           continue;
         }
         const checkpoint = timeseriesCheckpointById[timeseriesId];
+        if (checkpoint) {
+          timeseriesCheckpointStats.existing_checkpoints += 1;
+        } else {
+          timeseriesCheckpointStats.new_checkpoints += 1;
+        }
         const previousLastObserved = checkpoint?.last_observed_at ?? null;
         const previousNextDue = checkpoint?.next_due_at ?? null;
         let lagSamples = checkpoint?.ingest_lag_samples ?? [];
@@ -2104,6 +2224,7 @@ serve(async (req) => {
         if (latestObserved && (!previousLastObserved || latestObserved > previousLastObserved)) {
           updatedLastObserved = latestObserved;
           hasNewObservation = true;
+          timeseriesCheckpointStats.new_observations += 1;
           const lagSeconds = Math.max(
             0,
             Math.round((nowMsForLag - Date.parse(latestObserved)) / 1000),
@@ -2114,6 +2235,7 @@ serve(async (req) => {
         }
 
         if (hasNewObservation || !previousNextDue) {
+          timeseriesCheckpointStats.next_due_updated += 1;
           if (lagSamples.length < 10) {
             nextDueAt = new Date(nowMsForLag + 5 * 60 * 1000).toISOString();
           } else {
@@ -2135,11 +2257,16 @@ serve(async (req) => {
           ingest_lag_samples: lagSamples,
           last_polled_at: nowIso,
         });
+        timeseriesCheckpointStats.rows_prepared += 1;
       }
 
       if (timeseriesCheckpointRows.length) {
         try {
-          await upsertOpenaqTimeseriesCheckpoints(timeseriesCheckpointRows);
+          const rowsUpserted = await upsertOpenaqTimeseriesCheckpoints(timeseriesCheckpointRows);
+          logLine("INFO", "OpenAQ timeseries checkpoints upserted", {
+            ...timeseriesCheckpointStats,
+            rows_upserted: rowsUpserted,
+          });
         } catch (err) {
           await logError({
             severity: "warn",
@@ -2148,8 +2275,18 @@ serve(async (req) => {
             context: { error: String(err) },
           });
         }
+      } else {
+        logLine("INFO", "OpenAQ timeseries checkpoints skipped (no rows)", {
+          ...timeseriesCheckpointStats,
+        });
       }
     }
+  } else if (!dryRun) {
+    logLine("INFO", "OpenAQ checkpoint updates skipped", {
+      stations_polled: polledStationIds.size,
+      latest_sensors: latestBySensor.size,
+      dry_run: dryRun,
+    });
   }
 
   const stoppedReason = timeBudgetHit
