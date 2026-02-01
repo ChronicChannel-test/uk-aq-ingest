@@ -2435,6 +2435,16 @@ serve(async (req) => {
       const { minObserved, recentGapMinObserved } = resolveStationObservedForCheckpoint(stationId);
       const minObservedForStation = recentGapMinObserved ?? minObserved;
 
+      if (recentGapMinObserved) {
+        logLine("INFO", "OpenAQ recent gap clamp applied", {
+          station_id: stationId,
+          min_observed_at: minObserved,
+          recent_gap_min_observed_at: recentGapMinObserved,
+          station_last_observed_at: minObservedForStation,
+          latest_observed_at: latestObservedForScheduling,
+        });
+      }
+
       if (minObservedForStation) {
         updatedLastObserved = minObservedForStation;
       }
