@@ -1776,6 +1776,10 @@ serve(async (req) => {
 
   const nowMs = Date.now();
   const gapStationIds = new Set<number>();
+  const debugStationId = 189841;
+  if (stationIds.includes(debugStationId)) {
+    logLine("INFO", "OpenAQ debug station present", { station_id: debugStationId });
+  }
   for (const stationId of stationIds) {
     const lastObservedAt = checkpointByStationId[stationId]?.last_observed_at ?? null;
     if (!lastObservedAt) {
@@ -1785,13 +1789,20 @@ serve(async (req) => {
     if (!Number.isFinite(lastObservedMs)) {
       continue;
     }
+    if (stationId === debugStationId) {
+      logLine("INFO", "OpenAQ gap precheck debug", {
+        station_id: stationId,
+        last_observed_at: lastObservedAt,
+        last_observed_ms: lastObservedMs,
+        gap_flagged: nowMs - lastObservedMs >= 2 * 60 * 60 * 1000,
+      });
+    }
     if (nowMs - lastObservedMs >= 2 * 60 * 60 * 1000) {
       gapStationIds.add(stationId);
     }
   }
-  const debugStationId = 189841;
-  if (Number.isFinite(stationIdByRef?.[debugStationId])) {
-    logLine("INFO", "OpenAQ gap precheck debug", {
+  if (stationIds.includes(debugStationId)) {
+    logLine("INFO", "OpenAQ gap precheck summary", {
       station_id: debugStationId,
       last_observed_at: checkpointByStationId[debugStationId]?.last_observed_at ?? null,
       gap_flagged: gapStationIds.has(debugStationId),
@@ -1954,10 +1965,24 @@ serve(async (req) => {
     if (stationId !== null && Number.isFinite(stationId)) {
       polledStationIds.add(stationId);
     }
+    if (stationId === debugStationId) {
+      logLine("INFO", "OpenAQ debug station polled", {
+        station_id: stationId,
+        gap_flagged: gapStationIds.has(stationId),
+        station_checkpoint: checkpointByStationId[stationId] ?? null,
+      });
+    }
 
     if (stationId !== null && gapStationIds.has(stationId)) {
       const stationCheckpoint = checkpointByStationId[stationId];
       const timeseriesRefs = timeseriesRefsByStationId.get(stationId) ?? [];
+      if (stationId === debugStationId) {
+        logLine("INFO", "OpenAQ debug station gap path", {
+          station_id: stationId,
+          timeseries_refs_count: timeseriesRefs.length,
+          timeseries_refs_sample: timeseriesRefs.slice(0, 10),
+        });
+      }
       for (const timeseriesRef of timeseriesRefs) {
         if (shouldStop()) {
           timeBudgetHit = true;
@@ -1968,6 +1993,14 @@ serve(async (req) => {
         if (tsCheckpoint?.last_observed_at) {
           const tsObservedMs = Date.parse(tsCheckpoint.last_observed_at);
           if (Number.isFinite(tsObservedMs) && nowMs - tsObservedMs < 60 * 60 * 1000) {
+            if (stationId === debugStationId) {
+              logLine("INFO", "OpenAQ debug timeseries skipped (recent)", {
+                station_id: stationId,
+                timeseries_ref: timeseriesRef,
+                timeseries_id: timeseriesId ?? null,
+                last_observed_at: tsCheckpoint.last_observed_at,
+              });
+            }
             continue;
           }
         }
@@ -1976,6 +2009,16 @@ serve(async (req) => {
         const datetimeFrom = baseObservedAt
           ?? (windowMs ? new Date(nowMs - windowMs).toISOString() : null);
         const datetimeTo = new Date(nowMs).toISOString();
+        if (stationId === debugStationId) {
+          logLine("INFO", "OpenAQ debug timeseries fetch", {
+            station_id: stationId,
+            timeseries_ref: timeseriesRef,
+            timeseries_id: timeseriesId ?? null,
+            datetime_from: datetimeFrom,
+            datetime_to: datetimeTo,
+            ts_checkpoint: tsCheckpoint ?? null,
+          });
+        }
         let hourly: OpenAQHourlyRecord[] = [];
         try {
           hourly = await listHourlyMeasurements(timeseriesRef, datetimeFrom, datetimeTo, rawRecorder);
@@ -1987,6 +2030,13 @@ serve(async (req) => {
             context: { timeseries_ref: timeseriesRef, error: String(err) },
           });
           continue;
+        }
+        if (stationId === debugStationId) {
+          logLine("INFO", "OpenAQ debug timeseries fetched", {
+            station_id: stationId,
+            timeseries_ref: timeseriesRef,
+            hourly_count: hourly.length,
+          });
         }
         if (datetimeFrom && datetimeTo) {
           const start = new Date(datetimeFrom);
@@ -2047,6 +2097,12 @@ serve(async (req) => {
         }
       }
       return;
+    }
+    if (stationId === debugStationId) {
+      logLine("INFO", "OpenAQ debug station latest path", {
+        station_id: stationId,
+        gap_flagged: gapStationIds.has(stationId),
+      });
     }
 
     let latest: OpenAQLatestRecord[] = [];
