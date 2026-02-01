@@ -1980,6 +1980,46 @@ serve(async (req) => {
           });
           continue;
         }
+        if (datetimeFrom && datetimeTo) {
+          const start = new Date(datetimeFrom);
+          const end = new Date(datetimeTo);
+          if (Number.isFinite(start.getTime()) && Number.isFinite(end.getTime()) && start < end) {
+            start.setUTCMinutes(0, 0, 0);
+            end.setUTCMinutes(0, 0, 0);
+            const expected: string[] = [];
+            const cursor = new Date(start);
+            while (cursor < end) {
+              expected.push(cursor.toISOString());
+              cursor.setUTCHours(cursor.getUTCHours() + 1);
+            }
+            const returned = new Set<string>();
+            for (const record of hourly) {
+              const observedAt = record?.datetime?.utc ?? record?.period?.datetimeFrom?.utc ?? null;
+              if (!observedAt) {
+                continue;
+              }
+              const observed = new Date(observedAt);
+              if (!Number.isFinite(observed.getTime())) {
+                continue;
+              }
+              observed.setUTCMinutes(0, 0, 0);
+              returned.add(observed.toISOString());
+            }
+            const missing = expected.filter((hour) => !returned.has(hour));
+            if (missing.length > 0) {
+              logLine("INFO", "OpenAQ hourly gap detected", {
+                station_id: stationId,
+                timeseries_ref: timeseriesRef,
+                datetime_from: datetimeFrom,
+                datetime_to: datetimeTo,
+                expected_hours: expected.length,
+                returned_hours: returned.size,
+                missing_hours: missing.slice(0, 12),
+                missing_hours_count: missing.length,
+              });
+            }
+          }
+        }
         for (const record of hourly) {
           const observedAt = record?.datetime?.utc;
           if (!observedAt) {
