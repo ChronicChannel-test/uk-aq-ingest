@@ -62,6 +62,8 @@ This does not alter data; it is informational for audit/debugging.
 
 In gap mode, hourly records are recorded without a "recent-window" filter:
 
+- Gap mode prefers `summary.avg` from the hourly payload for precision, with a fallback
+  order of `summary.avg → summary.median → summary.q50 → value` when fields are missing.
 - Before change: `recordObservation(..., windowMs)` filtered out rows older than `now - windowMs`.
   - So even if the API returned older hours (e.g., 2026-01-29), they were discarded if
     they were outside "last N hours" relative to now. That made backfill ineffective.
@@ -86,6 +88,8 @@ After observations are upserted:
   `last_observed_at` is clamped to the last contiguous hour before that gap
   (station-wide min across series).
 - `openaq_timeseries_checkpoints.last_observed_at` advances to the latest observed hour seen for each timeseries in the run.
+- `observ_interval_samples` can still be updated in gap mode (intervals between observations).
+- `ingest_lag_samples` are **not** updated in gap mode (lag is treated as a live-update metric).
 
 Because gap mode is chunked, multiple runs are required to fully backfill a long gap.
 

@@ -1,32 +1,55 @@
 station.id = 189841
 station_ref = 5200392
 
+PM2.5
+timeseries.id=255817
+
 CLEANAIRSURB_ST_ID=189841
 CLEANAIRSURB_ST_REF=5200392
 CLEANAIRSURB_TS_REF_PM25=14153308
 
+
+Other TS
 14153307
 14153308
 14153309
 14153310
 14153311
 
-curl -sS \
-  -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
-  -H "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
-  -H "x-cron-secret: ${SB_UK_AQ_CRON_SECRET}" \
-  -H "Content-Type: application/json" \
-  "${SUPABASE_URL}/functions/v1/ingest_openaq" \
-  -d '{"station_refs":[CLEANAIRSURB_ST_REF],"window_hours":12,"dry_run":false}'
+
+  
+  
+  curl -sS \
+    -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
+    -H "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
+    -H "x-cron-secret: ${SB_UK_AQ_CRON_SECRET}" \
+    -H "Content-Type: application/json" \
+    "${SUPABASE_URL}/functions/v1/ingest_openaq" \
+    -d "{\"station_refs\":[\"${CLEANAIRSURB_ST_REF}\"],\"window_hours\":12,\"dry_run\":false}"
   
   
   
   curl -sS \
     -H "x-api-key: ${OPENAQ_API_KEY}" \
-    "https://api.openaq.org/v3/sensors/${CLEANAIRSURB_TS_REF_PM25}/measurements/hourly?datetime_from=2026-01-29T16:00:00Z&datetime_to=2026-01-30T04:00:00Z&limit=100"
+    "https://api.openaq.org/v3/sensors/${CLEANAIRSURB_TS_REF_PM25}/measurements/hourly?datetime_from=2026-02-01T18:00:00Z&datetime_to=2026-02-01T23:00:00Z&limit=100" \
+  | python3 -m json.tool
   
+  
+  
+  
+  curl -sS \
+    -H "x-api-key: ${OPENAQ_API_KEY}" \
+    "https://api.openaq.org/v3/sensors/${CLEANAIRSURB_TS_REF_PM25}/measurements/hourly?datetime_from=2026-02-01T18:00:00Z&datetime_to=2026-02-01T22:00:00Z&limit=100"
+	
+	
+	
+	curl -sS   -H "x-api-key: ${OPENAQ_API_KEY}"   "https://api.openaq.org/v3/locations/${CLEANAIRSURB_ST_REF}/latest"
 
-  
+	curl -sS \
+	  -H "x-api-key: ${OPENAQ_API_KEY}" \
+	  "https://api.openaq.org/v3/locations/${CLEANAIRSURB_ST_REF}/latest"   | python3 -m json.tool
+	
+
   
   
   

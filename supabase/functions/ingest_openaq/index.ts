@@ -2138,23 +2138,30 @@ serve(async (req) => {
           });
         }
         if (datetimeFrom && datetimeTo) {
-          const start = new Date(datetimeFrom);
-          const end = new Date(datetimeTo);
-          if (Number.isFinite(start.getTime()) && Number.isFinite(end.getTime()) && start < end) {
-            start.setUTCMinutes(0, 0, 0);
-            end.setUTCMinutes(0, 0, 0);
-            const expected: string[] = [];
-            const cursor = new Date(start);
-            while (cursor < end) {
-              expected.push(cursor.toISOString());
-              cursor.setUTCHours(cursor.getUTCHours() + 1);
-            }
-            const returned = new Set<string>();
-            for (const record of hourly) {
-              const observedAt = record?.datetime?.utc ?? record?.period?.datetimeFrom?.utc ?? null;
-              if (!observedAt) {
-                continue;
+            const start = new Date(datetimeFrom);
+            const end = new Date(datetimeTo);
+            if (Number.isFinite(start.getTime()) && Number.isFinite(end.getTime()) && start < end) {
+              start.setUTCMinutes(0, 0, 0);
+              end.setUTCMinutes(0, 0, 0);
+              const expected: string[] = [];
+              const expectedStart = new Date(start);
+              expectedStart.setUTCHours(expectedStart.getUTCHours() + 1);
+              const endExclusive = new Date(end);
+              endExclusive.setUTCHours(endExclusive.getUTCHours() + 1);
+              const cursor = new Date(expectedStart);
+              while (cursor < endExclusive) {
+                expected.push(cursor.toISOString());
+                cursor.setUTCHours(cursor.getUTCHours() + 1);
               }
+              const returned = new Set<string>();
+              for (const record of hourly) {
+                const observedAt = record?.period?.datetimeTo?.utc
+                  ?? record?.datetime?.utc
+                  ?? record?.period?.datetimeFrom?.utc
+                  ?? null;
+                if (!observedAt) {
+                  continue;
+                }
               const observed = new Date(observedAt);
               if (!Number.isFinite(observed.getTime())) {
                 continue;
@@ -2202,7 +2209,10 @@ serve(async (req) => {
           }
         }
         for (const record of hourly) {
-          const observedAt = record?.datetime?.utc ?? record?.period?.datetimeFrom?.utc ?? null;
+          const observedAt = record?.period?.datetimeTo?.utc
+            ?? record?.datetime?.utc
+            ?? record?.period?.datetimeFrom?.utc
+            ?? null;
           if (!observedAt) {
             continue;
           }
@@ -2212,7 +2222,11 @@ serve(async (req) => {
             latestObservedByStationId,
             String(record?.sensorsId ?? timeseriesRef),
             observedAt,
-            record?.value ?? null,
+            record?.summary?.avg
+              ?? record?.summary?.median
+              ?? record?.summary?.q50
+              ?? record?.value
+              ?? null,
             stationId,
             nowMs,
             null,
@@ -2458,6 +2472,7 @@ serve(async (req) => {
         });
       }
 
+      const isGapStation = gapStationIds.has(stationId);
       if (
         latestObservedForScheduling
         && (!previousLastObserved || latestObservedForScheduling > previousLastObserved)
@@ -2475,7 +2490,7 @@ serve(async (req) => {
             intervalSampleAdded = true;
           }
         }
-        if (intervalSampleAdded) {
+        if (intervalSampleAdded && !isGapStation) {
           const lagSeconds = Math.max(
             0,
             Math.round((nowMsForLag - Date.parse(latestObservedForScheduling)) / 1000),
