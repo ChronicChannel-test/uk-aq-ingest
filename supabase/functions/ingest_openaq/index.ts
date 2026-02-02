@@ -453,6 +453,13 @@ function dropboxWithRoot(path: string): string {
   return `${UK_AQ_DROPBOX_ROOT}${cleaned}`;
 }
 
+function postgrestIn(values: string[]): string {
+  const cleaned = values
+    .map((value) => String(value).replace(/[,()]/g, "").trim())
+    .filter(Boolean);
+  return `in.(${cleaned.join(",")})`;
+}
+
 function formatCompactTimestamp(timestamp: Date): string {
   return timestamp.toISOString().replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z");
 }
