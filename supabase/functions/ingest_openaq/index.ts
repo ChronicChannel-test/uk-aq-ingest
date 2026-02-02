@@ -170,7 +170,7 @@ const DROPBOX_ALLOWED_SUPABASE_URL = Deno.env.get("OPENAQ_RAW_DROPBOX_ALLOWED_SU
   ?? Deno.env.get("UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL")
   ?? "";
 const DROPBOX_LOG_FOLDER = "/connectors/openaq/log";
-const DROPBOX_ERROR_FOLDER = "/connectors/openaq/error_log";
+const DROPBOX_ERROR_FOLDER = "/error_log";
 const DROPBOX_RAW_FOLDER = "/connectors/openaq/raw_data";
 const DROPBOX_TOKEN_URL = "https://api.dropbox.com/oauth2/token";
 const DROPBOX_UPLOAD_URL = "https://content.dropboxapi.com/2/files/upload";
