@@ -43,7 +43,7 @@ Other TS
 	
 	
 	
-	curl -sS   -H "x-api-key: ${OPENAQ_API_KEY}"   "https://api.openaq.org/v3/locations/${CLEANAIRSURB_ST_REF}/latest"
+curl -sS   -H "x-api-key: ${OPENAQ_API_KEY}"   "https://api.openaq.org/v3/locations/${CLEANAIRSURB_ST_REF}/latest" | python3 -m json.tool
 
 	curl -sS \
 	  -H "x-api-key: ${OPENAQ_API_KEY}" \

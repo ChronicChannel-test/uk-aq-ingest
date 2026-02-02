@@ -90,6 +90,15 @@ After observations are upserted:
 - `openaq_timeseries_checkpoints.last_observed_at` advances to the latest observed hour seen for each timeseries in the run.
 - `observ_interval_samples` can still be updated in gap mode (intervals between observations).
 - `ingest_lag_samples` are **not** updated in gap mode (lag is treated as a live-update metric).
+- **Gap-mode next_due_at scheduling (stations):**
+  - Uses the latest observed timestamp for the station (from the current run if available, otherwise the checkpoint value).
+  - If no observed timestamp exists, `next_due_at` is set to `now() - 24 hours` so the station is treated as stale.
+  - If latest observed is within the last 24 hours:
+    - New observations → `next_due_at = now() + 1 hour`.
+    - No new observations → `next_due_at = latest_observed_at` (station can remain stale).
+  - If latest observed is older than 24 hours:
+    - New observations → `next_due_at = now()` (fast catch-up).
+    - No new observations → `next_due_at = latest_observed_at` (station remains stale).
 
 Because gap mode is chunked, multiple runs are required to fully backfill a long gap.
 

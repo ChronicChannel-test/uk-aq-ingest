@@ -2406,6 +2406,7 @@ serve(async (req) => {
       station_last_observed_at: string | null;
       latest_observed_at: string | null;
     }> = [];
+    const gapSchedulingSample: Array<Record<string, unknown>> = [];
     const resolveStationObservedForCheckpoint = (stationId: number): {
       minObserved: string | null;
       recentGapMinObserved: string | null;
@@ -2480,10 +2481,38 @@ serve(async (req) => {
       }
 
       const isGapStation = gapStationIds.has(stationId);
-      if (
+      const hasNewObservation = Boolean(
         latestObservedForScheduling
-        && (!previousLastObserved || latestObservedForScheduling > previousLastObserved)
-      ) {
+          && (!previousLastObserved || latestObservedForScheduling > previousLastObserved),
+      );
+      const latestObservedForDecision = latestObservedForScheduling ?? updatedLastObserved;
+      const latestObservedMs = latestObservedForDecision
+        ? Date.parse(latestObservedForDecision)
+        : null;
+      const isRecentObserved = latestObservedMs !== null
+        && Number.isFinite(latestObservedMs)
+        && latestObservedMs >= nowMsForLag - 24 * 60 * 60 * 1000;
+
+      if (isGapStation) {
+        if (!latestObservedForDecision || !Number.isFinite(latestObservedMs)) {
+          nextDueAt = new Date(nowMsForLag - 24 * 60 * 60 * 1000).toISOString();
+        } else if (isRecentObserved) {
+          nextDueAt = hasNewObservation
+            ? new Date(nowMsForLag + 60 * 60 * 1000).toISOString()
+            : latestObservedForDecision;
+        } else {
+          nextDueAt = hasNewObservation ? nowIso : latestObservedForDecision;
+        }
+        if (gapSchedulingSample.length < 10) {
+          gapSchedulingSample.push({
+            station_id: stationId,
+            latest_observed_at: latestObservedForDecision,
+            has_new_observation: hasNewObservation,
+            is_recent_observed: isRecentObserved,
+            next_due_at: nextDueAt,
+          });
+        }
+      } else if (hasNewObservation) {
         let intervalSampleAdded = false;
         if (previousLastObserved) {
           const intervalSeconds = Math.max(
@@ -2497,7 +2526,7 @@ serve(async (req) => {
             intervalSampleAdded = true;
           }
         }
-        if (intervalSampleAdded && !isGapStation) {
+        if (intervalSampleAdded) {
           const lagSeconds = Math.max(
             0,
             Math.round((nowMsForLag - Date.parse(latestObservedForScheduling)) / 1000),
@@ -2538,6 +2567,7 @@ serve(async (req) => {
         rows_prepared: checkpointRows.length,
         rows_upserted: rowsUpserted,
         station_observed_sample: stationObservedSample,
+        gap_scheduling_sample: gapSchedulingSample,
       });
     } catch (err) {
       await logError({
