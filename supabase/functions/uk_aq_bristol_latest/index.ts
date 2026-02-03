@@ -160,6 +160,19 @@ async function loadLatest({ region, stationLike, connectorId, pollutant, limit, 
   if (connectorId) {
     baseParams.connector_id = `eq.${connectorId}`;
   }
+  function buildDebugRequestPayload(
+    baseParams: Record<string, string>,
+    extra: Record<string, string>,
+    useStationInner: boolean,
+    limit: number,
+  ) {
+    return {
+      ...baseParams,
+      ...extra,
+      select: useStationInner ? selectStationInner : baseParams.select,
+      limit: String(limit),
+    };
+  }
   const fetchRows = async (extra: Record<string, string>, useStationInner = false) => {
     const { data, error } = await postgrestRequest<any[]>("GET", "timeseries", {
       ...baseParams,
@@ -170,7 +183,10 @@ async function loadLatest({ region, stationLike, connectorId, pollutant, limit, 
     if (error) {
       if (debug) {
         const err = new Error(error.message) as Error & { debug?: unknown };
-        err.debug = { request: { ...baseParams, ...extra, select: useStationInner ? selectStationInner : baseParams.select, limit: String(limit) }, error };
+        err.debug = {
+          request: buildDebugRequestPayload(baseParams, extra, useStationInner, limit),
+          error,
+        };
         throw err;
       }
       throw new Error(error.message);
