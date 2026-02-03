@@ -1,5 +1,6 @@
 // @ts-nocheck
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
+import { cacheControlHeaders } from "../_shared/cache.ts";
 
 const DEFAULT_STATION_LIKE = "Bristol";
 const DEFAULT_LIMIT = 1000;
@@ -67,10 +68,20 @@ async function postgrestRequest<T>(
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
-    return new Response(null, { status: 204, headers: CORS_HEADERS });
+    return new Response(null, {
+      status: 204,
+      headers: {
+        ...CORS_HEADERS,
+        "Access-Control-Max-Age": "86400",
+        ...cacheControlHeaders(204),
+      },
+    });
   }
   if (req.method !== "GET") {
-    return new Response("Method not allowed", { status: 405, headers: CORS_HEADERS });
+    return new Response("Method not allowed", {
+      status: 405,
+      headers: { ...CORS_HEADERS, ...cacheControlHeaders(405) },
+    });
   }
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
     return json({ error: "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY." }, 500);
@@ -351,6 +362,7 @@ function json(payload: unknown, status = 200): Response {
     headers: {
       "Content-Type": "application/json",
       ...CORS_HEADERS,
+      ...cacheControlHeaders(status),
     },
   });
 }
