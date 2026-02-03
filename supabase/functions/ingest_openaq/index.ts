@@ -273,9 +273,10 @@ async function rpcRequest<T>(
   }
   try {
     const url = new URL(`${REST_BASE_URL}/rpc/${fn}`);
-    const headers = postgrestHeaders(undefined, "uk_aq_public");
-    headers["Accept-Profile"] = "uk_aq_public";
-    headers["Content-Profile"] = "uk_aq_public";
+    const schema = "uk_aq_public";
+    const headers = postgrestHeaders(undefined, schema);
+    headers["Accept-Profile"] = schema;
+    headers["Content-Profile"] = schema;
     const resp = await fetch(url.toString(), {
       method: "POST",
       headers,
@@ -954,6 +955,19 @@ async function openaqRequest(
   params?: Record<string, string | number>,
   rawRecorder?: RawRecorder | null,
 ): Promise<any> {
+  const rateLimitState: {
+    remaining: number | null;
+    firstRemaining: number | null;
+    limit: number | null;
+    stop: boolean;
+    stopReason: string | null;
+  } = {
+    remaining: null,
+    firstRemaining: null,
+    limit: null,
+    stop: false,
+    stopReason: null,
+  };
   const url = new URL(`${OPENAQ_BASE_URL}/${path.replace(/^\//, "")}`);
   for (const [key, value] of Object.entries(params ?? {})) {
     if (value !== undefined && value !== null) {
