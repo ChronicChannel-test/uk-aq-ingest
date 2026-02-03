@@ -654,9 +654,7 @@ async function dropboxUploadFileWithRetry(
   }
 }
 
-let errorLogLines: string[] | null = null;
-
-function recordErrorLogLine(entry: ErrorLogEntry): void {
+function recordErrorLogLine(errorLogLines: string[] | null, entry: ErrorLogEntry): void {
   if (!errorLogLines) {
     return;
   }
