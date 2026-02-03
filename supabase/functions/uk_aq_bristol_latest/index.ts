@@ -1,4 +1,5 @@
-// Use Deno's built-in serve function
+/// <reference lib="deno.ns" />
+/// <reference lib="dom" />
 // @ts-ignore: Deno Deploy/Supabase Edge runtime provides 'serve'
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { cacheControlHeaders } from "../_shared/cache.ts";
@@ -160,6 +161,19 @@ serve(async (req: Request) => {
       : null;
     return json(
       debug ? { error: message, debug: debugPayload } : { error: message },
+  function buildDebugRequestPayload(
+    baseParams: Record<string, string>,
+    extra: Record<string, string>,
+    useStationInner: boolean,
+    limit: number,
+  ) {
+    return {
+      ...baseParams,
+      ...extra,
+      select: useStationInner ? selectStationInner : baseParams.select,
+      limit: String(limit),
+    };
+  }
       500,
     );
   }
@@ -170,7 +184,10 @@ type LoadOptions = {
   stationLike: string | null;
   connectorId: string | null;
   pollutant: string | null;
-  limit: number;
+        err.debug = {
+          request: buildDebugRequestPayload(baseParams, extra, useStationInner, limit),
+          error,
+        };
   debug: boolean;
 };
 
@@ -411,9 +428,6 @@ function parseLimit(value: string | null, fallback: number): number {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) {
     return fallback;
-  }
-  return Math.max(1, Math.min(MAX_LIMIT, Math.floor(parsed)));
-}
 
 function json(payload: unknown, status = 200): Response {
   return new Response(JSON.stringify(payload, null, 2), {
