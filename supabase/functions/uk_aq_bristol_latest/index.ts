@@ -1,4 +1,5 @@
-// @ts-nocheck
+/// <reference lib="deno.ns" />
+/// <reference lib="dom" />
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { cacheControlHeaders } from "../_shared/cache.ts";
 
@@ -160,6 +161,19 @@ async function loadLatest({ region, stationLike, connectorId, pollutant, limit, 
   if (connectorId) {
     baseParams.connector_id = `eq.${connectorId}`;
   }
+  function buildDebugRequestPayload(
+    baseParams: Record<string, string>,
+    extra: Record<string, string>,
+    useStationInner: boolean,
+    limit: number,
+  ) {
+    return {
+      ...baseParams,
+      ...extra,
+      select: useStationInner ? selectStationInner : baseParams.select,
+      limit: String(limit),
+    };
+  }
   const fetchRows = async (extra: Record<string, string>, useStationInner = false) => {
     const { data, error } = await postgrestRequest<any[]>("GET", "timeseries", {
       ...baseParams,
@@ -170,7 +184,10 @@ async function loadLatest({ region, stationLike, connectorId, pollutant, limit, 
     if (error) {
       if (debug) {
         const err = new Error(error.message) as Error & { debug?: unknown };
-        err.debug = { request: { ...baseParams, ...extra, select: useStationInner ? selectStationInner : baseParams.select, limit: String(limit) }, error };
+        err.debug = {
+          request: buildDebugRequestPayload(baseParams, extra, useStationInner, limit),
+          error,
+        };
         throw err;
       }
       throw new Error(error.message);
@@ -410,9 +427,6 @@ function resolvePhenomenonLabel(
   }
   if (label) {
     return label;
-  }
-  if (notation) {
-    return notation;
   }
   if (eionetUri) {
     return eionetUri.split("/").filter(Boolean).pop() ?? null;
