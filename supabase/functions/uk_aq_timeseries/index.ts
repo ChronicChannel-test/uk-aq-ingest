@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { cacheControlHeaders, CACHE_CONTROL_SUCCESS_SMAXAGE_300 } from "../_shared/cache.ts";
 
@@ -69,7 +68,7 @@ async function postgrestRequest<T>(
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const contentType = resp.headers.get("content-type") ?? "";
-  const payload = contentType.includes("application/json") ? await resp.json() : await resp.text();
+  const payload: any = contentType.includes("application/json") ? await resp.json() : await resp.text();
   if (!resp.ok) {
     const message = payload?.message || payload?.error_description || payload?.error || resp.statusText;
     return { data: null, error: { message: String(message) } };
