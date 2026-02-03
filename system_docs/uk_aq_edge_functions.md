@@ -164,10 +164,17 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
 - Params: `region`, `station_like`, `pollutant`, `connector_id`, `limit`, `pcon_code`.
 - Notes:
   - Explicitly embeds `connectors` via `timeseries_connector_id_fkey` to avoid ambiguous PostgREST relationships after observations gained `connector_id`.
+- RPC backing: `uk_aq_latest_rpc` via `/rest/v1/rpc/uk_aq_latest_rpc`.
+- Cache-Control: success responses use `public, max-age=60, s-maxage=180, stale-while-revalidate=300, stale-if-error=86400`; errors use `no-store`.
 - Memberships are returned as-is (no filtering by network membership).
 - `display_name` logic:
   - Uses `connectors.station_display_name_template` if present, with tokens `{station_name}`, `{station_label}`, `{station_ref}`.
   - Fallback is always `{station_name} - {station_ref}` (or `station_label` if `station_name` is missing).
+
+Curl test example:
+```bash
+curl "https://YOUR_PROJECT.supabase.co/functions/v1/uk_aq_latest?region=London&pollutant=pm2.5&limit=100"
+```
 
 ### uk_aq_bristol_latest
 - Purpose: Serve the latest values with a Bristol station default for local dashboards.
