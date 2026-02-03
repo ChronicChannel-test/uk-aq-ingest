@@ -160,6 +160,19 @@ serve(async (req: Request) => {
       : null;
     return json(
       debug ? { error: message, debug: debugPayload } : { error: message },
+  function buildDebugRequestPayload(
+    baseParams: Record<string, string>,
+    extra: Record<string, string>,
+    useStationInner: boolean,
+    limit: number,
+  ) {
+    return {
+      ...baseParams,
+      ...extra,
+      select: useStationInner ? selectStationInner : baseParams.select,
+      limit: String(limit),
+    };
+  }
       500,
     );
   }
@@ -170,7 +183,10 @@ type LoadOptions = {
   stationLike: string | null;
   connectorId: string | null;
   pollutant: string | null;
-  limit: number;
+        err.debug = {
+          request: buildDebugRequestPayload(baseParams, extra, useStationInner, limit),
+          error,
+        };
   debug: boolean;
 };
 
