@@ -1,6 +1,6 @@
 // Use Deno's built-in serve function
 // @ts-ignore: Deno Deploy/Supabase Edge runtime provides 'serve'
-import { serve } from "std/http/server.ts";
+import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { cacheControlHeaders } from "../_shared/cache.ts";
 
 const DEFAULT_STATION_LIKE = "Bristol";
