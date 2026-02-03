@@ -411,9 +411,6 @@ function parseLimit(value: string | null, fallback: number): number {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) {
     return fallback;
-  }
-  return Math.max(1, Math.min(MAX_LIMIT, Math.floor(parsed)));
-}
 
 function json(payload: unknown, status = 200): Response {
   return new Response(JSON.stringify(payload, null, 2), {
