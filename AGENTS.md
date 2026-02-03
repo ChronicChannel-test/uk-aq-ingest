@@ -51,3 +51,21 @@
 
 ## Planning Requests
 - When proposing plans, offer more than one option when possible, list pros/cons for each, and recommend which to pick with a brief rationale.
+
+## WORKING STYLE (IMPORTANT)
+
+- Finish with HUMAN INSTRUCTIONS that say:
+  - which files to edit/create (exact paths)
+  - which SQL file(s) to run and WHERE (Supabase Dashboard SQL Editor vs migrations)
+  - which Edge Function(s) to deploy and WHERE (Supabase Dashboard vs existing workflow)
+  - which env vars/secrets must exist (names only; never values)
+  - what to verify (logs, response shape/size, caching headers)
+- give me commands instead if its applicable, but instructions are preferred.
+
+REQUIRED OUTPUT FORMAT
+1) Summary (2–5 bullets)
+2) Files changed (paths)
+3) Implementation details (short, specific)
+4) Supabase steps (instructions only,)
+5) Verification checklist (clear pass/fail)
+
