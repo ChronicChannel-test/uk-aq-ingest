@@ -62,6 +62,9 @@ Dropbox/logging (used by multiple ingests):
   - Non-SOS networks use `<network>_` prefixes under `scripts/<network>/`.
   - `*_ref` = source id, `*_code` = internal code, `label` = raw source label, `display_name` = curated UI label.
 
+## Permissions (REQUIRED)
+- The agent may edit any files without asking for permission, except files under any `/archive` directory.
+
 ## Links
 - Existing README: `README.md`
 - Supabase config: `supabase/config.toml`
@@ -87,4 +90,3 @@ REQUIRED OUTPUT FORMAT
 3) Implementation details (short, specific)
 4) Supabase steps (instructions only,)
 5) Verification checklist (clear pass/fail)
-
