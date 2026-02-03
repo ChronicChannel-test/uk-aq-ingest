@@ -1854,43 +1854,10 @@ serve(async (req) => {
   }
 
   const nowMs = Date.now();
-  const gapStationIds = new Set<number>();
   const debugStationId = 189841;
   if (stationIds.includes(debugStationId)) {
     logLine("INFO", "OpenAQ debug station present", { station_id: debugStationId });
   }
-  for (const stationId of stationIds) {
-    const lastObservedAt = checkpointByStationId[stationId]?.last_observed_at ?? null;
-    if (!lastObservedAt) {
-      continue;
-    }
-    const lastObservedMs = Date.parse(lastObservedAt);
-    if (!Number.isFinite(lastObservedMs)) {
-      continue;
-    }
-    if (stationId === debugStationId) {
-      logLine("INFO", "OpenAQ gap precheck debug", {
-        station_id: stationId,
-        last_observed_at: lastObservedAt,
-        last_observed_ms: lastObservedMs,
-        gap_flagged: nowMs - lastObservedMs >= 2 * 60 * 60 * 1000,
-      });
-    }
-    if (nowMs - lastObservedMs >= 2 * 60 * 60 * 1000) {
-      gapStationIds.add(stationId);
-    }
-  }
-  if (stationIds.includes(debugStationId)) {
-    logLine("INFO", "OpenAQ gap precheck summary", {
-      station_id: debugStationId,
-      last_observed_at: checkpointByStationId[debugStationId]?.last_observed_at ?? null,
-      gap_flagged: gapStationIds.has(debugStationId),
-    });
-  }
-  logLine("INFO", "OpenAQ gap precheck", {
-    station_ids: stationIds.length,
-    gap_station_ids: gapStationIds.size,
-  });
 
   const parameters = locationsFetched ? collectParameters(locations) : {};
   const timeseriesRefMap = locationsFetched ? collectTimeseriesRefs(locations) : new Map();
@@ -2019,6 +1986,60 @@ serve(async (req) => {
       timeseriesCheckpointById = {};
     }
   }
+
+  const gapStationIds = new Set<number>();
+  const gapMinAgeMs = 2 * 60 * 60 * 1000;
+  const gapMaxAgeMs = 24 * 60 * 60 * 1000;
+  for (const stationId of stationIds) {
+    const timeseriesRefs = timeseriesRefsByStationId.get(stationId) ?? [];
+    if (!timeseriesRefs.length) {
+      continue;
+    }
+    let checkpointsSeen = 0;
+    let gapFlagged = false;
+    for (const timeseriesRef of timeseriesRefs) {
+      const timeseriesId = timeseriesIdByRef[timeseriesRef];
+      if (!timeseriesId) {
+        continue;
+      }
+      const tsCheckpoint = timeseriesCheckpointById[timeseriesId];
+      const lastObservedAt = tsCheckpoint?.last_observed_at ?? null;
+      if (!lastObservedAt) {
+        continue;
+      }
+      checkpointsSeen += 1;
+      const lastObservedMs = Date.parse(lastObservedAt);
+      if (!Number.isFinite(lastObservedMs)) {
+        continue;
+      }
+      const ageMs = nowMs - lastObservedMs;
+      if (ageMs >= gapMinAgeMs && ageMs < gapMaxAgeMs) {
+        gapFlagged = true;
+        break;
+      }
+    }
+    if (gapFlagged) {
+      gapStationIds.add(stationId);
+    }
+    if (stationId === debugStationId) {
+      logLine("INFO", "OpenAQ gap precheck debug", {
+        station_id: stationId,
+        timeseries_refs_count: timeseriesRefs.length,
+        timeseries_checkpoints_seen: checkpointsSeen,
+        gap_flagged: gapFlagged,
+      });
+    }
+  }
+  if (stationIds.includes(debugStationId)) {
+    logLine("INFO", "OpenAQ gap precheck summary", {
+      station_id: debugStationId,
+      gap_flagged: gapStationIds.has(debugStationId),
+    });
+  }
+  logLine("INFO", "OpenAQ gap precheck", {
+    station_ids: stationIds.length,
+    gap_station_ids: gapStationIds.size,
+  });
 
   const latestByTimeseries = new Map<string, { observed_at: string; value: number | null }>();
   const observationsByTimeseries = new Map<string, Map<string, number | null>>();

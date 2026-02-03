@@ -17,9 +17,11 @@ Gap mode is used to backfill missing hourly observations for a station when the 
 
 For each station in the run:
 
-1. Read `openaq_station_checkpoints.last_observed_at`.
-2. If `now - last_observed_at >= 2 hours`, the station is marked `gap_flagged`.
-3. `gap_flagged` stations use gap mode; others use the `/latest` endpoint.
+1. Read `openaq_timeseries_checkpoints.last_observed_at` for the station's timeseries.
+2. If **any** timeseries has `2 hours <= now - last_observed_at < 24 hours`,
+   the station is marked `gap_flagged`.
+3. Stations with no timeseries checkpoints (or no timestamps) are **not** gap-flagged
+   and use the `/latest` endpoint.
 
 ## Gap Mode Fetch Window (Chunked)
 
