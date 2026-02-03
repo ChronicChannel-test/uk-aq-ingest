@@ -108,7 +108,7 @@ serve(async (req) => {
   const hours = WINDOW_HOURS[windowLabel] ?? WINDOW_HOURS[DEFAULT_WINDOW];
 
   const end = new Date();
-  const start = new Date(end.getTime() - hours * 60 * 60 * 1000);
+  const startTime = new Date(end.getTime() - hours * 60 * 60 * 1000);
   try {
     const { data, error } = await postgrestRequest<any[]>(
       "POST",
@@ -129,7 +129,7 @@ serve(async (req) => {
     return json({
       timeseries_id: row?.timeseries_id ?? timeseriesId,
       window: row?.window ?? windowLabel,
-      start: row?.start ?? start.toISOString(),
+      start: row?.start ?? startTime.toISOString(),
       end: row?.end ?? end.toISOString(),
       count: row?.count ?? rows.length,
       guideline: row?.guideline ?? null,
