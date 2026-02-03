@@ -189,6 +189,9 @@ curl "https://YOUR_PROJECT.supabase.co/functions/v1/uk_aq_latest?region=London&p
 - Purpose: Serve station geometry for the hex map (bypasses RLS via service role).
 - Triggered by: Web requests (read-only, no writes).
 - Returns: stations with geometry (id, station_ref, label, geometry) plus `station_network_memberships` (network codes, labels, primary flag).
+- Params: `connector_id`, `region`, `station_like`, `limit`, `page_size`.
+- RPC backing: `uk_aq_stations_rpc` via `/rest/v1/rpc/uk_aq_stations_rpc`.
+- Cache-Control: success responses use `public, max-age=60, s-maxage=300, stale-while-revalidate=300, stale-if-error=86400`; errors use `no-store`.
 
 ### uk_aq_la_hex
 - Purpose: Serve LA-level latest PM2.5 summaries (median + mean) for the hex cartogram.

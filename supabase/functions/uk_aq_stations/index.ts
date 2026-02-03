@@ -1,5 +1,6 @@
 // @ts-nocheck
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
+import { cacheControlHeaders, CACHE_CONTROL_SUCCESS_SMAXAGE_300 } from "../_shared/cache.ts";
 
 const DEFAULT_PAGE_SIZE = 1000;
 const MAX_PAGE_SIZE = 5000;
@@ -13,6 +14,8 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")
   ?? "";
 const UK_AQ_CORE_SCHEMA = Deno.env.get("UK_AQ_CORE_SCHEMA")
   ?? "uk_aq_core";
+const UK_AQ_PUBLIC_SCHEMA = Deno.env.get("UK_AQ_PUBLIC_SCHEMA")
+  ?? "uk_aq_public";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -39,14 +42,15 @@ function postgrestHeaders(schema = UK_AQ_CORE_SCHEMA): Record<string, string> {
 
 async function postgrestRequest<T>(
   method: string,
-  table: string,
+  path: string,
   params?: Record<string, string>,
   schema?: string,
+  body?: unknown,
 ): Promise<{ data: T | null; error: { message: string } | null }> {
   if (!REST_BASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
     return { data: null, error: { message: "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY." } };
   }
-  const url = new URL(`${REST_BASE_URL}/${table}`);
+  const url = new URL(`${REST_BASE_URL}/${path}`);
   for (const [key, value] of Object.entries(params ?? {})) {
     if (value !== undefined && value !== null) {
       url.searchParams.set(key, String(value));
@@ -55,6 +59,7 @@ async function postgrestRequest<T>(
   const resp = await fetch(url.toString(), {
     method,
     headers: postgrestHeaders(schema),
+    body: body === undefined ? undefined : JSON.stringify(body),
   });
   const contentType = resp.headers.get("content-type") ?? "";
   const payload = contentType.includes("application/json") ? await resp.json() : await resp.text();
@@ -67,10 +72,20 @@ async function postgrestRequest<T>(
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
-    return new Response(null, { status: 204, headers: CORS_HEADERS });
+    return new Response(null, {
+      status: 204,
+      headers: {
+        ...CORS_HEADERS,
+        "Access-Control-Max-Age": "86400",
+        ...cacheControlHeaders(204, CACHE_CONTROL_SUCCESS_SMAXAGE_300),
+      },
+    });
   }
   if (req.method !== "GET") {
-    return new Response("Method not allowed", { status: 405, headers: CORS_HEADERS });
+    return new Response("Method not allowed", {
+      status: 405,
+      headers: { ...CORS_HEADERS, ...cacheControlHeaders(405, CACHE_CONTROL_SUCCESS_SMAXAGE_300) },
+    });
   }
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
     return json({ error: "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY." }, 500);
@@ -113,45 +128,23 @@ async function fetchStations({
   targetLimit,
   pageSize,
 }: FetchOptions) {
-  const rows: Array<Record<string, unknown>> = [];
-  let offset = 0;
-  const baseParams: Record<string, string> = {
-    select: "id,station_ref,label,geometry,network_memberships:station_network_memberships(network_code,network_label,is_primary)",
-    geometry: "not.is.null",
-  };
-  if (connectorId) {
-    baseParams.connector_id = `eq.${connectorId}`;
+  const { data, error } = await postgrestRequest<Array<Record<string, unknown>>>(
+    "POST",
+    "rpc/uk_aq_stations_rpc",
+    undefined,
+    UK_AQ_PUBLIC_SCHEMA,
+    {
+      connector_id: connectorId,
+      region,
+      station_like: stationLike,
+      limit_rows: targetLimit,
+      page_size: pageSize,
+    },
+  );
+  if (error) {
+    throw new Error(error.message);
   }
-  if (region) {
-    baseParams.region = `ilike.*${region}*`;
-  }
-  if (stationLike) {
-    baseParams.label = `ilike.*${stationLike}*`;
-  }
-
-  while (true) {
-    const remaining = targetLimit ? Math.max(0, targetLimit - rows.length) : pageSize;
-    if (targetLimit && remaining === 0) {
-      break;
-    }
-    const limit = Math.min(pageSize, remaining || pageSize);
-    const { data, error } = await postgrestRequest<Array<Record<string, unknown>>>("GET", "stations", {
-      ...baseParams,
-      limit: String(limit),
-      offset: String(offset),
-    });
-    if (error) {
-      throw new Error(error.message);
-    }
-    const page = data ?? [];
-    rows.push(...page);
-    if (page.length < limit) {
-      break;
-    }
-    offset += page.length;
-  }
-
-  return rows;
+  return data ?? [];
 }
 
 function normalizeText(value: string | null): string | null {
@@ -180,6 +173,7 @@ function json(payload: unknown, status = 200): Response {
     headers: {
       "Content-Type": "application/json",
       ...CORS_HEADERS,
+      ...cacheControlHeaders(status, CACHE_CONTROL_SUCCESS_SMAXAGE_300),
     },
   });
 }
