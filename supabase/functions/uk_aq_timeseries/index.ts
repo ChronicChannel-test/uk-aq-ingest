@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { cacheControlHeaders, CACHE_CONTROL_SUCCESS_SMAXAGE_300 } from "../_shared/cache.ts";
 
@@ -69,7 +68,7 @@ async function postgrestRequest<T>(
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const contentType = resp.headers.get("content-type") ?? "";
-  const payload = contentType.includes("application/json") ? await resp.json() : await resp.text();
+  const payload: any = contentType.includes("application/json") ? await resp.json() : await resp.text();
   if (!resp.ok) {
     const message = payload?.message || payload?.error_description || payload?.error || resp.statusText;
     return { data: null, error: { message: String(message) } };
@@ -108,7 +107,7 @@ serve(async (req) => {
   const hours = WINDOW_HOURS[windowLabel] ?? WINDOW_HOURS[DEFAULT_WINDOW];
 
   const end = new Date();
-  const start = new Date(end.getTime() - hours * 60 * 60 * 1000);
+  const startTime = new Date(end.getTime() - hours * 60 * 60 * 1000);
   try {
     const { data, error } = await postgrestRequest<any[]>(
       "POST",
@@ -129,7 +128,7 @@ serve(async (req) => {
     return json({
       timeseries_id: row?.timeseries_id ?? timeseriesId,
       window: row?.window ?? windowLabel,
-      start: row?.start ?? start.toISOString(),
+      start: row?.start ?? startTime.toISOString(),
       end: row?.end ?? end.toISOString(),
       count: row?.count ?? rows.length,
       guideline: row?.guideline ?? null,
