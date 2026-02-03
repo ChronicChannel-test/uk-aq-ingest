@@ -185,6 +185,16 @@ curl "https://YOUR_PROJECT.supabase.co/functions/v1/uk_aq_latest?region=London&p
 - Notes:
   - Explicitly embeds `connectors` via `timeseries_connector_id_fkey` to avoid ambiguous PostgREST relationships after observations gained `connector_id`.
 
+### uk_aq_surbiton_latest
+- Purpose: Serve the latest values with a Surbiton station default for local dashboards.
+- Triggered by: Web requests (read-only, no writes).
+- Returns: timeseries rows with station + phenomenon metadata, `display_name`, and latest values.
+- `display_name` logic matches `uk_aq_latest`.
+- Cache-Control: success responses use `public, max-age=60, s-maxage=300, stale-while-revalidate=300, stale-if-error=86400`; errors use `no-store`.
+- RPC backing: `uk_aq_surbiton_latest_rpc` via `/rest/v1/rpc/uk_aq_surbiton_latest_rpc`.
+- Notes:
+  - Explicitly embeds `connectors` via `timeseries_connector_id_fkey` to avoid ambiguous PostgREST relationships after observations gained `connector_id`.
+
 ### uk_aq_stations
 - Purpose: Serve station geometry for the hex map (bypasses RLS via service role).
 - Triggered by: Web requests (read-only, no writes).

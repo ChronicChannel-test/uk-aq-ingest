@@ -1,5 +1,6 @@
 // @ts-nocheck
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
+import { cacheControlHeaders, CACHE_CONTROL_SUCCESS_SMAXAGE_300 } from "../_shared/cache.ts";
 
 const DEFAULT_STATION_LIKE = "Surbiton";
 const DEFAULT_LIMIT = 1000;
@@ -13,6 +14,8 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")
   ?? "";
 const UK_AQ_CORE_SCHEMA = Deno.env.get("UK_AQ_CORE_SCHEMA")
   ?? "uk_aq_core";
+const UK_AQ_PUBLIC_SCHEMA = Deno.env.get("UK_AQ_PUBLIC_SCHEMA")
+  ?? "uk_aq_public";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -39,14 +42,15 @@ function postgrestHeaders(schema = UK_AQ_CORE_SCHEMA): Record<string, string> {
 
 async function postgrestRequest<T>(
   method: string,
-  table: string,
+  path: string,
   params?: Record<string, string>,
   schema?: string,
+  body?: unknown,
 ): Promise<{ data: T | null; error: { message: string } | null }> {
   if (!REST_BASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
     return { data: null, error: { message: "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY." } };
   }
-  const url = new URL(`${REST_BASE_URL}/${table}`);
+  const url = new URL(`${REST_BASE_URL}/${path}`);
   for (const [key, value] of Object.entries(params ?? {})) {
     if (value !== undefined && value !== null) {
       url.searchParams.set(key, String(value));
@@ -55,6 +59,7 @@ async function postgrestRequest<T>(
   const resp = await fetch(url.toString(), {
     method,
     headers: postgrestHeaders(schema),
+    body: body === undefined ? undefined : JSON.stringify(body),
   });
   const contentType = resp.headers.get("content-type") ?? "";
   const payload = contentType.includes("application/json") ? await resp.json() : await resp.text();
@@ -67,10 +72,20 @@ async function postgrestRequest<T>(
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
-    return new Response(null, { status: 204, headers: CORS_HEADERS });
+    return new Response(null, {
+      status: 204,
+      headers: {
+        ...CORS_HEADERS,
+        "Access-Control-Max-Age": "86400",
+        ...cacheControlHeaders(204, CACHE_CONTROL_SUCCESS_SMAXAGE_300),
+      },
+    });
   }
   if (req.method !== "GET") {
-    return new Response("Method not allowed", { status: 405, headers: CORS_HEADERS });
+    return new Response("Method not allowed", {
+      status: 405,
+      headers: { ...CORS_HEADERS, ...cacheControlHeaders(405, CACHE_CONTROL_SUCCESS_SMAXAGE_300) },
+    });
   }
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
     return json({ error: "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY." }, 500);
@@ -114,64 +129,23 @@ type LoadOptions = {
 
 async function loadLatest({ region, stationLike, connectorId, pollutant, limit }: LoadOptions) {
   const pollutantKey = normalizePollutant(pollutant);
-  const phenomenonSelect = pollutantKey
-    ? "phenomenon:phenomena!inner(id,label,notation,eionet_uri,pollutant_label)"
-    : "phenomenon:phenomena(id,label,notation,eionet_uri,pollutant_label)";
-  const connectorSelect = "connector:connectors!timeseries_connector_id_fkey(id,connector_code,label,display_name,station_display_name_template)";
-  const stationSelect =
-    "station:stations!timeseries_station_id_fkey(id,station_ref,label,station_name,region,connector_id)";
-  const stationSelectInner =
-    "station:stations!timeseries_station_id_fkey!inner(id,station_ref,label,station_name,region,connector_id)";
-  const selectBase =
-    `id,timeseries_ref,label,uom,last_value,last_value_at,connector_id,${connectorSelect},${stationSelect},${phenomenonSelect}`;
-  const selectStationInner =
-    `id,timeseries_ref,label,uom,last_value,last_value_at,connector_id,${connectorSelect},${stationSelectInner},${phenomenonSelect}`;
-  const baseParams: Record<string, string> = {
-    select: region ? selectStationInner : selectBase,
-    last_value: "gte.0",
-    last_value_at: "not.is.null",
-  };
-  const pollutantFilter = buildPollutantFilter(pollutantKey);
-  if (pollutantFilter) {
-    baseParams["phenomena.or"] = pollutantFilter;
+  const { data, error } = await postgrestRequest<any[]>(
+    "POST",
+    "rpc/uk_aq_surbiton_latest_rpc",
+    undefined,
+    UK_AQ_PUBLIC_SCHEMA,
+    {
+      region,
+      station_like: stationLike,
+      connector_id: connectorId,
+      pollutant: pollutantKey,
+      limit_rows: limit,
+    },
+  );
+  if (error) {
+    throw new Error(error.message);
   }
-  if (region) {
-    baseParams["stations.region"] = `ilike.*${region}*`;
-  }
-  if (connectorId) {
-    baseParams.connector_id = `eq.${connectorId}`;
-  }
-  const fetchRows = async (extra: Record<string, string>, useStationInner = false) => {
-    const { data, error } = await postgrestRequest<any[]>("GET", "timeseries", {
-      ...baseParams,
-      ...extra,
-      select: useStationInner ? selectStationInner : baseParams.select,
-      limit: String(limit),
-    });
-    if (error) {
-      throw new Error(error.message);
-    }
-    return data ?? [];
-  };
-
-  let rows: any[] = [];
-  if (!stationLike) {
-    rows = await fetchRows({});
-  } else {
-    const match = `*${stationLike}*`;
-    const [seriesResult, stationResult] = await Promise.all([
-      fetchRows({ label: `ilike.${match}` }, Boolean(region)),
-      fetchRows({ "stations.label": `ilike.${match}` }, true),
-    ]);
-    const combined = new Map<string, any>();
-    for (const row of seriesResult ?? []) {
-      combined.set(String(row.id), row);
-    }
-    for (const row of stationResult ?? []) {
-      combined.set(String(row.id), row);
-    }
-    rows = Array.from(combined.values()).slice(0, limit);
-  }
+  const rows = data ?? [];
 
   const filtered = rows.filter(passesOutlierThreshold);
 
@@ -295,32 +269,6 @@ function renderDisplayTemplate(
   return cleaned ? cleaned : null;
 }
 
-function buildPollutantFilter(pollutant: string | null): string | null {
-  if (!pollutant) {
-    return null;
-  }
-  const tokens = pollutantTokens(pollutant);
-  const conditions: string[] = [];
-  for (const token of tokens) {
-    const escaped = token.replace(/,/g, "");
-    conditions.push(`notation.ilike.${escaped}`);
-    conditions.push(`pollutant_label.ilike.${escaped}`);
-  }
-  return `(${conditions.join(",")})`;
-}
-
-function pollutantTokens(pollutant: string): string[] {
-  const compact = pollutant.toLowerCase().replace(/[\s_]/g, "");
-  const tokens = new Set<string>([pollutant.toLowerCase()]);
-  if (compact === "pm25" || compact === "pm2.5" || compact === "pm2-5") {
-    tokens.add("pm2.5");
-    tokens.add("pm25");
-    tokens.add("pm2-5");
-    tokens.add("pm2_5");
-  }
-  return Array.from(tokens);
-}
-
 function parseLimit(value: string | null, fallback: number): number {
   if (!value) {
     return fallback;
@@ -338,6 +286,7 @@ function json(payload: unknown, status = 200): Response {
     headers: {
       "Content-Type": "application/json",
       ...CORS_HEADERS,
+      ...cacheControlHeaders(status, CACHE_CONTROL_SUCCESS_SMAXAGE_300),
     },
   });
 }
