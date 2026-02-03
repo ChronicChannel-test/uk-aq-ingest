@@ -411,9 +411,6 @@ function resolvePhenomenonLabel(
   if (label) {
     return label;
   }
-  if (notation) {
-    return notation;
-  }
   if (eionetUri) {
     return eionetUri.split("/").filter(Boolean).pop() ?? null;
   }
