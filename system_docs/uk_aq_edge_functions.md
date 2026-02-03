@@ -208,6 +208,14 @@ curl "https://YOUR_PROJECT.supabase.co/functions/v1/uk_aq_latest?region=London&p
 - Triggered by: Web requests (read-only, no writes).
 - Params: `timeseries_id` (required), `window` (`12h|24h|7d|30d`, default `24h`), optional `limit`.
 - Returns: `observed_at`, `value`, `status` rows ordered oldest → newest, plus optional `guideline` (AQG_2021 24h) if found.
+- RPC backing: `uk_aq_timeseries_rpc` via `/rest/v1/rpc/uk_aq_timeseries_rpc`.
+- Cache-Control: success responses use `public, max-age=60, s-maxage=300, stale-while-revalidate=300, stale-if-error=86400`; errors use `no-store`.
+
+Curl test example (shape check):
+```bash
+curl "https://YOUR_PROJECT.supabase.co/functions/v1/uk_aq_timeseries?timeseries_id=123&window=24h"
+curl "https://YOUR_PROJECT.supabase.co/functions/v1/uk_aq_timeseries?timeseries_id=123&window=7d"
+```
 
 ## Environment variables (Supabase Edge)
 

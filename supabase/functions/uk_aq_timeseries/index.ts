@@ -1,10 +1,10 @@
 // @ts-nocheck
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
+import { cacheControlHeaders, CACHE_CONTROL_SUCCESS_SMAXAGE_300 } from "../_shared/cache.ts";
 
 const DEFAULT_WINDOW = "24h";
 const DEFAULT_LIMIT = 20000;
 const MAX_LIMIT = 60000;
-const GUIDELINE_PERIOD = "24-hour";
 
 const WINDOW_HOURS: Record<string, number> = {
   "12h": 12,
@@ -21,6 +21,8 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")
   ?? "";
 const UK_AQ_CORE_SCHEMA = Deno.env.get("UK_AQ_CORE_SCHEMA")
   ?? "uk_aq_core";
+const UK_AQ_PUBLIC_SCHEMA = Deno.env.get("UK_AQ_PUBLIC_SCHEMA")
+  ?? "uk_aq_public";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -47,14 +49,15 @@ function postgrestHeaders(schema = UK_AQ_CORE_SCHEMA): Record<string, string> {
 
 async function postgrestRequest<T>(
   method: string,
-  table: string,
+  path: string,
   params?: Record<string, string>,
   schema?: string,
+  body?: unknown,
 ): Promise<{ data: T | null; error: { message: string } | null }> {
   if (!REST_BASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
     return { data: null, error: { message: "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY." } };
   }
-  const url = new URL(`${REST_BASE_URL}/${table}`);
+  const url = new URL(`${REST_BASE_URL}/${path}`);
   for (const [key, value] of Object.entries(params ?? {})) {
     if (value !== undefined && value !== null) {
       url.searchParams.set(key, String(value));
@@ -63,6 +66,7 @@ async function postgrestRequest<T>(
   const resp = await fetch(url.toString(), {
     method,
     headers: postgrestHeaders(schema),
+    body: body === undefined ? undefined : JSON.stringify(body),
   });
   const contentType = resp.headers.get("content-type") ?? "";
   const payload = contentType.includes("application/json") ? await resp.json() : await resp.text();
@@ -75,10 +79,20 @@ async function postgrestRequest<T>(
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
-    return new Response(null, { status: 204, headers: CORS_HEADERS });
+    return new Response(null, {
+      status: 204,
+      headers: {
+        ...CORS_HEADERS,
+        "Access-Control-Max-Age": "86400",
+        ...cacheControlHeaders(204, CACHE_CONTROL_SUCCESS_SMAXAGE_300),
+      },
+    });
   }
   if (req.method !== "GET") {
-    return new Response("Method not allowed", { status: 405, headers: CORS_HEADERS });
+    return new Response("Method not allowed", {
+      status: 405,
+      headers: { ...CORS_HEADERS, ...cacheControlHeaders(405, CACHE_CONTROL_SUCCESS_SMAXAGE_300) },
+    });
   }
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
     return json({ error: "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY." }, 500);
@@ -95,45 +109,30 @@ serve(async (req) => {
 
   const end = new Date();
   const start = new Date(end.getTime() - hours * 60 * 60 * 1000);
-  let guideline: Record<string, unknown> | null = null;
-
   try {
-    const pollutantKey = await getPollutantKey(timeseriesId);
-    if (pollutantKey) {
-      const { data: guidelineRows, error: guidelineError } = await postgrestRequest<any[]>(
-        "GET",
-        "uk_aq_guidelines",
-        {
-          select: "pollutant,averaging_period_label,level_label,limit_value,uom,source,notes",
-          pollutant: `eq.${pollutantKey}`,
-          averaging_period_label: `eq.${GUIDELINE_PERIOD}`,
-          level_label: "eq.AQG_2021",
-          limit: "1",
-        },
-      );
-      if (!guidelineError && guidelineRows && guidelineRows.length > 0) {
-        guideline = guidelineRows[0];
-      }
-    }
-
-    const { data, error } = await postgrestRequest<any[]>("GET", "observations", {
-      select: "observed_at,value,status",
-      timeseries_id: `eq.${timeseriesId}`,
-      observed_at: `gte.${start.toISOString()}`,
-      order: "observed_at.asc",
-      limit: String(limit),
-    });
+    const { data, error } = await postgrestRequest<any[]>(
+      "POST",
+      "rpc/uk_aq_timeseries_rpc",
+      undefined,
+      UK_AQ_PUBLIC_SCHEMA,
+      {
+        timeseries_id: timeseriesId,
+        window_label: windowLabel,
+        limit_rows: limit,
+      },
+    );
     if (error) {
       throw new Error(error.message);
     }
-    const rows = data ?? [];
+    const row = Array.isArray(data) && data.length > 0 ? data[0] : null;
+    const rows = Array.isArray(row?.data) ? row.data : [];
     return json({
-      timeseries_id: timeseriesId,
-      window: windowLabel,
-      start: start.toISOString(),
-      end: end.toISOString(),
-      count: rows.length,
-      guideline,
+      timeseries_id: row?.timeseries_id ?? timeseriesId,
+      window: row?.window ?? windowLabel,
+      start: row?.start ?? start.toISOString(),
+      end: row?.end ?? end.toISOString(),
+      count: row?.count ?? rows.length,
+      guideline: row?.guideline ?? null,
       data: rows,
     });
   } catch (err) {
@@ -178,45 +177,7 @@ function json(payload: unknown, status = 200): Response {
     headers: {
       "Content-Type": "application/json",
       ...CORS_HEADERS,
+      ...cacheControlHeaders(status, CACHE_CONTROL_SUCCESS_SMAXAGE_300),
     },
   });
-}
-
-async function getPollutantKey(timeseriesId: number): Promise<string | null> {
-  const { data, error } = await postgrestRequest<any[]>("GET", "timeseries", {
-    select: "id,phenomena(pollutant_label,notation,label)",
-    id: `eq.${timeseriesId}`,
-    limit: "1",
-  });
-  if (error || !data || data.length === 0) {
-    return null;
-  }
-  const record = data[0];
-  const phenSource = record?.phenomena ?? record?.phenomenon ?? null;
-  const phen = Array.isArray(phenSource) ? phenSource[0] : phenSource;
-  const candidate = phen?.pollutant_label || phen?.notation || phen?.label;
-  return normalizePollutant(candidate);
-}
-
-function normalizePollutant(value: string | null): string | null {
-  if (!value) {
-    return null;
-  }
-  const lower = value.toLowerCase();
-  if (lower.includes("pm2.5") || lower.includes("pm2_5") || lower.includes("pm25")) {
-    return "PM2.5";
-  }
-  if (lower.includes("pm10")) {
-    return "PM10";
-  }
-  if (lower.includes("no2") || lower.includes("nitrogen dioxide")) {
-    return "NO2";
-  }
-  if (lower.includes("o3") || lower.includes("ozone")) {
-    return "O3";
-  }
-  if (lower.includes("so2") || lower.includes("sulphur dioxide") || lower.includes("sulfur dioxide")) {
-    return "SO2";
-  }
-  return value.trim().toUpperCase().replace(/\s+/g, "");
 }
