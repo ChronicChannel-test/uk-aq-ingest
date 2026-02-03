@@ -909,14 +909,6 @@ type RateLimitState = {
   firstRemaining: number | null;
 };
 
-const rateLimitState: RateLimitState = {
-  remaining: null,
-  stop: false,
-  stopReason: null,
-  limit: null,
-  firstRemaining: null,
-};
-
 function rateLimitDelayMs(reset: number | null): number {
   if (!Number.isFinite(reset) || reset === null) {
     return 0;
@@ -926,7 +918,7 @@ function rateLimitDelayMs(reset: number | null): number {
   }
   if (reset > 1e9) {
     return Math.max(0, reset * 1000 - Date.now());
-  }
+    }
   return Math.max(0, reset * 1000);
 }
 
