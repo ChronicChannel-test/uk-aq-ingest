@@ -174,6 +174,8 @@ const DROPBOX_RAW_FOLDER = "/connectors/openaq/raw_data";
 const DROPBOX_TOKEN_URL = "https://api.dropbox.com/oauth2/token";
 const DROPBOX_UPLOAD_URL = "https://content.dropboxapi.com/2/files/upload";
 
+let errorLogLines: string[] | null = null;
+
 const REST_BASE_URL = SUPABASE_URL
   ? `${SUPABASE_URL.replace(/\/$/, "")}/rest/v1`
   : "";
@@ -672,7 +674,7 @@ function recordErrorLogLine(errorLogLines: string[] | null, entry: ErrorLogEntry
 }
 
 async function logError(entry: ErrorLogEntry): Promise<void> {
-  recordErrorLogLine(entry);
+  recordErrorLogLine(errorLogLines, entry);
   try {
     await rpcRequest<Array<{ id: string }>>("uk_aq_rpc_error_log_insert", {
       entry: {
@@ -975,16 +977,16 @@ async function openaqRequest(
     const payload = contentType.includes("application/json") ? await resp.json() : await resp.text();
     const info = parseRateLimitHeaders(resp.headers);
     if (info.remaining !== null && Number.isFinite(info.remaining)) {
-      rateLimitRemaining = info.remaining;
-      if (rateLimitFirstRemaining === null) {
-        rateLimitFirstRemaining = info.remaining;
+      rateLimitState.remaining = info.remaining;
+      if (rateLimitState.firstRemaining === null) {
+        rateLimitState.firstRemaining = info.remaining;
       }
       if (info.limit !== null && Number.isFinite(info.limit)) {
-        rateLimitLimit = info.limit;
+        rateLimitState.limit = info.limit;
       }
       if (info.remaining <= OPENAQ_RATE_LIMIT_STOP_THRESHOLD) {
-        rateLimitStop = true;
-        rateLimitStopReason = "remaining_low";
+        rateLimitState.stop = true;
+        rateLimitState.stopReason = "remaining_low";
       }
     }
     if (rawRecorder) {
@@ -992,8 +994,8 @@ async function openaqRequest(
     }
     if (resp.status === 429) {
       const delayMs = rateLimitDelayMs(info.reset) || Math.min(60000, 1000 * attempt);
-      rateLimitStop = true;
-      rateLimitStopReason = "rate_limit_429";
+      rateLimitState.stop = true;
+      rateLimitState.stopReason = "rate_limit_429";
       if (rawRecorder) {
         rawRecorder.recordEvent("rate_limit", {
           status: resp.status,
@@ -1024,7 +1026,7 @@ async function listLocations(bbox: string, rawRecorder?: RawRecorder | null): Pr
     : DEFAULT_PAGE_LIMIT;
   let page = 1;
   while (true) {
-    if (rateLimitStop) {
+    if (rateLimitState.stop) {
       break;
     }
     const payload = await openaqRequest("locations", { bbox, limit, page }, rawRecorder);
@@ -1069,7 +1071,7 @@ async function listHourlyMeasurements(
   let page = 1;
   let pages = 0;
   while (true) {
-    if (rateLimitStop) {
+    if (rateLimitState.stop) {
       break;
     }
     const params: Record<string, string | number> = { limit, page };
@@ -1624,11 +1626,11 @@ serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 204 });
   }
-  rateLimitRemaining = null;
-  rateLimitStop = false;
-  rateLimitStopReason = null;
-  rateLimitLimit = null;
-  rateLimitFirstRemaining = null;
+  rateLimitState.remaining = null;
+  rateLimitState.stop = false;
+  rateLimitState.stopReason = null;
+  rateLimitState.limit = null;
+  rateLimitState.firstRemaining = null;
   const authResponse = requireCronSecret(req);
   if (authResponse) {
     return authResponse;
@@ -1661,7 +1663,7 @@ serve(async (req) => {
     ? Math.max(30, OPENAQ_MAX_RUNTIME_SECONDS)
     : DEFAULT_MAX_RUNTIME_SECONDS;
   const runtimeDeadline = runStartedAt + maxRuntimeSeconds * 1000;
-  const shouldStop = () => Date.now() >= runtimeDeadline || rateLimitStop;
+  const shouldStop = () => Date.now() >= runtimeDeadline || rateLimitState.stop;
   let timeBudgetHit = false;
   const logLines: string[] = [];
   errorLogLines = [];
@@ -2744,11 +2746,11 @@ serve(async (req) => {
 
   const stoppedReason = timeBudgetHit
     ? "runtime_budget_exceeded"
-    : rateLimitStop
-    ? (rateLimitStopReason ?? "rate_limit_guard")
+    : rateLimitState.stop
+    ? (rateLimitState.stopReason ?? "rate_limit_guard")
     : null;
-  const rateLimitUsedEstimate = rateLimitLimit !== null && rateLimitRemaining !== null
-    ? Math.max(0, rateLimitLimit - rateLimitRemaining)
+  const rateLimitUsedEstimate = rateLimitState.limit !== null && rateLimitState.remaining !== null
+    ? Math.max(0, rateLimitState.limit - rateLimitState.remaining)
     : null;
 
   logLine("INFO", "OpenAQ ingest complete", {
@@ -2762,18 +2764,18 @@ serve(async (req) => {
     observations_upserted: observationsUpserted,
     series_polled: seriesPolled,
     last_observed_at: lastObservedAt,
-    rate_limit_remaining: rateLimitRemaining,
-    rate_limit_stop: rateLimitStop,
-    rate_limit_stop_reason: rateLimitStopReason,
+    rate_limit_remaining: rateLimitState.remaining,
+    rate_limit_stop: rateLimitState.stop,
+    rate_limit_stop_reason: rateLimitState.stopReason,
     partial: timeBudgetHit,
     stopped_reason: stoppedReason,
     raw_responses: rawRecorder?.responseCount ?? 0,
   });
 
   logLine("INFO", "OpenAQ rate limit summary", {
-    rate_limit_limit: rateLimitLimit,
-    rate_limit_remaining_first: rateLimitFirstRemaining,
-    rate_limit_remaining_last: rateLimitRemaining,
+    rate_limit_limit: rateLimitState.limit,
+    rate_limit_remaining_first: rateLimitState.firstRemaining,
+    rate_limit_remaining_last: rateLimitState.remaining,
     rate_limit_used_estimate: rateLimitUsedEstimate,
     requests_total: rawRecorder?.responseCount ?? 0,
     stations_selected: stationsSelected,
@@ -2836,11 +2838,11 @@ serve(async (req) => {
     station_fetch_enabled: locationsFetched,
     partial: timeBudgetHit,
     stopped_reason: stoppedReason,
-    rate_limit_remaining: rateLimitRemaining,
-    rate_limit_limit: rateLimitLimit,
-    rate_limit_remaining_first: rateLimitFirstRemaining,
-    rate_limit_stop: rateLimitStop,
-    rate_limit_stop_reason: rateLimitStopReason,
+    rate_limit_remaining: rateLimitState.remaining,
+    rate_limit_limit: rateLimitState.limit,
+    rate_limit_remaining_first: rateLimitState.firstRemaining,
+    rate_limit_stop: rateLimitState.stop,
+    rate_limit_stop_reason: rateLimitState.stopReason,
     rate_limit_used_estimate: rateLimitUsedEstimate,
     requests_total: rawRecorder?.responseCount ?? 0,
     dry_run: dryRun,
