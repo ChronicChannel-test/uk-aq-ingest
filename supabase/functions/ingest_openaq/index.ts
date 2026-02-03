@@ -954,6 +954,19 @@ async function openaqRequest(
   params?: Record<string, string | number>,
   rawRecorder?: RawRecorder | null,
 ): Promise<any> {
+  const rateLimitState: {
+    remaining: number | null;
+    firstRemaining: number | null;
+    limit: number | null;
+    stop: boolean;
+    stopReason: string | null;
+  } = {
+    remaining: null,
+    firstRemaining: null,
+    limit: null,
+    stop: false,
+    stopReason: null,
+  };
   const url = new URL(`${OPENAQ_BASE_URL}/${path.replace(/^\//, "")}`);
   for (const [key, value] of Object.entries(params ?? {})) {
     if (value !== undefined && value !== null) {
