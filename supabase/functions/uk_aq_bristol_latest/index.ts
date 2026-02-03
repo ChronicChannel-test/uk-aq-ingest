@@ -1,20 +1,58 @@
-/// <reference lib="deno.ns" />
-/// <reference lib="dom" />
-import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
+// Use Deno's built-in serve function
+// @ts-ignore: Deno Deploy/Supabase Edge runtime provides 'serve'
+import { serve } from "std/http/server.ts";
 import { cacheControlHeaders } from "../_shared/cache.ts";
 
 const DEFAULT_STATION_LIKE = "Bristol";
 const DEFAULT_LIMIT = 1000;
 const MAX_LIMIT = 10000;
 
-const SUPABASE_URL = Deno.env.get("SUPABASE_URL")
-  ?? Deno.env.get("SB_SUPABASE_URL")
-  ?? "";
-const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")
-  ?? Deno.env.get("SB_SERVICE_ROLE_KEY")
-  ?? "";
-const UK_AQ_CORE_SCHEMA = Deno.env.get("UK_AQ_CORE_SCHEMA")
-  ?? "uk_aq_core";
+interface CorsHeaders {
+  "Access-Control-Allow-Origin": string;
+  "Access-Control-Allow-Headers": string;
+  "Access-Control-Allow-Methods": string;
+}
+
+interface PostgrestResponse<T> {
+  data: T | null;
+  error: { message: string } | null;
+}
+
+interface QueryParams {
+  region: string | null;
+  stationLikeParam: string | null;
+  scopeParam: string | null;
+  debug: boolean;
+  connectorId: string | null;
+  pollutant: string | null;
+  limit: number;
+  stationLike: string | null;
+}
+
+interface ErrorResponse {
+  error: string;
+  debug?: unknown;
+}
+
+interface SuccessResponse {
+  region: string | null;
+  pollutant: string | null;
+  count: number;
+  data: any[];
+}
+
+
+// @ts-ignore Deno global for runtime
+
+const denoEnv = (globalThis as any).Deno?.env;
+const SUPABASE_URL = (denoEnv?.get("SUPABASE_URL")
+  ?? denoEnv?.get("SB_SUPABASE_URL")
+  ?? "");
+const SUPABASE_SERVICE_ROLE_KEY = (denoEnv?.get("SUPABASE_SERVICE_ROLE_KEY")
+  ?? denoEnv?.get("SB_SERVICE_ROLE_KEY")
+  ?? "");
+const UK_AQ_CORE_SCHEMA = (denoEnv?.get("UK_AQ_CORE_SCHEMA")
+  ?? "uk_aq_core");
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -67,7 +105,7 @@ async function postgrestRequest<T>(
   return { data: payload as T, error: null };
 }
 
-serve(async (req) => {
+serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, {
       status: 204,
