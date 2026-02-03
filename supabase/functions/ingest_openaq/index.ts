@@ -904,11 +904,21 @@ function parseRateLimitHeaders(headers: Headers): {
   };
 }
 
-let rateLimitRemaining: number | null = null;
-let rateLimitStop = false;
-let rateLimitStopReason: string | null = null;
-let rateLimitLimit: number | null = null;
-let rateLimitFirstRemaining: number | null = null;
+type RateLimitState = {
+  remaining: number | null;
+  stop: boolean;
+  stopReason: string | null;
+  limit: number | null;
+  firstRemaining: number | null;
+};
+
+const rateLimitState: RateLimitState = {
+  remaining: null,
+  stop: false,
+  stopReason: null,
+  limit: null,
+  firstRemaining: null,
+};
 
 function rateLimitDelayMs(reset: number | null): number {
   if (!Number.isFinite(reset) || reset === null) {
