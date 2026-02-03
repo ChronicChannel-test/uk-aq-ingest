@@ -202,6 +202,9 @@ curl "https://YOUR_PROJECT.supabase.co/functions/v1/uk_aq_latest?region=London&p
 - Purpose: Serve constituency-level latest PM2.5 summaries (median + mean) for the hex cartogram.
 - Triggered by: Web requests (read-only, no writes).
 - Returns: rows keyed by `pcon_code` with `station_count`, `single_site`, `median_value`, `mean_value`, `latest_value_at`.
+- Params: `pcon_version`, `limit`.
+- RPC backing: `uk_aq_pcon_hex_rpc` via `/rest/v1/rpc/uk_aq_pcon_hex_rpc`.
+- Cache-Control: success responses use `public, max-age=60, s-maxage=300, stale-while-revalidate=300, stale-if-error=86400`; errors use `no-store`.
 
 ### uk_aq_timeseries
 - Purpose: Serve raw observation points for a single timeseries.

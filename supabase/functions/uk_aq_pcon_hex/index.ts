@@ -1,5 +1,6 @@
 // @ts-nocheck
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
+import { cacheControlHeaders, CACHE_CONTROL_SUCCESS_SMAXAGE_300 } from "../_shared/cache.ts";
 
 const DEFAULT_LIMIT = 10000;
 const MAX_LIMIT = 20000;
@@ -12,6 +13,8 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")
   ?? "";
 const UK_AQ_CORE_SCHEMA = Deno.env.get("UK_AQ_CORE_SCHEMA")
   ?? "uk_aq_core";
+const UK_AQ_PUBLIC_SCHEMA = Deno.env.get("UK_AQ_PUBLIC_SCHEMA")
+  ?? "uk_aq_public";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -38,14 +41,15 @@ function postgrestHeaders(schema = UK_AQ_CORE_SCHEMA): Record<string, string> {
 
 async function postgrestRequest<T>(
   method: string,
-  table: string,
+  path: string,
   params?: Record<string, string>,
   schema?: string,
+  body?: unknown,
 ): Promise<{ data: T | null; error: { message: string } | null }> {
   if (!REST_BASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
     return { data: null, error: { message: "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY." } };
   }
-  const url = new URL(`${REST_BASE_URL}/${table}`);
+  const url = new URL(`${REST_BASE_URL}/${path}`);
   for (const [key, value] of Object.entries(params ?? {})) {
     if (value !== undefined && value !== null) {
       url.searchParams.set(key, String(value));
@@ -54,6 +58,7 @@ async function postgrestRequest<T>(
   const resp = await fetch(url.toString(), {
     method,
     headers: postgrestHeaders(schema),
+    body: body === undefined ? undefined : JSON.stringify(body),
   });
   const contentType = resp.headers.get("content-type") ?? "";
   const payload = contentType.includes("application/json") ? await resp.json() : await resp.text();
@@ -66,10 +71,20 @@ async function postgrestRequest<T>(
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
-    return new Response(null, { status: 204, headers: CORS_HEADERS });
+    return new Response(null, {
+      status: 204,
+      headers: {
+        ...CORS_HEADERS,
+        "Access-Control-Max-Age": "86400",
+        ...cacheControlHeaders(204, CACHE_CONTROL_SUCCESS_SMAXAGE_300),
+      },
+    });
   }
   if (req.method !== "GET") {
-    return new Response("Method not allowed", { status: 405, headers: CORS_HEADERS });
+    return new Response("Method not allowed", {
+      status: 405,
+      headers: { ...CORS_HEADERS, ...cacheControlHeaders(405, CACHE_CONTROL_SUCCESS_SMAXAGE_300) },
+    });
   }
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
     return json({ error: "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY." }, 500);
@@ -115,14 +130,16 @@ type PconRow = {
 };
 
 async function loadLatest({ pconVersion, limit }: LoadOptions): Promise<PconRow[]> {
-  const params: Record<string, string> = {
-    select: "pcon_code,pcon_name,pcon_version,station_count,single_site,median_value,mean_value,latest_value_at",
-    limit: String(limit),
-  };
-  if (pconVersion) {
-    params.pcon_version = `eq.${pconVersion}`;
-  }
-  const { data, error } = await postgrestRequest<PconRow[]>("GET", "pcon_latest_pm25", params);
+  const { data, error } = await postgrestRequest<PconRow[]>(
+    "POST",
+    "rpc/uk_aq_pcon_hex_rpc",
+    undefined,
+    UK_AQ_PUBLIC_SCHEMA,
+    {
+      pcon_version: pconVersion,
+      limit_rows: limit,
+    },
+  );
   if (error) {
     throw new Error(error.message);
   }
@@ -167,6 +184,7 @@ function json(payload: unknown, status = 200): Response {
     headers: {
       "Content-Type": "application/json",
       ...CORS_HEADERS,
+      ...cacheControlHeaders(status, CACHE_CONTROL_SUCCESS_SMAXAGE_300),
     },
   });
 }
