@@ -34,11 +34,15 @@ interface ErrorResponse {
   debug?: unknown;
 }
 
+interface AirQualityRecord {
+  [key: string]: unknown;
+}
+
 interface SuccessResponse {
   region: string | null;
   pollutant: string | null;
   count: number;
-  data: any[];
+  data: AirQualityRecord[];
 }
 
 
