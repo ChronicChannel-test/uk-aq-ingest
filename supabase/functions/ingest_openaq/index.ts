@@ -2176,7 +2176,7 @@ serve(async (req) => {
   }
 
   const nowMs = Date.now();
-  const debugStationIdEnv = Deno.env.get("DENO_OPENAQ_DEBUG_STATION_ID");
+  const debugStationId = OPENAQ_DEBUG_STATION_ID;
   const debugStationId =
     debugStationIdEnv !== undefined ? Number(debugStationIdEnv) : undefined;
   if (
