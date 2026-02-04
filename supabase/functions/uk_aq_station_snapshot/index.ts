@@ -91,6 +91,17 @@ function extractBearerToken(authHeader: string): string {
   return authHeader.slice("Bearer ".length).trim();
 }
 
+async function validateAccessToken(accessToken: string): Promise<boolean> {
+  const resp = await fetch(`${SUPABASE_URL.replace(/\/$/, "")}/auth/v1/user`, {
+    method: "GET",
+    headers: {
+      apikey: SUPABASE_ANON_KEY,
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+  return resp.ok;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, {
@@ -152,8 +163,8 @@ serve(async (req) => {
     },
   });
 
-  const { data: userData, error: userError } = await supabase.auth.getUser(accessToken);
-  if (userError || !userData?.user) {
+  const tokenValid = await validateAccessToken(accessToken);
+  if (!tokenValid) {
     return jsonResponse({ error: "Unauthorized." }, 401);
   }
 
