@@ -100,7 +100,13 @@ const DEFAULT_BATCH_LIMIT: Record<string, number> = {
   openaq: 56,
 };
 
-const IN_FLIGHT_TIMEOUT_MINUTES = 10;
+const IN_FLIGHT_TIMEOUT_MINUTES_ENV = Deno.env.get("IN_FLIGHT_TIMEOUT_MINUTES");
+const IN_FLIGHT_TIMEOUT_MINUTES = (() => {
+  const parsed = IN_FLIGHT_TIMEOUT_MINUTES_ENV
+    ? Number(IN_FLIGHT_TIMEOUT_MINUTES_ENV)
+    : NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 10;
+})();
 const DEFAULT_PARALLEL_INGEST = false;
 const DEFAULT_MAX_RUNS_PER_DISPATCH_CALL = 1;
 
