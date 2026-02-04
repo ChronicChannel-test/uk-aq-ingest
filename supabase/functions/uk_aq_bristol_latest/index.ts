@@ -19,6 +19,20 @@ interface PostgrestResponse<T> {
   error: { message: string } | null;
 }
 
+function buildDebugRequestPayload(
+  baseParams: Record<string, string>,
+  extra: Record<string, string>,
+  useStationInner: boolean,
+  limit: number,
+) {
+  return {
+    ...baseParams,
+    ...extra,
+    select: useStationInner ? selectStationInner : baseParams.select,
+    limit: String(limit),
+  };
+}
+
 interface QueryParams {
   region: string | null;
   stationLikeParam: string | null;
@@ -161,19 +175,6 @@ serve(async (req: Request) => {
       : null;
     return json(
       debug ? { error: message, debug: debugPayload } : { error: message },
-  function buildDebugRequestPayload(
-    baseParams: Record<string, string>,
-    extra: Record<string, string>,
-    useStationInner: boolean,
-    limit: number,
-  ) {
-    return {
-      ...baseParams,
-      ...extra,
-      select: useStationInner ? selectStationInner : baseParams.select,
-      limit: String(limit),
-    };
-  }
       500,
     );
   }
@@ -184,10 +185,6 @@ type LoadOptions = {
   stationLike: string | null;
   connectorId: string | null;
   pollutant: string | null;
-        err.debug = {
-          request: buildDebugRequestPayload(baseParams, extra, useStationInner, limit),
-          error,
-        };
   debug: boolean;
 };
 
@@ -219,19 +216,6 @@ async function loadLatest({ region, stationLike, connectorId, pollutant, limit, 
   }
   if (connectorId) {
     baseParams.connector_id = `eq.${connectorId}`;
-  }
-  function buildDebugRequestPayload(
-    baseParams: Record<string, string>,
-    extra: Record<string, string>,
-    useStationInner: boolean,
-    limit: number,
-  ) {
-    return {
-      ...baseParams,
-      ...extra,
-      select: useStationInner ? selectStationInner : baseParams.select,
-      limit: String(limit),
-    };
   }
   const fetchRows = async (extra: Record<string, string>, useStationInner = false) => {
     const { data, error } = await postgrestRequest<any[]>("GET", "timeseries", {
@@ -428,6 +412,9 @@ function parseLimit(value: string | null, fallback: number): number {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) {
     return fallback;
+  }
+  return Math.min(parsed, MAX_LIMIT);
+}
 
 function json(payload: unknown, status = 200): Response {
   return new Response(JSON.stringify(payload, null, 2), {
