@@ -4,6 +4,7 @@ type PollRequest = {
   connector_code?: string;
   station_refs?: string[];
   window_hours?: number;
+  batch_size?: number;
   dry_run?: boolean;
 };
 
@@ -81,7 +82,11 @@ type OpenAQLocation = {
   sensors?: Array<{
     id?: number;
     name?: string | null;
-    parameter?: { name?: string | null; units?: string | null; displayName?: string | null } | null;
+    parameter?: {
+      name?: string | null;
+      units?: string | null;
+      displayName?: string | null;
+    } | null;
   }>;
 };
 
@@ -130,64 +135,101 @@ const DEFAULT_MAX_PAGES = 50;
 const DEFAULT_CONCURRENCY = 6;
 const DEFAULT_MAX_RUNTIME_SECONDS = 110;
 const DEFAULT_RATE_LIMIT_RETRIES = 3;
-const DEFAULT_TIERED_LIMIT = 56;
+const DEFAULT_MAX_REQUESTS_PER_RUN = 56;
 const DEFAULT_STALE_LIMIT = 4;
 const DEFAULT_RATE_LIMIT_STOP_THRESHOLD = 5;
+const DEFAULT_GAP_REQUESTS_REMAINING_MIN = 10;
 const PROVIDER_SHORTNAMES: Record<string, string> = {
   "London Air Quality Network": "LAQN",
 };
 
-const SUPABASE_URL = Deno.env.get("SUPABASE_URL")
-  ?? Deno.env.get("SB_SUPABASE_URL")
-  ?? "";
-const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")
-  ?? Deno.env.get("SB_SERVICE_ROLE_KEY")
-  ?? "";
-const UK_AQ_CORE_SCHEMA = Deno.env.get("UK_AQ_CORE_SCHEMA")
-  ?? "uk_aq_core";
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ??
+  Deno.env.get("SB_SUPABASE_URL") ??
+  "";
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
+  Deno.env.get("SB_SERVICE_ROLE_KEY") ??
+  "";
+const UK_AQ_CORE_SCHEMA = Deno.env.get("UK_AQ_CORE_SCHEMA") ??
+  "uk_aq_core";
 const SB_UK_AQ_CRON_SECRET = Deno.env.get("SB_UK_AQ_CRON_SECRET") ?? "";
 
 const OPENAQ_BASE_URL = (Deno.env.get("OPENAQ_BASE_URL") ?? DEFAULT_BASE_URL)
   .replace(/\/$/, "");
-const OPENAQ_CONNECTOR_CODE = Deno.env.get("OPENAQ_CONNECTOR_CODE") ?? DEFAULT_CONNECTOR_CODE;
-const OPENAQ_SERVICE_REF = Deno.env.get("OPENAQ_SERVICE_REF") ?? OPENAQ_CONNECTOR_CODE;
-const OPENAQ_SERVICE_LABEL = Deno.env.get("OPENAQ_SERVICE_LABEL") ?? DEFAULT_SERVICE_LABEL;
-const OPENAQ_USER_AGENT = Deno.env.get("OPENAQ_USER_AGENT") ?? DEFAULT_USER_AGENT;
+const OPENAQ_CONNECTOR_CODE = Deno.env.get("OPENAQ_CONNECTOR_CODE") ??
+  DEFAULT_CONNECTOR_CODE;
+const OPENAQ_SERVICE_REF = Deno.env.get("OPENAQ_SERVICE_REF") ??
+  OPENAQ_CONNECTOR_CODE;
+const OPENAQ_SERVICE_LABEL = Deno.env.get("OPENAQ_SERVICE_LABEL") ??
+  DEFAULT_SERVICE_LABEL;
+const OPENAQ_USER_AGENT = Deno.env.get("OPENAQ_USER_AGENT") ??
+  DEFAULT_USER_AGENT;
 const OPENAQ_API_KEY = (Deno.env.get("OPENAQ_API_KEY") ?? "").trim();
 const OPENAQ_BBOX = Deno.env.get("OPENAQ_BBOX") ?? DEFAULT_BBOX;
-const OPENAQ_PAGE_LIMIT = Number(Deno.env.get("OPENAQ_PAGE_LIMIT") ?? DEFAULT_PAGE_LIMIT);
-const OPENAQ_MAX_PAGES = Number(Deno.env.get("OPENAQ_MAX_PAGES") ?? DEFAULT_MAX_PAGES);
-const OPENAQ_CONCURRENCY = Number(Deno.env.get("OPENAQ_CONCURRENCY") ?? DEFAULT_CONCURRENCY);
+const OPENAQ_PAGE_LIMIT = Number(
+  Deno.env.get("OPENAQ_PAGE_LIMIT") ?? DEFAULT_PAGE_LIMIT,
+);
+const OPENAQ_MAX_PAGES = Number(
+  Deno.env.get("OPENAQ_MAX_PAGES") ?? DEFAULT_MAX_PAGES,
+);
+const OPENAQ_CONCURRENCY = Number(
+  Deno.env.get("OPENAQ_CONCURRENCY") ?? DEFAULT_CONCURRENCY,
+);
 const OPENAQ_MAX_RUNTIME_SECONDS = Number(
   Deno.env.get("OPENAQ_MAX_RUNTIME_SECONDS") ?? DEFAULT_MAX_RUNTIME_SECONDS,
 );
 const OPENAQ_RATE_LIMIT_RETRIES = Number(
   Deno.env.get("OPENAQ_RATE_LIMIT_RETRIES") ?? DEFAULT_RATE_LIMIT_RETRIES,
 );
-const OPENAQ_TIERED_LIMIT = Number(
-  Deno.env.get("OPENAQ_TIERED_LIMIT") ?? DEFAULT_TIERED_LIMIT,
+const OPENAQ_MAX_REQUESTS_PER_RUN = Number(
+  Deno.env.get("OPENAQ_MAX_REQUESTS_PER_RUN") ?? DEFAULT_MAX_REQUESTS_PER_RUN,
 );
 const OPENAQ_STALE_LIMIT = Number(
   Deno.env.get("OPENAQ_STALE_LIMIT") ?? DEFAULT_STALE_LIMIT,
 );
 const OPENAQ_RATE_LIMIT_STOP_THRESHOLD = Number(
-  Deno.env.get("OPENAQ_RATE_LIMIT_STOP_THRESHOLD") ?? DEFAULT_RATE_LIMIT_STOP_THRESHOLD,
+  Deno.env.get("OPENAQ_RATE_LIMIT_STOP_THRESHOLD") ??
+    DEFAULT_RATE_LIMIT_STOP_THRESHOLD,
+);
+const OPENAQ_GAP_REQUESTS_REMAINING_MIN = Number(
+  Deno.env.get("OPENAQ_GAP_REQUESTS_REMAINING_MIN") ??
+    DEFAULT_GAP_REQUESTS_REMAINING_MIN,
 );
 const OPENAQ_INGEST_STATION_FETCH = ["1", "true", "yes"].includes(
   String(Deno.env.get("OPENAQ_INGEST_STATION_FETCH") ?? "").toLowerCase(),
 );
-const UK_AQ_DROPBOX_ROOT = normalizeDropboxPath(Deno.env.get("UK_AQ_DROPBOX_ROOT") ?? "");
+const UK_AQ_DROPBOX_ROOT = normalizeDropboxPath(
+  Deno.env.get("UK_AQ_DROPBOX_ROOT") ?? "",
+);
 const DROPBOX_APP_KEY = Deno.env.get("DROPBOX_APP_KEY") ?? "";
 const DROPBOX_APP_SECRET = Deno.env.get("DROPBOX_APP_SECRET") ?? "";
 const DROPBOX_REFRESH_TOKEN = Deno.env.get("DROPBOX_REFRESH_TOKEN") ?? "";
-const DROPBOX_ALLOWED_SUPABASE_URL = Deno.env.get("OPENAQ_RAW_DROPBOX_ALLOWED_SUPABASE_URL")
-  ?? Deno.env.get("UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL")
-  ?? "";
+const DROPBOX_ALLOWED_SUPABASE_URL =
+  Deno.env.get("OPENAQ_RAW_DROPBOX_ALLOWED_SUPABASE_URL") ??
+    Deno.env.get("UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL") ??
+    "";
 const DROPBOX_LOG_FOLDER = "/connectors/openaq/log";
 const DROPBOX_ERROR_FOLDER = "/error_log";
 const DROPBOX_RAW_FOLDER = "/connectors/openaq/raw_data";
 const DROPBOX_TOKEN_URL = "https://api.dropbox.com/oauth2/token";
 const DROPBOX_UPLOAD_URL = "https://content.dropboxapi.com/2/files/upload";
+
+const requestBudgetState: {
+  maxPerRun: number;
+  total: number;
+  gapReserveMin: number;
+  gapPlannedRequests: number;
+  gapExecutedRequests: number;
+  gapSkippedBudgetRequests: number;
+  gapZeroYieldTimeseries: number;
+} = {
+  maxPerRun: DEFAULT_MAX_REQUESTS_PER_RUN,
+  total: 0,
+  gapReserveMin: DEFAULT_GAP_REQUESTS_REMAINING_MIN,
+  gapPlannedRequests: 0,
+  gapExecutedRequests: 0,
+  gapSkippedBudgetRequests: 0,
+  gapZeroYieldTimeseries: 0,
+};
 
 let errorLogLines: string[] | null = null;
 
@@ -195,7 +237,10 @@ const REST_BASE_URL = SUPABASE_URL
   ? `${SUPABASE_URL.replace(/\/$/, "")}/rest/v1`
   : "";
 
-function postgrestHeaders(prefer?: string, schema = UK_AQ_CORE_SCHEMA): Record<string, string> {
+function postgrestHeaders(
+  prefer?: string,
+  schema = UK_AQ_CORE_SCHEMA,
+): Record<string, string> {
   const headers: Record<string, string> = {
     apikey: SUPABASE_SERVICE_ROLE_KEY,
     Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
@@ -249,7 +294,10 @@ async function postgrestRequest<T>(
   prefer?: string,
 ): Promise<{ data: T | null; error: { message: string } | null }> {
   if (!REST_BASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-    return { data: null, error: { message: "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY." } };
+    return {
+      data: null,
+      error: { message: "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY." },
+    };
   }
   try {
     const url = new URL(`${REST_BASE_URL}/${path.replace(/^\//, "")}`);
@@ -267,10 +315,14 @@ async function postgrestRequest<T>(
     let payload: unknown = null;
     if (resp.status !== 204) {
       const contentType = resp.headers.get("content-type") ?? "";
-      payload = contentType.includes("application/json") ? await resp.json() : await resp.text();
+      payload = contentType.includes("application/json")
+        ? await resp.json()
+        : await resp.text();
     }
     if (!resp.ok) {
-      const message = typeof payload === "string" ? payload : JSON.stringify(payload);
+      const message = typeof payload === "string"
+        ? payload
+        : JSON.stringify(payload);
       return { data: null, error: { message } };
     }
     return { data: payload as T, error: null };
@@ -284,7 +336,10 @@ async function rpcRequest<T>(
   args?: Record<string, unknown>,
 ): Promise<{ data: T | null; error: { message: string } | null }> {
   if (!REST_BASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-    return { data: null, error: { message: "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY." } };
+    return {
+      data: null,
+      error: { message: "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY." },
+    };
   }
   try {
     const url = new URL(`${REST_BASE_URL}/rpc/${fn}`);
@@ -300,10 +355,14 @@ async function rpcRequest<T>(
     let payload: unknown = null;
     if (resp.status !== 204) {
       const contentType = resp.headers.get("content-type") ?? "";
-      payload = contentType.includes("application/json") ? await resp.json() : await resp.text();
+      payload = contentType.includes("application/json")
+        ? await resp.json()
+        : await resp.text();
     }
     if (!resp.ok) {
-      const message = typeof payload === "string" ? payload : JSON.stringify(payload);
+      const message = typeof payload === "string"
+        ? payload
+        : JSON.stringify(payload);
       return { data: null, error: { message } };
     }
     return { data: payload as T, error: null };
@@ -390,7 +449,9 @@ async function fetchOpenaqTimeseriesCheckpoints(
     },
   );
   if (error) {
-    throw new Error(`OpenAQ timeseries checkpoints fetch failed: ${error.message}`);
+    throw new Error(
+      `OpenAQ timeseries checkpoints fetch failed: ${error.message}`,
+    );
   }
   const byTimeseriesId: Record<number, OpenAQTimeseriesCheckpoint> = {};
   const byStationId: Record<number, OpenAQTimeseriesCheckpoint[]> = {};
@@ -460,7 +521,9 @@ async function upsertOpenaqTimeseriesCheckpoints(
     { rows },
   );
   if (error) {
-    throw new Error(`OpenAQ timeseries checkpoints upsert failed: ${error.message}`);
+    throw new Error(
+      `OpenAQ timeseries checkpoints upsert failed: ${error.message}`,
+    );
   }
   return data && data[0] ? Number(data[0].rows_upserted) : 0;
 }
@@ -482,7 +545,10 @@ function dropboxWithRoot(path: string): string {
   if (!cleaned) {
     return UK_AQ_DROPBOX_ROOT;
   }
-  if (cleaned === UK_AQ_DROPBOX_ROOT || cleaned.startsWith(`${UK_AQ_DROPBOX_ROOT}/`)) {
+  if (
+    cleaned === UK_AQ_DROPBOX_ROOT ||
+    cleaned.startsWith(`${UK_AQ_DROPBOX_ROOT}/`)
+  ) {
     return cleaned;
   }
   return `${UK_AQ_DROPBOX_ROOT}${cleaned}`;
@@ -505,11 +571,17 @@ function formatDateYmd(timestamp: Date): string {
 
 function normalizeConnectorPrefix(connectorCode: string | null): string {
   const cleaned = (connectorCode ?? "").trim().toLowerCase();
-  const normalized = cleaned.replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+  const normalized = cleaned.replace(/[^a-z0-9]+/g, "_").replace(
+    /^_+|_+$/g,
+    "",
+  );
   return normalized || "openaq";
 }
 
-function buildDropboxLogPath(connectorCode: string | null, timestamp: Date): string {
+function buildDropboxLogPath(
+  connectorCode: string | null,
+  timestamp: Date,
+): string {
   const stamp = formatCompactTimestamp(timestamp);
   const dateFolder = formatDateYmd(timestamp);
   const prefix = normalizeConnectorPrefix(connectorCode);
@@ -517,7 +589,10 @@ function buildDropboxLogPath(connectorCode: string | null, timestamp: Date): str
   return `${base}/${dateFolder}/uk_aq_log_edge_${prefix}_${stamp}.log`;
 }
 
-function buildDropboxRawPath(connectorCode: string | null, timestamp: Date): string {
+function buildDropboxRawPath(
+  connectorCode: string | null,
+  timestamp: Date,
+): string {
   const stamp = formatCompactTimestamp(timestamp);
   const dateFolder = formatDateYmd(timestamp);
   const prefix = normalizeConnectorPrefix(connectorCode);
@@ -525,7 +600,10 @@ function buildDropboxRawPath(connectorCode: string | null, timestamp: Date): str
   return `${base}/${dateFolder}/uk_aq_raw_edge_${prefix}_${stamp}.zip`;
 }
 
-function buildDropboxErrorPath(connectorCode: string | null, timestamp: Date): string {
+function buildDropboxErrorPath(
+  connectorCode: string | null,
+  timestamp: Date,
+): string {
   const stamp = formatCompactTimestamp(timestamp);
   const dateFolder = formatDateYmd(timestamp);
   const prefix = normalizeConnectorPrefix(connectorCode);
@@ -568,7 +646,10 @@ function loadDropboxConfig(): DropboxConfig | null {
   if (!DROPBOX_APP_KEY || !DROPBOX_APP_SECRET || !DROPBOX_REFRESH_TOKEN) {
     return null;
   }
-  if (!DROPBOX_ALLOWED_SUPABASE_URL || DROPBOX_ALLOWED_SUPABASE_URL !== SUPABASE_URL) {
+  if (
+    !DROPBOX_ALLOWED_SUPABASE_URL ||
+    DROPBOX_ALLOWED_SUPABASE_URL !== SUPABASE_URL
+  ) {
     return null;
   }
   return {
@@ -610,7 +691,9 @@ function buildDropboxDiagnostics(): DropboxDiagnostics {
   };
 }
 
-async function dropboxRefreshAccessToken(config: DropboxConfig): Promise<string> {
+async function dropboxRefreshAccessToken(
+  config: DropboxConfig,
+): Promise<string> {
   const body = new URLSearchParams({
     grant_type: "refresh_token",
     refresh_token: config.refreshToken,
@@ -646,7 +729,9 @@ async function dropboxUploadFile(
       "Dropbox-API-Arg": JSON.stringify(args),
       "Content-Type": "application/octet-stream",
     },
-    body: typeof contents === "string" ? new TextEncoder().encode(contents) : contents,
+    body: typeof contents === "string"
+      ? new TextEncoder().encode(contents)
+      : contents,
   });
   if (!resp.ok) {
     throw new Error(`Dropbox upload failed (${resp.status})`);
@@ -671,7 +756,10 @@ async function dropboxUploadFileWithRetry(
   }
 }
 
-function recordErrorLogLine(errorLogLines: string[] | null, entry: ErrorLogEntry): void {
+function recordErrorLogLine(
+  errorLogLines: string[] | null,
+  entry: ErrorLogEntry,
+): void {
   if (!errorLogLines) {
     return;
   }
@@ -686,7 +774,9 @@ function recordErrorLogLine(errorLogLines: string[] | null, entry: ErrorLogEntry
   }
   const ctx = context ? ` ${JSON.stringify(context)}` : "";
   const severity = entry.severity || "error";
-  errorLogLines.push(`[${stamp}] ${severity.toUpperCase()} ${entry.message}${ctx}`);
+  errorLogLines.push(
+    `[${stamp}] ${severity.toUpperCase()} ${entry.message}${ctx}`,
+  );
 }
 
 async function logError(entry: ErrorLogEntry): Promise<void> {
@@ -707,7 +797,9 @@ async function logError(entry: ErrorLogEntry): Promise<void> {
 }
 
 function parseBbox(value: string): string {
-  const parts = value.split(",").map((part) => part.trim()).filter((part) => part);
+  const parts = value.split(",").map((part) => part.trim()).filter((part) =>
+    part
+  );
   if (parts.length !== 4) {
     throw new Error("OPENAQ_BBOX must have 4 comma-delimited values.");
   }
@@ -725,8 +817,14 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function appendSample(values: number[] | null, value: number, maxSamples = 30): number[] {
-  const cleaned = Array.isArray(values) ? values.filter((v) => Number.isFinite(v)) : [];
+function appendSample(
+  values: number[] | null,
+  value: number,
+  maxSamples = 30,
+): number[] {
+  const cleaned = Array.isArray(values)
+    ? values.filter((v) => Number.isFinite(v))
+    : [];
   const next = [...cleaned, value].slice(-maxSamples);
   return next;
 }
@@ -803,11 +901,16 @@ function toDosDateTime(date: Date): { dosTime: number; dosDate: number } {
 }
 
 async function deflateRaw(data: Uint8Array): Promise<Uint8Array> {
-  const stream = new Blob([data]).stream().pipeThrough(new CompressionStream("deflate-raw"));
+  const stream = new Blob([data]).stream().pipeThrough(
+    new CompressionStream("deflate-raw"),
+  );
   return new Uint8Array(await new Response(stream).arrayBuffer());
 }
 
-async function zipTextCompressed(filename: string, content: string): Promise<Uint8Array> {
+async function zipTextCompressed(
+  filename: string,
+  content: string,
+): Promise<Uint8Array> {
   const encoder = new TextEncoder();
   const data = encoder.encode(content);
   const nameBytes = encoder.encode(filename);
@@ -822,7 +925,12 @@ async function zipTextCompressed(filename: string, content: string): Promise<Uin
     header.push(value & 0xff, (value >>> 8) & 0xff);
   };
   const push32 = (value: number) => {
-    header.push(value & 0xff, (value >>> 8) & 0xff, (value >>> 16) & 0xff, (value >>> 24) & 0xff);
+    header.push(
+      value & 0xff,
+      (value >>> 8) & 0xff,
+      (value >>> 16) & 0xff,
+      (value >>> 24) & 0xff,
+    );
   };
 
   // Local file header.
@@ -847,7 +955,12 @@ async function zipTextCompressed(filename: string, content: string): Promise<Uin
     central.push(value & 0xff, (value >>> 8) & 0xff);
   };
   const c32 = (value: number) => {
-    central.push(value & 0xff, (value >>> 8) & 0xff, (value >>> 16) & 0xff, (value >>> 24) & 0xff);
+    central.push(
+      value & 0xff,
+      (value >>> 8) & 0xff,
+      (value >>> 16) & 0xff,
+      (value >>> 24) & 0xff,
+    );
   };
 
   // Central directory header.
@@ -876,7 +989,12 @@ async function zipTextCompressed(filename: string, content: string): Promise<Uin
     end.push(value & 0xff, (value >>> 8) & 0xff);
   };
   const e32 = (value: number) => {
-    end.push(value & 0xff, (value >>> 8) & 0xff, (value >>> 16) & 0xff, (value >>> 24) & 0xff);
+    end.push(
+      value & 0xff,
+      (value >>> 8) & 0xff,
+      (value >>> 16) & 0xff,
+      (value >>> 24) & 0xff,
+    );
   };
   e32(0x06054b50);
   e16(0);
@@ -889,12 +1007,16 @@ async function zipTextCompressed(filename: string, content: string): Promise<Uin
 
   const endHeader = new Uint8Array(end);
   const output = new Uint8Array(
-    localHeader.length + compressedSize + centralHeader.length + endHeader.length,
+    localHeader.length + compressedSize + centralHeader.length +
+      endHeader.length,
   );
   output.set(localHeader, 0);
   output.set(compressed, localHeader.length);
   output.set(centralHeader, localHeader.length + compressedSize);
-  output.set(endHeader, localHeader.length + compressedSize + centralHeader.length);
+  output.set(
+    endHeader,
+    localHeader.length + compressedSize + centralHeader.length,
+  );
   return output;
 }
 
@@ -919,6 +1041,20 @@ function parseRateLimitHeaders(headers: Headers): {
   };
 }
 
+function positiveInt(value: number, fallback: number): number {
+  if (!Number.isFinite(value) || value <= 0) {
+    return fallback;
+  }
+  return Math.floor(value);
+}
+
+function nonNegativeInt(value: number, fallback: number): number {
+  if (!Number.isFinite(value) || value < 0) {
+    return fallback;
+  }
+  return Math.floor(value);
+}
+
 type RateLimitState = {
   remaining: number | null;
   stop: boolean;
@@ -936,7 +1072,7 @@ function rateLimitDelayMs(reset: number | null): number {
   }
   if (reset > 1e9) {
     return Math.max(0, reset * 1000 - Date.now());
-    }
+  }
   return Math.max(0, reset * 1000);
 }
 
@@ -970,19 +1106,6 @@ async function openaqRequest(
   params?: Record<string, string | number>,
   rawRecorder?: RawRecorder | null,
 ): Promise<any> {
-  const rateLimitState: {
-    remaining: number | null;
-    firstRemaining: number | null;
-    limit: number | null;
-    stop: boolean;
-    stopReason: string | null;
-  } = {
-    remaining: null,
-    firstRemaining: null,
-    limit: null,
-    stop: false,
-    stopReason: null,
-  };
   const url = new URL(`${OPENAQ_BASE_URL}/${path.replace(/^\//, "")}`);
   for (const [key, value] of Object.entries(params ?? {})) {
     if (value !== undefined && value !== null) {
@@ -993,9 +1116,31 @@ async function openaqRequest(
     ? Math.max(1, OPENAQ_RATE_LIMIT_RETRIES)
     : DEFAULT_RATE_LIMIT_RETRIES;
   for (let attempt = 1; attempt <= retries; attempt += 1) {
-    const resp = await fetch(url.toString(), { headers: openaqHeaders() });
+    if (requestBudgetState.total >= requestBudgetState.maxPerRun) {
+      rateLimitState.stop = true;
+      rateLimitState.stopReason = "max_requests_per_run";
+      throw new Error(
+        `OpenAQ request budget exceeded (${requestBudgetState.maxPerRun}); skipped ${path}`,
+      );
+    }
+
+    requestBudgetState.total += 1;
+
+    let resp: Response;
+    try {
+      resp = await fetch(url.toString(), { headers: openaqHeaders() });
+    } catch (err) {
+      if (attempt < retries && !rateLimitState.stop) {
+        await sleep(Math.min(5000, attempt * 1000));
+        continue;
+      }
+      throw new Error(`OpenAQ request failed (network): ${String(err)}`);
+    }
+
     const contentType = resp.headers.get("content-type") ?? "";
-    const payload = contentType.includes("application/json") ? await resp.json() : await resp.text();
+    const payload = contentType.includes("application/json")
+      ? await resp.json()
+      : await resp.text();
     const info = parseRateLimitHeaders(resp.headers);
     if (info.remaining !== null && Number.isFinite(info.remaining)) {
       rateLimitState.remaining = info.remaining;
@@ -1013,8 +1158,15 @@ async function openaqRequest(
     if (rawRecorder) {
       rawRecorder.recordResponse(path, params ?? {}, resp.status, payload);
     }
+    if (resp.status === 401) {
+      rateLimitState.stop = true;
+      rateLimitState.stopReason = "auth_401";
+      const message = typeof payload === "string"
+        ? payload
+        : JSON.stringify(payload);
+      throw new Error(`OpenAQ request failed (401): ${message}`);
+    }
     if (resp.status === 429) {
-      const delayMs = rateLimitDelayMs(info.reset) || Math.min(60000, 1000 * attempt);
       rateLimitState.stop = true;
       rateLimitState.stopReason = "rate_limit_429";
       if (rawRecorder) {
@@ -1024,31 +1176,41 @@ async function openaqRequest(
           limit: info.limit,
           used: info.used,
           reset: info.reset,
-          sleep_ms: delayMs,
+          sleep_ms: 0,
         });
       }
-      await sleep(delayMs);
-      continue;
+      throw new Error("OpenAQ request failed (429): rate limit exceeded");
     }
     if (!resp.ok) {
-      const message = typeof payload === "string" ? payload : JSON.stringify(payload);
+      const message = typeof payload === "string"
+        ? payload
+        : JSON.stringify(payload);
       throw new Error(`OpenAQ request failed (${resp.status}): ${message}`);
     }
     await maybeSleepForRateLimit(resp.headers, rawRecorder, resp.status);
     return payload;
   }
-  throw new Error(`OpenAQ request failed (429): rate limit retries exceeded`);
+  throw new Error("OpenAQ request failed: retries exhausted");
 }
 
-async function listLocations(bbox: string, rawRecorder?: RawRecorder | null): Promise<OpenAQLocation[]> {
+async function listLocations(
+  bbox: string,
+  rawRecorder?: RawRecorder | null,
+): Promise<OpenAQLocation[]> {
   const results: OpenAQLocation[] = [];
   const limit = Number.isFinite(OPENAQ_PAGE_LIMIT) && OPENAQ_PAGE_LIMIT > 0
     ? Math.min(OPENAQ_PAGE_LIMIT, 1000)
     : DEFAULT_PAGE_LIMIT;
   let page = 1;
   while (true) {
-    const payload = await openaqRequest("locations", { bbox, limit, page }, rawRecorder);
-    const pageResults = Array.isArray(payload?.results) ? payload.results as OpenAQLocation[] : [];
+    const payload = await openaqRequest(
+      "locations",
+      { bbox, limit, page },
+      rawRecorder,
+    );
+    const pageResults = Array.isArray(payload?.results)
+      ? payload.results as OpenAQLocation[]
+      : [];
     results.push(...pageResults);
     if (!pageResults.length) {
       break;
@@ -1057,7 +1219,10 @@ async function listLocations(bbox: string, rawRecorder?: RawRecorder | null): Pr
       break;
     }
     page += 1;
-    if (Number.isFinite(OPENAQ_MAX_PAGES) && OPENAQ_MAX_PAGES > 0 && page > OPENAQ_MAX_PAGES) {
+    if (
+      Number.isFinite(OPENAQ_MAX_PAGES) && OPENAQ_MAX_PAGES > 0 &&
+      page > OPENAQ_MAX_PAGES
+    ) {
       break;
     }
   }
@@ -1073,7 +1238,9 @@ async function listLatestForLocation(
     { limit: 1000 },
     rawRecorder,
   );
-  return Array.isArray(payload?.results) ? payload.results as OpenAQLatestRecord[] : [];
+  return Array.isArray(payload?.results)
+    ? payload.results as OpenAQLatestRecord[]
+    : [];
 }
 
 async function listHourlyMeasurements(
@@ -1113,7 +1280,10 @@ async function listHourlyMeasurements(
       break;
     }
     page += 1;
-    if (Number.isFinite(OPENAQ_MAX_PAGES) && OPENAQ_MAX_PAGES > 0 && page > OPENAQ_MAX_PAGES) {
+    if (
+      Number.isFinite(OPENAQ_MAX_PAGES) && OPENAQ_MAX_PAGES > 0 &&
+      page > OPENAQ_MAX_PAGES
+    ) {
       break;
     }
   }
@@ -1127,7 +1297,9 @@ async function runPool<T>(
   shouldStop?: () => boolean,
 ): Promise<void> {
   const pool = new Set<Promise<void>>();
-  const limit = Number.isFinite(concurrency) && concurrency > 0 ? Math.floor(concurrency) : 1;
+  const limit = Number.isFinite(concurrency) && concurrency > 0
+    ? Math.floor(concurrency)
+    : 1;
   for (const item of items) {
     if (shouldStop && shouldStop()) {
       break;
@@ -1144,7 +1316,10 @@ async function runPool<T>(
 
 function recordObservation(
   observationsByTimeseriesRef: Map<string, Map<string, number | null>>,
-  latestByTimeseriesRef: Map<string, { observed_at: string; value: number | null }>,
+  latestByTimeseriesRef: Map<
+    string,
+    { observed_at: string; value: number | null }
+  >,
   latestObservedByStationId: Map<number, string>,
   timeseriesRef: string,
   observedAt: string,
@@ -1167,12 +1342,17 @@ function recordObservation(
   }
   if (!timeseriesObservations.has(observedAt)) {
     timeseriesObservations.set(observedAt, value);
-  } else if (timeseriesObservations.get(observedAt) === null && value !== null) {
+  } else if (
+    timeseriesObservations.get(observedAt) === null && value !== null
+  ) {
     timeseriesObservations.set(observedAt, value);
   }
   const existing = latestByTimeseriesRef.get(timeseriesRef);
   if (!existing || observedAt > existing.observed_at) {
-    latestByTimeseriesRef.set(timeseriesRef, { observed_at: observedAt, value });
+    latestByTimeseriesRef.set(timeseriesRef, {
+      observed_at: observedAt,
+      value,
+    });
   }
   if (stationId !== null) {
     const current = latestObservedByStationId.get(stationId);
@@ -1239,13 +1419,17 @@ function buildStationName(
   providerName: string | null,
   ownerName: string | null,
 ): string | null {
-  const baseName = rawName && providerName ? `${providerName} ${rawName}` : rawName;
+  const baseName = rawName && providerName
+    ? `${providerName} ${rawName}`
+    : rawName;
   if (!baseName) {
     return baseName;
   }
   const providerToken = providerName ? providerName.trim().toLowerCase() : null;
   const ownerToken = ownerName ? ownerName.trim().toLowerCase() : null;
-  if (ownerName && ownerToken && providerToken && ownerToken === providerToken) {
+  if (
+    ownerName && ownerToken && providerToken && ownerToken === providerToken
+  ) {
     return baseName;
   }
   if (ownerName) {
@@ -1254,7 +1438,9 @@ function buildStationName(
   return baseName;
 }
 
-function resolveCoordinates(location: OpenAQLocation): { longitude: number | null; latitude: number | null } {
+function resolveCoordinates(
+  location: OpenAQLocation,
+): { longitude: number | null; latitude: number | null } {
   const longitude = location?.coordinates?.longitude;
   const latitude = location?.coordinates?.latitude;
   return {
@@ -1263,10 +1449,15 @@ function resolveCoordinates(location: OpenAQLocation): { longitude: number | nul
   };
 }
 
-async function loadConnector(connectorCode: string): Promise<ConnectorRow | null> {
-  const { data, error } = await rpcRequest<ConnectorRow[]>("uk_aq_rpc_connector_select", {
-    connector_code: connectorCode,
-  });
+async function loadConnector(
+  connectorCode: string,
+): Promise<ConnectorRow | null> {
+  const { data, error } = await rpcRequest<ConnectorRow[]>(
+    "uk_aq_rpc_connector_select",
+    {
+      connector_code: connectorCode,
+    },
+  );
   if (error) {
     throw new Error(`Connector fetch failed: ${error.message}`);
   }
@@ -1281,7 +1472,9 @@ async function fetchStationNames(
   const mapping: Record<string, string | null> = {};
   for (let idx = 0; idx < stationRefs.length; idx += 200) {
     const chunk = stationRefs.slice(idx, idx + 200);
-    const { data } = await rpcRequest<Array<{ station_ref: string; station_name: string | null }>>(
+    const { data } = await rpcRequest<
+      Array<{ station_ref: string; station_name: string | null }>
+    >(
       "uk_aq_rpc_station_names",
       {
         connector_id: Number(connectorId),
@@ -1304,7 +1497,9 @@ async function fetchStationIds(
   const mapping: Record<string, number> = {};
   for (let idx = 0; idx < stationRefs.length; idx += 200) {
     const chunk = stationRefs.slice(idx, idx + 200);
-    const { data } = await rpcRequest<Array<{ id: number; station_ref: string }>>(
+    const { data } = await rpcRequest<
+      Array<{ id: number; station_ref: string }>
+    >(
       "uk_aq_rpc_station_ids",
       {
         connector_id: Number(connectorId),
@@ -1331,7 +1526,9 @@ async function upsertStationMetadata(
     attributes: attributesByStation[stationId],
     updated_at: new Date().toISOString(),
   }));
-  const { data, error } = await rpcRequest<Array<{ station_metadata_upserted: number }>>(
+  const { data, error } = await rpcRequest<
+    Array<{ station_metadata_upserted: number }>
+  >(
     "uk_aq_rpc_station_metadata_upsert",
     { rows },
   );
@@ -1396,14 +1593,18 @@ async function upsertStations(
         continue;
       }
       const existingName = existingNames[stationRef];
-      if (existingName && typeof existingName === "string" && existingName.trim()) {
+      if (
+        existingName && typeof existingName === "string" && existingName.trim()
+      ) {
         if ("station_name" in row) {
           delete row.station_name;
         }
       }
     }
   }
-  const { data, error } = await rpcRequest<Array<{ stations_upserted: number }>>(
+  const { data, error } = await rpcRequest<
+    Array<{ stations_upserted: number }>
+  >(
     "uk_aq_rpc_stations_upsert",
     { rows },
   );
@@ -1429,7 +1630,11 @@ async function upsertStations(
   return data?.[0]?.stations_upserted ?? 0;
 }
 
-type ParameterMeta = { name: string; displayName: string | null; units: string | null };
+type ParameterMeta = {
+  name: string;
+  displayName: string | null;
+  units: string | null;
+};
 
 async function upsertPhenomena(
   connectorId: string,
@@ -1451,7 +1656,9 @@ async function upsertPhenomena(
       throw new Error(`Phenomena upsert failed: ${error.message}`);
     }
   }
-  const eionetUris = Object.values(parameters).map((meta) => `openaq:${meta.name}`);
+  const eionetUris = Object.values(parameters).map((meta) =>
+    `openaq:${meta.name}`
+  );
   if (!eionetUris.length) {
     return {};
   }
@@ -1478,11 +1685,15 @@ async function upsertPhenomena(
   return idsByName;
 }
 
-async function upsertTimeseries(rows: Array<Record<string, unknown>>): Promise<number> {
+async function upsertTimeseries(
+  rows: Array<Record<string, unknown>>,
+): Promise<number> {
   if (!rows.length) {
     return 0;
   }
-  const { data, error } = await rpcRequest<Array<{ timeseries_upserted: number }>>(
+  const { data, error } = await rpcRequest<
+    Array<{ timeseries_upserted: number }>
+  >(
     "uk_aq_rpc_timeseries_upsert",
     { rows },
   );
@@ -1499,7 +1710,9 @@ async function updateTimeseriesLastValues(
   if (!rows.length) {
     return 0;
   }
-  const { data, error } = await rpcRequest<Array<{ timeseries_updated: number }>>(
+  const { data, error } = await rpcRequest<
+    Array<{ timeseries_updated: number }>
+  >(
     "uk_aq_rpc_timeseries_last_values_update",
     { rows },
   );
@@ -1520,7 +1733,9 @@ async function fetchTimeseriesIds(
   const mapping: Record<string, number> = {};
   for (let idx = 0; idx < timeseriesRefs.length; idx += 200) {
     const chunk = timeseriesRefs.slice(idx, idx + 200);
-    const { data } = await rpcRequest<Array<{ id: number; timeseries_ref: string }>>(
+    const { data } = await rpcRequest<
+      Array<{ id: number; timeseries_ref: string }>
+    >(
       "uk_aq_rpc_timeseries_ids",
       {
         connector_id: Number(connectorId),
@@ -1556,7 +1771,9 @@ async function fetchTimeseriesStationIds(
       },
     );
     if (error) {
-      throw new Error(`Failed to load timeseries station ids: ${error.message}`);
+      throw new Error(
+        `Failed to load timeseries station ids: ${error.message}`,
+      );
     }
     for (const row of data ?? []) {
       if (row.station_id) {
@@ -1567,11 +1784,15 @@ async function fetchTimeseriesStationIds(
   return mapping;
 }
 
-async function upsertObservations(rows: Array<Record<string, unknown>>): Promise<number> {
+async function upsertObservations(
+  rows: Array<Record<string, unknown>>,
+): Promise<number> {
   if (!rows.length) {
     return 0;
   }
-  const { data, error } = await rpcRequest<Array<{ observations_upserted: number }>>(
+  const { data, error } = await rpcRequest<
+    Array<{ observations_upserted: number }>
+  >(
     "uk_aq_rpc_observations_upsert",
     { rows },
   );
@@ -1581,7 +1802,9 @@ async function upsertObservations(rows: Array<Record<string, unknown>>): Promise
   return data?.[0]?.observations_upserted ?? 0;
 }
 
-function collectParameters(locations: OpenAQLocation[]): Record<string, ParameterMeta> {
+function collectParameters(
+  locations: OpenAQLocation[],
+): Record<string, ParameterMeta> {
   const parameters: Record<string, ParameterMeta> = {};
   for (const location of locations) {
     for (const timeseries of location?.sensors ?? []) {
@@ -1609,7 +1832,10 @@ function collectParameters(locations: OpenAQLocation[]): Record<string, Paramete
 function collectTimeseriesRefs(
   locations: OpenAQLocation[],
 ): Map<string, { locationId: string; parameter: ParameterMeta }> {
-  const timeseriesRefs = new Map<string, { locationId: string; parameter: ParameterMeta }>();
+  const timeseriesRefs = new Map<
+    string,
+    { locationId: string; parameter: ParameterMeta }
+  >();
   for (const location of locations) {
     const locationId = resolveLocationId(location);
     if (!locationId) {
@@ -1667,15 +1893,46 @@ serve(async (req) => {
   }
 
   const connectorCode = payload.connector_code ?? OPENAQ_CONNECTOR_CODE;
-  const hasRequestedRefs = Array.isArray(payload.station_refs) && payload.station_refs.length > 0;
+  const hasRequestedRefs = Array.isArray(payload.station_refs) &&
+    payload.station_refs.length > 0;
   let stationRefs = Array.isArray(payload.station_refs)
     ? payload.station_refs.map((ref) => String(ref))
     : [];
   let stationIdByRef: Record<string, number> = {};
-  let selectedStations: Array<{ station_ref: string; station_id: number | null }> = [];
+  let selectedStations: Array<
+    { station_ref: string; station_id: number | null }
+  > = [];
   const stationsRequested = hasRequestedRefs ? stationRefs.length : 0;
   const windowHours = Number(payload.window_hours ?? DEFAULT_WINDOW_HOURS);
   const dryRun = payload.dry_run ?? false;
+  const requestedBatchSize = Number(payload.batch_size);
+  const maxRequestsPerRun = positiveInt(
+    Number.isFinite(requestedBatchSize)
+      ? requestedBatchSize
+      : OPENAQ_MAX_REQUESTS_PER_RUN,
+    DEFAULT_MAX_REQUESTS_PER_RUN,
+  );
+  const staleLimitConfigured = positiveInt(
+    OPENAQ_STALE_LIMIT,
+    DEFAULT_STALE_LIMIT,
+  );
+  const staleLimit = Math.min(
+    staleLimitConfigured,
+    DEFAULT_STALE_LIMIT,
+    Math.max(0, maxRequestsPerRun),
+  );
+  const tieredLimit = Math.max(0, maxRequestsPerRun - staleLimit);
+  const gapReserveMin = nonNegativeInt(
+    OPENAQ_GAP_REQUESTS_REMAINING_MIN,
+    DEFAULT_GAP_REQUESTS_REMAINING_MIN,
+  );
+  requestBudgetState.maxPerRun = maxRequestsPerRun;
+  requestBudgetState.total = 0;
+  requestBudgetState.gapReserveMin = gapReserveMin;
+  requestBudgetState.gapPlannedRequests = 0;
+  requestBudgetState.gapExecutedRequests = 0;
+  requestBudgetState.gapSkippedBudgetRequests = 0;
+  requestBudgetState.gapZeroYieldTimeseries = 0;
   const runStartedAt = Date.now();
   const maxRuntimeSeconds = Number.isFinite(OPENAQ_MAX_RUNTIME_SECONDS)
     ? Math.max(30, OPENAQ_MAX_RUNTIME_SECONDS)
@@ -1685,7 +1942,11 @@ serve(async (req) => {
   let timeBudgetHit = false;
   const logLines: string[] = [];
   errorLogLines = [];
-  const logLine = (level: string, message: string, context?: Record<string, unknown>) => {
+  const logLine = (
+    level: string,
+    message: string,
+    context?: Record<string, unknown>,
+  ) => {
     const stamp = new Date().toISOString();
     const ctx = context ? ` ${JSON.stringify(context)}` : "";
     logLines.push(`[${stamp}] ${level} ${message}${ctx}`);
@@ -1726,7 +1987,9 @@ serve(async (req) => {
     if (!entries.length) {
       return;
     }
-    const missingSample: Array<{ timeseries_ref: string; timeseries_id: number }> = [];
+    const missingSample: Array<
+      { timeseries_ref: string; timeseries_id: number }
+    > = [];
     let missingCount = 0;
     for (const [ref, id] of entries) {
       if (stationMapping[id] === undefined) {
@@ -1764,6 +2027,10 @@ serve(async (req) => {
     window_hours: windowHours,
     dry_run: dryRun,
     station_refs: stationRefs.length ? stationRefs.length : 0,
+    max_requests_per_run: maxRequestsPerRun,
+    tiered_limit: tieredLimit,
+    stale_limit: staleLimit,
+    gap_requests_remaining_min: gapReserveMin,
     max_runtime_seconds: maxRuntimeSeconds,
   });
 
@@ -1788,7 +2055,7 @@ serve(async (req) => {
 
   if (!stationRefs.length) {
     try {
-      selectedStations = await loadOpenaqStationRefs(OPENAQ_TIERED_LIMIT, OPENAQ_STALE_LIMIT);
+      selectedStations = await loadOpenaqStationRefs(tieredLimit, staleLimit);
       stationRefs = selectedStations.map((row) => row.station_ref);
       for (const row of selectedStations) {
         if (row.station_id !== null && Number.isFinite(row.station_id)) {
@@ -1805,14 +2072,14 @@ serve(async (req) => {
       return jsonResponse({ error: String(err) }, 502);
     }
     rawRecorder?.recordEvent("selection", {
-      tiered_limit: OPENAQ_TIERED_LIMIT,
-      stale_limit: OPENAQ_STALE_LIMIT,
+      tiered_limit: tieredLimit,
+      stale_limit: staleLimit,
       station_refs: stationRefs,
     });
     if (!stationRefs.length) {
       logLine("INFO", "No OpenAQ station refs selected", {
-        tiered_limit: OPENAQ_TIERED_LIMIT,
-        stale_limit: OPENAQ_STALE_LIMIT,
+        tiered_limit: tieredLimit,
+        stale_limit: staleLimit,
       });
       return jsonResponse({ status: "no_station_refs_selected" }, 200);
     }
@@ -1846,7 +2113,12 @@ serve(async (req) => {
   const connectorId = String(connector.id);
   const overwriteStationName = connector.overwrite_station_name ?? false;
   const stationsUpdated = locationsFetched && !dryRun
-    ? await upsertStations(locations, connectorId, OPENAQ_SERVICE_REF, overwriteStationName)
+    ? await upsertStations(
+      locations,
+      connectorId,
+      OPENAQ_SERVICE_REF,
+      overwriteStationName,
+    )
     : locationsFetched && dryRun
     ? locations.length
     : 0;
@@ -1901,12 +2173,18 @@ serve(async (req) => {
   const nowMs = Date.now();
   const debugStationId = 189841;
   if (stationIds.includes(debugStationId)) {
-    logLine("INFO", "OpenAQ debug station present", { station_id: debugStationId });
+    logLine("INFO", "OpenAQ debug station present", {
+      station_id: debugStationId,
+    });
   }
 
   const parameters = locationsFetched ? collectParameters(locations) : {};
-  const timeseriesRefMap = locationsFetched ? collectTimeseriesRefs(locations) : new Map();
-  const phenomenonIds = locationsFetched ? await upsertPhenomena(connectorId, parameters) : {};
+  const timeseriesRefMap = locationsFetched
+    ? collectTimeseriesRefs(locations)
+    : new Map();
+  const phenomenonIds = locationsFetched
+    ? await upsertPhenomena(connectorId, parameters)
+    : {};
 
   const timeseriesRefsByStationId = new Map<number, string[]>();
   const stationIdByTimeseriesRef = new Map<string, number>();
@@ -1954,7 +2232,10 @@ serve(async (req) => {
         stations_with_timeseries: timeseriesRefsByStationId.size,
         timeseries_per_station_sample: Object.entries(perStationCounts)
           .slice(0, 10)
-          .map(([station_id, count]) => ({ station_id: Number(station_id), count })),
+          .map(([station_id, count]) => ({
+            station_id: Number(station_id),
+            count,
+          })),
       });
     } catch (err) {
       await logError({
@@ -1980,7 +2261,9 @@ serve(async (req) => {
       if (!phenomenonId) {
         continue;
       }
-      const label = `${meta.locationId} ${meta.parameter.displayName ?? meta.parameter.name}`;
+      const label = `${meta.locationId} ${
+        meta.parameter.displayName ?? meta.parameter.name
+      }`;
       timeseriesRows.push({
         timeseries_ref: timeseriesRef,
         label,
@@ -2014,10 +2297,15 @@ serve(async (req) => {
   }
 
   let timeseriesCheckpointById: Record<number, OpenAQTimeseriesCheckpoint> = {};
-  let timeseriesCheckpointsByStationId: Record<number, OpenAQTimeseriesCheckpoint[]> = {};
+  let timeseriesCheckpointsByStationId: Record<
+    number,
+    OpenAQTimeseriesCheckpoint[]
+  > = {};
   if (stationIds.length) {
     try {
-      const timeseriesCheckpointMaps = await fetchOpenaqTimeseriesCheckpoints(stationIds);
+      const timeseriesCheckpointMaps = await fetchOpenaqTimeseriesCheckpoints(
+        stationIds,
+      );
       timeseriesCheckpointById = timeseriesCheckpointMaps.byTimeseriesId;
       timeseriesCheckpointsByStationId = timeseriesCheckpointMaps.byStationId;
       logLine("INFO", "OpenAQ timeseries checkpoints fetched", {
@@ -2044,7 +2332,8 @@ serve(async (req) => {
     if (!timeseriesRefs.length) {
       continue;
     }
-    const stationCheckpoints = timeseriesCheckpointsByStationId[stationId] ?? [];
+    const stationCheckpoints = timeseriesCheckpointsByStationId[stationId] ??
+      [];
     let checkpointsSeen = 0;
     let gapFlagged = false;
     for (const tsCheckpoint of stationCheckpoints) {
@@ -2087,8 +2376,14 @@ serve(async (req) => {
     gap_station_ids: gapStationIds.size,
   });
 
-  const latestByTimeseries = new Map<string, { observed_at: string; value: number | null }>();
-  const observationsByTimeseries = new Map<string, Map<string, number | null>>();
+  const latestByTimeseries = new Map<
+    string,
+    { observed_at: string; value: number | null }
+  >();
+  const observationsByTimeseries = new Map<
+    string,
+    Map<string, number | null>
+  >();
   const latestObservedByStationId = new Map<number, string>();
   const gapContigEndByTimeseriesRef = new Map<string, string>();
   const gapHasRecentGapByTimeseriesRef = new Map<string, boolean>();
@@ -2103,6 +2398,73 @@ serve(async (req) => {
       .map((location) => resolveLocationId(location))
       .filter((id): id is string => Boolean(id))
     : stationRefs;
+
+  const nonGapLocationCount = locationIds.reduce((count, locationId) => {
+    const stationId = stationIdByRef[locationId];
+    if (!stationId || !gapStationIds.has(Number(stationId))) {
+      return count + 1;
+    }
+    return count;
+  }, 0);
+  const gapStationPlan = Array.from(gapStationIds).map((stationId) => {
+    const stationCheckpoint = checkpointByStationId[stationId];
+    return {
+      stationId,
+      estimatedRequests:
+        (timeseriesRefsByStationId.get(stationId) ?? []).length,
+      dueAt: stationCheckpoint?.next_due_at ?? null,
+      lastPolledAt: stationCheckpoint?.last_polled_at ?? null,
+    };
+  }).sort((a, b) => {
+    const aLastPolled = a.lastPolledAt
+      ? Date.parse(a.lastPolledAt)
+      : Number.NEGATIVE_INFINITY;
+    const bLastPolled = b.lastPolledAt
+      ? Date.parse(b.lastPolledAt)
+      : Number.NEGATIVE_INFINITY;
+    if (aLastPolled !== bLastPolled) {
+      return aLastPolled - bLastPolled;
+    }
+    const aDue = a.dueAt ? Date.parse(a.dueAt) : Number.POSITIVE_INFINITY;
+    const bDue = b.dueAt ? Date.parse(b.dueAt) : Number.POSITIVE_INFINITY;
+    return aDue - bDue;
+  });
+  requestBudgetState.gapPlannedRequests = gapStationPlan.reduce(
+    (sum, row) => sum + row.estimatedRequests,
+    0,
+  );
+
+  const requestsRemainingBeforePolling = Math.max(
+    0,
+    requestBudgetState.maxPerRun - requestBudgetState.total,
+  );
+  let gapBudgetRemaining = Math.max(
+    0,
+    requestsRemainingBeforePolling - nonGapLocationCount -
+      requestBudgetState.gapReserveMin,
+  );
+  const scheduledGapStationIds = new Set<number>();
+  let scheduledGapEstimatedRequests = 0;
+  for (const entry of gapStationPlan) {
+    if (entry.estimatedRequests <= gapBudgetRemaining) {
+      scheduledGapStationIds.add(entry.stationId);
+      scheduledGapEstimatedRequests += entry.estimatedRequests;
+      gapBudgetRemaining -= entry.estimatedRequests;
+    } else {
+      requestBudgetState.gapSkippedBudgetRequests += entry.estimatedRequests;
+    }
+  }
+  logLine("INFO", "OpenAQ gap budget plan", {
+    max_requests_per_run: requestBudgetState.maxPerRun,
+    requests_remaining_before_polling: requestsRemainingBeforePolling,
+    reserve_for_non_gap_requests: nonGapLocationCount,
+    gap_requests_remaining_min: requestBudgetState.gapReserveMin,
+    gap_requests_planned: requestBudgetState.gapPlannedRequests,
+    gap_requests_scheduled_estimate: scheduledGapEstimatedRequests,
+    gap_requests_skipped_estimate: requestBudgetState.gapSkippedBudgetRequests,
+    gap_stations_total: gapStationIds.size,
+    gap_stations_scheduled: scheduledGapStationIds.size,
+  });
 
   await runPool(locationIds, OPENAQ_CONCURRENCY, async (locationId) => {
     if (shouldStop()) {
@@ -2122,6 +2484,18 @@ serve(async (req) => {
       });
     }
 
+    if (
+      stationId !== null && gapStationIds.has(stationId) &&
+      !scheduledGapStationIds.has(stationId)
+    ) {
+      if (stationId === debugStationId) {
+        logLine("INFO", "OpenAQ debug station gap skipped by budget", {
+          station_id: stationId,
+        });
+      }
+      return;
+    }
+
     if (stationId !== null && gapStationIds.has(stationId)) {
       const stationCheckpoint = checkpointByStationId[stationId];
       const timeseriesRefs = timeseriesRefsByStationId.get(stationId) ?? [];
@@ -2133,15 +2507,34 @@ serve(async (req) => {
         });
       }
       for (const timeseriesRef of timeseriesRefs) {
+        const requestsRemaining = requestBudgetState.maxPerRun -
+          requestBudgetState.total;
+        if (requestsRemaining <= requestBudgetState.gapReserveMin) {
+          requestBudgetState.gapSkippedBudgetRequests += 1;
+          if (stationId === debugStationId) {
+            logLine("INFO", "OpenAQ debug timeseries skipped (gap reserve)", {
+              station_id: stationId,
+              timeseries_ref: timeseriesRef,
+              requests_remaining: requestsRemaining,
+              gap_requests_remaining_min: requestBudgetState.gapReserveMin,
+            });
+          }
+          break;
+        }
         if (shouldStop()) {
           timeBudgetHit = true;
           return;
         }
         const timeseriesId = timeseriesIdByRef[timeseriesRef];
-        const tsCheckpoint = timeseriesId ? timeseriesCheckpointById[timeseriesId] : null;
+        const tsCheckpoint = timeseriesId
+          ? timeseriesCheckpointById[timeseriesId]
+          : null;
         if (tsCheckpoint?.last_observed_at) {
           const tsObservedMs = Date.parse(tsCheckpoint.last_observed_at);
-          if (Number.isFinite(tsObservedMs) && nowMs - tsObservedMs < 60 * 60 * 1000) {
+          if (
+            Number.isFinite(tsObservedMs) &&
+            nowMs - tsObservedMs < 60 * 60 * 1000
+          ) {
             if (stationId === debugStationId) {
               logLine("INFO", "OpenAQ debug timeseries skipped (recent)", {
                 station_id: stationId,
@@ -2153,10 +2546,11 @@ serve(async (req) => {
             continue;
           }
         }
-        const baseObservedAt = tsCheckpoint?.last_observed_at ?? stationCheckpoint?.last_observed_at
-          ?? null;
-        const datetimeFrom = baseObservedAt
-          ?? (windowMs ? new Date(nowMs - windowMs).toISOString() : null);
+        const baseObservedAt = tsCheckpoint?.last_observed_at ??
+          stationCheckpoint?.last_observed_at ??
+          null;
+        const datetimeFrom = baseObservedAt ??
+          (windowMs ? new Date(nowMs - windowMs).toISOString() : null);
         let datetimeTo = new Date(nowMs).toISOString();
         if (datetimeFrom && windowMs) {
           const fromMs = Date.parse(datetimeFrom);
@@ -2176,6 +2570,7 @@ serve(async (req) => {
           });
         }
         let hourly: OpenAQHourlyRecord[] = [];
+        const requestsBeforeGapQuery = requestBudgetState.total;
         try {
           const hourlyResult = await listHourlyMeasurements(
             timeseriesRef,
@@ -2196,14 +2591,25 @@ serve(async (req) => {
             });
           }
         } catch (err) {
+          requestBudgetState.gapExecutedRequests += Math.max(
+            0,
+            requestBudgetState.total - requestsBeforeGapQuery,
+          );
           await logError({
             severity: "warn",
             message: "OpenAQ hourly measurements fetch failed",
             connector_id: connector.id,
             context: { timeseries_ref: timeseriesRef, error: String(err) },
           });
+          if (rateLimitState.stop) {
+            return;
+          }
           continue;
         }
+        requestBudgetState.gapExecutedRequests += Math.max(
+          0,
+          requestBudgetState.total - requestsBeforeGapQuery,
+        );
         if (stationId === debugStationId) {
           logLine("INFO", "OpenAQ debug timeseries fetched", {
             station_id: stationId,
@@ -2211,41 +2617,47 @@ serve(async (req) => {
             hourly_count: hourly.length,
           });
         }
+        if (!hourly.length) {
+          requestBudgetState.gapZeroYieldTimeseries += 1;
+        }
         if (datetimeFrom && datetimeTo) {
-            const start = new Date(datetimeFrom);
-            const end = new Date(datetimeTo);
-            if (Number.isFinite(start.getTime()) && Number.isFinite(end.getTime()) && start < end) {
-              start.setUTCMinutes(0, 0, 0);
-              end.setUTCMinutes(0, 0, 0);
-              const expected: string[] = [];
-              const expectedStart = new Date(start);
-              expectedStart.setUTCHours(expectedStart.getUTCHours() + 1);
-              const endExclusive = new Date(end);
-              endExclusive.setUTCHours(endExclusive.getUTCHours() + 1);
-              const cursor = new Date(expectedStart);
-              while (cursor < endExclusive) {
-                expected.push(cursor.toISOString());
-                cursor.setUTCHours(cursor.getUTCHours() + 1);
+          const start = new Date(datetimeFrom);
+          const end = new Date(datetimeTo);
+          if (
+            Number.isFinite(start.getTime()) &&
+            Number.isFinite(end.getTime()) && start < end
+          ) {
+            start.setUTCMinutes(0, 0, 0);
+            end.setUTCMinutes(0, 0, 0);
+            const expected: string[] = [];
+            const expectedStart = new Date(start);
+            expectedStart.setUTCHours(expectedStart.getUTCHours() + 1);
+            const endExclusive = new Date(end);
+            endExclusive.setUTCHours(endExclusive.getUTCHours() + 1);
+            const cursor = new Date(expectedStart);
+            while (cursor < endExclusive) {
+              expected.push(cursor.toISOString());
+              cursor.setUTCHours(cursor.getUTCHours() + 1);
+            }
+            const returned = new Set<string>();
+            for (const record of hourly) {
+              const period = (record as any)?.period ?? null;
+              const observedAt =
+                (period?.datetimeTo?.utc as string | undefined) ??
+                  record?.datetime?.utc ??
+                  (period?.datetimeFrom?.utc as string | undefined) ??
+                  null;
+              if (!observedAt) {
+                continue;
               }
-              const returned = new Set<string>();
-              for (const record of hourly) {
-                const period = (record as any)?.period ?? null;
-                const observedAt =
-                  (period?.datetimeTo?.utc as string | undefined)
-                  ?? record?.datetime?.utc
-                  ?? (period?.datetimeFrom?.utc as string | undefined)
-                  ?? null;
-                if (!observedAt) {
-                  continue;
-                }
-                const observed = new Date(observedAt);
-                if (!Number.isFinite(observed.getTime())) {
-                  continue;
-                }
-                observed.setUTCMinutes(0, 0, 0);
-                returned.add(observed.toISOString());
+              const observed = new Date(observedAt);
+              if (!Number.isFinite(observed.getTime())) {
+                continue;
               }
-              const missing = expected.filter((hour) => !returned.has(hour));
+              observed.setUTCMinutes(0, 0, 0);
+              returned.add(observed.toISOString());
+            }
+            const missing = expected.filter((hour) => !returned.has(hour));
             if (expected.length > 0) {
               let contigEnd: string | null = null;
               if (missing.length > 0) {
@@ -2263,7 +2675,8 @@ serve(async (req) => {
               if (missing.length > 0) {
                 const hasRecentGap = missing.some((hour) => {
                   const hourMs = Date.parse(hour);
-                  return Number.isFinite(hourMs) && hourMs >= recentGapThresholdMs;
+                  return Number.isFinite(hourMs) &&
+                    hourMs >= recentGapThresholdMs;
                 });
                 if (hasRecentGap) {
                   gapHasRecentGapByTimeseriesRef.set(timeseriesRef, true);
@@ -2295,11 +2708,11 @@ serve(async (req) => {
             latestObservedByStationId,
             String(record?.sensorsId ?? timeseriesRef),
             observedAt,
-            record?.summary?.avg
-              ?? record?.summary?.median
-              ?? record?.summary?.q50
-              ?? record?.value
-              ?? null,
+            record?.summary?.avg ??
+              record?.summary?.median ??
+              record?.summary?.q50 ??
+              record?.value ??
+              null,
             stationId,
             nowMs,
             null,
@@ -2411,7 +2824,9 @@ serve(async (req) => {
 
   if (!dryRun) {
     const observationRows: Array<Record<string, unknown>> = [];
-    for (const [timeseriesRef, observations] of observationsByTimeseries.entries()) {
+    for (
+      const [timeseriesRef, observations] of observationsByTimeseries.entries()
+    ) {
       const timeseriesId = timeseriesIdByRef[timeseriesRef];
       if (!timeseriesId) {
         continue;
@@ -2428,7 +2843,9 @@ serve(async (req) => {
     }
 
     observationsUpserted = await upsertObservations(observationRows);
-    const timeseriesUpdates: Array<{ id: number; last_value: number; last_value_at: string }> = [];
+    const timeseriesUpdates: Array<
+      { id: number; last_value: number; last_value_at: string }
+    > = [];
     for (const [timeseriesRef, latest] of latestByTimeseries.entries()) {
       const timeseriesId = timeseriesIdByRef[timeseriesRef];
       if (!timeseriesId) {
@@ -2443,7 +2860,10 @@ serve(async (req) => {
         last_value_at: latest.observed_at,
       });
     }
-    timeseriesLastUpdated = await updateTimeseriesLastValues(timeseriesUpdates, timeseriesErrors);
+    timeseriesLastUpdated = await updateTimeseriesLastValues(
+      timeseriesUpdates,
+      timeseriesErrors,
+    );
   }
 
   for (const latest of latestByTimeseries.values()) {
@@ -2485,7 +2905,8 @@ serve(async (req) => {
       let recentGapMinObserved: string | null = null;
       let hasRecentGap = false;
       for (const timeseriesRef of timeseriesRefs) {
-        const latestObserved = latestByTimeseries.get(timeseriesRef)?.observed_at ?? null;
+        const latestObserved =
+          latestByTimeseries.get(timeseriesRef)?.observed_at ?? null;
         const timeseriesId = timeseriesIdByRef[timeseriesRef];
         const checkpointObserved = timeseriesId
           ? timeseriesCheckpointById[timeseriesId]?.last_observed_at ?? null
@@ -2499,8 +2920,12 @@ serve(async (req) => {
         }
         if (gapHasRecentGapByTimeseriesRef.get(timeseriesRef)) {
           hasRecentGap = true;
-          const contigEnd = gapContigEndByTimeseriesRef.get(timeseriesRef) ?? candidate;
-          if (contigEnd && (!recentGapMinObserved || contigEnd < recentGapMinObserved)) {
+          const contigEnd = gapContigEndByTimeseriesRef.get(timeseriesRef) ??
+            candidate;
+          if (
+            contigEnd &&
+            (!recentGapMinObserved || contigEnd < recentGapMinObserved)
+          ) {
             recentGapMinObserved = contigEnd;
           }
         }
@@ -2519,8 +2944,10 @@ serve(async (req) => {
       let lagSamples = checkpoint?.ingest_lag_samples ?? [];
       let updatedLastObserved = previousLastObserved;
       let nextDueAt = previousNextDue;
-      const latestObservedForScheduling = latestObservedByStationId.get(stationId) ?? null;
-      const { minObserved, recentGapMinObserved } = resolveStationObservedForCheckpoint(stationId);
+      const latestObservedForScheduling =
+        latestObservedByStationId.get(stationId) ?? null;
+      const { minObserved, recentGapMinObserved } =
+        resolveStationObservedForCheckpoint(stationId);
       const minObservedForStation = recentGapMinObserved ?? minObserved;
 
       if (recentGapMinObserved) {
@@ -2536,7 +2963,10 @@ serve(async (req) => {
       if (minObservedForStation) {
         updatedLastObserved = minObservedForStation;
       }
-      if (stationObservedSample.length < 10 && (minObservedForStation || latestObservedForScheduling)) {
+      if (
+        stationObservedSample.length < 10 &&
+        (minObservedForStation || latestObservedForScheduling)
+      ) {
         stationObservedSample.push({
           station_id: stationId,
           min_observed_at: minObserved,
@@ -2548,16 +2978,18 @@ serve(async (req) => {
 
       const isGapStation = gapStationIds.has(stationId);
       const hasNewObservation = Boolean(
-        latestObservedForScheduling
-          && (!previousLastObserved || latestObservedForScheduling > previousLastObserved),
+        latestObservedForScheduling &&
+          (!previousLastObserved ||
+            latestObservedForScheduling > previousLastObserved),
       );
-      const latestObservedForDecision = latestObservedForScheduling ?? updatedLastObserved;
+      const latestObservedForDecision = latestObservedForScheduling ??
+        updatedLastObserved;
       const latestObservedMs = latestObservedForDecision
         ? Date.parse(latestObservedForDecision)
         : null;
-      const isRecentObserved = latestObservedMs !== null
-        && Number.isFinite(latestObservedMs)
-        && latestObservedMs >= nowMsForLag - 24 * 60 * 60 * 1000;
+      const isRecentObserved = latestObservedMs !== null &&
+        Number.isFinite(latestObservedMs) &&
+        latestObservedMs >= nowMsForLag - 24 * 60 * 60 * 1000;
 
       if (isGapStation) {
         if (!latestObservedForDecision || !Number.isFinite(latestObservedMs)) {
@@ -2584,7 +3016,8 @@ serve(async (req) => {
           const intervalSeconds = Math.max(
             0,
             Math.round(
-              (Date.parse(latestObservedForScheduling) - Date.parse(previousLastObserved)) / 1000,
+              (Date.parse(latestObservedForScheduling) -
+                Date.parse(previousLastObserved)) / 1000,
             ),
           );
           if (Number.isFinite(intervalSeconds) && intervalSeconds > 0) {
@@ -2595,7 +3028,9 @@ serve(async (req) => {
         if (intervalSampleAdded) {
           const lagSeconds = Math.max(
             0,
-            Math.round((nowMsForLag - Date.parse(latestObservedForScheduling)) / 1000),
+            Math.round(
+              (nowMsForLag - Date.parse(latestObservedForScheduling)) / 1000,
+            ),
           );
           if (Number.isFinite(lagSeconds)) {
             lagSamples = appendSample(lagSamples, lagSeconds);
@@ -2604,11 +3039,15 @@ serve(async (req) => {
         if (observSamples.length < 10 || lagSamples.length < 10) {
           nextDueAt = new Date(nowMsForLag + 5 * 60 * 1000).toISOString();
         } else {
-          const intervalSeconds = Math.min(minSeconds(observSamples) ?? 5 * 60, 60 * 60);
+          const intervalSeconds = Math.min(
+            minSeconds(observSamples) ?? 5 * 60,
+            60 * 60,
+          );
           const lagSeconds = minSeconds(lagSamples) ?? 5 * 60;
           const baseMs = Date.parse(latestObservedForScheduling);
           if (Number.isFinite(baseMs)) {
-            nextDueAt = new Date(baseMs + (intervalSeconds + lagSeconds) * 1000).toISOString();
+            nextDueAt = new Date(baseMs + (intervalSeconds + lagSeconds) * 1000)
+              .toISOString();
           } else {
             nextDueAt = nowIso;
           }
@@ -2652,7 +3091,9 @@ serve(async (req) => {
         skipped_missing_timeseries_id: 0,
         skipped_missing_station_id: 0,
         missing_timeseries_id_sample: [] as string[],
-        missing_station_id_sample: [] as Array<{ timeseries_ref: string; timeseries_id: number }>,
+        missing_station_id_sample: [] as Array<
+          { timeseries_ref: string; timeseries_id: number }
+        >,
         new_checkpoints: 0,
         existing_checkpoints: 0,
         new_observations: 0,
@@ -2662,13 +3103,17 @@ serve(async (req) => {
         const timeseriesId = timeseriesIdByRef[timeseriesRef];
         if (!timeseriesId) {
           timeseriesCheckpointStats.skipped_missing_timeseries_id += 1;
-          if (timeseriesCheckpointStats.missing_timeseries_id_sample.length < 10) {
-            timeseriesCheckpointStats.missing_timeseries_id_sample.push(timeseriesRef);
+          if (
+            timeseriesCheckpointStats.missing_timeseries_id_sample.length < 10
+          ) {
+            timeseriesCheckpointStats.missing_timeseries_id_sample.push(
+              timeseriesRef,
+            );
           }
           continue;
         }
-        const stationId = stationIdByTimeseriesRef.get(timeseriesRef)
-          ?? stationIdByTimeseriesId[timeseriesId];
+        const stationId = stationIdByTimeseriesRef.get(timeseriesRef) ??
+          stationIdByTimeseriesId[timeseriesId];
         if (!stationId) {
           timeseriesCheckpointStats.skipped_missing_station_id += 1;
           if (timeseriesCheckpointStats.missing_station_id_sample.length < 10) {
@@ -2693,7 +3138,10 @@ serve(async (req) => {
         const latestObserved = latest?.observed_at ?? null;
         let hasNewObservation = false;
 
-        if (latestObserved && (!previousLastObserved || latestObserved > previousLastObserved)) {
+        if (
+          latestObserved &&
+          (!previousLastObserved || latestObserved > previousLastObserved)
+        ) {
           updatedLastObserved = latestObserved;
           hasNewObservation = true;
           timeseriesCheckpointStats.new_observations += 1;
@@ -2712,9 +3160,12 @@ serve(async (req) => {
             nextDueAt = new Date(nowMsForLag + 5 * 60 * 1000).toISOString();
           } else {
             const lagSeconds = minSeconds(lagSamples) ?? 5 * 60;
-            const baseMs = Date.parse(updatedLastObserved ?? latestObserved ?? "");
+            const baseMs = Date.parse(
+              updatedLastObserved ?? latestObserved ?? "",
+            );
             if (Number.isFinite(baseMs)) {
-              nextDueAt = new Date(baseMs + (60 * 60 + lagSeconds) * 1000).toISOString();
+              nextDueAt = new Date(baseMs + (60 * 60 + lagSeconds) * 1000)
+                .toISOString();
             } else {
               nextDueAt = nowIso;
             }
@@ -2734,7 +3185,9 @@ serve(async (req) => {
 
       if (timeseriesCheckpointRows.length) {
         try {
-          const rowsUpserted = await upsertOpenaqTimeseriesCheckpoints(timeseriesCheckpointRows);
+          const rowsUpserted = await upsertOpenaqTimeseriesCheckpoints(
+            timeseriesCheckpointRows,
+          );
           logLine("INFO", "OpenAQ timeseries checkpoints upserted", {
             ...timeseriesCheckpointStats,
             rows_upserted: rowsUpserted,
@@ -2766,9 +3219,10 @@ serve(async (req) => {
     : rateLimitState.stop
     ? (rateLimitState.stopReason ?? "rate_limit_guard")
     : null;
-  const rateLimitUsedEstimate = rateLimitState.limit !== null && rateLimitState.remaining !== null
-    ? Math.max(0, rateLimitState.limit - rateLimitState.remaining)
-    : null;
+  const rateLimitUsedEstimate =
+    rateLimitState.limit !== null && rateLimitState.remaining !== null
+      ? Math.max(0, rateLimitState.limit - rateLimitState.remaining)
+      : null;
 
   logLine("INFO", "OpenAQ ingest complete", {
     locations: locations.length,
@@ -2786,7 +3240,13 @@ serve(async (req) => {
     rate_limit_stop_reason: rateLimitState.stopReason,
     partial: timeBudgetHit,
     stopped_reason: stoppedReason,
-    raw_responses: rawRecorder?.responseCount ?? 0,
+    requests_total: requestBudgetState.total,
+    max_requests_per_run: requestBudgetState.maxPerRun,
+    gap_requests_planned: requestBudgetState.gapPlannedRequests,
+    gap_requests_executed: requestBudgetState.gapExecutedRequests,
+    gap_requests_skipped_budget: requestBudgetState.gapSkippedBudgetRequests,
+    gap_zero_yield_timeseries: requestBudgetState.gapZeroYieldTimeseries,
+    raw_responses: rawRecorder?.responseCount ?? requestBudgetState.total,
   });
 
   logLine("INFO", "OpenAQ rate limit summary", {
@@ -2794,7 +3254,13 @@ serve(async (req) => {
     rate_limit_remaining_first: rateLimitState.firstRemaining,
     rate_limit_remaining_last: rateLimitState.remaining,
     rate_limit_used_estimate: rateLimitUsedEstimate,
-    requests_total: rawRecorder?.responseCount ?? 0,
+    requests_total: requestBudgetState.total,
+    max_requests_per_run: requestBudgetState.maxPerRun,
+    gap_requests_remaining_min: requestBudgetState.gapReserveMin,
+    gap_requests_planned: requestBudgetState.gapPlannedRequests,
+    gap_requests_executed: requestBudgetState.gapExecutedRequests,
+    gap_requests_skipped_budget: requestBudgetState.gapSkippedBudgetRequests,
+    gap_zero_yield_timeseries: requestBudgetState.gapZeroYieldTimeseries,
     stations_selected: stationsSelected,
     stations_polled: polledStationIds.size,
     stopped_reason: stoppedReason,
@@ -2804,8 +3270,12 @@ serve(async (req) => {
     try {
       if (rawRecorder) {
         const rawPayload = rawRecorder.lines.join("\n") + "\n";
-        const jsonlName = buildDropboxRawPath(connectorCode, new Date()).replace(/\.zip$/i, ".jsonl");
-        const zipped = await zipTextCompressed(jsonlName.split("/").slice(-1)[0], rawPayload);
+        const jsonlName = buildDropboxRawPath(connectorCode, new Date())
+          .replace(/\.zip$/i, ".jsonl");
+        const zipped = await zipTextCompressed(
+          jsonlName.split("/").slice(-1)[0],
+          rawPayload,
+        );
         await dropboxUploadFileWithRetry(
           dropboxConfig,
           buildDropboxRawPath(connectorCode, new Date()),
@@ -2861,7 +3331,15 @@ serve(async (req) => {
     rate_limit_stop: rateLimitState.stop,
     rate_limit_stop_reason: rateLimitState.stopReason,
     rate_limit_used_estimate: rateLimitUsedEstimate,
-    requests_total: rawRecorder?.responseCount ?? 0,
+    requests_total: requestBudgetState.total,
+    max_requests_per_run: requestBudgetState.maxPerRun,
+    tiered_limit: tieredLimit,
+    stale_limit: staleLimit,
+    gap_requests_remaining_min: requestBudgetState.gapReserveMin,
+    gap_requests_planned: requestBudgetState.gapPlannedRequests,
+    gap_requests_executed: requestBudgetState.gapExecutedRequests,
+    gap_requests_skipped_budget: requestBudgetState.gapSkippedBudgetRequests,
+    gap_zero_yield_timeseries: requestBudgetState.gapZeroYieldTimeseries,
     dry_run: dryRun,
   });
 });

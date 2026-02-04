@@ -16,7 +16,7 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
 - Calls:
   - `ingest_uk_air_sos` (`window_hours`)
   - `ingest_sensorcommunity` (`country=GB`)
-  - `ingest_openaq` (`window_hours`)
+  - `ingest_openaq` (`window_hours`, `batch_size` from `connectors.poll_timeseries_batch_size`, default 56)
   - `ingest_breathelondon` (`station_refs`, `window_hours`, `initial_days=2`, `skip_stations=true`)
   - `ingest_erg_laqn` (`station_refs`, `days=ceil(poll_window_hours/24)`, `group=London`)
 - Notes:
@@ -91,6 +91,10 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
   - When `locations_fetched=false`, loads timeseries refs for all selected stations via `uk_aq_rpc_timeseries_refs_by_station_ids` so timeseries checkpoints can always be updated.
   - Uses sensor IDs as `timeseries_ref` and `openaq:{parameter}` as `phenomena.eionet_uri`.
   - If `station_refs` are provided, limits polling to those location ids; otherwise uses a tiered selector (`uk_aq_rpc_openaq_select_station_refs`) that returns both station refs and station ids.
+  - Uses `batch_size` (from dispatcher `connectors.poll_timeseries_batch_size`) as `OPENAQ_MAX_REQUESTS_PER_RUN`.
+  - Uses stale cap 4 and tiered cap up to 52 (`tier1` first, then `tier2`) for automatic station selection.
+  - Applies a per-run OpenAQ request budget (`OPENAQ_MAX_REQUESTS_PER_RUN`, default 56).
+  - Applies a gap reserve guard (`OPENAQ_GAP_REQUESTS_REMAINING_MIN`, default 10) so hourly gap calls do not consume the final request budget.
   - Tracks per-station scheduling in `uk_aq_raw.openaq_station_checkpoints` (next due, last observed, sample arrays, last polled); when fewer than 10 interval/lag samples exist, `next_due_at` is set to `now() + 5 minutes`. Otherwise it uses the minimum interval (capped at 1 hour) plus minimum lag from samples. If no observations are returned and `next_due_at` is null, it is set to `now() + 5 minutes`.
   - Tracks per-timeseries scheduling in `uk_aq_raw.openaq_timeseries_checkpoints` (next due, last observed, lag samples, last polled); when fewer than 10 lag samples exist, `next_due_at` is set to `now() + 5 minutes`. Otherwise it uses `last_observed_at + 3600s + min(lag)` and only updates `next_due_at` on new observations or when null.
   - Station names are prefixed with provider shortnames when configured (e.g., `London Air Quality Network` -> `LAQN`), and append owner when present and not `Unknown*`.
@@ -99,7 +103,7 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
   - Uses public RPCs for database writes (schemas are not exposed via PostgREST).
   - Enforces a runtime budget (default 110s) and returns `partial=true` when exceeded.
   - Requires `X-Cron-Secret` when `SB_UK_AQ_CRON_SECRET` is set.
-  - Stops issuing new requests when rate-limit remaining drops below the threshold (default 5) or on HTTP 429.
+  - Stops issuing new requests when rate-limit remaining drops below the threshold (default 5), on HTTP 429, on OpenAQ HTTP 401, or when the per-run request budget is exhausted.
 - Logs:
   - Writes a log file to Dropbox `/connectors/openaq/log/YYYY-MM-DD/` (prefix `uk_aq_log_edge_openaq_`).
   - Writes raw payloads to Dropbox `/connectors/openaq/raw_data/YYYY-MM-DD/` as ZIP (prefix `uk_aq_raw_edge_openaq_`).

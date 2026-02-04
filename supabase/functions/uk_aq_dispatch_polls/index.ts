@@ -54,18 +54,18 @@ type ErrorLogEntry = {
   connector_id?: string | number | null;
 };
 
-const SUPABASE_URL = Deno.env.get("SUPABASE_URL")
-  ?? Deno.env.get("SB_SUPABASE_URL")
-  ?? "";
-const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")
-  ?? Deno.env.get("SB_SERVICE_ROLE_KEY")
-  ?? "";
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ??
+  Deno.env.get("SB_SUPABASE_URL") ??
+  "";
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
+  Deno.env.get("SB_SERVICE_ROLE_KEY") ??
+  "";
 const SB_ANON_JWT = Deno.env.get("SB_ANON_JWT") ?? "";
 const SB_UK_AQ_CRON_SECRET = Deno.env.get("SB_UK_AQ_CRON_SECRET") ?? "";
-const UK_AQ_CORE_SCHEMA = Deno.env.get("UK_AQ_CORE_SCHEMA")
-  ?? "uk_aq_core";
-const UK_AQ_RAW_SCHEMA = Deno.env.get("UK_AQ_RAW_SCHEMA")
-  ?? "uk_aq_raw";
+const UK_AQ_CORE_SCHEMA = Deno.env.get("UK_AQ_CORE_SCHEMA") ??
+  "uk_aq_core";
+const UK_AQ_RAW_SCHEMA = Deno.env.get("UK_AQ_RAW_SCHEMA") ??
+  "uk_aq_raw";
 
 const REST_BASE_URL = SUPABASE_URL
   ? `${SUPABASE_URL.replace(/\/$/, "")}/rest/v1`
@@ -97,6 +97,7 @@ const DEFAULT_WINDOW_HOURS: Record<string, number> = {
 const DEFAULT_BATCH_LIMIT: Record<string, number> = {
   breathelondon: 10,
   erg_laqn: 10,
+  openaq: 56,
 };
 
 const IN_FLIGHT_TIMEOUT_MINUTES = 10;
@@ -152,9 +153,15 @@ function getPayloadNumber(
   return null;
 }
 
-function extractRunMetrics(connectorCode: string, payload: unknown): RunMetrics {
+function extractRunMetrics(
+  connectorCode: string,
+  payload: unknown,
+): RunMetrics {
   const data = asPayloadObject(payload);
-  const observations = getPayloadNumber(data, ["observations_upserted", "observations"]);
+  const observations = getPayloadNumber(data, [
+    "observations_upserted",
+    "observations",
+  ]);
   const stations = getPayloadNumber(data, [
     "stations_polled",
     "stations_processed",
@@ -162,7 +169,10 @@ function extractRunMetrics(connectorCode: string, payload: unknown): RunMetrics 
     "stations_updated",
     "stations",
   ]);
-  const timeseries = getPayloadNumber(data, ["timeseries_updated", "timeseries"]);
+  const timeseries = getPayloadNumber(data, [
+    "timeseries_updated",
+    "timeseries",
+  ]);
   const seriesPolled = getPayloadNumber(data, ["series_polled"]);
   if (connectorCode === "uk_air_sos") {
     return {
@@ -206,7 +216,9 @@ async function loadStationIdsByRefs(
 async function fetchMaxTimeseriesLastValueAt(
   params: Record<string, string>,
 ): Promise<string | null> {
-  const { data, error } = await postgrestRequest<Array<{ last_value_at: string | null }>>(
+  const { data, error } = await postgrestRequest<
+    Array<{ last_value_at: string | null }>
+  >(
     "GET",
     "timeseries",
     {
@@ -218,7 +230,9 @@ async function fetchMaxTimeseriesLastValueAt(
     },
   );
   if (error) {
-    throw new Error(`Failed to load timeseries last_value_at: ${error.message}`);
+    throw new Error(
+      `Failed to load timeseries last_value_at: ${error.message}`,
+    );
   }
   const value = data && data.length ? data[0]?.last_value_at : null;
   return value ? String(value) : null;
@@ -237,7 +251,10 @@ async function resolveLastObservedAt(
     });
   }
   if (scope.stationRefs && scope.stationRefs.length) {
-    const stationIds = await loadStationIdsByRefs(connectorId, scope.stationRefs);
+    const stationIds = await loadStationIdsByRefs(
+      connectorId,
+      scope.stationRefs,
+    );
     if (!stationIds.length) {
       return null;
     }
@@ -262,7 +279,10 @@ function requireCronSecret(req: Request): Response | null {
   return null;
 }
 
-function jsonResponse(payload: Record<string, unknown>, status = 200): Response {
+function jsonResponse(
+  payload: Record<string, unknown>,
+  status = 200,
+): Response {
   return new Response(JSON.stringify(payload), {
     status,
     headers: { "Content-Type": "application/json" },
@@ -270,7 +290,7 @@ function jsonResponse(payload: Record<string, unknown>, status = 200): Response 
 }
 
 function quotePostgrestValue(value: string): string {
-  return `"${value.replace(/"/g, "\\\"")}"`;
+  return `"${value.replace(/"/g, '\\"')}"`;
 }
 
 function postgrestIn(values: string[]): string {
@@ -298,7 +318,10 @@ function getLastPolledMs(connector: ConnectorRow | null): number {
   return lastPolled ? lastPolled.getTime() : Number.NEGATIVE_INFINITY;
 }
 
-function getIntervalMinutes(connector: ConnectorRow | null, connectorCode: string): number {
+function getIntervalMinutes(
+  connector: ConnectorRow | null,
+  connectorCode: string,
+): number {
   const value = connector?.poll_interval_minutes;
   if (typeof value === "number" && Number.isFinite(value) && value >= 0) {
     return value;
@@ -306,7 +329,10 @@ function getIntervalMinutes(connector: ConnectorRow | null, connectorCode: strin
   return DEFAULT_INTERVAL_MINUTES[connectorCode] ?? 60;
 }
 
-function getWindowHours(connector: ConnectorRow | null, connectorCode: string): number {
+function getWindowHours(
+  connector: ConnectorRow | null,
+  connectorCode: string,
+): number {
   const value = connector?.poll_window_hours;
   if (typeof value === "number" && Number.isFinite(value) && value > 0) {
     return value;
@@ -314,7 +340,10 @@ function getWindowHours(connector: ConnectorRow | null, connectorCode: string): 
   return DEFAULT_WINDOW_HOURS[connectorCode] ?? 24;
 }
 
-function getBatchLimit(connector: ConnectorRow | null, connectorCode: string): number {
+function getBatchLimit(
+  connector: ConnectorRow | null,
+  connectorCode: string,
+): number {
   const value = connector?.poll_timeseries_batch_size;
   if (typeof value === "number" && Number.isFinite(value) && value > 0) {
     return Math.floor(value);
@@ -330,7 +359,11 @@ function getTimeseriesLimit(connector: ConnectorRow | null): number | null {
   return null;
 }
 
-function isDue(connector: ConnectorRow | null, connectorCode: string, now: Date): boolean {
+function isDue(
+  connector: ConnectorRow | null,
+  connectorCode: string,
+  now: Date,
+): boolean {
   if (connector?.poll_enabled !== true) {
     return false;
   }
@@ -349,7 +382,8 @@ function isDue(connector: ConnectorRow | null, connectorCode: string, now: Date)
 function normalizeDispatcherSettings(
   settings: DispatcherSettings | null,
 ): DispatcherSettings {
-  const parallel = settings?.dispatcher_parallel_ingest ?? DEFAULT_PARALLEL_INGEST;
+  const parallel = settings?.dispatcher_parallel_ingest ??
+    DEFAULT_PARALLEL_INGEST;
   const maxRuns = Number.isFinite(settings?.max_runs_per_dispatch_call)
     ? Math.max(1, Math.floor(settings?.max_runs_per_dispatch_call ?? 1))
     : DEFAULT_MAX_RUNS_PER_DISPATCH_CALL;
@@ -379,9 +413,15 @@ async function loadDispatcherSettings(): Promise<DispatcherSettings | null> {
 function findRecentInFlightConnector(
   latestRuns: Map<string, IngestRunRow>,
   now: Date,
-): { connector_code: string; last_run_start: string; age_minutes: number } | null {
+):
+  | { connector_code: string; last_run_start: string; age_minutes: number }
+  | null {
   const timeoutMs = IN_FLIGHT_TIMEOUT_MINUTES * 60 * 1000;
-  let candidate: { connector_code: string; last_run_start: string; age_minutes: number } | null = null;
+  let candidate: {
+    connector_code: string;
+    last_run_start: string;
+    age_minutes: number;
+  } | null = null;
   for (const [connectorCode, run] of latestRuns.entries()) {
     if (!run || run.run_ended_at) {
       continue;
@@ -569,7 +609,10 @@ async function postgrestRequest<T>(
   schema?: string,
 ): Promise<{ data: T | null; error: { message: string } | null }> {
   if (!REST_BASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-    return { data: null, error: { message: "Missing REST_BASE_URL or SUPABASE_SERVICE_ROLE_KEY." } };
+    return {
+      data: null,
+      error: { message: "Missing REST_BASE_URL or SUPABASE_SERVICE_ROLE_KEY." },
+    };
   }
   const url = new URL(`${REST_BASE_URL}/${table}`);
   for (const [key, value] of Object.entries(params ?? {})) {
@@ -587,7 +630,8 @@ async function postgrestRequest<T>(
     ? await resp.json().catch(() => null)
     : await resp.text().catch(() => null);
   if (!resp.ok) {
-    const message = payload?.message || payload?.error_description || payload?.error || resp.statusText;
+    const message = payload?.message || payload?.error_description ||
+      payload?.error || resp.statusText;
     return { data: null, error: { message: String(message) } };
   }
   return { data: payload as T, error: null };
@@ -645,7 +689,12 @@ async function updateConnectorRun(
 }
 
 async function insertIngestRun(row: Record<string, unknown>): Promise<void> {
-  const { error } = await postgrestRequest("POST", "uk_aq_ingest_runs", undefined, row);
+  const { error } = await postgrestRequest(
+    "POST",
+    "uk_aq_ingest_runs",
+    undefined,
+    row,
+  );
   if (error) {
     console.warn("uk_aq_ingest_runs insert failed:", error.message);
   }
@@ -663,7 +712,13 @@ async function logError(entry: ErrorLogEntry): Promise<void> {
     station_id: null,
     timeseries_id: null,
   };
-  const { error } = await postgrestRequest("POST", "error_logs", undefined, row, UK_AQ_RAW_SCHEMA);
+  const { error } = await postgrestRequest(
+    "POST",
+    "error_logs",
+    undefined,
+    row,
+    UK_AQ_RAW_SCHEMA,
+  );
   if (error) {
     console.warn("error_logs insert failed:", error.message);
   }
@@ -673,15 +728,26 @@ async function postgrestRpcRequest<T>(
   fn: string,
   body: Record<string, unknown>,
 ): Promise<{ data: T | null; error: { message: string } | null }> {
-  return await postgrestRequest<T>("POST", `rpc/${fn}`, undefined, body, UK_AQ_CORE_SCHEMA);
+  return await postgrestRequest<T>(
+    "POST",
+    `rpc/${fn}`,
+    undefined,
+    body,
+    UK_AQ_CORE_SCHEMA,
+  );
 }
 
 async function loadConnectorConfigs(): Promise<ConnectorRow[]> {
-  const { data, error } = await postgrestRequest<ConnectorRow[]>("GET", "connectors", {
-    select: "id,connector_code,poll_enabled,poll_interval_minutes,poll_window_hours,poll_timeseries_batch_size,last_polled_at,last_run_start,last_run_end,last_run_status",
-    connector_code: postgrestIn(TARGET_CONNECTORS),
-    limit: "20",
-  });
+  const { data, error } = await postgrestRequest<ConnectorRow[]>(
+    "GET",
+    "connectors",
+    {
+      select:
+        "id,connector_code,poll_enabled,poll_interval_minutes,poll_window_hours,poll_timeseries_batch_size,last_polled_at,last_run_start,last_run_end,last_run_status",
+      connector_code: postgrestIn(TARGET_CONNECTORS),
+      limit: "20",
+    },
+  );
   if (error) {
     throw new Error(`Failed to load connectors: ${error.message}`);
   }
@@ -689,12 +755,17 @@ async function loadConnectorConfigs(): Promise<ConnectorRow[]> {
 }
 
 async function loadLatestIngestRuns(): Promise<Map<string, IngestRunRow>> {
-  const { data, error } = await postgrestRequest<IngestRunRow[]>("GET", "uk_aq_ingest_runs", {
-    select: "connector_id,connector_code,run_started_at,run_ended_at,run_status",
-    connector_code: postgrestIn(TARGET_CONNECTORS),
-    order: "run_started_at.desc",
-    limit: "200",
-  });
+  const { data, error } = await postgrestRequest<IngestRunRow[]>(
+    "GET",
+    "uk_aq_ingest_runs",
+    {
+      select:
+        "connector_id,connector_code,run_started_at,run_ended_at,run_status",
+      connector_code: postgrestIn(TARGET_CONNECTORS),
+      order: "run_started_at.desc",
+      limit: "200",
+    },
+  );
   if (error) {
     throw new Error(`Failed to load uk_aq_ingest_runs: ${error.message}`);
   }
@@ -719,7 +790,10 @@ async function loadStationRefs(
   if (params.staleLimit !== undefined) {
     payload.stale_limit = params.staleLimit;
   }
-  const { data, error } = await postgrestRpcRequest<string[] | null>(fn, payload);
+  const { data, error } = await postgrestRpcRequest<string[] | null>(
+    fn,
+    payload,
+  );
   if (error) {
     throw new Error(`Failed to load station refs via ${fn}: ${error.message}`);
   }
@@ -737,7 +811,9 @@ async function loadUkAirSosTimeseriesIds(
     { batch_limit: limit },
   );
   if (error) {
-    throw new Error(`Failed to load uk_air_sos timeseries ids: ${error.message}`);
+    throw new Error(
+      `Failed to load uk_air_sos timeseries ids: ${error.message}`,
+    );
   }
   if (!data || !Array.isArray(data)) {
     return [];
@@ -748,7 +824,7 @@ async function loadUkAirSosTimeseriesIds(
 async function callEdgeFunction(
   path: string,
   payload: Record<string, unknown>,
-): Promise<{ ok: boolean; status: number; body: unknown }>{
+): Promise<{ ok: boolean; status: number; body: unknown }> {
   if (!SUPABASE_URL) {
     throw new Error("Missing SUPABASE_URL.");
   }
@@ -800,7 +876,9 @@ serve(async (req) => {
     return authResponse;
   }
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-    return jsonResponse({ error: "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY." }, 500);
+    return jsonResponse({
+      error: "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY.",
+    }, 500);
   }
 
   console.log("uk_aq_dispatch_polls cron secret", {
@@ -821,7 +899,9 @@ serve(async (req) => {
       message: error instanceof Error ? error.message : String(error),
       context: { component: "uk_aq_dispatch_polls", step: "load_connectors" },
     });
-    return jsonResponse({ error: error instanceof Error ? error.message : String(error) }, 500);
+    return jsonResponse({
+      error: error instanceof Error ? error.message : String(error),
+    }, 500);
   }
 
   await reconcileInFlightByLatestRun(connectors, latestRuns);
@@ -829,7 +909,9 @@ serve(async (req) => {
 
   const settings = normalizeDispatcherSettings(await loadDispatcherSettings());
 
-  const connectorMap = new Map(connectors.map((row) => [row.connector_code, row]));
+  const connectorMap = new Map(
+    connectors.map((row) => [row.connector_code, row]),
+  );
   const inFlight = findRecentInFlightConnector(latestRuns, now);
   if (inFlight && !settings.dispatcher_parallel_ingest) {
     for (const connectorCode of TARGET_CONNECTORS) {
@@ -887,10 +969,14 @@ serve(async (req) => {
 
   const { selected, skipped } = selectDueConnectors(
     dueCandidates,
-    settings.dispatcher_parallel_ingest ? settings.max_runs_per_dispatch_call : 1,
+    settings.dispatcher_parallel_ingest
+      ? settings.max_runs_per_dispatch_call
+      : 1,
   );
   console.log("dispatch_selection", {
-    max_runs: settings.dispatcher_parallel_ingest ? settings.max_runs_per_dispatch_call : 1,
+    max_runs: settings.dispatcher_parallel_ingest
+      ? settings.max_runs_per_dispatch_call
+      : 1,
     due_candidates: dueCandidates.map((item) => ({
       connector_code: item.connectorCode,
       last_polled_ms: item.lastPolledMs,
@@ -911,11 +997,11 @@ serve(async (req) => {
     const connectorCode = candidate.connectorCode;
     const connector = candidate.connector;
     const runStart = new Date();
-      const claimed = await dispatchClaim(
-        connectorCode,
-        runStart.toISOString(),
-        IN_FLIGHT_TIMEOUT_MINUTES,
-      );
+    const claimed = await dispatchClaim(
+      connectorCode,
+      runStart.toISOString(),
+      IN_FLIGHT_TIMEOUT_MINUTES,
+    );
     if (!claimed) {
       console.warn("dispatch_claim_failed", { connector_code: connectorCode });
       results.set(connectorCode, {
@@ -1005,9 +1091,11 @@ serve(async (req) => {
         });
       } else if (connectorCode === "openaq") {
         const windowHours = getWindowHours(connector, connectorCode);
+        const batchSize = getBatchLimit(connector, connectorCode);
         const resp = await callEdgeFunction("ingest_openaq", {
           connector_code: connectorCode,
           window_hours: windowHours,
+          batch_size: batchSize,
         });
         lastResponse = { status: resp.status, body: resp.body };
         if (!resp.ok) {
@@ -1035,10 +1123,13 @@ serve(async (req) => {
         });
       } else if (connectorCode === "breathelondon") {
         const batchLimit = getBatchLimit(connector, connectorCode);
-        const stationRefs = await loadStationRefs("breathelondon_select_station_refs", {
-          batchLimit,
-          staleLimit: 4,
-        });
+        const stationRefs = await loadStationRefs(
+          "breathelondon_select_station_refs",
+          {
+            batchLimit,
+            staleLimit: 4,
+          },
+        );
         console.log("breathelondon_station_refs", {
           count: stationRefs.length,
           batch_limit: batchLimit,
@@ -1090,10 +1181,13 @@ serve(async (req) => {
         }
       } else if (connectorCode === "erg_laqn") {
         const batchLimit = getBatchLimit(connector, connectorCode);
-        const stationRefs = await loadStationRefs("erg_laqn_select_station_refs", {
-          batchLimit,
-          activeOnly: true,
-        });
+        const stationRefs = await loadStationRefs(
+          "erg_laqn_select_station_refs",
+          {
+            batchLimit,
+            activeOnly: true,
+          },
+        );
         runScope.stationRefs = stationRefs;
         if (!stationRefs.length) {
           runStatus = "skipped";
@@ -1174,7 +1268,10 @@ serve(async (req) => {
         let lastObservedAt: string | null = null;
         if (lastResponse) {
           try {
-            lastObservedAt = await resolveLastObservedAt(connector?.id ?? null, runScope);
+            lastObservedAt = await resolveLastObservedAt(
+              connector?.id ?? null,
+              runScope,
+            );
           } catch (error) {
             console.warn("Failed to resolve last_observed_at.", {
               connector_code: connectorCode,
@@ -1182,7 +1279,10 @@ serve(async (req) => {
             });
           }
         }
-        const metrics = extractRunMetrics(connectorCode, lastResponse?.body ?? null);
+        const metrics = extractRunMetrics(
+          connectorCode,
+          lastResponse?.body ?? null,
+        );
         await insertIngestRun({
           connector_id: connector?.id ?? null,
           connector_code: connectorCode,
