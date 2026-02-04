@@ -2217,21 +2217,23 @@ serve(async (req) => {
               }
               const returned = new Set<string>();
               for (const record of hourly) {
-                const observedAt = record?.period?.datetimeTo?.utc
+                const period = (record as any)?.period ?? null;
+                const observedAt =
+                  (period?.datetimeTo?.utc as string | undefined)
                   ?? record?.datetime?.utc
-                  ?? record?.period?.datetimeFrom?.utc
+                  ?? (period?.datetimeFrom?.utc as string | undefined)
                   ?? null;
                 if (!observedAt) {
                   continue;
                 }
-              const observed = new Date(observedAt);
-              if (!Number.isFinite(observed.getTime())) {
-                continue;
+                const observed = new Date(observedAt);
+                if (!Number.isFinite(observed.getTime())) {
+                  continue;
+                }
+                observed.setUTCMinutes(0, 0, 0);
+                returned.add(observed.toISOString());
               }
-              observed.setUTCMinutes(0, 0, 0);
-              returned.add(observed.toISOString());
-            }
-            const missing = expected.filter((hour) => !returned.has(hour));
+              const missing = expected.filter((hour) => !returned.has(hour));
             if (expected.length > 0) {
               let contigEnd: string | null = null;
               if (missing.length > 0) {
