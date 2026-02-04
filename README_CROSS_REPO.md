@@ -81,5 +81,5 @@ REQUIRED OUTPUT FORMAT
 Summary (2–5 bullets)
 Files changed (paths)
 Implementation details (short, specific)
-Supabase steps (instructions only,)
+Supabase steps (instructions only)
 Verification checklist (clear pass/fail)
