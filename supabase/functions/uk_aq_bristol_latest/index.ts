@@ -184,10 +184,6 @@ type LoadOptions = {
   stationLike: string | null;
   connectorId: string | null;
   pollutant: string | null;
-        err.debug = {
-          request: buildDebugRequestPayload(baseParams, extra, useStationInner, limit),
-          error,
-        };
   debug: boolean;
 };
 
