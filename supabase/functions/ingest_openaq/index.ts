@@ -2301,6 +2301,8 @@ serve(async (req) => {
     });
   }
 
+  const GAP_MIN_AGE_MS = 2 * 60 * 60 * 1000;
+
   let timeseriesCheckpointById: Record<number, OpenAQTimeseriesCheckpoint> = {};
   let timeseriesCheckpointsByStationId: Record<
     number,
@@ -2330,7 +2332,7 @@ serve(async (req) => {
   }
 
   const gapStationIds = new Set<number>();
-  const gapMinAgeMs = 2 * 60 * 60 * 1000;
+  const gapMinAgeMs = GAP_MIN_AGE_MS;
   const gapMaxAgeMs = 24 * 60 * 60 * 1000;
   for (const stationId of stationIds) {
     const timeseriesRefs = timeseriesRefsByStationId.get(stationId) ?? [];
