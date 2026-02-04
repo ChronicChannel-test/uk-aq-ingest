@@ -469,10 +469,10 @@ def main() -> int:
 
                 obs_rows, obs_last, obs_value = _extract_observations(payload, timeseries_id)
                 if observations_output is not None and obs_rows:
-                    for row in obs_rows:
+                    for obs_row in obs_rows:
                         observations_output.append(
                             {
-                                **row,
+                                **obs_row,
                                 "timeseries_ref": timeseries_ref,
                                 "station_ref": station_ref,
                                 "species": species,
