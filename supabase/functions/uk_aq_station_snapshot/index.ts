@@ -1,0 +1,171 @@
+import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.8";
+
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL")
+  ?? Deno.env.get("SB_SUPABASE_URL")
+  ?? "";
+const SUPABASE_ANON_KEY = Deno.env.get("SB_PUBLISHABLE_DEFAULT_KEY")
+  ?? Deno.env.get("SUPABASE_PUBLISHABLE_DEFAULT_KEY")
+  ?? Deno.env.get("SB_ANON_JWT")
+  ?? "";
+const UK_AQ_PUBLIC_SCHEMA = Deno.env.get("UK_AQ_PUBLIC_SCHEMA")
+  ?? "uk_aq_public";
+
+const CACHE_CONTROL_SUCCESS = "public, max-age=30";
+const CACHE_CONTROL_ERROR = "no-store";
+
+const CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "GET, OPTIONS",
+};
+
+type SnapshotWindow = "6h" | "24h" | "7d";
+
+function jsonResponse(payload: unknown, status = 200): Response {
+  return new Response(JSON.stringify(payload, null, 2), {
+    status,
+    headers: {
+      "Content-Type": "application/json",
+      "Cache-Control": status >= 400 ? CACHE_CONTROL_ERROR : CACHE_CONTROL_SUCCESS,
+      ...CORS_HEADERS,
+    },
+  });
+}
+
+function parseBigIntParam(value: string | null): bigint | null {
+  if (!value) {
+    return null;
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+  try {
+    return BigInt(trimmed);
+  } catch (_err) {
+    return null;
+  }
+}
+
+function parseWindow(value: string | null): SnapshotWindow | null {
+  if (!value || !value.trim()) {
+    return "6h";
+  }
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "6h" || normalized === "24h" || normalized === "7d") {
+    return normalized;
+  }
+  return null;
+}
+
+function parseObsLimit(value: string | null): 100 | 1000 | null {
+  if (!value || !value.trim()) {
+    return 100;
+  }
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return null;
+  }
+  if (parsed === 100) {
+    return 100;
+  }
+  if (parsed === 1000) {
+    return 1000;
+  }
+  return null;
+}
+
+function requireAuthHeader(req: Request): string | null {
+  const authHeader = req.headers.get("Authorization") ?? req.headers.get("authorization");
+  if (!authHeader) {
+    return null;
+  }
+  if (!authHeader.startsWith("Bearer ")) {
+    return null;
+  }
+  return authHeader;
+}
+
+serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        ...CORS_HEADERS,
+        "Access-Control-Max-Age": "86400",
+        "Cache-Control": CACHE_CONTROL_SUCCESS,
+      },
+    });
+  }
+
+  if (req.method !== "GET") {
+    return jsonResponse({ error: "Method not allowed" }, 405);
+  }
+
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+    return jsonResponse(
+      { error: "Missing SUPABASE_URL or publishable/anon key for authenticated requests." },
+      500,
+    );
+  }
+
+  const authHeader = requireAuthHeader(req);
+  if (!authHeader) {
+    return jsonResponse({ error: "Authorization Bearer token required." }, 401);
+  }
+
+  const url = new URL(req.url);
+  const stationId = parseBigIntParam(url.searchParams.get("station_id"));
+  const stationRef = (url.searchParams.get("station_ref") ?? "").trim() || null;
+  const timeseriesId = parseBigIntParam(url.searchParams.get("timeseries_id"));
+  const windowValue = parseWindow(url.searchParams.get("window"));
+  const obsLimit = parseObsLimit(url.searchParams.get("obs_limit"));
+
+  if (stationId === null && stationRef === null) {
+    return jsonResponse({ error: "station_id or station_ref is required." }, 400);
+  }
+  if (windowValue === null) {
+    return jsonResponse({ error: "window must be one of: 6h, 24h, 7d." }, 400);
+  }
+  if (obsLimit === null) {
+    return jsonResponse({ error: "obs_limit must be 100 or 1000." }, 400);
+  }
+
+  const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+    },
+    global: {
+      headers: {
+        Authorization: authHeader,
+      },
+    },
+  });
+
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError || !userData?.user) {
+    return jsonResponse({ error: "Unauthorized." }, 401);
+  }
+
+  const { data, error } = await supabase
+    .schema(UK_AQ_PUBLIC_SCHEMA)
+    .rpc("uk_aq_station_snapshot", {
+      p_station_id: stationId === null ? null : stationId.toString(),
+      p_station_ref: stationRef,
+      p_timeseries_id: timeseriesId === null ? null : timeseriesId.toString(),
+      p_window: windowValue,
+      p_obs_limit: obsLimit,
+    });
+
+  if (error) {
+    return jsonResponse({ error: error.message }, 500);
+  }
+
+  if (!data || (typeof data === "object" && data !== null && (data as Record<string, unknown>).station == null)) {
+    return jsonResponse({ error: "Station not found." }, 404);
+  }
+
+  return jsonResponse(data, 200);
+});

@@ -1,0 +1,436 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>UK AQ Station Snapshot</title>
+  <style>
+    :root {
+      --bg: #f3f6fb;
+      --panel: #ffffff;
+      --text: #10243b;
+      --muted: #5e6f82;
+      --line: #d8e0ea;
+      --accent: #145da0;
+      --warn: #8b1e3f;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+      background: linear-gradient(160deg, #eef4ff, #f7fbff 50%, #edf7f2);
+      color: var(--text);
+    }
+    main {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 18px;
+      display: grid;
+      gap: 14px;
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 14px;
+    }
+    h1, h2 {
+      margin: 0 0 10px;
+      font-weight: 650;
+    }
+    h1 { font-size: 1.3rem; }
+    h2 { font-size: 1.05rem; }
+    .row {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      margin-bottom: 10px;
+    }
+    label {
+      font-size: 0.85rem;
+      color: var(--muted);
+      display: block;
+      margin-bottom: 4px;
+    }
+    input, select, textarea, button {
+      width: 100%;
+      border-radius: 8px;
+      border: 1px solid #c4d1df;
+      background: #fff;
+      padding: 8px 9px;
+      font: inherit;
+      color: inherit;
+    }
+    textarea { min-height: 64px; resize: vertical; }
+    button {
+      background: var(--accent);
+      color: #fff;
+      border: 0;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    button:hover { filter: brightness(0.95); }
+    .status {
+      padding: 8px 10px;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      background: #ecf2fb;
+      color: #224;
+      border: 1px solid #d4e1f3;
+    }
+    .status.error {
+      background: #fff2f5;
+      border-color: #efc0cf;
+      color: var(--warn);
+    }
+    .counts {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .pill {
+      padding: 4px 8px;
+      border-radius: 999px;
+      border: 1px solid #d2deea;
+      background: #f3f8ff;
+      font-size: 0.8rem;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.84rem;
+    }
+    th, td {
+      border: 1px solid var(--line);
+      padding: 5px 7px;
+      vertical-align: top;
+      text-align: left;
+    }
+    th {
+      background: #f5f8fc;
+      position: sticky;
+      top: 0;
+    }
+    .table-wrap {
+      max-height: 360px;
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }
+    pre {
+      margin: 0;
+      font-size: 0.8rem;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="card">
+      <h1>Station Snapshot Dashboard (Local)</h1>
+      <div class="row">
+        <div>
+          <label for="edgeUrl">Edge URL</label>
+          <input id="edgeUrl" type="text" />
+        </div>
+        <div>
+          <label for="stationId">station_id</label>
+          <input id="stationId" type="text" placeholder="e.g. 1234" />
+        </div>
+        <div>
+          <label for="stationRef">station_ref</label>
+          <input id="stationRef" type="text" placeholder="e.g. GB123" />
+        </div>
+        <div>
+          <label for="window">window</label>
+          <select id="window">
+            <option value="6h" selected>6h</option>
+            <option value="24h">24h</option>
+            <option value="7d">7d</option>
+          </select>
+        </div>
+        <div>
+          <label for="obsLimit">obs_limit</label>
+          <select id="obsLimit">
+            <option value="100" selected>100</option>
+            <option value="1000">1000</option>
+          </select>
+        </div>
+      </div>
+      <div class="row">
+        <div style="grid-column: 1 / -1;">
+          <label for="jwt">JWT (paste for authenticated calls)</label>
+          <textarea id="jwt" placeholder="eyJhbGciOi..."></textarea>
+        </div>
+      </div>
+      <div class="row">
+        <div>
+          <label for="timeseriesSelect">timeseries_id (from loaded station)</label>
+          <select id="timeseriesSelect" disabled>
+            <option value="">Load station first</option>
+          </select>
+        </div>
+        <div style="align-self: end;">
+          <button id="loadBtn" type="button">Load Snapshot</button>
+        </div>
+      </div>
+      <div id="status" class="status">Ready.</div>
+    </section>
+
+    <section class="card">
+      <h2>Counts</h2>
+      <div id="counts" class="counts"></div>
+    </section>
+
+    <section class="card">
+      <h2>Meta</h2>
+      <pre id="metaJson">{}</pre>
+    </section>
+
+    <section class="card">
+      <h2>station</h2>
+      <div class="table-wrap"><table id="stationTable"></table></div>
+    </section>
+
+    <section class="card">
+      <h2>timeseries</h2>
+      <div class="table-wrap"><table id="timeseriesTable"></table></div>
+    </section>
+
+    <section class="card">
+      <h2>stations_checkpoints (uk_aq_raw.openaq_station_checkpoints)</h2>
+      <div class="table-wrap"><table id="stationCheckpointTable"></table></div>
+    </section>
+
+    <section class="card">
+      <h2>timeseries_checkpoints (uk_aq_raw.openaq_timeseries_checkpoints)</h2>
+      <div class="table-wrap"><table id="timeseriesCheckpointTable"></table></div>
+    </section>
+
+    <section class="card">
+      <h2>observations (newest first)</h2>
+      <div class="table-wrap"><table id="observationTable"></table></div>
+    </section>
+  </main>
+
+  <script>
+    const state = {
+      snapshot: null,
+      loading: false,
+    };
+
+    const el = {
+      edgeUrl: document.getElementById("edgeUrl"),
+      stationId: document.getElementById("stationId"),
+      stationRef: document.getElementById("stationRef"),
+      window: document.getElementById("window"),
+      obsLimit: document.getElementById("obsLimit"),
+      jwt: document.getElementById("jwt"),
+      timeseriesSelect: document.getElementById("timeseriesSelect"),
+      loadBtn: document.getElementById("loadBtn"),
+      status: document.getElementById("status"),
+      counts: document.getElementById("counts"),
+      metaJson: document.getElementById("metaJson"),
+      stationTable: document.getElementById("stationTable"),
+      timeseriesTable: document.getElementById("timeseriesTable"),
+      stationCheckpointTable: document.getElementById("stationCheckpointTable"),
+      timeseriesCheckpointTable: document.getElementById("timeseriesCheckpointTable"),
+      observationTable: document.getElementById("observationTable"),
+    };
+
+    function setStatus(message, isError = false) {
+      el.status.textContent = message;
+      el.status.className = isError ? "status error" : "status";
+    }
+
+    function asText(value) {
+      if (value === null || value === undefined) return "";
+      if (typeof value === "object") return JSON.stringify(value);
+      return String(value);
+    }
+
+    function renderKeyValueTable(table, rowObj) {
+      table.innerHTML = "";
+      const header = document.createElement("tr");
+      header.innerHTML = "<th>column</th><th>value</th>";
+      table.appendChild(header);
+
+      if (!rowObj || typeof rowObj !== "object") {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td colspan="2">No row</td>`;
+        table.appendChild(tr);
+        return;
+      }
+
+      Object.keys(rowObj).forEach((key) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td>${key}</td><td>${asText(rowObj[key])}</td>`;
+        table.appendChild(tr);
+      });
+    }
+
+    function renderRowsTable(table, rows) {
+      table.innerHTML = "";
+      if (!Array.isArray(rows) || rows.length === 0) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = "<td>No rows</td>";
+        table.appendChild(tr);
+        return;
+      }
+
+      const keys = Array.from(
+        rows.reduce((set, row) => {
+          Object.keys(row || {}).forEach((k) => set.add(k));
+          return set;
+        }, new Set())
+      );
+
+      const header = document.createElement("tr");
+      header.innerHTML = keys.map((k) => `<th>${k}</th>`).join("");
+      table.appendChild(header);
+
+      rows.forEach((row) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = keys.map((k) => `<td>${asText((row || {})[k])}</td>`).join("");
+        table.appendChild(tr);
+      });
+    }
+
+    function renderCounts(snapshot) {
+      const data = [
+        ["timeseries", (snapshot.timeseries || []).length],
+        ["stations_checkpoints", (snapshot.stations_checkpoints || []).length],
+        ["timeseries_checkpoints", (snapshot.timeseries_checkpoints || []).length],
+        ["observations", (snapshot.observations || []).length],
+      ];
+      el.counts.innerHTML = data
+        .map(([label, value]) => `<span class="pill">${label}: ${value}</span>`)
+        .join("");
+    }
+
+    function renderTimeseriesSelect(snapshot) {
+      const timeseries = Array.isArray(snapshot.timeseries) ? snapshot.timeseries : [];
+      const selectedId = snapshot.selected_timeseries_id == null ? "" : String(snapshot.selected_timeseries_id);
+      el.timeseriesSelect.innerHTML = "";
+
+      const defaultOption = document.createElement("option");
+      defaultOption.value = "";
+      defaultOption.textContent = "(default selection)";
+      el.timeseriesSelect.appendChild(defaultOption);
+
+      timeseries.forEach((row) => {
+        const option = document.createElement("option");
+        const idText = row && row.id != null ? String(row.id) : "";
+        option.value = idText;
+        option.textContent = idText
+          ? `${idText} | ${row.timeseries_ref || ""} | ${row.label || ""}`
+          : JSON.stringify(row);
+        el.timeseriesSelect.appendChild(option);
+      });
+
+      el.timeseriesSelect.disabled = timeseries.length === 0;
+      if (selectedId) {
+        el.timeseriesSelect.value = selectedId;
+      } else {
+        el.timeseriesSelect.value = "";
+      }
+    }
+
+    function renderSnapshot(snapshot) {
+      state.snapshot = snapshot;
+      renderCounts(snapshot);
+      el.metaJson.textContent = JSON.stringify(snapshot.meta || {}, null, 2);
+      renderKeyValueTable(el.stationTable, snapshot.station || null);
+      renderRowsTable(el.timeseriesTable, snapshot.timeseries || []);
+      renderRowsTable(el.stationCheckpointTable, snapshot.stations_checkpoints || []);
+      renderRowsTable(el.timeseriesCheckpointTable, snapshot.timeseries_checkpoints || []);
+      renderRowsTable(el.observationTable, snapshot.observations || []);
+      renderTimeseriesSelect(snapshot);
+    }
+
+    function buildSnapshotUrl(overrideTimeseriesId = null) {
+      const edge = (el.edgeUrl.value || "").trim();
+      if (!edge) {
+        throw new Error("Edge URL is required.");
+      }
+      const url = new URL(edge);
+      const stationId = (el.stationId.value || "").trim();
+      const stationRef = (el.stationRef.value || "").trim();
+      const selectedTimeseries = overrideTimeseriesId === null
+        ? (el.timeseriesSelect.value || "").trim()
+        : String(overrideTimeseriesId || "").trim();
+
+      if (!stationId && !stationRef) {
+        throw new Error("station_id or station_ref is required.");
+      }
+      if (stationId) url.searchParams.set("station_id", stationId);
+      if (stationRef) url.searchParams.set("station_ref", stationRef);
+      if (selectedTimeseries) url.searchParams.set("timeseries_id", selectedTimeseries);
+      url.searchParams.set("window", el.window.value);
+      url.searchParams.set("obs_limit", el.obsLimit.value);
+      return url.toString();
+    }
+
+    async function loadSnapshot(overrideTimeseriesId = null) {
+      if (state.loading) return;
+      state.loading = true;
+      el.loadBtn.disabled = true;
+      setStatus("Loading snapshot...");
+
+      try {
+        const jwt = (el.jwt.value || "").trim();
+        if (!jwt) {
+          throw new Error("JWT is required for authenticated calls.");
+        }
+        const url = buildSnapshotUrl(overrideTimeseriesId);
+        const response = await fetch(url, {
+          method: "GET",
+          headers: {
+            "Authorization": `Bearer ${jwt}`,
+            "Content-Type": "application/json",
+          },
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          const msg = payload && payload.error ? payload.error : `HTTP ${response.status}`;
+          throw new Error(msg);
+        }
+        renderSnapshot(payload);
+        setStatus(`Loaded. selected_timeseries_id=${payload.selected_timeseries_id ?? "none"}`);
+      } catch (err) {
+        setStatus(err instanceof Error ? err.message : String(err), true);
+      } finally {
+        state.loading = false;
+        el.loadBtn.disabled = false;
+      }
+    }
+
+    async function loadConfig() {
+      try {
+        const response = await fetch("/api/config", { cache: "no-store" });
+        if (!response.ok) {
+          return;
+        }
+        const config = await response.json();
+        if (config.edge_url) {
+          el.edgeUrl.value = config.edge_url;
+        }
+        if (config.default_jwt) {
+          el.jwt.value = config.default_jwt;
+        }
+      } catch (_err) {
+        return;
+      }
+    }
+
+    el.loadBtn.addEventListener("click", () => loadSnapshot(""));
+    el.timeseriesSelect.addEventListener("change", () => {
+      if (el.timeseriesSelect.disabled) return;
+      loadSnapshot(el.timeseriesSelect.value);
+    });
+
+    loadConfig();
+  </script>
+</body>
+</html>

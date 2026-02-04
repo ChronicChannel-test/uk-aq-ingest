@@ -234,6 +234,30 @@ curl "https://YOUR_PROJECT.supabase.co/functions/v1/uk_aq_timeseries?timeseries_
 curl "https://YOUR_PROJECT.supabase.co/functions/v1/uk_aq_timeseries?timeseries_id=123&window=7d"
 ```
 
+### uk_aq_station_snapshot
+- Purpose: Serve raw station snapshot payloads for local debug dashboards via a protected endpoint.
+- Triggered by: Web requests (read-only, requires authenticated JWT).
+- Params:
+  - `station_id` or `station_ref` (one required)
+  - `timeseries_id` (optional)
+  - `window` (`6h|24h|7d`, default `6h`)
+  - `obs_limit` (`100|1000`, default `100`)
+- Auth:
+  - Requires `Authorization: Bearer <JWT>`.
+  - Verifies identity with `auth.getUser()`.
+  - Uses publishable/anon key + caller JWT (does not use service role key).
+- RPC backing: `uk_aq_public.uk_aq_station_snapshot`.
+- Returns:
+  - Raw station row (`stations`)
+  - Raw station timeseries rows (`timeseries`)
+  - Raw checkpoint rows from `uk_aq_raw.openaq_station_checkpoints` and `uk_aq_raw.openaq_timeseries_checkpoints`
+  - Observations for selected timeseries ordered newest-first (`observed_at desc`)
+  - `meta` with window bounds, obs limit, and default timeseries selection rule (`lowest_timeseries_id_for_station`)
+- Caching / CORS:
+  - OPTIONS includes `Access-Control-Max-Age: 86400`.
+  - Success responses: `Cache-Control: public, max-age=30`.
+  - Error responses: `Cache-Control: no-store`.
+
 ## Environment variables (Supabase Edge)
 
 Required:

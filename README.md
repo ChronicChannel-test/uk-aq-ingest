@@ -93,6 +93,73 @@ GitHub Actions deployment secrets (used by `.github/workflows/supabase_edge_depl
 
 Note: `SUPABASE_ACCESS_TOKEN` is only required for deployments (GitHub Actions or `supabase` CLI). The publishable key is safe to expose; the service role key is not.
 
+## Station Snapshot Dashboard (local only)
+Local dashboard entrypoint:
+```
+python3 scripts/uk_aq_station_snapshot_local.py --port 8046
+```
+
+Required runtime values:
+- `SUPABASE_URL` (or pass `--edge-url` directly)
+- A valid authenticated JWT pasted into the page (`UK_AQ_DEV_JWT` can prefill it for local convenience)
+
+Optional:
+- `UK_AQ_STATION_SNAPSHOT_EDGE_URL` to override the edge URL
+- `UK_AQ_DEV_JWT` to pre-fill the JWT input in the local page
+
+The page calls the protected edge function:
+- Path: `supabase/functions/uk_aq_station_snapshot`
+- Query params:
+  - `station_id` or `station_ref` (one required)
+  - `timeseries_id` (optional)
+  - `window=6h|24h|7d` (default `6h`)
+  - `obs_limit=100|1000` (default `100`)
+- Authorization:
+  - `Authorization: Bearer <JWT>` required
+
+Response shape:
+```json
+{
+  "station": {},
+  "timeseries": [],
+  "stations_checkpoints": [],
+  "timeseries_checkpoints": [],
+  "selected_timeseries_id": 123,
+  "observations": [],
+  "meta": {
+    "window": "6h",
+    "window_start": "2026-02-04T10:00:00Z",
+    "window_end": "2026-02-04T16:00:00Z",
+    "obs_limit": 100,
+    "default_timeseries_rule": "lowest_timeseries_id_for_station"
+  }
+}
+```
+
+## Run Both Local Dashboards On-Demand
+Start both servers with one command:
+```
+./dev_dashboards.sh
+```
+
+Stop both servers cleanly:
+```
+./dev_dashboards_stop.sh
+```
+
+Required environment variables:
+- `SUPABASE_URL`
+- `SUPABASE_ANON_KEY`
+
+Override host/ports:
+```
+HOST=0.0.0.0 SCHEDULER_PORT=9000 SNAPSHOT_PORT=9001 ./dev_dashboards.sh
+```
+
+Logs:
+- `logs/scheduler.log`
+- `logs/station_snapshot.log`
+
 ## Environment naming convention
 For new networks, use `NETWORK_BASE_URL` and `NETWORK_SERVICE_LABEL`.
 Examples:

@@ -95,6 +95,47 @@ Environment:
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
 
+### `scripts/uk_aq_station_snapshot_local.py`
+Purpose:
+- Run a separate local dashboard for station-level raw snapshot inspection via the protected edge function `uk_aq_station_snapshot`.
+
+Common commands:
+```
+python3 scripts/uk_aq_station_snapshot_local.py --port 8046
+python3 scripts/uk_aq_station_snapshot_local.py --edge-url https://<project>.supabase.co/functions/v1/uk_aq_station_snapshot
+```
+
+Notes:
+- Serves the UI at `http://127.0.0.1:8046` and config at `/api/config`.
+- The HTML lives at `data/uk_aq_station_snapshot/uk_aq_station_snapshot.html`.
+- The browser call requires a pasted JWT (`Authorization: Bearer <JWT>`).
+- The page renders raw rows for `stations`, `timeseries`, `openaq_station_checkpoints`, `openaq_timeseries_checkpoints`, and `observations`.
+
+Environment:
+- `SUPABASE_URL` or `SB_SUPABASE_URL` (used to derive edge URL if not passed)
+- `UK_AQ_STATION_SNAPSHOT_EDGE_URL` (optional explicit edge URL)
+- `UK_AQ_DEV_JWT` (optional default JWT prefill)
+
+### `dev_dashboards.sh` and `dev_dashboards_stop.sh`
+Purpose:
+- Start/stop both local dashboard servers on-demand:
+  - `scripts/uk_aq_dashboard_local.py`
+  - `scripts/uk_aq_station_snapshot_local.py`
+
+Common commands:
+```
+./dev_dashboards.sh
+./dev_dashboards_stop.sh
+```
+
+Notes:
+- `dev_dashboards.sh` writes `./.dashboards.pids` and logs to `./logs/`.
+- `dev_dashboards_stop.sh` only stops exact PIDs listed in `./.dashboards.pids` (no broad `pkill`).
+
+Environment:
+- Required: `SUPABASE_URL`, `SUPABASE_ANON_KEY`
+- Optional overrides: `HOST`, `SCHEDULER_PORT`, `SNAPSHOT_PORT`
+
 ### `scripts/uk_air_sos/uk_air_sos_ingest.py`
 Purpose:
 - Discover stations and timeseries with optional filters.

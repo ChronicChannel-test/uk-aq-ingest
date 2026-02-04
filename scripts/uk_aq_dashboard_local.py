@@ -707,9 +707,14 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
 
 def parse_args() -> argparse.Namespace:
+    host_default = os.getenv("HOST", "127.0.0.1")
+    try:
+        port_default = int(os.getenv("PORT", "8045"))
+    except ValueError:
+        port_default = 8045
     parser = argparse.ArgumentParser(description="Run a local UK AQ dashboard API.")
-    parser.add_argument("--host", default="127.0.0.1", help="Bind host (default: 127.0.0.1).")
-    parser.add_argument("--port", type=int, default=8045, help="Bind port (default: 8045).")
+    parser.add_argument("--host", default=host_default, help="Bind host (default: HOST or 127.0.0.1).")
+    parser.add_argument("--port", type=int, default=port_default, help="Bind port (default: PORT or 8045).")
     parser.add_argument(
         "--html",
         default="data/uk_aq_dashboard/uk_aq_dashboard.html",
@@ -729,8 +734,8 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
-    args = parse_args()
     _load_env(Path(".env"))
+    args = parse_args()
 
     supabase_url = (args.supabase_url or "").strip().rstrip("/")
     service_role_key = (args.service_role_key or "").strip()
