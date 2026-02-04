@@ -2176,8 +2176,14 @@ serve(async (req) => {
   }
 
   const nowMs = Date.now();
-  const debugStationId = 189841;
-  if (stationIds.includes(debugStationId)) {
+  const debugStationIdEnv = Deno.env.get("DENO_OPENAQ_DEBUG_STATION_ID");
+  const debugStationId =
+    debugStationIdEnv !== undefined ? Number(debugStationIdEnv) : undefined;
+  if (
+    debugStationId !== undefined &&
+    Number.isFinite(debugStationId) &&
+    stationIds.includes(debugStationId)
+  ) {
     logLine("INFO", "OpenAQ debug station present", {
       station_id: debugStationId,
     });
