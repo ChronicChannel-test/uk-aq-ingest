@@ -19,6 +19,20 @@ interface PostgrestResponse<T> {
   error: { message: string } | null;
 }
 
+function buildDebugRequestPayload(
+  baseParams: Record<string, string>,
+  extra: Record<string, string>,
+  useStationInner: boolean,
+  limit: number,
+) {
+  return {
+    ...baseParams,
+    ...extra,
+    select: useStationInner ? selectStationInner : baseParams.select,
+    limit: String(limit),
+  };
+}
+
 interface QueryParams {
   region: string | null;
   stationLikeParam: string | null;
@@ -161,19 +175,6 @@ serve(async (req: Request) => {
       : null;
     return json(
       debug ? { error: message, debug: debugPayload } : { error: message },
-  function buildDebugRequestPayload(
-    baseParams: Record<string, string>,
-    extra: Record<string, string>,
-    useStationInner: boolean,
-    limit: number,
-  ) {
-    return {
-      ...baseParams,
-      ...extra,
-      select: useStationInner ? selectStationInner : baseParams.select,
-      limit: String(limit),
-    };
-  }
       500,
     );
   }
