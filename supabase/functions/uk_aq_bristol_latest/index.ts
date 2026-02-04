@@ -19,20 +19,6 @@ interface PostgrestResponse<T> {
   error: { message: string } | null;
 }
 
-function buildDebugRequestPayload(
-  baseParams: Record<string, string>,
-  extra: Record<string, string>,
-  useStationInner: boolean,
-  limit: number,
-) {
-  return {
-    ...baseParams,
-    ...extra,
-    select: useStationInner ? selectStationInner : baseParams.select,
-    limit: String(limit),
-  };
-}
-
 interface QueryParams {
   region: string | null;
   stationLikeParam: string | null;
@@ -185,6 +171,7 @@ type LoadOptions = {
   stationLike: string | null;
   connectorId: string | null;
   pollutant: string | null;
+  limit: number;
   debug: boolean;
 };
 
@@ -207,6 +194,17 @@ async function loadLatest({ region, stationLike, connectorId, pollutant, limit, 
     last_value: "gte.0",
     last_value_at: "not.is.null",
   };
+  const buildDebugRequestPayload = (
+    extra: Record<string, string>,
+    useStationInner: boolean,
+  ) => {
+    return {
+      ...baseParams,
+      ...extra,
+      select: useStationInner ? selectStationInner : baseParams.select,
+      limit: String(limit),
+    };
+  };
   const pollutantFilter = buildPollutantFilter(pollutantKey);
   if (pollutantFilter) {
     baseParams["phenomena.or"] = pollutantFilter;
@@ -228,7 +226,7 @@ async function loadLatest({ region, stationLike, connectorId, pollutant, limit, 
       if (debug) {
         const err = new Error(error.message) as Error & { debug?: unknown };
         err.debug = {
-          request: buildDebugRequestPayload(baseParams, extra, useStationInner, limit),
+          request: buildDebugRequestPayload(extra, useStationInner),
           error,
         };
         throw err;
@@ -406,12 +404,15 @@ function pollutantTokens(pollutant: string): string[] {
 }
 
 function parseLimit(value: string | null, fallback: number): number {
+  const safeFallback = Number.isFinite(fallback) && fallback >= 1
+    ? Math.min(Math.floor(fallback), MAX_LIMIT)
+    : DEFAULT_LIMIT;
   if (!value) {
-    return fallback;
+    return safeFallback;
   }
   const parsed = Number(value);
-  if (!Number.isFinite(parsed)) {
-    return fallback;
+  if (!Number.isFinite(parsed) || !Number.isInteger(parsed) || parsed < 1) {
+    return safeFallback;
   }
   return Math.min(parsed, MAX_LIMIT);
 }
