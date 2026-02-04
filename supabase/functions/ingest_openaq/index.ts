@@ -2271,10 +2271,7 @@ serve(async (req) => {
           }
         }
         for (const record of hourly) {
-          const observedAt = record?.period?.datetimeTo?.utc
-            ?? record?.datetime?.utc
-            ?? record?.period?.datetimeFrom?.utc
-            ?? null;
+          const observedAt = record?.datetime?.utc ?? null;
           if (!observedAt) {
             continue;
           }
