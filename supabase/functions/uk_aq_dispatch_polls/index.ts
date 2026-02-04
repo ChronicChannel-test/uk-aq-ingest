@@ -1,4 +1,3 @@
-// @ts-nocheck
 // Dispatch connector polls based on connectors table settings.
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 
