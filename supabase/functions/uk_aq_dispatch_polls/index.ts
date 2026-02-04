@@ -443,7 +443,7 @@ function findRecentInFlightConnector(
     }
     if (ageMs <= timeoutMs) {
       const ageMinutes = Math.floor(ageMs / 60000);
-      if (!candidate || ageMs < candidate.age_minutes * 60000) {
+      if (!candidate || ageMinutes < candidate.age_minutes) {
         candidate = {
           connector_code: connectorCode,
           last_run_start: startedAt.toISOString(),
