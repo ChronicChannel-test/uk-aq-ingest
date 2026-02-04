@@ -87,6 +87,10 @@ function requireAuthHeader(req: Request): string | null {
   return authHeader;
 }
 
+function extractBearerToken(authHeader: string): string {
+  return authHeader.slice("Bearer ".length).trim();
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, {
@@ -112,6 +116,10 @@ serve(async (req) => {
 
   const authHeader = requireAuthHeader(req);
   if (!authHeader) {
+    return jsonResponse({ error: "Authorization Bearer token required." }, 401);
+  }
+  const accessToken = extractBearerToken(authHeader);
+  if (!accessToken) {
     return jsonResponse({ error: "Authorization Bearer token required." }, 401);
   }
 
@@ -144,7 +152,7 @@ serve(async (req) => {
     },
   });
 
-  const { data: userData, error: userError } = await supabase.auth.getUser();
+  const { data: userData, error: userError } = await supabase.auth.getUser(accessToken);
   if (userError || !userData?.user) {
     return jsonResponse({ error: "Unauthorized." }, 401);
   }
