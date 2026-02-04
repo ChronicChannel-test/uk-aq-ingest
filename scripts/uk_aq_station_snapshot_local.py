@@ -116,7 +116,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--dev-jwt",
         default=os.getenv("UK_AQ_DEV_JWT", ""),
-        help="Optional default JWT to pre-fill in the local page.",
+        help="Auth JWT for edge calls (required unless UK_AQ_DEV_JWT is set).",
     )
     return parser.parse_args()
 
@@ -136,11 +136,17 @@ def main() -> None:
     html_path = Path(args.html)
     if not html_path.exists():
         raise SystemExit(f"HTML file not found: {html_path}")
+    dev_jwt = (args.dev_jwt or "").strip()
+    if not dev_jwt:
+        raise SystemExit(
+            "UK_AQ_DEV_JWT is required for this dashboard. "
+            "Set it in .env or pass --dev-jwt."
+        )
 
     server = ThreadingHTTPServer((args.host, args.port), StationSnapshotHandler)
     server.html_path = html_path
     server.edge_url = edge_url
-    server.default_jwt = (args.dev_jwt or "").strip()
+    server.default_jwt = dev_jwt
 
     print(f"UK AQ station snapshot dashboard running at http://{args.host}:{args.port}")
     server.serve_forever()

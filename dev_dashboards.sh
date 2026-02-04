@@ -35,6 +35,7 @@ fi
 missing_vars=()
 [[ -n "${SUPABASE_URL:-}" ]] || missing_vars+=("SUPABASE_URL")
 [[ -n "${SUPABASE_ANON_KEY:-}" ]] || missing_vars+=("SUPABASE_ANON_KEY")
+[[ -n "${UK_AQ_DEV_JWT:-}" ]] || missing_vars+=("UK_AQ_DEV_JWT")
 if (( ${#missing_vars[@]} > 0 )); then
   echo "Missing required environment variables: ${missing_vars[*]}" >&2
   exit 1

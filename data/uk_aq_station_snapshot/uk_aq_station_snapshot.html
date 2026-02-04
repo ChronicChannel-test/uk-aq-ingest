@@ -22,8 +22,8 @@
       color: var(--text);
     }
     main {
-      max-width: 1200px;
-      margin: 0 auto;
+      width: 100%;
+      margin: 0;
       padding: 18px;
       display: grid;
       gap: 14px;
@@ -159,12 +159,6 @@
         </div>
       </div>
       <div class="row">
-        <div style="grid-column: 1 / -1;">
-          <label for="jwt">JWT (paste for authenticated calls)</label>
-          <textarea id="jwt" placeholder="eyJhbGciOi..."></textarea>
-        </div>
-      </div>
-      <div class="row">
         <div>
           <label for="timeseriesSelect">timeseries_id (from loaded station)</label>
           <select id="timeseriesSelect" disabled>
@@ -226,7 +220,6 @@
       stationRef: document.getElementById("stationRef"),
       window: document.getElementById("window"),
       obsLimit: document.getElementById("obsLimit"),
-      jwt: document.getElementById("jwt"),
       timeseriesSelect: document.getElementById("timeseriesSelect"),
       loadBtn: document.getElementById("loadBtn"),
       status: document.getElementById("status"),
@@ -238,6 +231,7 @@
       timeseriesCheckpointTable: document.getElementById("timeseriesCheckpointTable"),
       observationTable: document.getElementById("observationTable"),
     };
+    let authToken = "";
 
     function setStatus(message, isError = false) {
       el.status.textContent = message;
@@ -379,15 +373,14 @@
       setStatus("Loading snapshot...");
 
       try {
-        const jwt = (el.jwt.value || "").trim();
-        if (!jwt) {
-          throw new Error("JWT is required for authenticated calls.");
+        if (!authToken) {
+          throw new Error("JWT missing. Set UK_AQ_DEV_JWT in .env (or use --dev-jwt).");
         }
         const url = buildSnapshotUrl(overrideTimeseriesId);
         const response = await fetch(url, {
           method: "GET",
           headers: {
-            "Authorization": `Bearer ${jwt}`,
+            "Authorization": `Bearer ${authToken}`,
             "Content-Type": "application/json",
           },
         });
@@ -417,7 +410,7 @@
           el.edgeUrl.value = config.edge_url;
         }
         if (config.default_jwt) {
-          el.jwt.value = config.default_jwt;
+          authToken = String(config.default_jwt);
         }
       } catch (_err) {
         return;

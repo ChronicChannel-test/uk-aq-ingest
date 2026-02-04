@@ -101,11 +101,10 @@ python3 scripts/uk_aq_station_snapshot_local.py --port 8046
 
 Required runtime values:
 - `SUPABASE_URL` (or pass `--edge-url` directly)
-- A valid authenticated JWT pasted into the page (`UK_AQ_DEV_JWT` can prefill it for local convenience)
+- `UK_AQ_DEV_JWT` (authenticated JWT loaded from `.env` / `--dev-jwt`)
 
 Optional:
 - `UK_AQ_STATION_SNAPSHOT_EDGE_URL` to override the edge URL
-- `UK_AQ_DEV_JWT` to pre-fill the JWT input in the local page
 
 The page calls the protected edge function:
 - Path: `supabase/functions/uk_aq_station_snapshot`
@@ -115,7 +114,7 @@ The page calls the protected edge function:
   - `window=6h|24h|7d` (default `6h`)
   - `obs_limit=100|1000` (default `100`)
 - Authorization:
-  - `Authorization: Bearer <JWT>` required
+  - `Authorization: Bearer <JWT>` required (provided from `UK_AQ_DEV_JWT`; no JWT input field in UI)
 
 Response shape:
 ```json
@@ -150,6 +149,7 @@ Stop both servers cleanly:
 Required environment variables:
 - `SUPABASE_URL`
 - `SUPABASE_ANON_KEY`
+- `UK_AQ_DEV_JWT`
 
 Override host/ports:
 ```
