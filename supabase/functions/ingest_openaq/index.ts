@@ -15,6 +15,21 @@ type ConnectorRow = {
   overwrite_station_name?: boolean | null;
 };
 
+// Shared rate limit tracking state for OpenAQ requests.
+const rateLimitState: {
+  remaining: number | null;
+  stop: boolean;
+  stopReason: string | null;
+  limit: number | null;
+  firstRemaining: number | null;
+} = {
+  remaining: null,
+  stop: false,
+  stopReason: null,
+  limit: null,
+  firstRemaining: null,
+};
+
 type ErrorLogEntry = {
   severity: "error" | "warn";
   message: string;
@@ -1032,9 +1047,6 @@ async function listLocations(bbox: string, rawRecorder?: RawRecorder | null): Pr
     : DEFAULT_PAGE_LIMIT;
   let page = 1;
   while (true) {
-    if (rateLimitState.stop) {
-      break;
-    }
     const payload = await openaqRequest("locations", { bbox, limit, page }, rawRecorder);
     const pageResults = Array.isArray(payload?.results) ? payload.results as OpenAQLocation[] : [];
     results.push(...pageResults);
@@ -2217,21 +2229,23 @@ serve(async (req) => {
               }
               const returned = new Set<string>();
               for (const record of hourly) {
-                const observedAt = record?.period?.datetimeTo?.utc
+                const period = (record as any)?.period ?? null;
+                const observedAt =
+                  (period?.datetimeTo?.utc as string | undefined)
                   ?? record?.datetime?.utc
-                  ?? record?.period?.datetimeFrom?.utc
+                  ?? (period?.datetimeFrom?.utc as string | undefined)
                   ?? null;
                 if (!observedAt) {
                   continue;
                 }
-              const observed = new Date(observedAt);
-              if (!Number.isFinite(observed.getTime())) {
-                continue;
+                const observed = new Date(observedAt);
+                if (!Number.isFinite(observed.getTime())) {
+                  continue;
+                }
+                observed.setUTCMinutes(0, 0, 0);
+                returned.add(observed.toISOString());
               }
-              observed.setUTCMinutes(0, 0, 0);
-              returned.add(observed.toISOString());
-            }
-            const missing = expected.filter((hour) => !returned.has(hour));
+              const missing = expected.filter((hour) => !returned.has(hour));
             if (expected.length > 0) {
               let contigEnd: string | null = null;
               if (missing.length > 0) {
@@ -2271,10 +2285,7 @@ serve(async (req) => {
           }
         }
         for (const record of hourly) {
-          const observedAt = record?.period?.datetimeTo?.utc
-            ?? record?.datetime?.utc
-            ?? record?.period?.datetimeFrom?.utc
-            ?? null;
+          const observedAt = record?.datetime?.utc ?? null;
           if (!observedAt) {
             continue;
           }
