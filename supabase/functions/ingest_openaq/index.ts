@@ -1032,9 +1032,6 @@ async function listLocations(bbox: string, rawRecorder?: RawRecorder | null): Pr
     : DEFAULT_PAGE_LIMIT;
   let page = 1;
   while (true) {
-    if (rateLimitState.stop) {
-      break;
-    }
     const payload = await openaqRequest("locations", { bbox, limit, page }, rawRecorder);
     const pageResults = Array.isArray(payload?.results) ? payload.results as OpenAQLocation[] : [];
     results.push(...pageResults);
