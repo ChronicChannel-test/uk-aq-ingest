@@ -108,13 +108,37 @@ python3 scripts/uk_aq_station_snapshot_local.py --edge-url https://<project>.sup
 Notes:
 - Serves the UI at `http://127.0.0.1:8046` and config at `/api/config`.
 - The HTML lives at `data/uk_aq_station_snapshot/uk_aq_station_snapshot.html`.
-- JWT comes from `UK_AQ_DEV_JWT` (or `--dev-jwt`) and is injected via `/api/config` (no JWT input field in UI).
+- Access token comes from `UK_AQ_DEV_JWT` (or `--dev-jwt`) and is injected via `/api/config` (no JWT input field in UI).
+- If `UK_AQ_DEV_REFRESH_TOKEN` is set, the local server can auto-refresh expired access tokens via `/api/token`.
 - The page renders raw rows for `stations`, `timeseries`, `openaq_station_checkpoints`, `openaq_timeseries_checkpoints`, and `observations`.
 
 Environment:
 - `SUPABASE_URL` or `SB_SUPABASE_URL` (used to derive edge URL if not passed)
 - `UK_AQ_STATION_SNAPSHOT_EDGE_URL` (optional explicit edge URL)
-- `UK_AQ_DEV_JWT` (required auth JWT)
+- `UK_AQ_DEV_JWT` (required unless `UK_AQ_DEV_REFRESH_TOKEN` is provided)
+- `UK_AQ_DEV_REFRESH_TOKEN` (optional; enables auto-refresh)
+- `SB_PUBLISHABLE_DEFAULT_KEY` (or `SUPABASE_PUBLISHABLE_DEFAULT_KEY` / `SB_ANON_JWT`) required when using auto-refresh
+
+### `scripts/uk_aq_issue_dev_auth_tokens.py`
+Purpose:
+- Issue fresh Supabase auth tokens for local dashboard use and optionally write them into an env file.
+
+Common commands:
+```
+python3 scripts/uk_aq_issue_dev_auth_tokens.py
+python3 scripts/uk_aq_issue_dev_auth_tokens.py --write-env-file .env.supabase
+python3 scripts/uk_aq_issue_dev_auth_tokens.py --refresh-token "$UK_AQ_DEV_REFRESH_TOKEN"
+```
+
+Notes:
+- Uses password grant when `--email/--password` (or `UK_AQ_DEV_USER_EMAIL` / `UK_AQ_DEV_USER_PASSWORD`) are provided.
+- Uses refresh-token grant when `--refresh-token` (or `UK_AQ_DEV_REFRESH_TOKEN`) is provided.
+- Outputs `UK_AQ_DEV_JWT`, `UK_AQ_DEV_REFRESH_TOKEN`, and `UK_AQ_DEV_JWT_EXPIRES_AT` for export by default.
+
+Environment:
+- `SUPABASE_URL` or `SB_SUPABASE_URL`
+- `SB_PUBLISHABLE_DEFAULT_KEY` (or `SUPABASE_PUBLISHABLE_DEFAULT_KEY` / `SB_ANON_JWT`)
+- `UK_AQ_DEV_USER_EMAIL` + `UK_AQ_DEV_USER_PASSWORD` (for password grant), or `UK_AQ_DEV_REFRESH_TOKEN` (for refresh grant)
 
 ### `dev_dashboards.sh` and `dev_dashboards_stop.sh`
 Purpose:
@@ -133,7 +157,7 @@ Notes:
 - `dev_dashboards_stop.sh` only stops exact PIDs listed in `./.dashboards.pids` (no broad `pkill`).
 
 Environment:
-- Required: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `UK_AQ_DEV_JWT`
+- Required: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and either `UK_AQ_DEV_JWT` or `UK_AQ_DEV_REFRESH_TOKEN`
 - Optional overrides: `HOST`, `SCHEDULER_PORT`, `SNAPSHOT_PORT`
 
 ### `scripts/uk_air_sos/uk_air_sos_ingest.py`

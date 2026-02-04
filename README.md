@@ -101,10 +101,20 @@ python3 scripts/uk_aq_station_snapshot_local.py --port 8046
 
 Required runtime values:
 - `SUPABASE_URL` (or pass `--edge-url` directly)
-- `UK_AQ_DEV_JWT` (authenticated JWT loaded from `.env` / `--dev-jwt`)
+- `UK_AQ_DEV_JWT` or `UK_AQ_DEV_REFRESH_TOKEN`
 
 Optional:
 - `UK_AQ_STATION_SNAPSHOT_EDGE_URL` to override the edge URL
+- `UK_AQ_DEV_REFRESH_TOKEN` to auto-refresh expired access tokens
+
+Issue fresh dashboard auth tokens:
+```
+python3 scripts/uk_aq_issue_dev_auth_tokens.py --write-env-file .env.supabase
+```
+This updates:
+- `UK_AQ_DEV_JWT`
+- `UK_AQ_DEV_REFRESH_TOKEN`
+- `UK_AQ_DEV_JWT_EXPIRES_AT`
 
 The page calls the protected edge function:
 - Path: `supabase/functions/uk_aq_station_snapshot`
@@ -114,7 +124,8 @@ The page calls the protected edge function:
   - `window=6h|24h|7d` (default `6h`)
   - `obs_limit=100|1000` (default `100`)
 - Authorization:
-  - `Authorization: Bearer <JWT>` required (provided from `UK_AQ_DEV_JWT`; no JWT input field in UI)
+  - `Authorization: Bearer <JWT>` required (provided by the local server from `UK_AQ_DEV_JWT`)
+  - If `UK_AQ_DEV_REFRESH_TOKEN` is set, the local server refreshes the access token on demand.
 
 Response shape:
 ```json
@@ -149,7 +160,7 @@ Stop both servers cleanly:
 Required environment variables:
 - `SUPABASE_URL`
 - `SUPABASE_ANON_KEY`
-- `UK_AQ_DEV_JWT`
+- `UK_AQ_DEV_JWT` or `UK_AQ_DEV_REFRESH_TOKEN`
 
 Override host/ports:
 ```

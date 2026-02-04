@@ -4,13 +4,18 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import os
+import threading
+import time
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
+from urllib import error as urllib_error
+from urllib import request as urllib_request
+from urllib.parse import parse_qs, urlparse
 
 
 def _load_env(path: Path) -> None:
@@ -46,8 +51,102 @@ def _default_edge_url() -> str:
     return f"{supabase_url}/functions/v1/uk_aq_station_snapshot"
 
 
+def _env_publishable_key() -> str:
+    return (
+        os.getenv("SB_PUBLISHABLE_DEFAULT_KEY")
+        or os.getenv("SUPABASE_PUBLISHABLE_DEFAULT_KEY")
+        or os.getenv("SB_ANON_JWT")
+        or ""
+    ).strip()
+
+
+def _jwt_expiry_epoch(token: str) -> int | None:
+    parts = token.split(".")
+    if len(parts) < 2:
+        return None
+    payload = parts[1]
+    payload += "=" * ((4 - len(payload) % 4) % 4)
+    try:
+        decoded = base64.urlsafe_b64decode(payload.encode("ascii")).decode("utf-8")
+        data = json.loads(decoded)
+    except Exception:
+        return None
+    exp = data.get("exp")
+    if isinstance(exp, (int, float)):
+        return int(exp)
+    return None
+
+
+def _token_is_fresh(token: str, skew_seconds: int = 60) -> bool:
+    if not token:
+        return False
+    exp = _jwt_expiry_epoch(token)
+    if exp is None:
+        return True
+    return exp > int(time.time()) + max(0, skew_seconds)
+
+
+def _refresh_access_token(auth_state: dict[str, str]) -> tuple[str | None, str | None]:
+    supabase_url = (auth_state.get("supabase_url") or "").strip().rstrip("/")
+    publishable_key = (auth_state.get("publishable_key") or "").strip()
+    refresh_token = (auth_state.get("refresh_token") or "").strip()
+    if not (supabase_url and publishable_key and refresh_token):
+        return None, "Refresh token flow is not configured."
+
+    request_body = json.dumps({"refresh_token": refresh_token}).encode("utf-8")
+    request = urllib_request.Request(
+        f"{supabase_url}/auth/v1/token?grant_type=refresh_token",
+        data=request_body,
+        method="POST",
+        headers={
+            "Content-Type": "application/json",
+            "apikey": publishable_key,
+        },
+    )
+    try:
+        with urllib_request.urlopen(request, timeout=12) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except urllib_error.HTTPError as exc:
+        message = exc.reason
+        try:
+            body = exc.read().decode("utf-8")
+            parsed = json.loads(body)
+            message = parsed.get("msg") or parsed.get("message") or message
+        except Exception:
+            pass
+        return None, f"Token refresh failed ({exc.code}): {message}"
+    except Exception as exc:
+        return None, f"Token refresh failed: {exc}"
+
+    access_token = str(payload.get("access_token") or "").strip()
+    next_refresh_token = str(payload.get("refresh_token") or "").strip()
+    if not access_token:
+        return None, "Token refresh returned no access_token."
+    auth_state["access_token"] = access_token
+    if next_refresh_token:
+        auth_state["refresh_token"] = next_refresh_token
+    return access_token, None
+
+
+def _ensure_access_token(
+    auth_state: dict[str, str], auth_lock: threading.Lock, force_refresh: bool = False
+) -> tuple[str | None, str | None]:
+    with auth_lock:
+        token = (auth_state.get("access_token") or "").strip()
+        if token and not force_refresh and _token_is_fresh(token):
+            return token, None
+
+        refreshed_token, refresh_error = _refresh_access_token(auth_state)
+        if refreshed_token:
+            return refreshed_token, None
+
+        if token and _token_is_fresh(token, skew_seconds=0):
+            return token, None
+        return None, refresh_error or "No valid access token available."
+
+
 class StationSnapshotHandler(BaseHTTPRequestHandler):
-    server_version = "uk-aq-station-snapshot-local/1.0"
+    server_version = "uk-aq-station-snapshot-local/1.1"
 
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
@@ -56,6 +155,9 @@ class StationSnapshotHandler(BaseHTTPRequestHandler):
             return
         if parsed.path == "/api/config":
             self._serve_config()
+            return
+        if parsed.path == "/api/token":
+            self._serve_token(parsed)
             return
         self.send_error(HTTPStatus.NOT_FOUND, "Not found")
 
@@ -76,13 +178,48 @@ class StationSnapshotHandler(BaseHTTPRequestHandler):
         self.wfile.write(content.encode("utf-8"))
 
     def _serve_config(self) -> None:
+        access_token, _token_error = _ensure_access_token(
+            self.server.auth_state,
+            self.server.auth_lock,
+            force_refresh=False,
+        )
         payload = json.dumps(
             {
                 "edge_url": self.server.edge_url,
-                "default_jwt": self.server.default_jwt,
+                "default_jwt": access_token or "",
             },
             indent=2,
         )
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.end_headers()
+        self.wfile.write(payload.encode("utf-8"))
+
+    def _serve_token(self, parsed) -> None:
+        query = parse_qs(parsed.query or "")
+        force_refresh = (query.get("force_refresh", ["0"])[0] or "").strip() in (
+            "1",
+            "true",
+            "yes",
+        )
+        access_token, token_error = _ensure_access_token(
+            self.server.auth_state,
+            self.server.auth_lock,
+            force_refresh=force_refresh,
+        )
+        if not access_token:
+            payload = json.dumps({"error": token_error or "No valid token available."}, indent=2)
+            self.send_response(HTTPStatus.UNAUTHORIZED)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(payload.encode("utf-8"))
+            return
+
+        payload = json.dumps({"access_token": access_token}, indent=2)
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", "application/json")
         self.send_header("Cache-Control", "no-store")
@@ -116,7 +253,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--dev-jwt",
         default=os.getenv("UK_AQ_DEV_JWT", ""),
-        help="Auth JWT for edge calls (required unless UK_AQ_DEV_JWT is set).",
+        help="Initial auth JWT for edge calls (defaults to UK_AQ_DEV_JWT).",
+    )
+    parser.add_argument(
+        "--dev-refresh-token",
+        default=os.getenv("UK_AQ_DEV_REFRESH_TOKEN", ""),
+        help=(
+            "Refresh token for auto-refreshing UK_AQ_DEV_JWT. "
+            "Defaults to UK_AQ_DEV_REFRESH_TOKEN."
+        ),
     )
     return parser.parse_args()
 
@@ -137,16 +282,30 @@ def main() -> None:
     if not html_path.exists():
         raise SystemExit(f"HTML file not found: {html_path}")
     dev_jwt = (args.dev_jwt or "").strip()
-    if not dev_jwt:
+    dev_refresh_token = (args.dev_refresh_token or "").strip()
+    supabase_url = (os.getenv("SUPABASE_URL") or os.getenv("SB_SUPABASE_URL") or "").strip()
+    publishable_key = _env_publishable_key()
+
+    if not dev_jwt and not dev_refresh_token:
         raise SystemExit(
-            "UK_AQ_DEV_JWT is required for this dashboard. "
-            "Set it in .env or pass --dev-jwt."
+            "UK_AQ_DEV_JWT or UK_AQ_DEV_REFRESH_TOKEN is required for this dashboard."
+        )
+    if dev_refresh_token and (not supabase_url or not publishable_key):
+        raise SystemExit(
+            "Auto-refresh requires SUPABASE_URL (or SB_SUPABASE_URL) and "
+            "SB_PUBLISHABLE_DEFAULT_KEY (or SUPABASE_PUBLISHABLE_DEFAULT_KEY / SB_ANON_JWT)."
         )
 
     server = ThreadingHTTPServer((args.host, args.port), StationSnapshotHandler)
     server.html_path = html_path
     server.edge_url = edge_url
-    server.default_jwt = dev_jwt
+    server.auth_lock = threading.Lock()
+    server.auth_state = {
+        "access_token": dev_jwt,
+        "refresh_token": dev_refresh_token,
+        "supabase_url": supabase_url,
+        "publishable_key": publishable_key,
+    }
 
     print(f"UK AQ station snapshot dashboard running at http://{args.host}:{args.port}")
     server.serve_forever()

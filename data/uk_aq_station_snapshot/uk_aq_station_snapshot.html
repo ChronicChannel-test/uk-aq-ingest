@@ -46,6 +46,15 @@
       grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
       margin-bottom: 10px;
     }
+    .row.controls {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: end;
+      gap: 10px;
+    }
+    .control {
+      flex: 0 0 auto;
+    }
     label {
       font-size: 0.85rem;
       color: var(--muted);
@@ -70,6 +79,13 @@
       font-weight: 600;
     }
     button:hover { filter: brightness(0.95); }
+    #edgeUrl { width: 420px; max-width: 100%; }
+    #stationId { width: 110px; max-width: 100%; }
+    #stationRef { width: 160px; max-width: 100%; }
+    #window { width: 90px; max-width: 100%; }
+    #obsLimit { width: 100px; max-width: 100%; }
+    #timeseriesSelect { width: 540px; max-width: 100%; }
+    #loadBtn { width: 220px; max-width: 100%; }
     .status {
       padding: 8px 10px;
       border-radius: 8px;
@@ -96,15 +112,23 @@
       font-size: 0.8rem;
     }
     table {
-      width: 100%;
+      width: max-content;
       border-collapse: collapse;
       font-size: 0.84rem;
     }
     th, td {
       border: 1px solid var(--line);
-      padding: 5px 7px;
+      padding: 5px 15px;
       vertical-align: top;
       text-align: left;
+      white-space: nowrap;
+      overflow-wrap: normal;
+    }
+    th.wrap-col,
+    td.wrap-col {
+      white-space: normal;
+      overflow-wrap: anywhere;
+      min-width: 280px;
     }
     th {
       background: #f5f8fc;
@@ -129,28 +153,28 @@
   <main>
     <section class="card">
       <h1>Station Snapshot Dashboard (Local)</h1>
-      <div class="row">
-        <div>
+      <div class="row controls">
+        <div class="control">
           <label for="edgeUrl">Edge URL</label>
           <input id="edgeUrl" type="text" />
         </div>
-        <div>
+        <div class="control">
           <label for="stationId">station_id</label>
-          <input id="stationId" type="text" placeholder="e.g. 1234" />
+          <input id="stationId" type="text" value="189841" placeholder="e.g. 1234" />
         </div>
-        <div>
+        <div class="control">
           <label for="stationRef">station_ref</label>
           <input id="stationRef" type="text" placeholder="e.g. GB123" />
         </div>
-        <div>
+        <div class="control">
           <label for="window">window</label>
           <select id="window">
-            <option value="6h" selected>6h</option>
-            <option value="24h">24h</option>
+            <option value="6h">6h</option>
+            <option value="24h" selected>24h</option>
             <option value="7d">7d</option>
           </select>
         </div>
-        <div>
+        <div class="control">
           <label for="obsLimit">obs_limit</label>
           <select id="obsLimit">
             <option value="100" selected>100</option>
@@ -158,14 +182,14 @@
           </select>
         </div>
       </div>
-      <div class="row">
-        <div>
+      <div class="row controls">
+        <div class="control">
           <label for="timeseriesSelect">timeseries_id (from loaded station)</label>
           <select id="timeseriesSelect" disabled>
             <option value="">Load station first</option>
           </select>
         </div>
-        <div style="align-self: end;">
+        <div class="control">
           <button id="loadBtn" type="button">Load Snapshot</button>
         </div>
       </div>
@@ -241,7 +265,37 @@
     function asText(value) {
       if (value === null || value === undefined) return "";
       if (typeof value === "object") return JSON.stringify(value);
-      return String(value);
+      const text = String(value);
+      return formatDatetimeText(text);
+    }
+
+    function formatDatetimeText(text) {
+      const datetimeMatch = String(text).match(
+        /^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2}:\d{2})(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?$/
+      );
+      return datetimeMatch ? `${datetimeMatch[1]} ${datetimeMatch[2]}` : String(text);
+    }
+
+    function formatDatetimeFields(value) {
+      if (Array.isArray(value)) {
+        return value.map((item) => formatDatetimeFields(item));
+      }
+      if (value && typeof value === "object") {
+        const out = {};
+        Object.keys(value).forEach((key) => {
+          out[key] = formatDatetimeFields(value[key]);
+        });
+        return out;
+      }
+      if (typeof value === "string") {
+        return formatDatetimeText(value);
+      }
+      return value;
+    }
+
+    function isWrapColumn(columnName) {
+      const key = String(columnName || "").toLowerCase();
+      return key.includes("interval") || key.includes("lag");
     }
 
     function renderKeyValueTable(table, rowObj) {
@@ -281,12 +335,16 @@
       );
 
       const header = document.createElement("tr");
-      header.innerHTML = keys.map((k) => `<th>${k}</th>`).join("");
+      header.innerHTML = keys
+        .map((k) => `<th class="${isWrapColumn(k) ? "wrap-col" : ""}">${k}</th>`)
+        .join("");
       table.appendChild(header);
 
       rows.forEach((row) => {
         const tr = document.createElement("tr");
-        tr.innerHTML = keys.map((k) => `<td>${asText((row || {})[k])}</td>`).join("");
+        tr.innerHTML = keys
+          .map((k) => `<td class="${isWrapColumn(k) ? "wrap-col" : ""}">${asText((row || {})[k])}</td>`)
+          .join("");
         table.appendChild(tr);
       });
     }
@@ -334,7 +392,7 @@
     function renderSnapshot(snapshot) {
       state.snapshot = snapshot;
       renderCounts(snapshot);
-      el.metaJson.textContent = JSON.stringify(snapshot.meta || {}, null, 2);
+      el.metaJson.textContent = JSON.stringify(formatDatetimeFields(snapshot.meta || {}), null, 2);
       renderKeyValueTable(el.stationTable, snapshot.station || null);
       renderRowsTable(el.timeseriesTable, snapshot.timeseries || []);
       renderRowsTable(el.stationCheckpointTable, snapshot.stations_checkpoints || []);
@@ -374,17 +432,28 @@
 
       try {
         if (!authToken) {
-          throw new Error("JWT missing. Set UK_AQ_DEV_JWT in .env (or use --dev-jwt).");
+          await fetchToken(false);
         }
         const url = buildSnapshotUrl(overrideTimeseriesId);
-        const response = await fetch(url, {
+        let response = await fetch(url, {
           method: "GET",
           headers: {
             "Authorization": `Bearer ${authToken}`,
             "Content-Type": "application/json",
           },
         });
-        const payload = await response.json().catch(() => ({}));
+        let payload = await response.json().catch(() => ({}));
+        if (response.status === 401) {
+          await fetchToken(true);
+          response = await fetch(url, {
+            method: "GET",
+            headers: {
+              "Authorization": `Bearer ${authToken}`,
+              "Content-Type": "application/json",
+            },
+          });
+          payload = await response.json().catch(() => ({}));
+        }
         if (!response.ok) {
           const msg = payload && payload.error ? payload.error : `HTTP ${response.status}`;
           throw new Error(msg);
@@ -417,13 +486,35 @@
       }
     }
 
+    async function fetchToken(forceRefresh) {
+      const query = forceRefresh ? "?force_refresh=1" : "";
+      const response = await fetch(`/api/token${query}`, { cache: "no-store" });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const msg = payload && payload.error
+          ? payload.error
+          : `Token HTTP ${response.status}`;
+        throw new Error(msg);
+      }
+      const token = String(payload.access_token || "").trim();
+      if (!token) {
+        throw new Error("Token endpoint returned no access token.");
+      }
+      authToken = token;
+    }
+
     el.loadBtn.addEventListener("click", () => loadSnapshot(""));
     el.timeseriesSelect.addEventListener("change", () => {
       if (el.timeseriesSelect.disabled) return;
       loadSnapshot(el.timeseriesSelect.value);
     });
 
-    loadConfig();
+    async function init() {
+      await loadConfig();
+      await loadSnapshot("");
+    }
+
+    init();
   </script>
 </body>
 </html>
