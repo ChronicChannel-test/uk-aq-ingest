@@ -1,4 +1,3 @@
-// @ts-nocheck
 // Dispatch connector polls based on connectors table settings.
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 
@@ -100,7 +99,13 @@ const DEFAULT_BATCH_LIMIT: Record<string, number> = {
   openaq: 56,
 };
 
-const IN_FLIGHT_TIMEOUT_MINUTES = 10;
+const IN_FLIGHT_TIMEOUT_MINUTES_ENV = Deno.env.get("IN_FLIGHT_TIMEOUT_MINUTES");
+const IN_FLIGHT_TIMEOUT_MINUTES = (() => {
+  const parsed = IN_FLIGHT_TIMEOUT_MINUTES_ENV
+    ? Number(IN_FLIGHT_TIMEOUT_MINUTES_ENV)
+    : NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 10;
+})();
 const DEFAULT_PARALLEL_INGEST = false;
 const DEFAULT_MAX_RUNS_PER_DISPATCH_CALL = 1;
 
@@ -443,7 +448,7 @@ function findRecentInFlightConnector(
     }
     if (ageMs <= timeoutMs) {
       const ageMinutes = Math.floor(ageMs / 60000);
-      if (!candidate || ageMs < candidate.age_minutes * 60000) {
+      if (!candidate || ageMinutes < candidate.age_minutes) {
         candidate = {
           connector_code: connectorCode,
           last_run_start: startedAt.toISOString(),
