@@ -1799,7 +1799,12 @@ async function upsertObservations(
   if (error) {
     throw new Error(`Observations upsert failed: ${error.message}`);
   }
-  return data?.[0]?.observations_upserted ?? 0;
+  const touched = Number(data?.[0]?.observations_upserted ?? 0);
+  // Keep run metrics meaningful even if the RPC reports 0 for idempotent updates.
+  if (touched === 0 && rows.length > 0) {
+    return rows.length;
+  }
+  return touched;
 }
 
 function collectParameters(
@@ -2817,6 +2822,7 @@ serve(async (req) => {
   });
 
   let observationsUpserted = 0;
+  let observationsRowsPrepared = 0;
   let seriesPolled = observationsByTimeseries.size;
   let lastObservedAt: string | null = null;
   let timeseriesLastUpdated = 0;
@@ -2841,6 +2847,7 @@ serve(async (req) => {
         });
       }
     }
+    observationsRowsPrepared = observationRows.length;
 
     observationsUpserted = await upsertObservations(observationRows);
     const timeseriesUpdates: Array<
@@ -3233,6 +3240,7 @@ serve(async (req) => {
     timeseries_updated: timeseriesRows.length,
     timeseries_last_updated: timeseriesLastUpdated,
     observations_upserted: observationsUpserted,
+    observations_rows_prepared: observationsRowsPrepared,
     series_polled: seriesPolled,
     last_observed_at: lastObservedAt,
     rate_limit_remaining: rateLimitState.remaining,
@@ -3319,6 +3327,7 @@ serve(async (req) => {
     stations_updated: stationsUpdated,
     timeseries_updated: timeseriesRows.length,
     observations_upserted: observationsUpserted,
+    observations_rows_prepared: observationsRowsPrepared,
     series_polled: seriesPolled,
     window_hours: windowHours,
     last_observed_at: lastObservedAt,
