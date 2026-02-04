@@ -15,6 +15,21 @@ type ConnectorRow = {
   overwrite_station_name?: boolean | null;
 };
 
+// Shared rate limit tracking state for OpenAQ requests.
+const rateLimitState: {
+  remaining: number | null;
+  stop: boolean;
+  stopReason: string | null;
+  limit: number | null;
+  firstRemaining: number | null;
+} = {
+  remaining: null,
+  stop: false,
+  stopReason: null,
+  limit: null,
+  firstRemaining: null,
+};
+
 type ErrorLogEntry = {
   severity: "error" | "warn";
   message: string;
