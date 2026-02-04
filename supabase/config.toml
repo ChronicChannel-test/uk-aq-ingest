@@ -6,3 +6,6 @@ verify_jwt = false
 
 [functions.uk_aq_latest]
 verify_jwt = false
+
+[functions.uk_aq_station_snapshot]
+verify_jwt = false
