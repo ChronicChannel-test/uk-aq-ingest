@@ -126,7 +126,7 @@ type OpenAQHourlyRecord = {
 
 const DEFAULT_BASE_URL = "https://api.openaq.org/v3";
 const DEFAULT_CONNECTOR_CODE = "openaq";
-const DEFAULT_SERVICE_LABEL = "OpenAQ";
+//const DEFAULT_SERVICE_LABEL = "OpenAQ";
 const DEFAULT_USER_AGENT = "uk-air-quality-networks";
 const DEFAULT_WINDOW_HOURS = 6;
 const DEFAULT_BBOX = "-8.623555,49.863222,1.763337,60.871222";
@@ -159,8 +159,8 @@ const OPENAQ_CONNECTOR_CODE = Deno.env.get("OPENAQ_CONNECTOR_CODE") ??
   DEFAULT_CONNECTOR_CODE;
 const OPENAQ_SERVICE_REF = Deno.env.get("OPENAQ_SERVICE_REF") ??
   OPENAQ_CONNECTOR_CODE;
-const OPENAQ_SERVICE_LABEL = Deno.env.get("OPENAQ_SERVICE_LABEL") ??
-  DEFAULT_SERVICE_LABEL;
+//const OPENAQ_SERVICE_LABEL = Deno.env.get("OPENAQ_SERVICE_LABEL") ??
+//  DEFAULT_SERVICE_LABEL;
 const OPENAQ_USER_AGENT = Deno.env.get("OPENAQ_USER_AGENT") ??
   DEFAULT_USER_AGENT;
 const OPENAQ_API_KEY = (Deno.env.get("OPENAQ_API_KEY") ?? "").trim();
@@ -193,6 +193,9 @@ const OPENAQ_RATE_LIMIT_STOP_THRESHOLD = Number(
 const OPENAQ_GAP_REQUESTS_REMAINING_MIN = Number(
   Deno.env.get("OPENAQ_GAP_REQUESTS_REMAINING_MIN") ??
     DEFAULT_GAP_REQUESTS_REMAINING_MIN,
+);
+const OPENAQ_DEBUG_STATION_ID = Number(
+  Deno.env.get("CLEANAIRSURB_ST_ID") ?? 189841,
 );
 const OPENAQ_INGEST_STATION_FETCH = ["1", "true", "yes"].includes(
   String(Deno.env.get("OPENAQ_INGEST_STATION_FETCH") ?? "").toLowerCase(),
@@ -2176,7 +2179,7 @@ serve(async (req) => {
   }
 
   const nowMs = Date.now();
-  const debugStationId = 189841;
+  const debugStationId = OPENAQ_DEBUG_STATION_ID;
   if (stationIds.includes(debugStationId)) {
     logLine("INFO", "OpenAQ debug station present", {
       station_id: debugStationId,

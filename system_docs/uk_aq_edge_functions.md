@@ -309,6 +309,7 @@ Optional:
 - `OPENAQ_TIERED_LIMIT` (optional; defaults to `50`)
 - `OPENAQ_STALE_LIMIT` (optional; defaults to `10`)
 - `OPENAQ_RATE_LIMIT_STOP_THRESHOLD` (optional; defaults to `5`)
+- `CLEANAIRSURB_ST_ID` (optional; defaults to `189841`; OpenAQ debug station id used in ingest debug logs)
 - `BREATHELONDON_BASE_URL` (optional override for Breathe London API base URL)
 - `BREATHELONDON_CONNECTOR_CODE` / `BREATHELONDON_SERVICE_REF` (optional override)
 - `BREATHELONDON_SERVICE_LABEL` (optional override)
