@@ -1,10 +1,5 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 
-// Shared rate limit state used by OpenAQ request helpers.
-// This must be declared at top level so that both `openaqRequest`
-// and consumers such as `listHourlyMeasurements` can access it.
-const rateLimitState: { stop: boolean } = { stop: false };
-
 type PollRequest = {
   connector_code?: string;
   station_refs?: string[];
