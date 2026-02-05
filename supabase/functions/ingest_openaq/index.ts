@@ -78,7 +78,7 @@ type OpenAQLocation = {
   country?: { code?: string | null; name?: string | null } | null;
   provider?: { name?: string | null } | null;
   owner?: { name?: string | null } | string | null;
-  // OpenAQ uses "sensors"; we treat sensor.id as timeseries_ref internally.
+  // OpenAQ payload uses "sensors"; we map sensor.id to timeseries_ref internally.
   sensors?: Array<{
     id?: number;
     name?: string | null;
@@ -93,7 +93,7 @@ type OpenAQLocation = {
 type OpenAQLatestRecord = {
   datetime?: { utc?: string | null } | null;
   value?: number | null;
-  // OpenAQ uses sensorsId; we treat it as timeseries_ref internally.
+  // OpenAQ payload exposes a sensor id; resolve to timeseries_ref via mapping.
   sensorsId?: number | null;
   locationsId?: number | null;
   coordinates?: { latitude?: number | null; longitude?: number | null } | null;
@@ -120,7 +120,7 @@ type OpenAQTimeseriesCheckpoint = {
 type OpenAQHourlyRecord = {
   datetime?: { utc?: string | null } | null;
   value?: number | null;
-  // OpenAQ uses sensorsId; we treat it as timeseries_ref internally.
+  // OpenAQ payload exposes a sensor id; resolve to timeseries_ref via mapping.
   sensorsId?: number | null;
 };
 
@@ -1439,6 +1439,16 @@ function buildStationName(
     return `${baseName} - ${ownerName}`;
   }
   return baseName;
+}
+
+function resolveTimeseriesRefFromLatest(
+  record: OpenAQLatestRecord,
+): string | null {
+  const raw = record?.sensorsId;
+  if (raw === null || raw === undefined) {
+    return null;
+  }
+  return String(raw);
 }
 
 function resolveCoordinates(
@@ -2782,7 +2792,7 @@ serve(async (req) => {
       return;
     }
     for (const record of latest) {
-      const timeseriesRef = record?.sensorsId;
+      const timeseriesRef = resolveTimeseriesRefFromLatest(record);
       const observedAt = record?.datetime?.utc;
       if (!timeseriesRef || !observedAt) {
         continue;
