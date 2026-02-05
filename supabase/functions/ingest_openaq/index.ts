@@ -1935,6 +1935,7 @@ serve(async (req) => {
     ? payload.station_refs.map((ref) => String(ref))
     : [];
   let stationIdByRef: Record<string, number> = {};
+  let stationRefById: Record<number, string> = {};
   let selectedStations: Array<
     { station_ref: string; station_id: number | null }
   > = [];
@@ -2018,11 +2019,13 @@ serve(async (req) => {
     refs: string[],
     mapping: Record<string, number>,
     stationMapping?: Map<string, number>,
+    stationRefsById?: Record<number, string>,
   ) => {
     const uniqueRefs = Array.from(new Set(refs));
     const missingSample: string[] = [];
-    const missingDetails: Array<{ timeseries_ref: string; station_id?: number }> =
-      [];
+    const missingDetails: Array<
+      { timeseries_ref: string; station_id?: number; station_ref?: string }
+    > = [];
     let missingCount = 0;
     for (const ref of uniqueRefs) {
       if (mapping[ref] === undefined) {
@@ -2034,7 +2037,11 @@ serve(async (req) => {
           const stationId = stationMapping.get(ref);
           missingDetails.push(
             stationId
-              ? { timeseries_ref: ref, station_id: stationId }
+              ? {
+                timeseries_ref: ref,
+                station_id: stationId,
+                station_ref: stationRefsById?.[stationId],
+              }
               : { timeseries_ref: ref },
           );
         }
@@ -2207,6 +2214,13 @@ serve(async (req) => {
       missingRefsForIds,
     );
     stationIdByRef = { ...stationIdByRef, ...fetchedIds };
+  }
+  stationRefById = {};
+  for (const [stationRef, stationId] of Object.entries(stationIdByRef)) {
+    const idValue = Number(stationId);
+    if (Number.isFinite(idValue)) {
+      stationRefById[idValue] = stationRef;
+    }
   }
   {
     const missingStationRefs = stationRefsForIds.filter(
@@ -2855,6 +2869,7 @@ serve(async (req) => {
         timeseriesRefs,
         timeseriesIdByRef,
         stationIdByTimeseriesRef,
+        stationRefById,
       );
       if (missingSummary.missingCount > 0) {
         await logError({

@@ -87,7 +87,7 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
   - Requires an existing connector row; the ingest does not create connectors.
   - Uses `OPENAQ_*` environment variables for base URL, API key, and bbox paging.
   - Fetches locations via `/v3/locations` (bbox) and latest values via `/v3/locations/{id}/latest`.
-  - Performs a pre-call gap check using `now() > last_observed_at + 2 hours` from station checkpoints; when true, polls `/v3/sensors/{id}/measurements/hourly` instead of `/latest` for that station.
+  - Performs a pre-call gap check using `openaq_timeseries_checkpoints.last_observed_at` (gap if any timeseries is 2–24 hours old); when true, polls `/v3/sensors/{id}/measurements/hourly` instead of `/latest` for that station.
   - Hourly gap observations are keyed to the requested `timeseries_ref` (sensor id) to avoid payload `sensorsId` mismatches.
   - Hourly `observed_at` is derived from `period.datetimeTo.utc` (fallbacks to `datetime.utc` / `period.datetimeFrom.utc`) to match OpenAQ payloads.
   - When `locations_fetched=false`, loads timeseries refs for all selected stations via `uk_aq_rpc_timeseries_refs_by_station_ids` so timeseries checkpoints can always be updated.
