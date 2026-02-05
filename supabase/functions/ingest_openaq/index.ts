@@ -1455,20 +1455,40 @@ function resolveTimeseriesRefFromLatest(
   return String(raw);
 }
 
-function resolveHourlyObservedAt(record: OpenAQHourlyRecord): string | null {
+function resolveHourlyObservedAt(
+  record: OpenAQHourlyRecord,
+  nowMs = Date.now(),
+): string | null {
   const period = (record as {
     period?: {
       datetimeTo?: { utc?: string | null } | null;
       datetimeFrom?: { utc?: string | null } | null;
     } | null;
+    coverage?: {
+      datetimeTo?: { utc?: string | null } | null;
+      datetimeFrom?: { utc?: string | null } | null;
+    } | null;
   })?.period;
-  const observedAt =
-    period?.datetimeTo?.utc ??
-      record?.datetime?.utc ??
-      period?.datetimeFrom?.utc ??
-      null;
+  const coverage = (record as {
+    coverage?: {
+      datetimeTo?: { utc?: string | null } | null;
+      datetimeFrom?: { utc?: string | null } | null;
+    } | null;
+  })?.coverage;
+  const coverageTo = coverage?.datetimeTo?.utc ?? null;
+  if (coverageTo) {
+    return String(coverageTo);
+  }
+  const recordUtc = record?.datetime?.utc ?? null;
+  const periodTo = period?.datetimeTo?.utc ?? null;
+  const periodFrom = period?.datetimeFrom?.utc ?? null;
+  const observedAt = recordUtc ?? periodTo ?? periodFrom ?? null;
   if (!observedAt) {
     return null;
+  }
+  const observedMs = Date.parse(observedAt);
+  if (Number.isFinite(observedMs) && observedMs > nowMs) {
+    return periodFrom ? String(periodFrom) : String(new Date(nowMs).toISOString());
   }
   return String(observedAt);
 }
@@ -2735,7 +2755,7 @@ serve(async (req) => {
             }
             const returned = new Set<string>();
             for (const record of hourly) {
-              const observedAt = resolveHourlyObservedAt(record);
+              const observedAt = resolveHourlyObservedAt(record, nowMs);
               if (!observedAt) {
                 continue;
               }
@@ -2787,7 +2807,7 @@ serve(async (req) => {
           }
         }
         for (const record of hourly) {
-          const observedAt = resolveHourlyObservedAt(record);
+          const observedAt = resolveHourlyObservedAt(record, nowMs);
           if (!observedAt) {
             continue;
           }
