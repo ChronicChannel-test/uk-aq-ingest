@@ -1,1 +1,0 @@
-Plume Labs (Air Report / Flow)	https://plumelabs.com/en/forecast-api/ (API info) (plumelabs.com)	PM2.5; PM10; NO2; O3 (real-time & forecast)	Commercial (paid)	JSON (REST)	Modelled + aggregate observations; offers street-level forecasts and historical/modelled concentrations; not a raw sensor network but useful for modeled coverage in the UK. (plumelabs.com)

@@ -2477,6 +2477,7 @@ serve(async (req) => {
   const latestObservedByStationId = new Map<number, string>();
   const gapContigEndByTimeseriesRef = new Map<string, string>();
   const gapHasRecentGapByTimeseriesRef = new Map<string, boolean>();
+  const seenStationIds = new Set<number>();
   const polledStationIds = new Set<number>();
   const windowMs = Number.isFinite(windowHours) && windowHours > 0
     ? windowHours * 60 * 60 * 1000
@@ -2564,10 +2565,10 @@ serve(async (req) => {
     const stationIdValue = stationIdByRef[locationId];
     const stationId = stationIdValue ? Number(stationIdValue) : null;
     if (stationId !== null && Number.isFinite(stationId)) {
-      polledStationIds.add(stationId);
+      seenStationIds.add(stationId);
     }
     if (stationId === debugStationId) {
-      logLine("INFO", "OpenAQ debug station polled", {
+      logLine("INFO", "OpenAQ debug station selected", {
         station_id: stationId,
         gap_flagged: gapStationIds.has(stationId),
         station_checkpoint: checkpointByStationId[stationId] ?? null,
@@ -2635,6 +2636,9 @@ serve(async (req) => {
             }
             continue;
           }
+        }
+        if (stationId !== null && Number.isFinite(stationId)) {
+          polledStationIds.add(stationId);
         }
         const baseObservedAt = tsCheckpoint?.last_observed_at ??
           stationCheckpoint?.last_observed_at ??
@@ -2816,6 +2820,9 @@ serve(async (req) => {
 
     let latest: OpenAQLatestRecord[] = [];
     try {
+      if (stationId !== null && Number.isFinite(stationId)) {
+        polledStationIds.add(stationId);
+      }
       latest = await listLatestForLocation(locationId, rawRecorder);
     } catch (err) {
       await logError({

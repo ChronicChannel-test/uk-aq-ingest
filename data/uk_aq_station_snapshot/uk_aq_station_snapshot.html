@@ -141,6 +141,16 @@
       border: 1px solid var(--line);
       border-radius: 8px;
     }
+    .card.tight {
+      justify-self: start;
+      width: max-content;
+      max-width: 100%;
+    }
+    .card.tight .table-wrap {
+      width: max-content;
+      max-width: 100%;
+      display: inline-block;
+    }
     pre {
       margin: 0;
       font-size: 0.8rem;
@@ -206,7 +216,7 @@
       <pre id="metaJson">{}</pre>
     </section>
 
-    <section class="card">
+    <section class="card tight">
       <h2>station</h2>
       <div class="table-wrap"><table id="stationTable"></table></div>
     </section>
@@ -226,7 +236,7 @@
       <div class="table-wrap"><table id="timeseriesCheckpointTable"></table></div>
     </section>
 
-    <section class="card">
+    <section class="card tight">
       <h2>observations (newest first)</h2>
       <div class="table-wrap"><table id="observationTable"></table></div>
     </section>
