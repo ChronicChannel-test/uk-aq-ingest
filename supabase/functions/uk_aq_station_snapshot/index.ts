@@ -183,7 +183,10 @@ serve(async (req) => {
     return jsonResponse({ error: error.message }, 500);
   }
 
-  if (!data || (typeof data === "object" && data !== null && (data as Record<string, unknown>).station == null)) {
+  const stationPayload = data && typeof data === "object" && "station" in data
+    ? (data as Record<string, unknown>).station
+    : null;
+  if (!data || stationPayload === null || stationPayload === undefined) {
     return jsonResponse({ error: "Station not found." }, 404);
   }
 
