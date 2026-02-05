@@ -263,15 +263,9 @@ begin
       c.station_ref,
       c.last_observed_at
     from candidates c
-    where (c.last_observed_at is null or c.last_observed_at <= now() - interval '24 hours')
+    where c.due_at <= now() - interval '24 hours'
       and (c.last_polled_at is null or c.last_polled_at <= now() - interval '12 hours')
-      and not exists (
-        select 1 from tier1 t where t.station_id = c.station_id
-      )
-      and not exists (
-        select 1 from tier2 t where t.station_id = c.station_id
-      )
-    order by c.last_observed_at nulls first
+    order by c.due_at asc
     limit stale_limit
   ),
   combined as (

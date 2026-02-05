@@ -95,6 +95,7 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
   - If `station_refs` are provided, limits polling to those location ids; otherwise uses a tiered selector (`uk_aq_rpc_openaq_select_station_refs`) that returns both station refs and station ids.
   - Uses `batch_size` (from dispatcher `connectors.poll_timeseries_batch_size`) as `OPENAQ_MAX_REQUESTS_PER_RUN`.
   - Uses stale cap 4 and tiered cap up to 52 (`tier1` first, then `tier2`) for automatic station selection.
+  - Stale selection uses `next_due_at <= now() - 24 hours` plus `last_polled_at <= now() - 12 hours` (stations with `next_due_at` null stay in tier1).
   - `tier2` includes all stations with `due_at < now()-3h` (not capped at 24h old) so overdue stations are not trapped in a 24h dead zone before stale cooldown.
   - Applies a per-run OpenAQ request budget (`OPENAQ_MAX_REQUESTS_PER_RUN`, default 56).
   - Applies a gap reserve guard (`OPENAQ_GAP_REQUESTS_REMAINING_MIN`, default 10) so hourly gap calls do not consume the final request budget.
@@ -111,7 +112,7 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
   - Writes a log file to Dropbox `/connectors/openaq/log/YYYY-MM-DD/` (prefix `uk_aq_log_edge_openaq_`).
   - Writes raw payloads to Dropbox `/connectors/openaq/raw_data/YYYY-MM-DD/` as ZIP (prefix `uk_aq_raw_edge_openaq_`).
   - Writes diagnostic entries to `error_logs` when Dropbox config is missing/mismatched or log/raw uploads fail.
-  - Writes an error log entry when timeseries refs are polled but cannot be mapped to internal `timeseries_id`s (includes sample refs + station ids).
+  - Writes an error log entry when timeseries refs are polled but cannot be mapped to internal `timeseries_id`s (includes sample refs + station ids/refs when available).
   - Buffers error log lines for optional Dropbox error log uploads.
   - Logs timeseries mapping diagnostics (missing refs/station ids samples) to aid checkpoint debugging.
 

@@ -36,24 +36,23 @@ tier1 as (
   from candidates
   where due_at <= now()
     and due_at >= now() - interval '3 hours'
-    and (last_polled_at is null or last_polled_at <= now() - interval '15 minutes')
+    and (last_polled_at is null or last_polled_at <= now() - interval '5 minutes')
 ),
 tier2 as (
   select station_id
-  from candidates
+  from candidates c
   where due_at < now() - interval '3 hours'
     and due_at >= now() - interval '24 hours'
     and (last_polled_at is null or last_polled_at <= now() - interval '1 hour')
+    and not exists (
+      select 1 from tier1 t where t.station_id = c.station_id
+    )
 ),
 stale as (
   select station_id
   from candidates c
-  where (c.last_observed_at is null or c.last_observed_at <= now() - interval '24 hours')
+  where c.due_at <= now() - interval '24 hours'
     and (c.last_polled_at is null or c.last_polled_at <= now() - interval '12 hours')
-    and not exists (
-      select 1 from (select station_id from tier1 union select station_id from tier2) t
-      where t.station_id = c.station_id
-    )
 )
 select
   (select count(*) from candidates) as candidate_count,

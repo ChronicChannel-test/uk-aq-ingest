@@ -51,6 +51,8 @@ curl -sS   -H "x-api-key: ${DEV_USER_OPENAQ_API_KEY}"   "https://api.openaq.org/
   
   
   
+  
+  
   do $$
   declare
     v_station_id bigint;

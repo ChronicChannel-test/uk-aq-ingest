@@ -1330,6 +1330,7 @@ function recordObservation(
   stationId: number | null,
   nowMs: number,
   windowMs: number | null,
+  stationIdByObservedRef?: Map<string, number>,
 ): void {
   const observedMs = Date.parse(observedAt);
   if (!Number.isFinite(observedMs)) {
@@ -1361,6 +1362,9 @@ function recordObservation(
     const current = latestObservedByStationId.get(stationId);
     if (!current || observedAt > current) {
       latestObservedByStationId.set(stationId, observedAt);
+    }
+    if (stationIdByObservedRef && !stationIdByObservedRef.has(timeseriesRef)) {
+      stationIdByObservedRef.set(timeseriesRef, stationId);
     }
   }
 }
@@ -2020,6 +2024,7 @@ serve(async (req) => {
     mapping: Record<string, number>,
     stationMapping?: Map<string, number>,
     stationRefsById?: Record<number, string>,
+    observedStationMapping?: Map<string, number>,
   ) => {
     const uniqueRefs = Array.from(new Set(refs));
     const missingSample: string[] = [];
@@ -2033,8 +2038,9 @@ serve(async (req) => {
         if (missingSample.length < 10) {
           missingSample.push(ref);
         }
-        if (stationMapping && missingDetails.length < 10) {
-          const stationId = stationMapping.get(ref);
+        if ((stationMapping || observedStationMapping) && missingDetails.length < 10) {
+          const stationId = stationMapping?.get(ref) ??
+            observedStationMapping?.get(ref);
           missingDetails.push(
             stationId
               ? {
@@ -2467,6 +2473,7 @@ serve(async (req) => {
     string,
     Map<string, number | null>
   >();
+  const stationIdByObservedTimeseriesRef = new Map<string, number>();
   const latestObservedByStationId = new Map<number, string>();
   const gapContigEndByTimeseriesRef = new Map<string, string>();
   const gapHasRecentGapByTimeseriesRef = new Map<string, boolean>();
@@ -2794,6 +2801,7 @@ serve(async (req) => {
             stationId,
             nowMs,
             null,
+            stationIdByObservedTimeseriesRef,
           );
         }
       }
@@ -2834,6 +2842,7 @@ serve(async (req) => {
         stationId,
         nowMs,
         windowMs,
+        stationIdByObservedTimeseriesRef,
       );
     }
   }, () => {
@@ -2870,6 +2879,7 @@ serve(async (req) => {
         timeseriesIdByRef,
         stationIdByTimeseriesRef,
         stationRefById,
+        stationIdByObservedTimeseriesRef,
       );
       if (missingSummary.missingCount > 0) {
         await logError({
