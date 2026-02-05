@@ -610,7 +610,6 @@ def main() -> int:
         if existing:
             uk_air_id = existing.get("uk_air_id")
             match_distance = existing.get("match_distance_m")
-            match_method = existing.get("match_method") or "existing"
             skipped_existing += 1
         else:
             match_row, match_distance, match_method, status = _find_register_match(
