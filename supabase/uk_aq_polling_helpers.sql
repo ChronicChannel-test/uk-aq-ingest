@@ -203,7 +203,13 @@ begin
       stn.station_ref,
       osc.next_due_at,
       osc.last_polled_at,
-      coalesce(osc.last_observed_at, lo.last_observed_at) as last_observed_at,
+      nullif(
+        greatest(
+          coalesce(osc.last_observed_at, '-infinity'::timestamptz),
+          coalesce(lo.last_observed_at, '-infinity'::timestamptz)
+        ),
+        '-infinity'::timestamptz
+      ) as last_observed_at,
       coalesce(osc.next_due_at, now()) as due_at
     from stations stn
     left join openaq_station_checkpoints osc

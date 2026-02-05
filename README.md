@@ -106,6 +106,7 @@ Required runtime values:
 Optional:
 - `UK_AQ_STATION_SNAPSHOT_EDGE_URL` to override the edge URL
 - `UK_AQ_DEV_REFRESH_TOKEN` to auto-refresh expired access tokens
+- `UK_AQ_DEV_ENV_FILE` to persist rotated refresh tokens (default `.env.supabase`)
 
 Issue fresh dashboard auth tokens:
 ```

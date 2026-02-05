@@ -26,7 +26,6 @@ This document summarizes the UK-AQ helper scripts and their inputs/outputs.
 - `OPENAQ_PAGE_LIMIT` (optional; defaults to `1000`)
 - `OPENAQ_MAX_PAGES` (optional; defaults to `0` meaning no cap)
 - `OPENAQ_LOG_LEVEL` (optional; defaults to `INFO`)
-- `OPENAQ_LOG_LEVEL` (optional; defaults to `INFO`)
 
 ## Scripts
 
@@ -110,6 +109,7 @@ Notes:
 - The HTML lives at `data/uk_aq_station_snapshot/uk_aq_station_snapshot.html`.
 - Access token comes from `UK_AQ_DEV_JWT` (or `--dev-jwt`) and is injected via `/api/config` (no JWT input field in UI).
 - If `UK_AQ_DEV_REFRESH_TOKEN` is set, the local server can auto-refresh expired access tokens via `/api/token`.
+- Rotated refresh tokens are written back to the env file (default: `.env.supabase`) so restarts keep working.
 - The page renders raw rows for `stations`, `timeseries`, `openaq_station_checkpoints`, `openaq_timeseries_checkpoints`, and `observations`.
 
 Environment:
@@ -117,6 +117,7 @@ Environment:
 - `UK_AQ_STATION_SNAPSHOT_EDGE_URL` (optional explicit edge URL)
 - `UK_AQ_DEV_JWT` (required unless `UK_AQ_DEV_REFRESH_TOKEN` is provided)
 - `UK_AQ_DEV_REFRESH_TOKEN` (optional; enables auto-refresh)
+- `UK_AQ_DEV_ENV_FILE` (optional; env file to persist rotated refresh tokens, default `.env.supabase`)
 - `SB_PUBLISHABLE_DEFAULT_KEY` (or `SUPABASE_PUBLISHABLE_DEFAULT_KEY` / `SB_ANON_JWT`) required when using auto-refresh
 
 ### `scripts/uk_aq_issue_dev_auth_tokens.py`

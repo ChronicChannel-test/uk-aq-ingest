@@ -93,6 +93,7 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
   - If `station_refs` are provided, limits polling to those location ids; otherwise uses a tiered selector (`uk_aq_rpc_openaq_select_station_refs`) that returns both station refs and station ids.
   - Uses `batch_size` (from dispatcher `connectors.poll_timeseries_batch_size`) as `OPENAQ_MAX_REQUESTS_PER_RUN`.
   - Uses stale cap 4 and tiered cap up to 52 (`tier1` first, then `tier2`) for automatic station selection.
+  - `tier2` includes all stations with `due_at < now()-3h` (not capped at 24h old) so overdue stations are not trapped in a 24h dead zone before stale cooldown.
   - Applies a per-run OpenAQ request budget (`OPENAQ_MAX_REQUESTS_PER_RUN`, default 56).
   - Applies a gap reserve guard (`OPENAQ_GAP_REQUESTS_REMAINING_MIN`, default 10) so hourly gap calls do not consume the final request budget.
   - Tracks per-station scheduling in `uk_aq_raw.openaq_station_checkpoints` (next due, last observed, sample arrays, last polled); when fewer than 10 interval/lag samples exist, `next_due_at` is set to `now() + 5 minutes`. Otherwise it uses the minimum interval (capped at 1 hour) plus minimum lag from samples. If no observations are returned and `next_due_at` is null, it is set to `now() + 5 minutes`.

@@ -32,6 +32,29 @@ def _load_env(path: Path) -> None:
             os.environ[key] = value
 
 
+def _upsert_env_file(path: Path, updates: dict[str, str]) -> None:
+    if path.exists():
+        lines = path.read_text(encoding="utf-8").splitlines()
+    else:
+        lines = []
+    found = set()
+    new_lines: list[str] = []
+    for line in lines:
+        replaced = False
+        for key, value in updates.items():
+            if line.startswith(f"{key}="):
+                new_lines.append(f"{key}={value}")
+                found.add(key)
+                replaced = True
+                break
+        if not replaced:
+            new_lines.append(line)
+    for key, value in updates.items():
+        if key not in found:
+            new_lines.append(f"{key}={value}")
+    path.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
+
+
 def _default_edge_url() -> str:
     explicit = (
         os.getenv("UK_AQ_STATION_SNAPSHOT_EDGE_URL")
@@ -125,6 +148,18 @@ def _refresh_access_token(auth_state: dict[str, str]) -> tuple[str | None, str |
     auth_state["access_token"] = access_token
     if next_refresh_token:
         auth_state["refresh_token"] = next_refresh_token
+        env_path = (auth_state.get("env_path") or "").strip()
+        if env_path:
+            try:
+                _upsert_env_file(
+                    Path(env_path),
+                    {
+                        "UK_AQ_DEV_REFRESH_TOKEN": next_refresh_token,
+                        "UK_AQ_DEV_JWT": access_token,
+                    },
+                )
+            except OSError:
+                pass
     return access_token, None
 
 
@@ -234,6 +269,7 @@ def parse_args() -> argparse.Namespace:
         port_default = int(os.getenv("PORT", "8046"))
     except ValueError:
         port_default = 8046
+    dev_env_default = os.getenv("UK_AQ_DEV_ENV_FILE", ".env.supabase")
     parser = argparse.ArgumentParser(description="Run a local UK AQ Station Snapshot dashboard.")
     parser.add_argument("--host", default=host_default, help="Bind host (default: HOST or 127.0.0.1).")
     parser.add_argument("--port", type=int, default=port_default, help="Bind port (default: PORT or 8046).")
@@ -263,6 +299,14 @@ def parse_args() -> argparse.Namespace:
             "Defaults to UK_AQ_DEV_REFRESH_TOKEN."
         ),
     )
+    parser.add_argument(
+        "--dev-env-file",
+        default=dev_env_default,
+        help=(
+            "Env file to update with rotated UK_AQ_DEV_REFRESH_TOKEN (default: "
+            "UK_AQ_DEV_ENV_FILE or .env.supabase)."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -283,6 +327,7 @@ def main() -> None:
         raise SystemExit(f"HTML file not found: {html_path}")
     dev_jwt = (args.dev_jwt or "").strip()
     dev_refresh_token = (args.dev_refresh_token or "").strip()
+    dev_env_file = (args.dev_env_file or "").strip()
     supabase_url = (os.getenv("SUPABASE_URL") or os.getenv("SB_SUPABASE_URL") or "").strip()
     publishable_key = _env_publishable_key()
 
@@ -305,6 +350,7 @@ def main() -> None:
         "refresh_token": dev_refresh_token,
         "supabase_url": supabase_url,
         "publishable_key": publishable_key,
+        "env_path": dev_env_file,
     }
 
     print(f"UK AQ station snapshot dashboard running at http://{args.host}:{args.port}")

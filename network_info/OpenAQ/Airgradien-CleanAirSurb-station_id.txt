@@ -30,21 +30,21 @@ Other TS
   
   
   
-  curl -sS     -H "x-api-key: ${OPENAQ_API_KEY}"    "https://api.openaq.org/v3/sensors/${CLEANAIRSURB_TS_REF_PM25}/measurements/hourly?datetime_from=2026-02-02T00:00:00Z&datetime_to=2026-02-02T23:00:00Z&limit=100"  | python3 -m json.tool
+  curl -sS     -H "x-api-key: ${DEV_USER_OPENAQ_API_KEY}"    "https://api.openaq.org/v3/sensors/${CLEANAIRSURB_TS_REF_PM25}/measurements/hourly?datetime_from=2026-02-02T00:00:00Z&datetime_to=2026-02-02T23:00:00Z&limit=100"  | python3 -m json.tool
   
   
   
   
   curl -sS \
-    -H "x-api-key: ${OPENAQ_API_KEY}" \
+    -H "x-api-key: ${DEV_USER_OPENAQ_API_KEY}" \
     "https://api.openaq.org/v3/sensors/${CLEANAIRSURB_TS_REF_PM25}/measurements/hourly?datetime_from=2026-02-02T22:00:00Z&datetime_to=2026-02-03T04:00:00Z&limit=100" | python3 -m json.tool
 	
 	
 	
-curl -sS   -H "x-api-key: ${OPENAQ_API_KEY}"   "https://api.openaq.org/v3/locations/${CLEANAIRSURB_ST_REF}/latest" | python3 -m json.tool
+curl -sS   -H "x-api-key: ${DEV_USER_OPENAQ_API_KEY}"   "https://api.openaq.org/v3/locations/${CLEANAIRSURB_ST_REF}/latest" | python3 -m json.tool
 
 	curl -sS \
-	  -H "x-api-key: ${OPENAQ_API_KEY}" \
+	  -H "x-api-key: ${DEV_USER_OPENAQ_API_KEY}" \
 	  "https://api.openaq.org/v3/locations/${CLEANAIRSURB_ST_REF}/latest"   | python3 -m json.tool
 	
 

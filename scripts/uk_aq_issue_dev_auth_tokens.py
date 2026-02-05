@@ -145,8 +145,9 @@ def main() -> None:
     refresh_token = args.refresh_token.strip()
     email = args.email.strip()
     password = args.password
+    prefer_password_flow = bool(email or password)
 
-    if refresh_token:
+    if refresh_token and not prefer_password_flow:
         token_payload = request_token(
             supabase_url=supabase_url,
             publishable_key=publishable_key,
