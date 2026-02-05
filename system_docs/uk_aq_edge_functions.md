@@ -88,6 +88,7 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
   - Uses `OPENAQ_*` environment variables for base URL, API key, and bbox paging.
   - Fetches locations via `/v3/locations` (bbox) and latest values via `/v3/locations/{id}/latest`.
   - Performs a pre-call gap check using `now() > last_observed_at + 2 hours` from station checkpoints; when true, polls `/v3/sensors/{id}/measurements/hourly` instead of `/latest` for that station.
+  - Hourly gap observations are keyed to the requested `timeseries_ref` (sensor id) to avoid payload `sensorsId` mismatches.
   - When `locations_fetched=false`, loads timeseries refs for all selected stations via `uk_aq_rpc_timeseries_refs_by_station_ids` so timeseries checkpoints can always be updated.
   - Uses sensor IDs as `timeseries_ref` and `openaq:{parameter}` as `phenomena.eionet_uri`.
   - If `station_refs` are provided, limits polling to those location ids; otherwise uses a tiered selector (`uk_aq_rpc_openaq_select_station_refs`) that returns both station refs and station ids.
@@ -109,6 +110,7 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
   - Writes a log file to Dropbox `/connectors/openaq/log/YYYY-MM-DD/` (prefix `uk_aq_log_edge_openaq_`).
   - Writes raw payloads to Dropbox `/connectors/openaq/raw_data/YYYY-MM-DD/` as ZIP (prefix `uk_aq_raw_edge_openaq_`).
   - Writes diagnostic entries to `error_logs` when Dropbox config is missing/mismatched or log/raw uploads fail.
+  - Writes an error log entry when timeseries refs are polled but cannot be mapped to internal `timeseries_id`s (includes sample refs + station ids).
   - Buffers error log lines for optional Dropbox error log uploads.
   - Logs timeseries mapping diagnostics (missing refs/station ids samples) to aid checkpoint debugging.
 

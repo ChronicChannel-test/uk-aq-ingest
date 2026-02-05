@@ -1986,6 +1986,39 @@ serve(async (req) => {
       ...extra,
     });
   };
+  const summarizeMissingTimeseriesRefs = (
+    refs: string[],
+    mapping: Record<string, number>,
+    stationMapping?: Map<string, number>,
+  ) => {
+    const uniqueRefs = Array.from(new Set(refs));
+    const missingSample: string[] = [];
+    const missingDetails: Array<{ timeseries_ref: string; station_id?: number }> =
+      [];
+    let missingCount = 0;
+    for (const ref of uniqueRefs) {
+      if (mapping[ref] === undefined) {
+        missingCount += 1;
+        if (missingSample.length < 10) {
+          missingSample.push(ref);
+        }
+        if (stationMapping && missingDetails.length < 10) {
+          const stationId = stationMapping.get(ref);
+          missingDetails.push(
+            stationId
+              ? { timeseries_ref: ref, station_id: stationId }
+              : { timeseries_ref: ref },
+          );
+        }
+      }
+    }
+    return {
+      missingCount,
+      missingSample,
+      missingDetails,
+      total: uniqueRefs.length,
+    };
+  };
   const logTimeseriesStationMapping = (
     refMapping: Record<string, number>,
     stationMapping: Record<number, number>,
@@ -2714,7 +2747,7 @@ serve(async (req) => {
             observationsByTimeseries,
             latestByTimeseries,
             latestObservedByStationId,
-            String(record?.sensorsId ?? timeseriesRef),
+            String(timeseriesRef),
             observedAt,
             record?.summary?.avg ??
               record?.summary?.median ??
@@ -2794,6 +2827,29 @@ serve(async (req) => {
       locations_fetched: locationsFetched,
       dry_run: dryRun,
     });
+    if (!dryRun && timeseriesRefs.length) {
+      const missingSummary = summarizeMissingTimeseriesRefs(
+        timeseriesRefs,
+        timeseriesIdByRef,
+        stationIdByTimeseriesRef,
+      );
+      if (missingSummary.missingCount > 0) {
+        await logError({
+          severity: "error",
+          message: "OpenAQ timeseries refs missing from mapping",
+          connector_id: connector.id,
+          context: {
+            timeseries_refs_total: missingSummary.total,
+            timeseries_refs_missing: missingSummary.missingCount,
+            timeseries_refs_missing_sample: missingSummary.missingSample,
+            station_sample: missingSummary.missingDetails,
+            observations_timeseries: observationsByTimeseries.size,
+            stations_selected: stationsSelected,
+            locations_fetched: locationsFetched,
+          },
+        });
+      }
+    }
   }
   if (!locationsFetched && Object.keys(timeseriesIdByRef).length) {
     try {
