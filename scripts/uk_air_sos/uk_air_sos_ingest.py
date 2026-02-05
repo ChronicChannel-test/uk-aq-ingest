@@ -38,6 +38,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
+import math
 import requests
 from dotenv import load_dotenv
 from supabase import Client
@@ -1965,7 +1966,7 @@ def _safe_number(raw: Any) -> Optional[float]:
         if raw is None:
             return None
         num = float(raw)
-        if num != num:  # NaN guard
+        if math.isnan(num):  # NaN guard
             return None
         return num
     except (ValueError, TypeError):
