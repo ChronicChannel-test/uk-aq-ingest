@@ -1451,6 +1451,24 @@ function resolveTimeseriesRefFromLatest(
   return String(raw);
 }
 
+function resolveHourlyObservedAt(record: OpenAQHourlyRecord): string | null {
+  const period = (record as {
+    period?: {
+      datetimeTo?: { utc?: string | null } | null;
+      datetimeFrom?: { utc?: string | null } | null;
+    } | null;
+  })?.period;
+  const observedAt =
+    period?.datetimeTo?.utc ??
+      record?.datetime?.utc ??
+      period?.datetimeFrom?.utc ??
+      null;
+  if (!observedAt) {
+    return null;
+  }
+  return String(observedAt);
+}
+
 function resolveCoordinates(
   location: OpenAQLocation,
 ): { longitude: number | null; latitude: number | null } {
@@ -2692,12 +2710,7 @@ serve(async (req) => {
             }
             const returned = new Set<string>();
             for (const record of hourly) {
-              const period = (record as any)?.period ?? null;
-              const observedAt =
-                (period?.datetimeTo?.utc as string | undefined) ??
-                  record?.datetime?.utc ??
-                  (period?.datetimeFrom?.utc as string | undefined) ??
-                  null;
+              const observedAt = resolveHourlyObservedAt(record);
               if (!observedAt) {
                 continue;
               }
@@ -2749,7 +2762,7 @@ serve(async (req) => {
           }
         }
         for (const record of hourly) {
-          const observedAt = record?.datetime?.utc ?? null;
+          const observedAt = resolveHourlyObservedAt(record);
           if (!observedAt) {
             continue;
           }

@@ -230,7 +230,7 @@ begin
     from candidates
     where due_at <= now()
       and due_at >= now() - interval '3 hours'
-      and (last_polled_at is null or last_polled_at <= now() - interval '15 minutes')
+      and (last_polled_at is null or last_polled_at <= now() - interval '5 minutes')
     order by last_polled_at asc nulls first, due_at asc
     limit batch_limit
   ),
