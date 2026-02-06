@@ -171,9 +171,10 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
 - Purpose: Serve the latest values across all stations (optionally filtered by region/station/pollutant).
 - Triggered by: Web requests (read-only, no writes).
 - Returns: flattened latest rows optimized for map clients: `id`, `last_value`, `last_value_at`, `display_name`, `connector_code`, `connector_label`, `station_id`, `station_ref`, `station_label`, `station_name`, `pcon_code`, `la_code`, `station_network_memberships`, `phenomenon_label`, `pollutant_label`, `pollutant_notation`, `uom_display`.
-- Params: `region`, `station_like`, `pollutant`, `connector_id`, `limit`, `pcon_code`.
+- Params: `region`, `station_like`, `pollutant`, `connector_id`, `limit`, `pcon_code`, `window` (`3h|6h|1d|7d|all`, default `all`).
 - Notes:
   - The edge response intentionally omits nested `station` / `connector` / `phenomenon` objects to reduce payload size.
+  - `window` is applied server-side using `last_value_at`; `all` disables time filtering.
 - RPC backing: `uk_aq_latest_rpc` via `/rest/v1/rpc/uk_aq_latest_rpc`.
 - Cache-Control: success responses use `public, max-age=60, s-maxage=180, stale-while-revalidate=300, stale-if-error=86400`; errors use `no-store`.
 - Memberships are returned as-is (no filtering by network membership).

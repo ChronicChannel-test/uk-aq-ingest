@@ -6,6 +6,7 @@ import { cacheControlHeaders } from "../_shared/cache.ts";
 const DEFAULT_STATION_LIKE = null;
 const DEFAULT_LIMIT = 1000;
 const MAX_LIMIT = 10000;
+const DEFAULT_WINDOW = "all";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")
   ?? Deno.env.get("SB_SUPABASE_URL")
@@ -101,14 +102,16 @@ serve(async (req) => {
     : stationLikeParam ?? (region ? null : DEFAULT_STATION_LIKE);
   const connectorId = normalizeText(url.searchParams.get("connector_id"));
   const pollutant = normalizePollutant(url.searchParams.get("pollutant"));
+  const windowLabel = normalizeWindow(url.searchParams.get("window"));
   const limit = parseLimit(url.searchParams.get("limit"), DEFAULT_LIMIT);
 
   try {
-    const rows = await loadLatest({ region, pconCode, stationLike, connectorId, pollutant, limit });
+    const rows = await loadLatest({ region, pconCode, stationLike, connectorId, pollutant, windowLabel, limit });
     return json({
       region,
       pcon_code: pconCode,
       pollutant,
+      window: windowLabel,
       count: rows.length,
       data: rows,
     });
@@ -124,10 +127,11 @@ type LoadOptions = {
   stationLike: string | null;
   connectorId: string | null;
   pollutant: string | null;
+  windowLabel: string;
   limit: number;
 };
 
-async function loadLatest({ region, pconCode, stationLike, connectorId, pollutant, limit }: LoadOptions) {
+async function loadLatest({ region, pconCode, stationLike, connectorId, pollutant, windowLabel, limit }: LoadOptions) {
   const pollutantKey = normalizePollutant(pollutant);
   const { data, error } = await postgrestRequest<any[]>(
     "POST",
@@ -140,6 +144,7 @@ async function loadLatest({ region, pconCode, stationLike, connectorId, pollutan
       station_like: stationLike,
       connector_id: connectorId,
       pollutant: pollutantKey,
+      window_label: windowLabel,
       limit_rows: limit,
     },
   );
@@ -240,6 +245,16 @@ function normalizePollutant(value: string | null): string | null {
     return "o3";
   }
   return normalized.toLowerCase();
+}
+
+function normalizeWindow(value: string | null): string {
+  const normalized = normalizeText(value)?.toLowerCase();
+  if (!normalized) {
+    return DEFAULT_WINDOW;
+  }
+  return ["3h", "6h", "1d", "7d", "all"].includes(normalized)
+    ? normalized
+    : DEFAULT_WINDOW;
 }
 
 function formatDisplayName(

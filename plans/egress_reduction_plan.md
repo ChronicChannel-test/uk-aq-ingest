@@ -322,7 +322,7 @@ One row per Supabase-related call site (active code + notable test/demo scripts)
 2) [ONLY IF NECESSARY] Increase UI polling intervals (hex map from 60s to 2–5 min; dashboards from 5 min to 10–15 min).
 3) ✅ Add visibility gating for dashboard polling: pause auto-refresh while hidden, then resume and run one immediate refresh when visible again.
 4) ✅ Reduce `uk_aq_latest` response fields to those actually used in UI.
-5) 🎯 Cap `uk_aq_timeseries` default window/limit to the minimum needed for the chart.
+5) 🎯 Move hex-map time-window filtering server-side (`uk_aq_latest`) instead of client-side `last_value_at` filtering.
 6) ✅ Add visibility gating for map polling (UK and C&R tabs): poll only when the tab panel and document are visible; pause when hidden and refresh once on re-visibility.
 
 ### Phase 2 (medium effort)
@@ -339,7 +339,10 @@ One row per Supabase-related call site (active code + notable test/demo scripts)
 2) ✅ Add visibility gating for dashboard polling.
 3) ✅ Add visibility gating for map polling (UK and C&R tabs).
 4) ✅ Trim `uk_aq_latest` response fields.
-5) 🎯 Reduce `uk_aq_timeseries` default window/limit.
+5) 🎯 Move hex-map time-window filtering server-side (`uk_aq_latest`) instead of client-side filtering.
+
+Decision note:
+- Do not cap `uk_aq_timeseries` defaults for now. Keeping full-window chart data is preferred to preserve data fidelity/granularity.
 
 **Why these yield biggest reduction**
 - They reduce both the frequency and payload size of the highest-traffic endpoints without changing core data flow.
