@@ -852,11 +852,12 @@ def iter_station_payloads(args: argparse.Namespace):
         station_ids = [
             int(station["id"]) for station in stations if station.get("id") is not None
         ]
-        include_pollutants = args.include_pollutants or args.output_format == "summary"
+        summary_context_enabled = args.output_format == "summary" and not args.apply
+        include_pollutants = args.include_pollutants or summary_context_enabled
         pollutant_map: Dict[int, List[str]] = {}
         if include_pollutants:
             pollutant_map = _fetch_station_pollutants(station_ids)
-        include_latest = args.include_latest or args.output_format == "summary"
+        include_latest = args.include_latest or summary_context_enabled
         latest_map: Dict[int, Dict[str, Any]] = {}
         if include_latest:
             latest_map = _fetch_station_latest_observations(station_ids)

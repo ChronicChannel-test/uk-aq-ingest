@@ -492,6 +492,7 @@ Key flags:
 - `--apply` update `stations.station_name` for rows with proposed names.
 - `--apply` also updates `stations.region` when a GB match provides a region and the station is missing one.
 - `--apply-batch-size` batch size for station_name updates (default: 200).
+- In `--apply` mode, the script skips automatic summary lookups for pollutants/latest observations unless `--include-pollutants` or `--include-latest` is passed explicitly.
 
 ### `scripts/uk_aq_backfill_station_regions.py`
 Purpose:
