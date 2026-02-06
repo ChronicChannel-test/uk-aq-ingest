@@ -151,6 +151,8 @@ async function loadLatest({ region, pconCode, stationLike, connectorId, pollutan
   const filtered = rows.filter(passesOutlierThreshold);
 
   return filtered.map((row) => {
+    const station = row.station ?? null;
+    const stationLabel = resolveStationLabel(station?.label, station?.station_ref, row.label);
     const pollutantLabel = resolvePhenomenonLabel(
       row.phenomenon?.pollutant_label,
       row.phenomenon?.label,
@@ -158,32 +160,55 @@ async function loadLatest({ region, pconCode, stationLike, connectorId, pollutan
       row.phenomenon?.eionet_uri,
     );
     const connector = row.connector ?? null;
+    const stationMemberships = Array.isArray(station?.station_network_memberships)
+      ? station.station_network_memberships
+        .map((entry: any) => {
+          const networkCode = entry?.network_code ?? entry?.connector_code ?? null;
+          if (!networkCode) {
+            return null;
+          }
+          return {
+            network_code: networkCode,
+            network_label: entry?.network_label ?? entry?.label ?? null,
+            is_primary: Boolean(entry?.is_primary),
+          };
+        })
+        .filter((entry: any) => Boolean(entry))
+      : [];
+
     return {
-      ...row,
-      connector_id: connector?.id ?? row.connector_id ?? null,
+      id: row.id ?? null,
+      last_value: row.last_value ?? null,
+      last_value_at: row.last_value_at ?? null,
       connector_code: connector?.connector_code ?? null,
       connector_label: connector?.display_name ?? connector?.label ?? null,
-      station_label: resolveStationLabel(row.station?.label, row.station?.station_ref, row.label),
-      station_name: row.station?.station_name ?? null,
+      station_id: station?.id ?? null,
+      station_ref: station?.station_ref ?? null,
+      station_label: stationLabel,
+      station_name: station?.station_name ?? null,
       display_name: formatDisplayName(
         connector?.station_display_name_template,
-        row.station?.station_name,
-        resolveStationLabel(row.station?.label, row.station?.station_ref, row.label),
-        row.station?.station_ref,
+        station?.station_name,
+        stationLabel,
+        station?.station_ref,
       ),
+      pcon_code: station?.pcon_code ?? null,
+      la_code: station?.la_code ?? null,
+      station_network_memberships: stationMemberships,
+      pollutant_notation: row.phenomenon?.notation ?? null,
       phenomenon_label: pollutantLabel,
       pollutant_label: pollutantLabel,
       uom_display: formatUnit(row.uom),
     };
   }).sort((a, b) => {
-    const aPollutant = a.phenomenon?.label ?? a.phenomenon_label ?? "";
-    const bPollutant = b.phenomenon?.label ?? b.phenomenon_label ?? "";
+    const aPollutant = a.phenomenon_label ?? a.pollutant_label ?? "";
+    const bPollutant = b.phenomenon_label ?? b.pollutant_label ?? "";
     const pollutantCompare = aPollutant.localeCompare(bPollutant);
     if (pollutantCompare !== 0) {
       return pollutantCompare;
     }
-    const aStation = a.station?.label ?? a.station_label ?? "";
-    const bStation = b.station?.label ?? b.station_label ?? "";
+    const aStation = a.station_label ?? "";
+    const bStation = b.station_label ?? "";
     return aStation.localeCompare(bStation);
   });
 }

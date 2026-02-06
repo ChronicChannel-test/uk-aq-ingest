@@ -461,6 +461,7 @@
       const refreshNowBtn = document.getElementById("refresh-now");
       let refreshTimer = null;
       let refreshSeconds = 300;
+      let wasHidden = document.hidden;
 
       const bucketOrder = ["0-3 Hours", "3-6 Hours", "6-24 Hours", "1 - 7 Days", "Older than 7 Days"];
 
@@ -547,12 +548,24 @@
         errorEl.textContent = text || "";
       }
 
-      function setRefreshInterval(seconds) {
-        refreshSeconds = seconds;
+      function clearRefreshTimer() {
         if (refreshTimer) {
           clearInterval(refreshTimer);
+          refreshTimer = null;
+        }
+      }
+
+      function startRefreshTimer() {
+        clearRefreshTimer();
+        if (document.hidden) {
+          return;
         }
         refreshTimer = setInterval(loadDashboard, refreshSeconds * 1000);
+      }
+
+      function setRefreshInterval(seconds) {
+        refreshSeconds = seconds;
+        startRefreshTimer();
       }
 
       function renderPanel(pollutant) {
@@ -880,6 +893,19 @@
 
       refreshNowBtn.addEventListener("click", () => {
         loadDashboard();
+      });
+
+      document.addEventListener("visibilitychange", () => {
+        if (document.hidden) {
+          clearRefreshTimer();
+          wasHidden = true;
+          return;
+        }
+        startRefreshTimer();
+        if (wasHidden) {
+          loadDashboard();
+          wasHidden = false;
+        }
       });
 
       setRefreshInterval(refreshSeconds);

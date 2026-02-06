@@ -2,6 +2,13 @@
 
 Date: 2026-02-02
 Scope: Analysis and plan only; no code changes performed.
+Status update: 2026-02-06 (tracked against current repos).
+
+Status markers:
+- ✅ Done
+- 🎯 Next (highest impact)
+- ⏳ Pending
+- [ONLY IF NECESSARY] Defer unless needed after higher-priority changes
 
 This plan is based on the authoritative cross-repo READMEs and a scan of all five repos for Supabase-related network calls, polling patterns, and large payload risks.
 
@@ -311,27 +318,27 @@ One row per Supabase-related call site (active code + notable test/demo scripts)
 ## STEP 4 — Best Path (Phased Plan)
 
 ### Phase 1 (quick wins, minimal risk)
-1) Add Cache-Control headers on public Edge Functions (60s + SWR).
-2) Increase UI polling intervals (hex map from 60s to 2–5 min; dashboards from 5 min to 10–15 min).
-3) Add “only when visible” gating for polling.
-4) Reduce `uk_aq_latest` response fields to those actually used in UI.
-5) Cap `uk_aq_timeseries` default window/limit to the minimum needed for the chart.
+1) ✅ Add Cache-Control headers on public Edge Functions (60s + SWR).
+2) [ONLY IF NECESSARY] Increase UI polling intervals (hex map from 60s to 2–5 min; dashboards from 5 min to 10–15 min).
+3) ✅ Add visibility gating for polling: pause auto-refresh while the tab is hidden, then resume and run one immediate refresh when visible again.
+4) ✅ Reduce `uk_aq_latest` response fields to those actually used in UI.
+5) 🎯 Cap `uk_aq_timeseries` default window/limit to the minimum needed for the chart.
 
 ### Phase 2 (medium effort)
-1) Add ETag/If-None-Match support for Edge Function responses.
-2) Add server-side downsampling / aggregation for timeseries.
-3) Introduce “since” incremental fetch for `uk_aq_latest` and `uk_aq_timeseries`.
+1) ⏳ Add ETag/If-None-Match support for Edge Function responses.
+2) ⏳ Add server-side downsampling / aggregation for timeseries.
+3) ⏳ Introduce “since” incremental fetch for `uk_aq_latest` and `uk_aq_timeseries`.
 
 ### Phase 3 (structural)
-1) Materialized views for “latest per station/pollutant” and key aggregates.
-2) Cloudflare caching/proxy in front of public endpoints.
+1) ⏳ Materialized views for “latest per station/pollutant” and key aggregates.
+2) ⏳ Cloudflare caching/proxy in front of public endpoints.
 
 ### Top 5 actions (order)
-1) Cache-Control headers on public Edge Functions.
-2) Increase polling intervals + visibility gating.
-3) Trim `uk_aq_latest` response fields.
-4) Reduce `uk_aq_timeseries` default window/limit.
-5) Add ETag support for Edge Functions.
+1) ✅ Cache-Control headers on public Edge Functions.
+2) ✅ Add visibility gating for polling.
+3) [ONLY IF NECESSARY] Increase polling intervals.
+4) ✅ Trim `uk_aq_latest` response fields.
+5) 🎯 Reduce `uk_aq_timeseries` default window/limit.
 
 **Why these yield biggest reduction**
 - They reduce both the frequency and payload size of the highest-traffic endpoints without changing core data flow.
