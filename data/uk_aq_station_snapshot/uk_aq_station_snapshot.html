@@ -217,8 +217,8 @@
     </section>
 
     <section class="card tight">
-      <h2>station</h2>
-      <div class="table-wrap"><table id="stationTable"></table></div>
+      <h2>stations</h2>
+      <div class="table-wrap"><table id="stationsTable"></table></div>
     </section>
 
     <section class="card">
@@ -227,7 +227,7 @@
     </section>
 
     <section class="card">
-      <h2>stations_checkpoints (uk_aq_raw.openaq_station_checkpoints)</h2>
+      <h2>station_checkpoints (uk_aq_raw.openaq_station_checkpoints)</h2>
       <div class="table-wrap"><table id="stationCheckpointTable"></table></div>
     </section>
 
@@ -259,7 +259,7 @@
       status: document.getElementById("status"),
       counts: document.getElementById("counts"),
       metaJson: document.getElementById("metaJson"),
-      stationTable: document.getElementById("stationTable"),
+      stationsTable: document.getElementById("stationsTable"),
       timeseriesTable: document.getElementById("timeseriesTable"),
       stationCheckpointTable: document.getElementById("stationCheckpointTable"),
       timeseriesCheckpointTable: document.getElementById("timeseriesCheckpointTable"),
@@ -403,7 +403,7 @@
       state.snapshot = snapshot;
       renderCounts(snapshot);
       el.metaJson.textContent = JSON.stringify(formatDatetimeFields(snapshot.meta || {}), null, 2);
-      renderKeyValueTable(el.stationTable, snapshot.station || null);
+      renderKeyValueTable(el.stationsTable, snapshot.stations || null);
       renderRowsTable(el.timeseriesTable, snapshot.timeseries || []);
       renderRowsTable(el.stationCheckpointTable, snapshot.stations_checkpoints || []);
       renderRowsTable(el.timeseriesCheckpointTable, snapshot.timeseries_checkpoints || []);
