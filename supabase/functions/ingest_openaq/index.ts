@@ -1114,7 +1114,7 @@ async function openaqRequest(
   path: string,
   params?: Record<string, string | number>,
   rawRecorder?: RawRecorder | null,
-): Promise<any> {
+): Promise<unknown> {
   const url = new URL(`${OPENAQ_BASE_URL}/${path.replace(/^\//, "")}`);
   for (const [key, value] of Object.entries(params ?? {})) {
     if (value !== undefined && value !== null) {
@@ -1217,8 +1217,9 @@ async function listLocations(
       { bbox, limit, page },
       rawRecorder,
     );
-    const pageResults = Array.isArray(payload?.results)
-      ? payload.results as OpenAQLocation[]
+    const payloadResults = (payload as { results?: unknown } | null)?.results;
+    const pageResults = Array.isArray(payloadResults)
+      ? payloadResults as OpenAQLocation[]
       : [];
     results.push(...pageResults);
     if (!pageResults.length) {
@@ -1247,8 +1248,9 @@ async function listLatestForLocation(
     { limit: 1000 },
     rawRecorder,
   );
-  return Array.isArray(payload?.results)
-    ? payload.results as OpenAQLatestRecord[]
+  const payloadResults = (payload as { results?: unknown } | null)?.results;
+  return Array.isArray(payloadResults)
+    ? payloadResults as OpenAQLatestRecord[]
     : [];
 }
 
@@ -1281,8 +1283,9 @@ async function listHourlyMeasurements(
       rawRecorder,
     );
     pages += 1;
-    const pageResults = Array.isArray(payload?.results)
-      ? payload.results as OpenAQHourlyRecord[]
+    const payloadResults = (payload as { results?: unknown } | null)?.results;
+    const pageResults = Array.isArray(payloadResults)
+      ? payloadResults as OpenAQHourlyRecord[]
       : [];
     results.push(...pageResults);
     if (!pageResults.length || pageResults.length < limit) {
