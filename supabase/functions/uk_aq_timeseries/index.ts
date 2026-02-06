@@ -2,8 +2,6 @@ import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { cacheControlHeaders, CACHE_CONTROL_SUCCESS_SMAXAGE_300 } from "../_shared/cache.ts";
 
 const DEFAULT_WINDOW = "24h";
-const DEFAULT_LIMIT = 20000;
-const MAX_LIMIT = 60000;
 
 const WINDOW_HOURS: Record<string, number> = {
   "12h": 12,
@@ -103,7 +101,11 @@ serve(async (req) => {
     return json({ error: "Missing or invalid timeseries_id." }, 400);
   }
   const windowLabel = normalizeWindow(url.searchParams.get("window"));
-  const limit = parseLimit(url.searchParams.get("limit"), DEFAULT_LIMIT);
+  const rawLimit = url.searchParams.get("limit");
+  const limit = parseOptionalLimit(rawLimit);
+  if (rawLimit !== null && limit === null) {
+    return json({ error: "Invalid limit. Provide a positive integer or omit limit." }, 400);
+  }
   const hours = WINDOW_HOURS[windowLabel] ?? WINDOW_HOURS[DEFAULT_WINDOW];
 
   const end = new Date();
@@ -159,15 +161,15 @@ function normalizeWindow(value: string | null): string {
   return WINDOW_HOURS[trimmed] ? trimmed : DEFAULT_WINDOW;
 }
 
-function parseLimit(value: string | null, fallback: number): number {
+function parseOptionalLimit(value: string | null): number | null {
   if (!value) {
-    return fallback;
+    return null;
   }
   const parsed = Number(value);
-  if (!Number.isFinite(parsed)) {
-    return fallback;
+  if (!Number.isFinite(parsed) || parsed < 1) {
+    return null;
   }
-  return Math.max(1, Math.min(MAX_LIMIT, Math.floor(parsed)));
+  return Math.floor(parsed);
 }
 
 function json(payload: unknown, status = 200): Response {

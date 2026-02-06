@@ -232,8 +232,9 @@ curl "https://YOUR_PROJECT.supabase.co/functions/v1/uk_aq_latest?region=London&p
 ### uk_aq_timeseries
 - Purpose: Serve raw observation points for a single timeseries.
 - Triggered by: Web requests (read-only, no writes).
-- Params: `timeseries_id` (required), `window` (`12h|24h|7d|30d`, default `24h`), optional `limit`.
+- Params: `timeseries_id` (required), `window` (`12h|24h|7d|30d`, default `24h`), optional `limit` (positive integer).
 - Returns: `observed_at`, `value`, `status` rows ordered oldest → newest, plus optional `guideline` (AQG_2021 24h) if found.
+- Notes: when `limit` is omitted, all rows in the requested window are returned (no default cap).
 - RPC backing: `uk_aq_timeseries_rpc` via `/rest/v1/rpc/uk_aq_timeseries_rpc`.
 - Cache-Control: success responses use `public, max-age=60, s-maxage=300, stale-while-revalidate=300, stale-if-error=86400`; errors use `no-store`.
 

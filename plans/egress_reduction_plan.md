@@ -320,9 +320,10 @@ One row per Supabase-related call site (active code + notable test/demo scripts)
 ### Phase 1 (quick wins, minimal risk)
 1) ✅ Add Cache-Control headers on public Edge Functions (60s + SWR).
 2) [ONLY IF NECESSARY] Increase UI polling intervals (hex map from 60s to 2–5 min; dashboards from 5 min to 10–15 min).
-3) ✅ Add visibility gating for polling: pause auto-refresh while the tab is hidden, then resume and run one immediate refresh when visible again.
+3) ✅ Add visibility gating for dashboard polling: pause auto-refresh while hidden, then resume and run one immediate refresh when visible again.
 4) ✅ Reduce `uk_aq_latest` response fields to those actually used in UI.
 5) 🎯 Cap `uk_aq_timeseries` default window/limit to the minimum needed for the chart.
+6) ✅ Add visibility gating for map polling (UK and C&R tabs): poll only when the tab panel and document are visible; pause when hidden and refresh once on re-visibility.
 
 ### Phase 2 (medium effort)
 1) ⏳ Add ETag/If-None-Match support for Edge Function responses.
@@ -335,8 +336,8 @@ One row per Supabase-related call site (active code + notable test/demo scripts)
 
 ### Top 5 actions (order)
 1) ✅ Cache-Control headers on public Edge Functions.
-2) ✅ Add visibility gating for polling.
-3) [ONLY IF NECESSARY] Increase polling intervals.
+2) ✅ Add visibility gating for dashboard polling.
+3) ✅ Add visibility gating for map polling (UK and C&R tabs).
 4) ✅ Trim `uk_aq_latest` response fields.
 5) 🎯 Reduce `uk_aq_timeseries` default window/limit.
 
