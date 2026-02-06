@@ -97,10 +97,11 @@ After observations are upserted:
   - If no observed timestamp exists, `next_due_at` is set to `now() - 24 hours` so the station is treated as stale.
   - If latest observed is within the last 24 hours:
     - New observations → `next_due_at = now() + 1 hour`.
-    - No new observations → `next_due_at = latest_observed_at` (station can remain stale).
+    - No new observations → `next_due_at = last_observed_at + min(observ_interval_samples)`, capped at `+1 hour`.
   - If latest observed is older than 24 hours:
     - New observations → `next_due_at = now()` (fast catch-up).
-    - No new observations → `next_due_at = latest_observed_at` (station remains stale).
+    - No new observations → `next_due_at = last_observed_at + min(observ_interval_samples)`, capped at `+1 hour`.
+  - If `observ_interval_samples` is empty, gap-mode no-new scheduling defaults to `last_observed_at + 1 hour`.
 
 Because gap mode is chunked, multiple runs are required to fully backfill a long gap.
 

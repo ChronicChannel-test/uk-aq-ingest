@@ -120,6 +120,11 @@ type OpenAQTimeseriesCheckpoint = {
 type OpenAQHourlyRecord = {
   datetime?: { utc?: string | null } | null;
   value?: number | null;
+  summary?: {
+    avg?: number | null;
+    median?: number | null;
+    q50?: number | null;
+  } | null;
   // OpenAQ payload exposes a sensor id; resolve to timeseries_ref via mapping.
   sensorsId?: number | null;
 };
@@ -904,7 +909,8 @@ function toDosDateTime(date: Date): { dosTime: number; dosDate: number } {
 }
 
 async function deflateRaw(data: Uint8Array): Promise<Uint8Array> {
-  const stream = new Blob([data]).stream().pipeThrough(
+  const normalized = Uint8Array.from(data);
+  const stream = new Blob([normalized]).stream().pipeThrough(
     new CompressionStream("deflate-raw"),
   );
   return new Uint8Array(await new Response(stream).arrayBuffer());
@@ -3131,16 +3137,24 @@ serve(async (req) => {
       const isRecentObserved = latestObservedMs !== null &&
         Number.isFinite(latestObservedMs) &&
         latestObservedMs >= nowMsForLag - 24 * 60 * 60 * 1000;
+      const minStationIntervalSeconds = minSeconds(observSamples);
 
       if (isGapStation) {
         if (!latestObservedForDecision || !Number.isFinite(latestObservedMs)) {
           nextDueAt = new Date(nowMsForLag - 24 * 60 * 60 * 1000).toISOString();
-        } else if (isRecentObserved) {
-          nextDueAt = hasNewObservation
+        } else if (hasNewObservation) {
+          nextDueAt = isRecentObserved
             ? new Date(nowMsForLag + 60 * 60 * 1000).toISOString()
-            : latestObservedForDecision;
+            : nowIso;
         } else {
-          nextDueAt = hasNewObservation ? nowIso : latestObservedForDecision;
+          const intervalSeconds = Math.min(
+            60 * 60,
+            Math.max(0, minStationIntervalSeconds ?? 60 * 60),
+          );
+          const baseObservedMs = Date.parse(latestObservedForDecision);
+          nextDueAt = Number.isFinite(baseObservedMs)
+            ? new Date(baseObservedMs + intervalSeconds * 1000).toISOString()
+            : latestObservedForDecision;
         }
         if (gapSchedulingSample.length < 10) {
           gapSchedulingSample.push({
@@ -3148,16 +3162,18 @@ serve(async (req) => {
             latest_observed_at: latestObservedForDecision,
             has_new_observation: hasNewObservation,
             is_recent_observed: isRecentObserved,
+            min_station_interval_seconds: minStationIntervalSeconds,
             next_due_at: nextDueAt,
           });
         }
-      } else if (hasNewObservation) {
+      } else if (hasNewObservation && latestObservedForScheduling) {
+        const latestObservedForNonGap = latestObservedForScheduling;
         let intervalSampleAdded = false;
         if (previousLastObserved) {
           const intervalSeconds = Math.max(
             0,
             Math.round(
-              (Date.parse(latestObservedForScheduling) -
+              (Date.parse(latestObservedForNonGap) -
                 Date.parse(previousLastObserved)) / 1000,
             ),
           );
@@ -3170,7 +3186,7 @@ serve(async (req) => {
           const lagSeconds = Math.max(
             0,
             Math.round(
-              (nowMsForLag - Date.parse(latestObservedForScheduling)) / 1000,
+              (nowMsForLag - Date.parse(latestObservedForNonGap)) / 1000,
             ),
           );
           if (Number.isFinite(lagSeconds)) {
@@ -3185,7 +3201,7 @@ serve(async (req) => {
             60 * 60,
           );
           const lagSeconds = minSeconds(lagSamples) ?? 5 * 60;
-          const baseMs = Date.parse(latestObservedForScheduling);
+          const baseMs = Date.parse(latestObservedForNonGap);
           if (Number.isFinite(baseMs)) {
             nextDueAt = new Date(baseMs + (intervalSeconds + lagSeconds) * 1000)
               .toISOString();
