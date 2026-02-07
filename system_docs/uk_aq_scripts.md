@@ -629,7 +629,7 @@ Environment:
 - `UK_AIR_SOS_SITE_SEARCH_USER_AGENT` (optional)
 - `UK_AQ_DROPBOX_ROOT` (required for `--dropbox-upload`)
 - `DROPBOX_APP_KEY`, `DROPBOX_APP_SECRET`, `DROPBOX_REFRESH_TOKEN` (required for `--dropbox-upload`)
- - `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (required for `--load`/`--load-only`)
+- `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (required for `--load`/`--load-only`)
 Notes:
 - The script writes a timestamped filename locally and to Dropbox (e.g., `uk_air_sos_site_register_YYYYMMDDTHHMMSSZ.csv`).
 - When `--load` is used, it preserves existing `uk_air_sos_networks.network_display_name` values and upserts `uk_air_sos_network_pollutants`.
