@@ -190,7 +190,7 @@ Key flags:
 - `--raw-dropbox` to write raw payloads to Dropbox (testing only; guarded by `UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL`)
 - `--raw-dropbox-folder /connectors/uk_air_sos/raw_data` to override the Dropbox folder
 - `--log-level WARNING` to reduce logging output
-  - Default output prints only station count, error count, and Dropbox upload info.
+    - Default output prints only station count, error count, and Dropbox upload info.
 Batching:
 - If `connectors.poll_timeseries_batch_size` is set for the chosen connector, it overrides the default batch size for timeseries discovery.
 Stations bbox:
