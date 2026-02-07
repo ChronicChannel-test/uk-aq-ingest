@@ -104,16 +104,23 @@ serve(async (req) => {
   const pollutant = normalizePollutant(url.searchParams.get("pollutant"));
   const windowLabel = normalizeWindow(url.searchParams.get("window"));
   const limit = parseLimit(url.searchParams.get("limit"), DEFAULT_LIMIT);
+  const rawSince = url.searchParams.get("since");
+  const since = rawSince === null ? null : normalizeTimestamp(rawSince);
+  if (rawSince !== null && since === null) {
+    return json({ error: "Invalid since timestamp. Provide ISO-8601 datetime (e.g. 2026-02-07T10:30:00Z)." }, 400);
+  }
 
   try {
-    const rows = await loadLatest({ region, pconCode, stationLike, connectorId, pollutant, windowLabel, limit });
+    const result = await loadLatest({ region, pconCode, stationLike, connectorId, pollutant, windowLabel, limit, since });
     return json({
       region,
       pcon_code: pconCode,
       pollutant,
       window: windowLabel,
-      count: rows.length,
-      data: rows,
+      since,
+      next_since: result.nextSince,
+      count: result.rows.length,
+      data: result.rows,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -129,9 +136,10 @@ type LoadOptions = {
   pollutant: string | null;
   windowLabel: string;
   limit: number;
+  since: string | null;
 };
 
-async function loadLatest({ region, pconCode, stationLike, connectorId, pollutant, windowLabel, limit }: LoadOptions) {
+async function loadLatest({ region, pconCode, stationLike, connectorId, pollutant, windowLabel, limit, since }: LoadOptions) {
   const pollutantKey = normalizePollutant(pollutant);
   const { data, error } = await postgrestRequest<any[]>(
     "POST",
@@ -146,16 +154,20 @@ async function loadLatest({ region, pconCode, stationLike, connectorId, pollutan
       pollutant: pollutantKey,
       window_label: windowLabel,
       limit_rows: limit,
+      since_ts: since,
     },
   );
   if (error) {
     throw new Error(error.message);
   }
   const rows = data ?? [];
+  const nextSince = maxTimestamp(rows.map((row) => row?.last_value_at), since);
 
   const filtered = rows.filter(passesOutlierThreshold);
 
-  return filtered.map((row) => {
+  return {
+    nextSince,
+    rows: filtered.map((row) => {
     const station = row.station ?? null;
     const stationLabel = resolveStationLabel(station?.label, station?.station_ref, row.label);
     const pollutantLabel = resolvePhenomenonLabel(
@@ -215,7 +227,8 @@ async function loadLatest({ region, pconCode, stationLike, connectorId, pollutan
     const aStation = a.station_label ?? "";
     const bStation = b.station_label ?? "";
     return aStation.localeCompare(bStation);
-  });
+  }),
+  };
 }
 
 function normalizeText(value: string | null): string | null {
@@ -319,6 +332,38 @@ function parseLimit(value: string | null, fallback: number): number {
     return fallback;
   }
   return Math.max(1, Math.min(MAX_LIMIT, Math.floor(parsed)));
+}
+
+function normalizeTimestamp(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+  const parsed = new Date(trimmed);
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+  return parsed.toISOString();
+}
+
+function maxTimestamp(values: Array<string | null | undefined>, fallback: string | null): string | null {
+  let best = fallback ? normalizeTimestamp(fallback) : null;
+  let bestMs = best ? Date.parse(best) : Number.NEGATIVE_INFINITY;
+  values.forEach((value) => {
+    if (!value) {
+      return;
+    }
+    const normalized = normalizeTimestamp(value);
+    if (!normalized) {
+      return;
+    }
+    const ms = Date.parse(normalized);
+    if (ms > bestMs) {
+      bestMs = ms;
+      best = normalized;
+    }
+  });
+  return best;
 }
 
 function json(payload: unknown, status = 200): Response {

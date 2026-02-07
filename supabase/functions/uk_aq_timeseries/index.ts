@@ -106,6 +106,11 @@ serve(async (req) => {
   if (rawLimit !== null && limit === null) {
     return json({ error: "Invalid limit. Provide a positive integer or omit limit." }, 400);
   }
+  const rawSince = url.searchParams.get("since");
+  const since = rawSince === null ? null : normalizeTimestamp(rawSince);
+  if (rawSince !== null && since === null) {
+    return json({ error: "Invalid since timestamp. Provide ISO-8601 datetime (e.g. 2026-02-07T10:30:00Z)." }, 400);
+  }
   const hours = WINDOW_HOURS[windowLabel] ?? WINDOW_HOURS[DEFAULT_WINDOW];
 
   const end = new Date();
@@ -120,6 +125,7 @@ serve(async (req) => {
         timeseries_id: timeseriesId,
         window_label: windowLabel,
         limit_rows: limit,
+        since_ts: since,
       },
     );
     if (error) {
@@ -127,11 +133,14 @@ serve(async (req) => {
     }
     const row = Array.isArray(data) && data.length > 0 ? data[0] : null;
     const rows = Array.isArray(row?.data) ? row.data : [];
+    const nextSince = maxObservedTimestamp(rows, since);
     return json({
       timeseries_id: row?.timeseries_id ?? timeseriesId,
       window: row?.window ?? windowLabel,
       start: row?.start ?? startTime.toISOString(),
       end: row?.end ?? end.toISOString(),
+      since,
+      next_since: nextSince,
       count: row?.count ?? rows.length,
       guideline: row?.guideline ?? null,
       data: rows,
@@ -170,6 +179,39 @@ function parseOptionalLimit(value: string | null): number | null {
     return null;
   }
   return Math.floor(parsed);
+}
+
+function normalizeTimestamp(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+  const parsed = new Date(trimmed);
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+  return parsed.toISOString();
+}
+
+function maxObservedTimestamp(rows: any[], fallback: string | null): string | null {
+  let best = fallback ? normalizeTimestamp(fallback) : null;
+  let bestMs = best ? Date.parse(best) : Number.NEGATIVE_INFINITY;
+  rows.forEach((row) => {
+    const observedAt = row?.observed_at;
+    if (!observedAt) {
+      return;
+    }
+    const normalized = normalizeTimestamp(String(observedAt));
+    if (!normalized) {
+      return;
+    }
+    const ms = Date.parse(normalized);
+    if (ms > bestMs) {
+      bestMs = ms;
+      best = normalized;
+    }
+  });
+  return best;
 }
 
 function json(payload: unknown, status = 200): Response {

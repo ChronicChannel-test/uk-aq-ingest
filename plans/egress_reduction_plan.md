@@ -328,7 +328,7 @@ One row per Supabase-related call site (active code + notable test/demo scripts)
 ### Phase 2 (medium effort)
 1) ⏳ Add ETag/If-None-Match support for Edge Function responses.
 2) ⏳ Add server-side downsampling / aggregation for timeseries.
-3) ⏳ Introduce “since” incremental fetch for `uk_aq_latest` and `uk_aq_timeseries`.
+3) ✅ Introduce “since” incremental fetch for `uk_aq_latest` and `uk_aq_timeseries`.
 
 ### Phase 3 (structural)
 1) ⏳ Materialized views for “latest per station/pollutant” and key aggregates.
