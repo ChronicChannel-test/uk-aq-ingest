@@ -502,7 +502,7 @@ def main() -> int:
                     "species": species,
                     "timeseries_id": timeseries_id,
                     "last_observed_at": last_observed.isoformat() if last_observed else None,
-                    "last_fetch_at": utcnow().isoformat(),
+                    "last_polled_at": utcnow().isoformat(),
                     "last_error": last_error,
                     "updated_at": utcnow().isoformat(),
                 }

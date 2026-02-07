@@ -575,7 +575,7 @@ class SupabaseWriter:
             resp = (
                 self.raw.table("breathelondon_timeseries_checkpoints")
                 .select(
-                    "station_id,species,timeseries_id,last_observed_at,last_fetch_at,last_error"
+                    "station_id,species,timeseries_id,last_observed_at,last_polled_at,last_error"
                 )
                 .in_("station_id", list(chunk))
                 .in_("species", list(species))
