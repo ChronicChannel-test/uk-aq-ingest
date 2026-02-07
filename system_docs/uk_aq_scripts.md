@@ -878,15 +878,6 @@ Common commands:
 python3 scripts/erg_laqn/erg_laqn_ingest.py
 ```
 
-### `scripts/erg_laqn/erg_laqn_list_stations.py`
-Purpose:
-- Fetch LAQN monitoring sites and optionally upsert stations, metadata, and timeseries seeds.
-
-Common commands:
-```
-python3 scripts/erg_laqn/erg_laqn_list_stations.py
-```
-
 ### `scripts/erg_laqn/erg_laqn_list_groups.py`
 Purpose:
 - List available ERG LAQN group names.
