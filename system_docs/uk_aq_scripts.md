@@ -869,15 +869,6 @@ Common commands:
 python3 scripts/gov_uk_waqn/gov_uk_waqn_list_stations.py
 ```
 
-### `scripts/erg_laqn/erg_laqn_ingest.py`
-Purpose:
-- Ingest ERG LAQN observations into Supabase (station/timeseries/observations).
-
-Common commands:
-```
-python3 scripts/erg_laqn/erg_laqn_ingest.py
-```
-
 ### `scripts/erg_laqn/erg_laqn_list_groups.py`
 Purpose:
 - List available ERG LAQN group names.
