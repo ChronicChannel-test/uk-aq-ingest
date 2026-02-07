@@ -3,14 +3,22 @@
 This document summarizes the UK-AQ helper scripts and their inputs/outputs.
 
 ## Environment
+
+**Supabase**
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
+
+**UK-AIR SOS**
 - `UK_AIR_SOS_BASE_URL` (optional; defaults to `https://uk-air.defra.gov.uk/sos-ukair/api/v1`)
   - The scripts also accept the legacy `UK_AIR_BASE_URL` or `UKAIR_BASE_URL` if set.
 - `UK_AIR_SOS_SERVICE_LABEL` (optional; defaults to `UK-AIR-SOS`)
+
+**Sensor.Community**
 - `SCOMM_BASE_URL` (optional; defaults to `https://data.sensor.community`)
 - `SCOMM_CONNECTOR_CODE` (optional; defaults to `sensorcommunity`; legacy `SCOMM_CONNECTOR_REF` supported)
 - `SCOMM_SERVICE_REF` (optional; defaults to `SCOMM_CONNECTOR_CODE`)
+
+**OpenAQ**
 - `SCOMM_SERVICE_LABEL` (optional; defaults to `Sensor.Community`; legacy `SCOMM_CONNECTOR_LABEL` supported)
 - `SCOMM_COUNTRY` (optional; defaults to `GB`)
 - `SCOMM_USER_AGENT` (optional; identifies your client when polling Sensor.Community)
@@ -190,7 +198,7 @@ Key flags:
 - `--raw-dropbox` to write raw payloads to Dropbox (testing only; guarded by `UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL`)
 - `--raw-dropbox-folder /connectors/uk_air_sos/raw_data` to override the Dropbox folder
 - `--log-level WARNING` to reduce logging output
-  - Default output prints only station count, error count, and Dropbox upload info.
+    - Default output prints only station count, error count, and Dropbox upload info.
 Batching:
 - If `connectors.poll_timeseries_batch_size` is set for the chosen connector, it overrides the default batch size for timeseries discovery.
 Stations bbox:
@@ -629,7 +637,7 @@ Environment:
 - `UK_AIR_SOS_SITE_SEARCH_USER_AGENT` (optional)
 - `UK_AQ_DROPBOX_ROOT` (required for `--dropbox-upload`)
 - `DROPBOX_APP_KEY`, `DROPBOX_APP_SECRET`, `DROPBOX_REFRESH_TOKEN` (required for `--dropbox-upload`)
- - `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (required for `--load`/`--load-only`)
+- `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (required for `--load`/`--load-only`)
 Notes:
 - The script writes a timestamped filename locally and to Dropbox (e.g., `uk_air_sos_site_register_YYYYMMDDTHHMMSSZ.csv`).
 - When `--load` is used, it preserves existing `uk_air_sos_networks.network_display_name` values and upserts `uk_air_sos_network_pollutants`.
@@ -867,24 +875,6 @@ Purpose:
 Common commands:
 ```
 python3 scripts/gov_uk_waqn/gov_uk_waqn_list_stations.py
-```
-
-### `scripts/erg_laqn/erg_laqn_ingest.py`
-Purpose:
-- Ingest ERG LAQN observations into Supabase (station/timeseries/observations).
-
-Common commands:
-```
-python3 scripts/erg_laqn/erg_laqn_ingest.py
-```
-
-### `scripts/erg_laqn/erg_laqn_list_stations.py`
-Purpose:
-- Fetch LAQN monitoring sites and optionally upsert stations, metadata, and timeseries seeds.
-
-Common commands:
-```
-python3 scripts/erg_laqn/erg_laqn_list_stations.py
 ```
 
 ### `scripts/erg_laqn/erg_laqn_list_groups.py`
