@@ -2,6 +2,7 @@
 // Deployment touchpoint: change triggers edge deploy workflow.
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { cacheControlHeaders } from "../_shared/cache.ts";
+import { createWeakEtag, ifNoneMatchMatches } from "../_shared/etag.ts";
 
 const DEFAULT_STATION_LIKE = null;
 const DEFAULT_LIMIT = 1000;
@@ -21,8 +22,9 @@ const UK_AQ_PUBLIC_SCHEMA = Deno.env.get("UK_AQ_PUBLIC_SCHEMA")
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, if-none-match",
   "Access-Control-Allow-Methods": "GET, OPTIONS",
+  "Access-Control-Expose-Headers": "ETag",
 };
 
 const REST_BASE_URL = SUPABASE_URL
@@ -109,10 +111,35 @@ serve(async (req) => {
   if (rawSince !== null && since === null) {
     return json({ error: "Invalid since timestamp. Provide ISO-8601 datetime (e.g. 2026-02-07T10:30:00Z)." }, 400);
   }
+  const ifNoneMatch = req.headers.get("if-none-match");
 
   try {
+    if (since && ifNoneMatch) {
+      const hasDelta = await hasLatestDelta({ region, pconCode, stationLike, connectorId, pollutant, windowLabel, limit, since });
+      if (!hasDelta) {
+        const emptyPayload = {
+          region,
+          pcon_code: pconCode,
+          pollutant,
+          window: windowLabel,
+          since,
+          next_since: since,
+          count: 0,
+          data: [],
+        };
+        const emptyEtag = await createWeakEtag({
+          endpoint: "uk_aq_latest",
+          version: 1,
+          payload: emptyPayload,
+        });
+        if (ifNoneMatchMatches(ifNoneMatch, emptyEtag)) {
+          return notModified(emptyEtag);
+        }
+        return json(emptyPayload, 200, { ETag: emptyEtag });
+      }
+    }
     const result = await loadLatest({ region, pconCode, stationLike, connectorId, pollutant, windowLabel, limit, since });
-    return json({
+    const payload = {
       region,
       pcon_code: pconCode,
       pollutant,
@@ -121,7 +148,16 @@ serve(async (req) => {
       next_since: result.nextSince,
       count: result.rows.length,
       data: result.rows,
+    };
+    const etag = await createWeakEtag({
+      endpoint: "uk_aq_latest",
+      version: 1,
+      payload,
     });
+    if (ifNoneMatchMatches(ifNoneMatch, etag)) {
+      return notModified(etag);
+    }
+    return json(payload, 200, { ETag: etag });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return json({ error: message }, 500);
@@ -229,6 +265,33 @@ async function loadLatest({ region, pconCode, stationLike, connectorId, pollutan
     return aStation.localeCompare(bStation);
   }),
   };
+}
+
+async function hasLatestDelta({ region, pconCode, stationLike, connectorId, pollutant, windowLabel, since }: LoadOptions): Promise<boolean> {
+  if (!since) {
+    return true;
+  }
+  const pollutantKey = normalizePollutant(pollutant);
+  const { data, error } = await postgrestRequest<any[]>(
+    "POST",
+    "rpc/uk_aq_latest_rpc",
+    undefined,
+    UK_AQ_PUBLIC_SCHEMA,
+    {
+      region,
+      pcon_code: pconCode,
+      station_like: stationLike,
+      connector_id: connectorId,
+      pollutant: pollutantKey,
+      window_label: windowLabel,
+      limit_rows: 1,
+      since_ts: since,
+    },
+  );
+  if (error) {
+    throw new Error(error.message);
+  }
+  return Array.isArray(data) && data.length > 0;
 }
 
 function normalizeText(value: string | null): string | null {
@@ -366,13 +429,25 @@ function maxTimestamp(values: Array<string | null | undefined>, fallback: string
   return best;
 }
 
-function json(payload: unknown, status = 200): Response {
+function json(payload: unknown, status = 200, extraHeaders: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(payload, null, 2), {
     status,
     headers: {
       "Content-Type": "application/json",
       ...CORS_HEADERS,
       ...cacheControlHeaders(status),
+      ...extraHeaders,
+    },
+  });
+}
+
+function notModified(etag: string): Response {
+  return new Response(null, {
+    status: 304,
+    headers: {
+      ...CORS_HEADERS,
+      ...cacheControlHeaders(200),
+      ETag: etag,
     },
   });
 }
