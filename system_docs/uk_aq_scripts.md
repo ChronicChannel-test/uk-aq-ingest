@@ -3,14 +3,22 @@
 This document summarizes the UK-AQ helper scripts and their inputs/outputs.
 
 ## Environment
+
+**Supabase**
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
+
+**UK-AIR SOS**
 - `UK_AIR_SOS_BASE_URL` (optional; defaults to `https://uk-air.defra.gov.uk/sos-ukair/api/v1`)
   - The scripts also accept the legacy `UK_AIR_BASE_URL` or `UKAIR_BASE_URL` if set.
 - `UK_AIR_SOS_SERVICE_LABEL` (optional; defaults to `UK-AIR-SOS`)
+
+**Sensor.Community**
 - `SCOMM_BASE_URL` (optional; defaults to `https://data.sensor.community`)
 - `SCOMM_CONNECTOR_CODE` (optional; defaults to `sensorcommunity`; legacy `SCOMM_CONNECTOR_REF` supported)
 - `SCOMM_SERVICE_REF` (optional; defaults to `SCOMM_CONNECTOR_CODE`)
+
+**OpenAQ**
 - `SCOMM_SERVICE_LABEL` (optional; defaults to `Sensor.Community`; legacy `SCOMM_CONNECTOR_LABEL` supported)
 - `SCOMM_COUNTRY` (optional; defaults to `GB`)
 - `SCOMM_USER_AGENT` (optional; identifies your client when polling Sensor.Community)
