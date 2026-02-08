@@ -467,6 +467,134 @@ class DbWriter:
                     )
         return len(rows)
 
+    def fetch_station_ids_by_ref(
+        self,
+        connector_id: int,
+        service_ref: str,
+        station_refs: Iterable[str],
+    ) -> Dict[str, int]:
+        refs = [str(ref) for ref in station_refs if ref]
+        if not refs:
+            return {}
+        mapping: Dict[str, int] = {}
+        with self.conn, self.conn.cursor() as cursor:
+            for chunk in chunked(refs, 200):
+                cursor.execute(
+                    """
+                    select id, station_ref
+                    from uk_aq_core.stations
+                    where connector_id = %s
+                      and service_ref = %s
+                      and station_ref = any(%s)
+                    """,
+                    (connector_id, service_ref, chunk),
+                )
+                for row in cursor.fetchall():
+                    mapping[str(row[1])] = int(row[0])
+        return mapping
+
+    def upsert_phenomena(
+        self,
+        connector_id: int,
+        parameters: Dict[str, Dict[str, Optional[str]]],
+    ) -> Dict[str, int]:
+        if not parameters:
+            return {}
+        rows: List[Tuple[Any, ...]] = []
+        for meta in parameters.values():
+            name = str(meta.get("name") or "").strip()
+            if not name:
+                continue
+            display_name = meta.get("display_name")
+            rows.append(
+                (
+                    connector_id,
+                    f"openaq:{name}",
+                    display_name or name,
+                    display_name or name,
+                    name,
+                )
+            )
+        if not rows:
+            return {}
+        insert_sql = """
+            insert into uk_aq_core.phenomena (
+              connector_id,
+              eionet_uri,
+              label,
+              notation,
+              pollutant_label
+            )
+            values %s
+            on conflict (connector_id, eionet_uri) do update set
+              label = excluded.label,
+              notation = excluded.notation,
+              pollutant_label = excluded.pollutant_label
+        """
+        eionet_uris = [row[1] for row in rows]
+        ids_by_uri: Dict[str, int] = {}
+        with self.conn, self.conn.cursor() as cursor:
+            self._execute_values(cursor, insert_sql, rows)
+            for chunk in chunked(eionet_uris, 200):
+                cursor.execute(
+                    """
+                    select id, eionet_uri
+                    from uk_aq_core.phenomena
+                    where connector_id = %s
+                      and eionet_uri = any(%s)
+                    """,
+                    (connector_id, chunk),
+                )
+                for row in cursor.fetchall():
+                    ids_by_uri[str(row[1])] = int(row[0])
+        ids_by_name: Dict[str, int] = {}
+        for meta in parameters.values():
+            name = str(meta.get("name") or "").strip()
+            if not name:
+                continue
+            phen_id = ids_by_uri.get(f"openaq:{name}")
+            if phen_id:
+                ids_by_name[name] = phen_id
+        return ids_by_name
+
+    def upsert_timeseries(self, rows: Iterable[Dict[str, Any]]) -> int:
+        payload = [row for row in rows if row.get("timeseries_ref")]
+        if not payload:
+            return 0
+        values: List[Tuple[Any, ...]] = []
+        for row in payload:
+            values.append(
+                (
+                    row.get("timeseries_ref"),
+                    row.get("label"),
+                    row.get("uom"),
+                    row.get("station_id"),
+                    row.get("connector_id"),
+                    row.get("service_ref"),
+                    row.get("phenomenon_id"),
+                )
+            )
+        insert_sql = """
+            insert into uk_aq_core.timeseries (
+              timeseries_ref,
+              label,
+              uom,
+              station_id,
+              connector_id,
+              service_ref,
+              phenomenon_id
+            )
+            values %s
+            on conflict (connector_id, service_ref, timeseries_ref) do update set
+              label = excluded.label,
+              uom = excluded.uom,
+              station_id = excluded.station_id,
+              phenomenon_id = excluded.phenomenon_id
+        """
+        with self.conn, self.conn.cursor() as cursor:
+            self._execute_values(cursor, insert_sql, values)
+        return len(values)
+
 
 def normalize_location(location: Dict[str, Any]) -> Dict[str, Any]:
     location_id = location.get("id")
@@ -520,6 +648,77 @@ def _location_name(location: Dict[str, Any]) -> Optional[str]:
     if isinstance(locality, str) and locality.strip():
         return locality.strip()
     return None
+
+
+def _collect_parameters(
+    locations: Iterable[Dict[str, Any]],
+) -> Dict[str, Dict[str, Optional[str]]]:
+    parameters: Dict[str, Dict[str, Optional[str]]] = {}
+    for location in locations:
+        sensors = location.get("sensors") if isinstance(location.get("sensors"), list) else []
+        for sensor in sensors:
+            if not isinstance(sensor, dict):
+                continue
+            parameter = sensor.get("parameter") if isinstance(sensor.get("parameter"), dict) else {}
+            raw_name = parameter.get("name")
+            name = str(raw_name).strip() if raw_name is not None else ""
+            if not name:
+                continue
+            if name not in parameters:
+                display_name = parameter.get("displayName")
+                units = parameter.get("units")
+                parameters[name] = {
+                    "name": name,
+                    "display_name": str(display_name).strip() if display_name else None,
+                    "units": str(units).strip() if units else None,
+                }
+    return parameters
+
+
+def _collect_timeseries_rows(
+    locations: Iterable[Dict[str, Any]],
+    connector_id: int,
+    service_ref: str,
+    station_id_by_ref: Dict[str, int],
+    phenomenon_id_by_name: Dict[str, int],
+) -> List[Dict[str, Any]]:
+    rows_by_ref: Dict[str, Dict[str, Any]] = {}
+    for location in locations:
+        location_id = location.get("id")
+        station_ref = str(location_id) if location_id is not None else None
+        if not station_ref:
+            continue
+        station_id = station_id_by_ref.get(station_ref)
+        if not station_id:
+            continue
+        sensors = location.get("sensors") if isinstance(location.get("sensors"), list) else []
+        for sensor in sensors:
+            if not isinstance(sensor, dict):
+                continue
+            sensor_id = sensor.get("id")
+            if sensor_id is None:
+                continue
+            parameter = sensor.get("parameter") if isinstance(sensor.get("parameter"), dict) else {}
+            raw_name = parameter.get("name")
+            name = str(raw_name).strip() if raw_name is not None else ""
+            if not name:
+                continue
+            phenomenon_id = phenomenon_id_by_name.get(name)
+            if not phenomenon_id:
+                continue
+            display_name = parameter.get("displayName")
+            units = parameter.get("units")
+            timeseries_ref = str(sensor_id)
+            rows_by_ref[timeseries_ref] = {
+                "timeseries_ref": timeseries_ref,
+                "label": f"{station_ref} {str(display_name).strip() if display_name else name}",
+                "uom": str(units).strip() if units else None,
+                "station_id": station_id,
+                "connector_id": connector_id,
+                "service_ref": str(service_ref),
+                "phenomenon_id": phenomenon_id,
+            }
+    return list(rows_by_ref.values())
 
 
 def _station_row(location: Dict[str, Any], connector_id: int, service_ref: str) -> Dict[str, Any]:
@@ -663,12 +862,37 @@ def main() -> None:
 
         if args.to_supabase:
             connector_id, _ = writer.upsert_connector()
-            inserted = writer.upsert_stations(
+            stations_upserted = writer.upsert_stations(
                 locations,
                 connector_id,
                 OPENAQ_SERVICE_REF,
             )
-            LOG.info("Upserted %s stations into Supabase.", inserted)
+            station_refs = [
+                str(location.get("id"))
+                for location in locations
+                if location.get("id") is not None
+            ]
+            station_id_by_ref = writer.fetch_station_ids_by_ref(
+                connector_id,
+                OPENAQ_SERVICE_REF,
+                station_refs,
+            )
+            parameters = _collect_parameters(locations)
+            phenomenon_id_by_name = writer.upsert_phenomena(connector_id, parameters)
+            timeseries_rows = _collect_timeseries_rows(
+                locations,
+                connector_id,
+                OPENAQ_SERVICE_REF,
+                station_id_by_ref,
+                phenomenon_id_by_name,
+            )
+            timeseries_upserted = writer.upsert_timeseries(timeseries_rows)
+            LOG.info(
+                "Upserted %s stations, %s phenomena, %s timeseries into Supabase.",
+                stations_upserted,
+                len(phenomenon_id_by_name),
+                timeseries_upserted,
+            )
 
         if args.format == "csv":
             _write_csv(args.output, normalized)
