@@ -1,4 +1,10 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
+import { cacheControlHeaders } from "../_shared/cache.ts";
+import {
+  flushHistoryOutbox,
+  type HistoryObservationRow,
+  writeHistoryWithOutbox,
+} from "../_shared/history_client.ts";
 
 type PollRequest = {
   connector_code?: string;
@@ -289,7 +295,10 @@ function requireCronSecret(req: Request): Response | null {
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body, null, 2), {
     status,
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...cacheControlHeaders(status),
+    },
   });
 }
 
@@ -1497,7 +1506,9 @@ function resolveHourlyObservedAt(
   }
   const observedMs = Date.parse(observedAt);
   if (Number.isFinite(observedMs) && observedMs > nowMs) {
-    return periodFrom ? String(periodFrom) : String(new Date(nowMs).toISOString());
+    return periodFrom
+      ? String(periodFrom)
+      : String(new Date(nowMs).toISOString());
   }
   return String(observedAt);
 }
@@ -2067,7 +2078,10 @@ serve(async (req) => {
         if (missingSample.length < 10) {
           missingSample.push(ref);
         }
-        if ((stationMapping || observedStationMapping) && missingDetails.length < 10) {
+        if (
+          (stationMapping || observedStationMapping) &&
+          missingDetails.length < 10
+        ) {
           const stationId = stationMapping?.get(ref) ??
             observedStationMapping?.get(ref);
           missingDetails.push(
@@ -2148,6 +2162,15 @@ serve(async (req) => {
   const connector = await loadConnector(connectorCode);
   if (!connector) {
     return jsonResponse({ error: "Connector not found." }, 404);
+  }
+
+  if (!dryRun) {
+    await flushHistoryOutbox(rpcRequest, (message) => {
+      logLine("WARN", "OpenAQ history outbox flush warning", {
+        connector_id: connector.id,
+        message,
+      });
+    });
   }
 
   let bbox: string;
@@ -2973,6 +2996,10 @@ serve(async (req) => {
 
   if (!dryRun) {
     const observationRows: Array<Record<string, unknown>> = [];
+    const historyRows: HistoryObservationRow[] = [];
+    const historyConnectorCode = String(
+      connector.connector_code ?? connectorCode,
+    );
     for (
       const [timeseriesRef, observations] of observationsByTimeseries.entries()
     ) {
@@ -2988,11 +3015,39 @@ serve(async (req) => {
           value,
           status: null,
         });
+        historyRows.push({
+          connector_code: historyConnectorCode,
+          service_ref: OPENAQ_SERVICE_REF,
+          timeseries_ref: timeseriesRef,
+          observed_at: observedAt,
+          value,
+          status: null,
+          connector_id: Number(connectorId),
+          timeseries_id: timeseriesId,
+        });
       }
     }
     observationsRowsPrepared = observationRows.length;
 
     observationsUpserted = await upsertObservations(observationRows);
+    if (historyRows.length) {
+      await writeHistoryWithOutbox(rpcRequest, historyRows, (message) => {
+        logLine("WARN", "OpenAQ history write warning", {
+          connector_id: connector.id,
+          message,
+          rows: historyRows.length,
+        });
+        void logError({
+          severity: "warn",
+          message: "OpenAQ history dual-write warning",
+          connector_id: connector.id,
+          context: {
+            warning: message,
+            rows: historyRows.length,
+          },
+        });
+      });
+    }
     const timeseriesUpdates: Array<
       { id: number; last_value: number; last_value_at: string }
     > = [];

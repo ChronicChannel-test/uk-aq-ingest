@@ -2,12 +2,12 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 
 const projectRef = process.env.SUPABASE_PROJECT_REF || '';
-const publishableKey = process.env.SUPABASE_PUBLISHABLE_DEFAULT_KEY || '';
+const publishableKey = process.env.SB_PUBLISHABLE_DEFAULT_KEY || '';
 const anonJwt = process.env.SB_ANON_JWT || '';
 
 const replacements = [
   { name: 'SUPABASE_PROJECT_REF', value: projectRef },
-  { name: 'SUPABASE_PUBLISHABLE_DEFAULT_KEY', value: publishableKey },
+  { name: 'SB_PUBLISHABLE_DEFAULT_KEY', value: publishableKey },
   { name: 'SB_ANON_JWT', value: anonJwt },
 ];
 

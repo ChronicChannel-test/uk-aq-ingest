@@ -1,5 +1,7 @@
 // @ts-nocheck
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
+import { cacheControlHeaders } from "../_shared/cache.ts";
+import { flushHistoryOutbox, writeHistoryWithOutbox } from "../_shared/history_client.ts";
 
 type PollRequest = {
   connector_id?: string;
@@ -165,6 +167,20 @@ async function postgrestRequest<T>(
   return { data: payload as T, error: null };
 }
 
+async function publicRpcRequest<T>(
+  fn: string,
+  args?: Record<string, unknown>,
+): Promise<{ data: T | null; error: { message: string } | null }> {
+  return await postgrestRequest<T>(
+    "POST",
+    `rpc/${fn}`,
+    undefined,
+    args ?? {},
+    undefined,
+    "uk_aq_public",
+  );
+}
+
 const ERROR_LOGGER = createErrorLogger(
   loadErrorDropboxConfig(),
   Boolean(SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY),
@@ -322,6 +338,9 @@ serve(async (req) => {
         }
 
         if (shouldPoll) {
+          await flushHistoryOutbox(publicRpcRequest, (message) => {
+            log.warn("History outbox flush warning", { message });
+          });
           const checkpointCandidates = requestedSeries?.length ? series.slice() : [];
           const beforeRecencyFilter = series.length;
           series = series.filter((row) => {
@@ -417,6 +436,32 @@ serve(async (req) => {
                   throw new Error(`observations upsert failed for ${row.id}: ${error.message}`);
                 }
                 observationsUpserted += observationRows.length;
+                const historyRows = observationRows.map((point) => {
+                  const numericValue = Number(point.value);
+                  return {
+                    connector_code: String(
+                      connector?.connector_code ?? requestedConnectorCode ?? UK_AIR_SOS_CONNECTOR_CODE,
+                    ),
+                    service_ref: String(
+                      row.service_ref ??
+                        connector?.connector_code ??
+                        requestedConnectorCode ??
+                        UK_AIR_SOS_CONNECTOR_CODE,
+                    ),
+                    timeseries_ref: String(row.timeseries_ref || row.id),
+                    observed_at: String(point.observed_at),
+                    value: Number.isFinite(numericValue) ? numericValue : null,
+                    status: point.status == null ? null : String(point.status),
+                    connector_id: Number(point.connector_id),
+                    timeseries_id: Number(point.timeseries_id),
+                  };
+                });
+                await writeHistoryWithOutbox(publicRpcRequest, historyRows, (message) => {
+                  log.warn("History dual-write warning", {
+                    timeseries_id: row.id,
+                    message,
+                  });
+                });
               }
               await upsertLastValue(
                 row.id,
@@ -576,7 +621,10 @@ async function readJson(req: Request): Promise<PollRequest | null> {
 function json(payload: unknown, status = 200): Response {
   return new Response(JSON.stringify(payload, null, 2), {
     status,
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...cacheControlHeaders(status),
+    },
   });
 }
 

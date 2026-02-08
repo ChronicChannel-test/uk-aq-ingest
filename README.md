@@ -31,7 +31,7 @@ Env quick reference (Supabase blocks secrets prefixed with `SUPABASE_`):
 | Context | Required | Optional |
 | --- | --- | --- |
 | Local scripts (.env) | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | `UK_AIR_SOS_BASE_URL`, `UK_AIR_SOS_SERVICE_LABEL` |
-| Edge function runtime (Supabase secrets) | `SB_SUPABASE_URL`, `SB_SERVICE_ROLE_KEY` | `UK_AIR_SOS_BASE_URL`, `UK_AIR_SOS_SERVICE_LABEL` |
+| Edge function runtime (Supabase secrets) | `SB_SUPABASE_URL`, `SB_SERVICE_ROLE_KEY` | `UK_AIR_SOS_BASE_URL`, `UK_AIR_SOS_SERVICE_LABEL`, `HISTORY_SUPABASE_URL`, `HISTORY_SERVICE_ROLE_KEY`, `HISTORY_UPSERT_RPC`, `HISTORY_OUTBOX_FLUSH_LIMIT`, `HISTORY_UPSERT_CHUNK_SIZE` |
 | GitHub Actions deploy | `SUPABASE_ACCESS_TOKEN`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_PROJECT_REF` (Secrets) | `UK_AIR_SOS_BASE_URL`, `UK_AIR_SOS_SERVICE_LABEL` (Secrets) |
 
 Install dependencies in a virtual environment:
@@ -92,6 +92,31 @@ GitHub Actions deployment secrets (used by `.github/workflows/supabase_edge_depl
 - `SUPABASE_PROJECT_REF`
 
 Note: `SUPABASE_ACCESS_TOKEN` is only required for deployments (GitHub Actions or `supabase` CLI). The publishable key is safe to expose; the service role key is not.
+
+## Fresh DB setup (dual-write)
+Use this flow when creating fresh MAIN + HISTORY projects.
+
+1. MAIN DB project:
+   - In the schema repo (`../CIC-Test-UK-AQ-Schema/uk-aq-schema/schemas/main_db`), run/paste:
+     - `uk_aq_core_schema.sql`
+     - `uk_aq_raw_schema.sql`
+     - `uk_aq_rpc.sql`
+     - `uk_aq_security.sql`
+     - `main_db_dualwrite_bootstrap.sql`
+2. HISTORY DB project:
+   - In the schema repo (`../CIC-Test-UK-AQ-Schema/uk-aq-schema/schemas/history_db`), run/paste:
+     - `uk_aq_history_schema.sql`
+     - `history_db_dualwrite_bootstrap.sql`
+3. Set MAIN Edge Function secrets:
+   - `HISTORY_SUPABASE_URL`
+   - `HISTORY_SERVICE_ROLE_KEY`
+   - Optional overrides:
+     - `HISTORY_UPSERT_RPC` (default `uk_aq_rpc_history_observations_upsert`)
+     - `HISTORY_OUTBOX_FLUSH_LIMIT` (default `10`)
+     - `HISTORY_UPSERT_CHUNK_SIZE` (default `500`)
+4. Operational notes:
+   - Outbox retries history delivery without backfill exports.
+   - `uk_aq_raw.history_sync_receipt_daily` records per-day delivery receipts for future safe retention deletes.
 
 ## Station Snapshot Dashboard (local only)
 Local dashboard entrypoint:

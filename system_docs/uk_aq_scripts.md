@@ -55,7 +55,7 @@ Purpose:
 
 Placeholders:
 - `__SUPABASE_PROJECT_REF__` or `{{SUPABASE_PROJECT_REF}}`
-- `__SUPABASE_PUBLISHABLE_DEFAULT_KEY__` or `{{SUPABASE_PUBLISHABLE_DEFAULT_KEY}}`
+- `__SB_PUBLISHABLE_DEFAULT_KEY__` or `{{SB_PUBLISHABLE_DEFAULT_KEY}}`
 - `__SB_ANON_JWT__` or `{{SB_ANON_JWT}}`
 
 Notes:
@@ -64,7 +64,7 @@ Notes:
 
 Environment:
 - `SUPABASE_PROJECT_REF`
-- `SUPABASE_PUBLISHABLE_DEFAULT_KEY`
+- `SB_PUBLISHABLE_DEFAULT_KEY`
 - `SB_ANON_JWT`
 
 ### `scripts/uk_aq_export_connectors_snapshot.py`
@@ -126,7 +126,7 @@ Environment:
 - `UK_AQ_DEV_JWT` (required unless `UK_AQ_DEV_REFRESH_TOKEN` is provided)
 - `UK_AQ_DEV_REFRESH_TOKEN` (optional; enables auto-refresh)
 - `UK_AQ_DEV_ENV_FILE` (optional; env file to persist rotated refresh tokens, default `.env.supabase`)
-- `SB_PUBLISHABLE_DEFAULT_KEY` (or `SUPABASE_PUBLISHABLE_DEFAULT_KEY` / `SB_ANON_JWT`) required when using auto-refresh
+- `SB_PUBLISHABLE_DEFAULT_KEY` (or `SB_ANON_JWT`) required when using auto-refresh
 
 ### `scripts/uk_aq_issue_dev_auth_tokens.py`
 Purpose:
@@ -146,7 +146,7 @@ Notes:
 
 Environment:
 - `SUPABASE_URL` or `SB_SUPABASE_URL`
-- `SB_PUBLISHABLE_DEFAULT_KEY` (or `SUPABASE_PUBLISHABLE_DEFAULT_KEY` / `SB_ANON_JWT`)
+- `SB_PUBLISHABLE_DEFAULT_KEY` (or `SB_ANON_JWT`)
 - `UK_AQ_DEV_USER_EMAIL` + `UK_AQ_DEV_USER_PASSWORD` (for password grant), or `UK_AQ_DEV_REFRESH_TOKEN` (for refresh grant)
 
 ### `dev_dashboards.sh` and `dev_dashboards_stop.sh`

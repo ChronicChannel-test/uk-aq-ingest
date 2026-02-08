@@ -1,5 +1,7 @@
 // @ts-nocheck
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
+import { cacheControlHeaders } from "../_shared/cache.ts";
+import { flushHistoryOutbox, writeHistoryWithOutbox } from "../_shared/history_client.ts";
 import {
   addUtcDays,
   buildErgDateRange,
@@ -212,6 +214,20 @@ async function postgrestRequest<T>(
   }
   const data = (await resp.json().catch(() => null)) as T | null;
   return { data, error: null };
+}
+
+async function publicRpcRequest<T>(
+  fn: string,
+  args?: Record<string, unknown>,
+): Promise<{ data: T | null; error: { message: string } | null }> {
+  return await postgrestRequest<T>(
+    "POST",
+    `rpc/${fn}`,
+    undefined,
+    args ?? {},
+    undefined,
+    "uk_aq_public",
+  );
 }
 
 type LogBuffer = {
@@ -888,6 +904,35 @@ async function upsertObservations(rows: Record<string, unknown>[]): Promise<numb
     throw new Error(`Observations upsert failed: ${error.message}`);
   }
   return rows.length;
+}
+
+function toHistoryObservationRows(
+  rows: Record<string, unknown>[],
+  connectorCode: string,
+  serviceRef: string,
+  timeseriesRef: string,
+  connectorId: number,
+  timeseriesId: number,
+): Array<Record<string, unknown>> {
+  const historyRows: Array<Record<string, unknown>> = [];
+  for (const row of rows) {
+    const observedAt = String(row.observed_at ?? "").trim();
+    if (!observedAt) {
+      continue;
+    }
+    const numericValue = Number(row.value);
+    historyRows.push({
+      connector_code: connectorCode,
+      service_ref: serviceRef,
+      timeseries_ref: timeseriesRef,
+      observed_at: observedAt,
+      value: Number.isFinite(numericValue) ? numericValue : null,
+      status: row.status == null ? null : String(row.status),
+      connector_id: connectorId,
+      timeseries_id: timeseriesId,
+    });
+  }
+  return historyRows;
 }
 
 async function updateTimeseriesLastValues(
@@ -1758,6 +1803,11 @@ serve(async (req) => {
     if (!connectorId) {
       throw new Error("Connector not found.");
     }
+    if (!dryRun) {
+      await flushHistoryOutbox(publicRpcRequest, (message) => {
+        log.warn("History outbox flush warning.", { message });
+      });
+    }
 
     const stationsPayload = await fetchJson(
       `${baseUrl}/Information/MonitoringSites/GroupName=${groupName}/Json`,
@@ -1952,6 +2002,23 @@ serve(async (req) => {
             if (observations.length && !dryRun) {
               for (const batch of chunk(observations, batchSize)) {
                 observationsUpserted += await upsertObservations(batch);
+                await writeHistoryWithOutbox(
+                  publicRpcRequest,
+                  toHistoryObservationRows(
+                    batch,
+                    connectorCodeForLog,
+                    serviceRef,
+                    timeseriesRef,
+                    Number(connectorId),
+                    timeseriesId,
+                  ),
+                  (message) => {
+                    log.warn("History dual-write warning.", {
+                      timeseries_ref: timeseriesRef,
+                      message,
+                    });
+                  },
+                );
               }
             }
             if (lastObserved && lastValue !== null) {
@@ -2120,6 +2187,9 @@ serve(async (req) => {
 
   return new Response(JSON.stringify(responsePayload, null, 2), {
     status,
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...cacheControlHeaders(status),
+    },
   });
 });

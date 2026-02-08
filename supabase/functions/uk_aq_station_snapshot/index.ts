@@ -6,7 +6,6 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")
   ?? Deno.env.get("SB_SUPABASE_URL")
   ?? "";
 const SUPABASE_ANON_KEY = Deno.env.get("SB_PUBLISHABLE_DEFAULT_KEY")
-  ?? Deno.env.get("SUPABASE_PUBLISHABLE_DEFAULT_KEY")
   ?? Deno.env.get("SB_ANON_JWT")
   ?? "";
 const UK_AQ_PUBLIC_SCHEMA = Deno.env.get("UK_AQ_PUBLIC_SCHEMA")

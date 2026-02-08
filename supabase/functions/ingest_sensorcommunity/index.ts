@@ -1,5 +1,7 @@
 // @ts-nocheck
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
+import { cacheControlHeaders } from "../_shared/cache.ts";
+import { flushHistoryOutbox, writeHistoryWithOutbox } from "../_shared/history_client.ts";
 
 type PollRequest = {
   connector_id?: string;
@@ -245,6 +247,20 @@ async function postgrestRequest<T>(
     return { data: null, error: { message: String(message) } };
   }
   return { data: payload as T, error: null };
+}
+
+async function publicRpcRequest<T>(
+  fn: string,
+  args?: Record<string, unknown>,
+): Promise<{ data: T | null; error: { message: string } | null }> {
+  return await postgrestRequest<T>(
+    "POST",
+    `rpc/${fn}`,
+    undefined,
+    args ?? {},
+    undefined,
+    "uk_aq_public",
+  );
 }
 
 type LogBuffer = {
@@ -863,6 +879,29 @@ async function upsertObservations(rows: Array<Record<string, unknown>>): Promise
     "resolution=merge-duplicates,return=minimal",
   );
   return rows.length;
+}
+
+function toHistoryObservationRow(
+  observationRow: Record<string, unknown>,
+  connectorCode: string,
+  serviceRef: string,
+  timeseriesRef: string,
+): Record<string, unknown> | null {
+  const observedAt = String(observationRow.observed_at ?? "").trim();
+  if (!observedAt) {
+    return null;
+  }
+  const numericValue = Number(observationRow.value);
+  return {
+    connector_code: connectorCode,
+    service_ref: serviceRef,
+    timeseries_ref: timeseriesRef,
+    observed_at: observedAt,
+    value: Number.isFinite(numericValue) ? numericValue : null,
+    status: observationRow.status == null ? null : String(observationRow.status),
+    connector_id: Number(observationRow.connector_id),
+    timeseries_id: Number(observationRow.timeseries_id),
+  };
 }
 
 function loadDropboxConfig(): DropboxConfig | null {
@@ -1553,6 +1592,11 @@ serve(async (req) => {
           responsePayload = { ok: false, error: "Connector not found." };
           log.error("Connector not found.");
         }
+        if (status === 200 && connector) {
+          await flushHistoryOutbox(publicRpcRequest, (message) => {
+            log.warn("History outbox flush warning.", { message });
+          });
+        }
 
         let records: Array<Record<string, unknown>> = [];
         if (status === 200 && connector) {
@@ -1709,6 +1753,7 @@ serve(async (req) => {
               const timeseriesIdMap = await fetchTimeseriesIds(connector.id, requestedServiceRef, timeseriesRefs);
 
               const observationRows: Array<Record<string, unknown>> = [];
+              const historyRows: Array<Record<string, unknown>> = [];
               for (const entry of observationsByTimeseries.values()) {
                 const timeseriesRef = `${entry.station_ref}:${entry.pollutant}`;
                 const timeseriesId = timeseriesIdMap[timeseriesRef];
@@ -1722,9 +1767,24 @@ serve(async (req) => {
                   value: entry.value,
                   status: null,
                 });
+                const historyRow = toHistoryObservationRow(
+                  observationRows[observationRows.length - 1],
+                  String(connector.connector_code ?? requestedConnectorCode),
+                  String(requestedServiceRef),
+                  timeseriesRef,
+                );
+                if (historyRow) {
+                  historyRows.push(historyRow);
+                }
               }
 
               observationsUpserted = await upsertObservations(observationRows);
+              await writeHistoryWithOutbox(publicRpcRequest, historyRows, (message) => {
+                log.warn("History dual-write warning.", {
+                  message,
+                  rows: historyRows.length,
+                });
+              });
 
               const { error: pollUpdateError } = await postgrestRequest(
                 "PATCH",
@@ -1830,6 +1890,9 @@ serve(async (req) => {
 
   return new Response(JSON.stringify(responsePayload), {
     status,
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...cacheControlHeaders(status),
+    },
   });
 });

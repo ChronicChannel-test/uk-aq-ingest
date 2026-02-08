@@ -28,7 +28,7 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          SUPABASE_ANON_JWT: ${{ secrets.SUPABASE_ANON_JWT }}
+          SB_ANON_JWT: ${{ secrets.SB_ANON_JWT }}
           SB_UK_AQ_CRON_SECRET: ${{ secrets.SB_UK_AQ_CRON_SECRET }}
         run: |
           python3 scripts/breathelondon/breathelondon_batch.py \

@@ -8,7 +8,7 @@ This repo uses GitHub Actions for scheduled syncs and deployments.
 - Schedule: daily at 06:00 UTC.
 - Purpose: run a lightweight keepalive query against Supabase.
 - Script: `npm run keepalive`.
-- Secrets: `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_DEFAULT_KEY`, `KEEPALIVE_TABLE`, `KEEPALIVE_SELECT`.
+- Secrets: `SUPABASE_URL`, `SB_PUBLISHABLE_DEFAULT_KEY`, `KEEPALIVE_TABLE`, `KEEPALIVE_SELECT`.
 
 ### `supabase_edge_deploy.yml`
 - Trigger: push to `main` affecting `supabase/functions/**`, or manual dispatch.
@@ -16,7 +16,7 @@ This repo uses GitHub Actions for scheduled syncs and deployments.
 - Deployed functions: `ingest_uk_air_sos`, `ingest_breathelondon`, `ingest_sensorcommunity`,
   `uk_aq_latest`, `uk_aq_bristol_latest`, `uk_aq_la_hex`, `uk_aq_pcon_hex`,
   `uk_aq_stations`, `uk_aq_timeseries`.
-- Secrets: `SUPABASE_PROJECT_REF`, `SUPABASE_PUBLISHABLE_DEFAULT_KEY`, `SUPABASE_ACCESS_TOKEN`,
+- Secrets: `SUPABASE_PROJECT_REF`, `SB_PUBLISHABLE_DEFAULT_KEY`, `SUPABASE_ACCESS_TOKEN`,
   `SUPABASE_SECRETS_ENV` (newline-delimited env file contents).
 - Supabase secret names cannot start with `SUPABASE_`. Use `SB_` (or another prefix) in
   `SUPABASE_SECRETS_ENV`.

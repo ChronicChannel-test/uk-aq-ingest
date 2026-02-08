@@ -33,7 +33,6 @@ def env_supabase_url() -> str:
 def env_publishable_key() -> str:
     return (
         os.getenv("SB_PUBLISHABLE_DEFAULT_KEY")
-        or os.getenv("SUPABASE_PUBLISHABLE_DEFAULT_KEY")
         or os.getenv("SB_ANON_JWT")
         or ""
     ).strip()
@@ -139,7 +138,7 @@ def main() -> None:
         raise SystemExit("Missing SUPABASE_URL or SB_SUPABASE_URL.")
     if not publishable_key:
         raise SystemExit(
-            "Missing SB_PUBLISHABLE_DEFAULT_KEY (or SUPABASE_PUBLISHABLE_DEFAULT_KEY / SB_ANON_JWT)."
+            "Missing SB_PUBLISHABLE_DEFAULT_KEY (or SB_ANON_JWT)."
         )
 
     refresh_token = args.refresh_token.strip()

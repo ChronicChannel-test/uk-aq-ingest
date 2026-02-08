@@ -1,6 +1,8 @@
 // @ts-nocheck
 // trigger deploy 2026-01-24 19:30 
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
+import { cacheControlHeaders } from "../_shared/cache.ts";
+import { flushHistoryOutbox, writeHistoryWithOutbox } from "../_shared/history_client.ts";
 
 type PollRequest = {
   api_key?: string;
@@ -245,6 +247,20 @@ async function postgrestRequest<T>(
     return { data: null, error: { message: String(message) } };
   }
   return { data: payload as T, error: null };
+}
+
+async function publicRpcRequest<T>(
+  fn: string,
+  args?: Record<string, unknown>,
+): Promise<{ data: T | null; error: { message: string } | null }> {
+  return await postgrestRequest<T>(
+    "POST",
+    `rpc/${fn}`,
+    undefined,
+    args ?? {},
+    undefined,
+    "uk_aq_public",
+  );
 }
 
 function asString(value: unknown, fallback?: string): string | undefined {
@@ -912,6 +928,35 @@ async function upsertObservations(rows: Record<string, unknown>[]): Promise<numb
     "resolution=merge-duplicates,return=minimal",
   );
   return rows.length;
+}
+
+function toHistoryObservationRows(
+  rows: Record<string, unknown>[],
+  connectorCode: string,
+  serviceRef: string,
+  timeseriesRef: string,
+  connectorId: number,
+  timeseriesId: number,
+): Array<Record<string, unknown>> {
+  const historyRows: Array<Record<string, unknown>> = [];
+  for (const row of rows) {
+    const observedAt = asString(row.observed_at);
+    if (!observedAt) {
+      continue;
+    }
+    const numericValue = Number(row.value);
+    historyRows.push({
+      connector_code: connectorCode,
+      service_ref: serviceRef,
+      timeseries_ref: timeseriesRef,
+      observed_at: observedAt,
+      value: Number.isFinite(numericValue) ? numericValue : null,
+      status: asString(row.status) ?? null,
+      connector_id: connectorId,
+      timeseries_id: timeseriesId,
+    });
+  }
+  return historyRows;
 }
 
 async function updateTimeseriesLastValues(
@@ -1698,6 +1743,12 @@ serve(async (req) => {
             connector_code: connectorCode,
           });
         } else {
+          if (!dryRun) {
+            await flushHistoryOutbox(publicRpcRequest, (message) => {
+              log.warn("History outbox flush warning.", { message });
+              errors.push(`history_outbox_flush: ${message}`);
+            });
+          }
           if (rawRecorder) {
             rawRecorder.recordEvent("context", {
               connector_id: connector.id,
@@ -1955,6 +2006,24 @@ serve(async (req) => {
                         if (!dryRun) {
                           for (const batch of chunk(rows, batchSize)) {
                             observationsUpserted += await upsertObservations(batch);
+                            await writeHistoryWithOutbox(
+                              publicRpcRequest,
+                              toHistoryObservationRows(
+                                batch,
+                                String(connector.connector_code ?? connectorCode),
+                                serviceRef,
+                                timeseriesRef,
+                                Number(connector.id),
+                                timeseriesId,
+                              ),
+                              (message) => {
+                                log.warn("History dual-write warning.", {
+                                  timeseries_ref: timeseriesRef,
+                                  message,
+                                });
+                                errors.push(`history_dual_write: ${message}`);
+                              },
+                            );
                           }
                         }
                       }
@@ -2186,6 +2255,9 @@ serve(async (req) => {
   }
   return new Response(JSON.stringify(responsePayload, null, 2), {
     status,
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...cacheControlHeaders(status),
+    },
   });
 });
