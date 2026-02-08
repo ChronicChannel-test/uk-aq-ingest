@@ -108,14 +108,33 @@ serve(async (req) => {
   const limit = parseLimit(url.searchParams.get("limit"), DEFAULT_LIMIT);
   const rawSince = url.searchParams.get("since");
   const since = rawSince === null ? null : normalizeTimestamp(rawSince);
+  const rawSinceId = url.searchParams.get("since_id");
+  const sinceId = rawSinceId === null ? null : normalizeCursorId(rawSinceId);
   if (rawSince !== null && since === null) {
     return json({ error: "Invalid since timestamp. Provide ISO-8601 datetime (e.g. 2026-02-07T10:30:00Z)." }, 400);
   }
+  if (rawSinceId !== null && sinceId === null) {
+    return json({ error: "Invalid since_id. Provide a non-negative integer." }, 400);
+  }
+  if (!since && sinceId !== null) {
+    return json({ error: "since_id requires since." }, 400);
+  }
   const ifNoneMatch = req.headers.get("if-none-match");
+  const effectiveSinceId = since ? (sinceId ?? 0) : null;
 
   try {
     if (since && ifNoneMatch) {
-      const hasDelta = await hasLatestDelta({ region, pconCode, stationLike, connectorId, pollutant, windowLabel, limit, since });
+      const hasDelta = await hasLatestDelta({
+        region,
+        pconCode,
+        stationLike,
+        connectorId,
+        pollutant,
+        windowLabel,
+        limit,
+        since,
+        sinceId: effectiveSinceId,
+      });
       if (!hasDelta) {
         const emptyPayload = {
           region,
@@ -123,7 +142,9 @@ serve(async (req) => {
           pollutant,
           window: windowLabel,
           since,
+          since_id: effectiveSinceId,
           next_since: since,
+          next_since_id: effectiveSinceId,
           count: 0,
           data: [],
         };
@@ -138,14 +159,26 @@ serve(async (req) => {
         return json(emptyPayload, 200, { ETag: emptyEtag });
       }
     }
-    const result = await loadLatest({ region, pconCode, stationLike, connectorId, pollutant, windowLabel, limit, since });
+    const result = await loadLatest({
+      region,
+      pconCode,
+      stationLike,
+      connectorId,
+      pollutant,
+      windowLabel,
+      limit,
+      since,
+      sinceId: effectiveSinceId,
+    });
     const payload = {
       region,
       pcon_code: pconCode,
       pollutant,
       window: windowLabel,
       since,
+      since_id: effectiveSinceId,
       next_since: result.nextSince,
+      next_since_id: result.nextSinceId,
       count: result.rows.length,
       data: result.rows,
     };
@@ -173,38 +206,39 @@ type LoadOptions = {
   windowLabel: string;
   limit: number;
   since: string | null;
+  sinceId: number | null;
 };
 
-async function loadLatest({ region, pconCode, stationLike, connectorId, pollutant, windowLabel, limit, since }: LoadOptions) {
+async function loadLatest(
+  { region, pconCode, stationLike, connectorId, pollutant, windowLabel, limit, since, sinceId }:
+    LoadOptions,
+) {
   const pollutantKey = normalizePollutant(pollutant);
-  const { data, error } = await postgrestRequest<any[]>(
-    "POST",
-    "rpc/uk_aq_latest_rpc",
-    undefined,
-    UK_AQ_PUBLIC_SCHEMA,
-    {
-      region,
-      pcon_code: pconCode,
-      station_like: stationLike,
-      connector_id: connectorId,
-      pollutant: pollutantKey,
-      window_label: windowLabel,
-      limit_rows: limit,
-      since_ts: since,
-    },
-  );
+  const { data, error } = await callLatestRpc({
+    region,
+    pconCode,
+    stationLike,
+    connectorId,
+    pollutant: pollutantKey,
+    windowLabel,
+    limit,
+    since,
+    sinceId,
+    useLimitOne: false,
+  });
   if (error) {
     throw new Error(error.message);
   }
   const rows = data ?? [];
-  const nextSince = maxTimestamp(rows.map((row) => row?.last_value_at), since);
+  const nextCursor = deriveNextCursor(rows, since, sinceId);
 
   const filtered = rows
     .filter(passesOutlierThreshold)
     .filter(hasAssignedGeoCode);
 
   return {
-    nextSince,
+    nextSince: nextCursor.since,
+    nextSinceId: nextCursor.sinceId,
     rows: filtered.map((row) => {
     const station = row.station ?? null;
     const stationLabel = resolveStationLabel(station?.label, station?.station_ref, row.label);
@@ -233,6 +267,7 @@ async function loadLatest({ region, pconCode, stationLike, connectorId, pollutan
 
     return {
       id: row.id ?? null,
+      updated_at: row.updated_at ?? null,
       last_value: row.last_value ?? null,
       last_value_at: row.last_value_at ?? null,
       connector_code: connector?.connector_code ?? null,
@@ -269,6 +304,81 @@ async function loadLatest({ region, pconCode, stationLike, connectorId, pollutan
   };
 }
 
+type LatestRpcCallOptions = {
+  region: string | null;
+  pconCode: string | null;
+  stationLike: string | null;
+  connectorId: string | null;
+  pollutant: string | null;
+  windowLabel: string;
+  limit: number;
+  since: string | null;
+  sinceId: number | null;
+  useLimitOne: boolean;
+};
+
+async function callLatestRpc(options: LatestRpcCallOptions) {
+  const {
+    region,
+    pconCode,
+    stationLike,
+    connectorId,
+    pollutant,
+    windowLabel,
+    limit,
+    since,
+    sinceId,
+    useLimitOne,
+  } = options;
+  const limitRows = useLimitOne ? 1 : limit;
+  const cursorBody = {
+    region,
+    pcon_code: pconCode,
+    station_like: stationLike,
+    connector_id: connectorId,
+    pollutant,
+    window_label: windowLabel,
+    limit_rows: limitRows,
+    since_updated_at: since,
+    since_updated_id: since ? (sinceId ?? 0) : null,
+  };
+  const cursorAttempt = await postgrestRequest<any[]>(
+    "POST",
+    "rpc/uk_aq_latest_rpc",
+    undefined,
+    UK_AQ_PUBLIC_SCHEMA,
+    cursorBody,
+  );
+  if (!cursorAttempt.error) {
+    return cursorAttempt;
+  }
+  if (!looksLikeCursorSignatureMismatch(cursorAttempt.error.message)) {
+    return cursorAttempt;
+  }
+  return await postgrestRequest<any[]>(
+    "POST",
+    "rpc/uk_aq_latest_rpc",
+    undefined,
+    UK_AQ_PUBLIC_SCHEMA,
+    {
+      region,
+      pcon_code: pconCode,
+      station_like: stationLike,
+      connector_id: connectorId,
+      pollutant,
+      window_label: windowLabel,
+      limit_rows: limitRows,
+      since_ts: since,
+    },
+  );
+}
+
+function looksLikeCursorSignatureMismatch(message: string): boolean {
+  const normalized = String(message || "").toLowerCase();
+  return normalized.includes("could not find the function") &&
+    normalized.includes("uk_aq_latest_rpc");
+}
+
 function hasAssignedGeoCode(row: any): boolean {
   const station = row?.station ?? null;
   const pconCode = typeof station?.pcon_code === "string"
@@ -280,27 +390,26 @@ function hasAssignedGeoCode(row: any): boolean {
   return Boolean(pconCode || laCode);
 }
 
-async function hasLatestDelta({ region, pconCode, stationLike, connectorId, pollutant, windowLabel, since }: LoadOptions): Promise<boolean> {
+async function hasLatestDelta(
+  { region, pconCode, stationLike, connectorId, pollutant, windowLabel, since, sinceId }:
+    LoadOptions,
+): Promise<boolean> {
   if (!since) {
     return true;
   }
   const pollutantKey = normalizePollutant(pollutant);
-  const { data, error } = await postgrestRequest<any[]>(
-    "POST",
-    "rpc/uk_aq_latest_rpc",
-    undefined,
-    UK_AQ_PUBLIC_SCHEMA,
-    {
-      region,
-      pcon_code: pconCode,
-      station_like: stationLike,
-      connector_id: connectorId,
-      pollutant: pollutantKey,
-      window_label: windowLabel,
-      limit_rows: 1,
-      since_ts: since,
-    },
-  );
+  const { data, error } = await callLatestRpc({
+    region,
+    pconCode,
+    stationLike,
+    connectorId,
+    pollutant: pollutantKey,
+    windowLabel,
+    limit: 1,
+    since,
+    sinceId,
+    useLimitOne: true,
+  });
   if (error) {
     throw new Error(error.message);
   }
@@ -420,6 +529,48 @@ function normalizeTimestamp(value: string): string | null {
     return null;
   }
   return parsed.toISOString();
+}
+
+function normalizeCursorId(value: unknown): number | null {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return null;
+  }
+  return Math.trunc(parsed);
+}
+
+function deriveNextCursor(
+  rows: any[],
+  fallbackSince: string | null,
+  fallbackSinceId: number | null,
+): { since: string | null; sinceId: number | null } {
+  let bestSince = fallbackSince ? normalizeTimestamp(fallbackSince) : null;
+  let bestId = bestSince ? (fallbackSinceId ?? 0) : null;
+  let bestMs = bestSince ? Date.parse(bestSince) : Number.NEGATIVE_INFINITY;
+  for (const row of rows) {
+    const rowSince = normalizeTimestamp(row?.updated_at ?? row?.last_value_at ?? "");
+    if (!rowSince) {
+      continue;
+    }
+    const rowMs = Date.parse(rowSince);
+    const rowId = normalizeCursorId(row?.id) ?? 0;
+    if (rowMs > bestMs) {
+      bestMs = rowMs;
+      bestSince = rowSince;
+      bestId = rowId;
+      continue;
+    }
+    if (rowMs === bestMs) {
+      const currentId = bestId ?? 0;
+      if (rowId > currentId) {
+        bestId = rowId;
+      }
+    }
+  }
+  if (!bestSince) {
+    return { since: null, sinceId: null };
+  }
+  return { since: bestSince, sinceId: bestId ?? 0 };
 }
 
 function maxTimestamp(values: Array<string | null | undefined>, fallback: string | null): string | null {
