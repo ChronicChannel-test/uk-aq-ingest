@@ -47,6 +47,7 @@ const DEFAULT_CONNECTOR_CODE = "uk_air_sos";
 const DEFAULT_WINDOW_HOURS = 6;
 const DEFAULT_MAX_RUNTIME_SECONDS = 110;
 const DEFAULT_TIMEOUT_MS = 30_000;
+const DEFAULT_BOOTSTRAP_NULL_LAST_VALUE_BATCH = 50;
 const PAGE_SIZE = 1000;
 const CONCURRENCY_LIMIT = 5;
 
@@ -71,6 +72,10 @@ const UK_AIR_SOS_CONNECTOR_CODE = Deno.env.get("UK_AIR_SOS_CONNECTOR_CODE")
   ?? DEFAULT_CONNECTOR_CODE;
 const UK_AIR_SOS_MAX_RUNTIME_SECONDS = Number(
   Deno.env.get("UK_AIR_SOS_MAX_RUNTIME_SECONDS") ?? DEFAULT_MAX_RUNTIME_SECONDS,
+);
+const UK_AIR_SOS_BOOTSTRAP_NULL_LAST_VALUE_BATCH = Number(
+  Deno.env.get("UK_AIR_SOS_BOOTSTRAP_NULL_LAST_VALUE_BATCH")
+    ?? DEFAULT_BOOTSTRAP_NULL_LAST_VALUE_BATCH,
 );
 const DROPBOX_APP_KEY = Deno.env.get("DROPBOX_APP_KEY") ?? "";
 const DROPBOX_APP_SECRET = Deno.env.get("DROPBOX_APP_SECRET") ?? "";
@@ -343,7 +348,7 @@ serve(async (req) => {
           });
           const checkpointCandidates = requestedSeries?.length ? series.slice() : [];
           const beforeRecencyFilter = series.length;
-          series = series.filter((row) => {
+          const withRecentLastValue = series.filter((row) => {
             if (!row.last_value_at) {
               skippedNoLastValueAt += 1;
               return false;
@@ -359,17 +364,44 @@ serve(async (req) => {
             }
             return true;
           });
-          if (beforeRecencyFilter !== series.length) {
+
+          const nullLastValueCandidates = series.filter((row) => !row.last_value_at);
+          const bootstrapBatchSize = clampPositiveInt(
+            UK_AIR_SOS_BOOTSTRAP_NULL_LAST_VALUE_BATCH,
+            DEFAULT_BOOTSTRAP_NULL_LAST_VALUE_BATCH,
+          );
+          let bootstrapTake = Math.min(
+            bootstrapBatchSize,
+            nullLastValueCandidates.length,
+          );
+          if (typeof effectiveLimit === "number" && effectiveLimit > 0) {
+            bootstrapTake = Math.min(bootstrapTake, Math.max(1, effectiveLimit));
+          }
+          const nowBucket = Math.floor(Date.now() / (2 * 60 * 1000));
+          const bootstrapRows = takeCircular(
+            nullLastValueCandidates,
+            nowBucket * Math.max(1, bootstrapTake),
+            bootstrapTake,
+          );
+
+          if (typeof effectiveLimit === "number" && effectiveLimit > 0) {
+            const recentTake = Math.max(0, effectiveLimit - bootstrapRows.length);
+            series = withRecentLastValue.slice(0, recentTake).concat(bootstrapRows);
+          } else {
+            series = withRecentLastValue.concat(bootstrapRows);
+          }
+
+          if (beforeRecencyFilter !== series.length || bootstrapRows.length > 0) {
             log.info("Timeseries recency filter applied", {
               total: beforeRecencyFilter,
-              remaining: series.length,
+              remaining_after_filter: withRecentLastValue.length,
+              remaining_after_bootstrap: series.length,
               skipped_no_last_value_at: skippedNoLastValueAt,
               skipped_stale_last_value_at: skippedStaleLastValueAt,
+              bootstrap_null_last_value_candidates: nullLastValueCandidates.length,
+              bootstrap_null_last_value_selected: bootstrapRows.length,
               window_hours: pollWindow,
             });
-          }
-          if (typeof effectiveLimit === "number" && effectiveLimit > 0) {
-            series = series.slice(0, effectiveLimit);
           }
 
           const timespan = `${windowStart.toISOString()}/${now.toISOString()}`;
@@ -741,6 +773,28 @@ function parseList(value: unknown): string[] | undefined {
     return parts.length ? parts : undefined;
   }
   return undefined;
+}
+
+function clampPositiveInt(value: number, fallback: number): number {
+  if (!Number.isFinite(value)) {
+    return fallback;
+  }
+  return Math.max(1, Math.trunc(value));
+}
+
+function takeCircular<T>(rows: T[], start: number, count: number): T[] {
+  if (!rows.length || count <= 0) {
+    return [];
+  }
+  if (count >= rows.length) {
+    return rows.slice();
+  }
+  const normalizedStart = ((start % rows.length) + rows.length) % rows.length;
+  const result: T[] = [];
+  for (let idx = 0; idx < count; idx += 1) {
+    result.push(rows[(normalizedStart + idx) % rows.length]);
+  }
+  return result;
 }
 
 function normalizeServiceLabel(label: string | undefined): string {

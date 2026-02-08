@@ -1,6 +1,5 @@
 import {
   createClient,
-  type SupabaseClient,
 } from "https://esm.sh/@supabase/supabase-js@2.49.8";
 
 type RpcError = { message: string };
@@ -96,7 +95,7 @@ const HISTORY_UPSERT_CHUNK_SIZE = parsePositiveInt(
   500,
 );
 
-let historyClientCache: SupabaseClient | null = null;
+let historyClientCache: ReturnType<typeof createClient> | null = null;
 
 function parsePositiveInt(raw: string | undefined, fallback: number): number {
   const value = Number(raw ?? "");
@@ -154,22 +153,24 @@ function historyConfigured(): boolean {
   return Boolean(HISTORY_SUPABASE_URL && HISTORY_SERVICE_ROLE_KEY);
 }
 
-export function createSupabaseHistoryClient(): SupabaseClient {
+export function createSupabaseHistoryClient(): ReturnType<typeof createClient> {
   if (!historyConfigured()) {
     throw new Error(
       "History client is not configured (missing HISTORY_SUPABASE_URL or HISTORY_SERVICE_ROLE_KEY)",
     );
   }
   if (!historyClientCache) {
+    const schema = HISTORY_SCHEMA || "uk_aq_public";
     historyClientCache = createClient(
       HISTORY_SUPABASE_URL,
       HISTORY_SERVICE_ROLE_KEY,
       {
         auth: { persistSession: false, autoRefreshToken: false },
-        db: { schema: HISTORY_SCHEMA || "uk_aq_public" },
         global: {
           headers: {
             "X-Client-Info": "uk-aq-ingest-history-dualwrite",
+            "Accept-Profile": schema,
+            "Content-Profile": schema,
           },
         },
       },
