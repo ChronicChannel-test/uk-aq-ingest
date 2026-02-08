@@ -81,13 +81,19 @@ const HISTORY_SCHEMA = (
     "uk_aq_public"
 ).trim();
 
+function normalizeHistoryRpcSchema(raw: string): string {
+  const normalized = raw.trim().toLowerCase();
+  // History RPC functions live in uk_aq_public. Accept older env values and
+  // map them to the callable RPC schema.
+  if (!normalized || normalized === "uk_aq_history" || normalized === "public") {
+    return "uk_aq_public";
+  }
+  return raw.trim();
+}
+
 // RPC functions are defined in uk_aq_public, while tables live in uk_aq_history.
 // Keep backward compatibility with HISTORY_DB_SCHEMA values that may point at table schema.
-const HISTORY_RPC_SCHEMA = (
-  HISTORY_SCHEMA.toLowerCase() === "uk_aq_history"
-    ? "uk_aq_public"
-    : HISTORY_SCHEMA || "uk_aq_public"
-).trim();
+const HISTORY_RPC_SCHEMA = normalizeHistoryRpcSchema(HISTORY_SCHEMA);
 
 const HISTORY_UPSERT_RPC = (Deno.env.get("HISTORY_UPSERT_RPC") ||
   "uk_aq_rpc_history_observations_upsert")

@@ -4,6 +4,10 @@ This project uses Supabase Edge Functions for polling and serving data. The Edge
 functions run inside Supabase and need their own environment variables (Project
 Settings -> Functions -> Environment Variables). They do not read the local .env.
 
+History dual-write note: shared history writes normalize `HISTORY_SCHEMA` /
+`HISTORY_DB_SCHEMA` values `uk_aq_history` and `public` to `uk_aq_public` for
+RPC calls, because history RPCs are exposed from `uk_aq_public`.
+
 ## Functions
 
 ### uk_aq_dispatch_polls
