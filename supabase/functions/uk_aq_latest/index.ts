@@ -199,7 +199,9 @@ async function loadLatest({ region, pconCode, stationLike, connectorId, pollutan
   const rows = data ?? [];
   const nextSince = maxTimestamp(rows.map((row) => row?.last_value_at), since);
 
-  const filtered = rows.filter(passesOutlierThreshold);
+  const filtered = rows
+    .filter(passesOutlierThreshold)
+    .filter(hasAssignedGeoCode);
 
   return {
     nextSince,
@@ -265,6 +267,17 @@ async function loadLatest({ region, pconCode, stationLike, connectorId, pollutan
     return aStation.localeCompare(bStation);
   }),
   };
+}
+
+function hasAssignedGeoCode(row: any): boolean {
+  const station = row?.station ?? null;
+  const pconCode = typeof station?.pcon_code === "string"
+    ? station.pcon_code.trim()
+    : "";
+  const laCode = typeof station?.la_code === "string"
+    ? station.la_code.trim()
+    : "";
+  return Boolean(pconCode || laCode);
 }
 
 async function hasLatestDelta({ region, pconCode, stationLike, connectorId, pollutant, windowLabel, since }: LoadOptions): Promise<boolean> {

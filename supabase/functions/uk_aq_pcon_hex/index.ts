@@ -143,7 +143,10 @@ async function loadLatest({ pconVersion, limit }: LoadOptions): Promise<PconRow[
   if (error) {
     throw new Error(error.message);
   }
-  return data ?? [];
+  const rows = data ?? [];
+  return rows.filter((row) =>
+    typeof row?.pcon_code === "string" && row.pcon_code.trim().length > 0
+  );
 }
 
 function normalizeText(value: string | null): string | null {
