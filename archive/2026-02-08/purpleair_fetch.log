@@ -1,0 +1,58 @@
+2025-12-10 17:45:15,262 - INFO - Starting sensor discovery...
+2025-12-10 17:45:15,263 - INFO - Fetching UK sensors using bounding box...
+2025-12-10 17:45:15,692 - ERROR - Failed to log API usage: name 'supabase' is not defined
+2025-12-10 17:45:15,693 - INFO - API call successful: 0 points used, 122479 bytes
+2025-12-10 17:45:15,694 - INFO - Found 905 sensors in UK bounding box
+2025-12-10 17:45:15,694 - INFO - Storing 905 sensors in database...
+2025-12-10 17:45:15,694 - ERROR - Failed to store sensors: name 'psycopg2' is not defined
+2025-12-10 17:45:15,694 - INFO - Sensor discovery complete: 905 sensors found
+2025-12-10 17:45:15,694 - INFO - Script completed successfully
+2025-12-10 19:08:14,531 - INFO - Script completed successfully
+2025-12-10 19:09:00,264 - INFO - DRY RUN MODE - Using sample data instead of API calls
+2025-12-10 19:09:00,264 - INFO - Storing 5 sensors in database...
+2025-12-10 19:09:00,264 - ERROR - Failed to store sensors: name 'psycopg2' is not defined
+2025-12-10 19:09:00,264 - INFO - Dry run: Stored 5 sample sensors
+2025-12-10 19:09:00,264 - INFO - Storing 5 observations...
+2025-12-10 19:09:01,289 - INFO - HTTP Request: POST https://nmgierafoeuxfkkscrln.supabase.co/rest/v1/purpleair_observations?columns=%22pm10_0_a%22%2C%22pm2_5_b%22%2C%22pm10_0_b%22%2C%22pm10_0_atm_a%22%2C%22pm2_5_a%22%2C%22observed_at%22%2C%22humidity%22%2C%22pressure%22%2C%22pm10_0_atm_b%22%2C%22temperature%22%2C%22pm2_5_atm_a%22%2C%22sensor_index%22%2C%22pm2_5_atm_b%22 "HTTP/2 401 Unauthorized"
+2025-12-10 19:09:01,290 - ERROR - Failed to store observations: {'message': 'new row violates row-level security policy for table "purpleair_observations"', 'code': '42501', 'hint': None, 'details': None}
+2025-12-10 19:09:01,291 - INFO - Dry run: Stored 5 sample observations
+2025-12-10 19:09:01,291 - INFO - Dry run completed successfully - no API calls made
+2025-12-10 19:48:04,568 - INFO - DRY RUN MODE - Using sample data instead of API calls
+2025-12-10 19:48:04,568 - INFO - Storing 5 sensors in database...
+2025-12-10 19:48:04,568 - ERROR - Failed to store sensors: name 'psycopg2' is not defined
+2025-12-10 19:48:04,568 - INFO - Dry run: Stored 5 sample sensors
+2025-12-10 19:48:04,568 - INFO - Storing 5 observations...
+2025-12-10 19:48:05,461 - INFO - HTTP Request: POST https://nmgierafoeuxfkkscrln.supabase.co/rest/v1/purpleair_observations?columns=%22pm2_5_b%22%2C%22pm2_5_atm_b%22%2C%22pm10_0_b%22%2C%22observed_at%22%2C%22pm2_5_a%22%2C%22temperature%22%2C%22humidity%22%2C%22pressure%22%2C%22pm10_0_atm_b%22%2C%22pm10_0_atm_a%22%2C%22sensor_index%22%2C%22pm2_5_atm_a%22%2C%22pm10_0_a%22 "HTTP/2 401 Unauthorized"
+2025-12-10 19:48:05,467 - ERROR - Failed to store observations: {'message': 'new row violates row-level security policy for table "purpleair_observations"', 'code': '42501', 'hint': None, 'details': None}
+2025-12-10 19:48:05,467 - INFO - Dry run: Stored 5 sample observations
+2025-12-10 19:48:05,467 - INFO - Dry run completed successfully - no API calls made
+2025-12-10 20:00:48,572 - INFO - DRY RUN MODE - Using sample data instead of API calls
+2025-12-10 20:00:48,572 - INFO - Storing 5 sensors in database...
+2025-12-10 20:00:48,572 - ERROR - Failed to store sensors: name 'psycopg2' is not defined
+2025-12-10 20:00:48,572 - INFO - Dry run: Stored 5 sample sensors
+2025-12-10 20:00:48,572 - INFO - Storing 5 observations...
+2025-12-10 20:00:49,058 - INFO - HTTP Request: POST https://nmgierafoeuxfkkscrln.supabase.co/rest/v1/purpleair_observations?columns=%22pm10_0_atm_a%22%2C%22pm10_0_atm_b%22%2C%22sensor_index%22%2C%22temperature%22%2C%22pm2_5_atm_b%22%2C%22pm10_0_a%22%2C%22pm2_5_a%22%2C%22pm10_0_b%22%2C%22pressure%22%2C%22pm2_5_atm_a%22%2C%22observed_at%22%2C%22pm2_5_b%22%2C%22humidity%22 "HTTP/2 409 Conflict"
+2025-12-10 20:00:49,060 - ERROR - Failed to store observations: {'message': 'insert or update on table "purpleair_observations" violates foreign key constraint "purpleair_observations_sensor_index_fkey"', 'code': '23503', 'hint': None, 'details': 'Key (sensor_index)=(12345) is not present in table "purpleair_sensors".'}
+2025-12-10 20:00:49,060 - INFO - Dry run: Stored 5 sample observations
+2025-12-10 20:00:49,060 - INFO - Dry run completed successfully - no API calls made
+2025-12-10 20:01:32,289 - INFO - DRY RUN MODE - Using sample data instead of API calls
+2025-12-10 20:01:32,289 - INFO - Storing 5 sensors in database...
+2025-12-10 20:01:32,292 - ERROR - Failed to store sensors: Object of type datetime is not JSON serializable
+2025-12-10 20:01:32,292 - INFO - Dry run: Stored 5 sample sensors
+2025-12-10 20:01:32,292 - INFO - Storing 5 observations...
+2025-12-10 20:01:32,490 - INFO - HTTP Request: POST https://nmgierafoeuxfkkscrln.supabase.co/rest/v1/purpleair_observations?columns=%22temperature%22%2C%22pm2_5_b%22%2C%22pm2_5_atm_a%22%2C%22pm2_5_a%22%2C%22humidity%22%2C%22pm10_0_b%22%2C%22pm10_0_a%22%2C%22pm2_5_atm_b%22%2C%22pm10_0_atm_a%22%2C%22sensor_index%22%2C%22pressure%22%2C%22observed_at%22%2C%22pm10_0_atm_b%22 "HTTP/2 409 Conflict"
+2025-12-10 20:01:32,491 - ERROR - Failed to store observations: {'message': 'insert or update on table "purpleair_observations" violates foreign key constraint "purpleair_observations_sensor_index_fkey"', 'code': '23503', 'hint': None, 'details': 'Key (sensor_index)=(12345) is not present in table "purpleair_sensors".'}
+2025-12-10 20:01:32,491 - INFO - Dry run: Stored 5 sample observations
+2025-12-10 20:01:32,491 - INFO - Dry run completed successfully - no API calls made
+2025-12-10 20:04:53,617 - INFO - DRY RUN MODE - Using sample data instead of API calls
+2025-12-10 20:04:53,617 - INFO - Storing 5 sensors in database...
+2025-12-10 20:04:54,414 - INFO - HTTP Request: POST https://nmgierafoeuxfkkscrln.supabase.co/rest/v1/purpleair_sensors?columns=%22hardware%22%2C%22longitude%22%2C%22date_created%22%2C%22location_type%22%2C%22altitude%22%2C%22last_seen%22%2C%22name%22%2C%22firmware_version%22%2C%22latitude%22%2C%22sensor_index%22 "HTTP/2 201 Created"
+2025-12-10 20:04:54,417 - INFO - Stored 5/5 sensors
+2025-12-10 20:04:54,417 - INFO - Successfully stored 5 sensors
+2025-12-10 20:04:54,417 - INFO - Dry run: Stored 5 sample sensors
+2025-12-10 20:04:54,417 - INFO - Storing 5 observations...
+2025-12-10 20:04:54,576 - INFO - HTTP Request: POST https://nmgierafoeuxfkkscrln.supabase.co/rest/v1/purpleair_observations?columns=%22pm10_0_a%22%2C%22pm2_5_atm_a%22%2C%22pm2_5_b%22%2C%22pm2_5_atm_b%22%2C%22pm2_5_a%22%2C%22pm10_0_atm_b%22%2C%22observed_at%22%2C%22pm10_0_atm_a%22%2C%22humidity%22%2C%22pm10_0_b%22%2C%22temperature%22%2C%22sensor_index%22%2C%22pressure%22 "HTTP/2 201 Created"
+2025-12-10 20:04:54,578 - INFO - Stored 5/5 observations
+2025-12-10 20:04:54,579 - INFO - Successfully stored 5 observations
+2025-12-10 20:04:54,579 - INFO - Dry run: Stored 5 sample observations
+2025-12-10 20:04:54,579 - INFO - Dry run completed successfully - no API calls made

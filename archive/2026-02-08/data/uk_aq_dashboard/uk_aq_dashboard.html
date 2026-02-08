@@ -1,0 +1,915 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>UK AQ Local Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg-base: #f9f3e7;
+        --bg-accent: #f4e3c2;
+        --ink: #1f1c16;
+        --ink-soft: #4b443a;
+        --card: #fffaf1;
+        --border: #e4d6be;
+        --accent: #d0632c;
+        --accent-2: #1f7a7a;
+        --accent-3: #87562c;
+        --accent-4: #a8b2c1;
+        --accent-5: #d8c8a8;
+        --shadow: 0 20px 40px rgba(34, 24, 12, 0.12);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: "Space Grotesk", "Segoe UI", sans-serif;
+        color: var(--ink);
+        background:
+          radial-gradient(circle at 20% 20%, rgba(214, 115, 44, 0.15), transparent 50%),
+          radial-gradient(circle at 80% 0%, rgba(31, 122, 122, 0.18), transparent 45%),
+          linear-gradient(135deg, var(--bg-base), var(--bg-accent));
+        min-height: 100vh;
+        padding: 32px 20px 40px;
+      }
+
+      .shell {
+        max-width: 1100px;
+        margin: 0 auto;
+        display: grid;
+        gap: 24px;
+        position: relative;
+      }
+
+      header {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 20px;
+        padding: 24px 24px 20px;
+        box-shadow: var(--shadow);
+        display: grid;
+        gap: 16px;
+        animation: float-in 0.6s ease both;
+      }
+
+      header h1 {
+        margin: 0;
+        font-size: clamp(28px, 4vw, 38px);
+        letter-spacing: -0.02em;
+      }
+
+      header p {
+        margin: 0;
+        color: var(--ink-soft);
+        max-width: 740px;
+      }
+
+      .meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 16px 24px;
+        align-items: center;
+      }
+
+      .meta-left {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        align-items: center;
+      }
+
+      .meta-status {
+        font-family: "IBM Plex Mono", ui-monospace, monospace;
+        font-size: 13px;
+        padding: 6px 10px;
+        border-radius: 999px;
+        background: rgba(31, 122, 122, 0.1);
+        color: var(--accent-2);
+      }
+
+      .meta-note {
+        font-family: "IBM Plex Mono", ui-monospace, monospace;
+        font-size: 13px;
+        padding: 6px 10px;
+        border-radius: 999px;
+        background: rgba(32, 29, 29, 0.06);
+        color: var(--ink-soft);
+      }
+
+      .refresh-controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px 16px;
+        align-items: center;
+      }
+
+      .refresh-controls span {
+        font-weight: 600;
+        color: var(--ink-soft);
+      }
+
+      .refresh-group {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .refresh-pill {
+        position: relative;
+      }
+
+      .refresh-pill input {
+        position: absolute;
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      .refresh-pill label {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 12px;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        background: #fff;
+        font-size: 13px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+      }
+
+      .refresh-pill input:checked + label {
+        background: var(--ink);
+        color: #fff;
+        border-color: var(--ink);
+      }
+
+      .refresh-button {
+        border: none;
+        background: var(--accent);
+        color: #fff;
+        padding: 8px 14px;
+        border-radius: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+      }
+
+      .refresh-button:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 8px 16px rgba(208, 99, 44, 0.25);
+      }
+
+      .grid {
+        display: grid;
+        gap: 22px;
+      }
+
+      .panel {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 20px;
+        padding: 20px 22px 24px;
+        box-shadow: var(--shadow);
+        animation: rise-in 0.55s ease both;
+      }
+
+      .panel h2 {
+        margin: 0 0 14px;
+        font-size: 22px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .chip {
+        font-family: "IBM Plex Mono", ui-monospace, monospace;
+        font-size: 12px;
+        padding: 4px 8px;
+        border-radius: 999px;
+        background: rgba(208, 99, 44, 0.12);
+        color: var(--accent);
+      }
+
+      .status-pill {
+        display: inline-flex;
+        align-items: center;
+        padding: 4px 10px;
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        background: rgba(31, 122, 122, 0.12);
+        color: var(--accent-2);
+      }
+
+      .status-pill.succeeded {
+        background: rgba(47, 143, 91, 0.15);
+        color: #2f8f5b;
+      }
+
+      .status-pill.failed,
+      .status-pill.error {
+        background: rgba(211, 74, 63, 0.16);
+        color: #b0322a;
+      }
+
+      .status-pill.skipped {
+        background: rgba(245, 193, 74, 0.18);
+        color: #a56800;
+      }
+
+      .status-pill.running {
+        background: rgba(31, 122, 122, 0.14);
+        color: var(--accent-2);
+      }
+
+      .status-stack {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .runtime-pill {
+        font-family: "IBM Plex Mono", ui-monospace, monospace;
+        font-size: 11px;
+        padding: 4px 8px;
+        border-radius: 999px;
+        background: rgba(245, 193, 74, 0.18);
+        color: #a56800;
+      }
+
+      .runtime-pill.overdue {
+        background: rgba(211, 74, 63, 0.16);
+        color: #b0322a;
+      }
+
+      .settings-actions {
+        display: flex;
+        justify-content: flex-end;
+        margin-top: 12px;
+      }
+
+      .settings-inline {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+
+      .settings-toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        font-weight: 600;
+      }
+
+      .settings-button {
+        border: none;
+        background: var(--accent-2);
+        color: #fff;
+        padding: 8px 14px;
+        border-radius: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+      }
+
+      .settings-button:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 8px 16px rgba(31, 122, 122, 0.25);
+      }
+
+      .settings-input,
+      .settings-select {
+        width: 100%;
+        padding: 6px 8px;
+        border-radius: 10px;
+        border: 1px solid var(--border);
+        background: #fff;
+        font-family: "IBM Plex Mono", ui-monospace, monospace;
+        font-size: 12px;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 14px;
+      }
+
+      th,
+      td {
+        text-align: left;
+        padding: 10px 8px;
+        border-bottom: 1px solid var(--border);
+      }
+
+      th {
+        font-weight: 600;
+        color: var(--ink-soft);
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+
+      tbody tr:hover {
+        background: rgba(244, 227, 194, 0.45);
+      }
+
+      .connector-name {
+        font-weight: 600;
+      }
+
+      .bucket-bar {
+        display: flex;
+        height: 10px;
+        border-radius: 999px;
+        overflow: hidden;
+        background: #efe4cf;
+        min-width: 140px;
+      }
+
+      .seg {
+        height: 100%;
+      }
+
+      .seg-0 {
+        background: #2f8f5b;
+      }
+
+      .seg-1 {
+        background: #f5c14a;
+      }
+
+      .seg-2 {
+        background: #e57a2f;
+      }
+
+      .seg-3 {
+        background: #d34a3f;
+      }
+
+      .seg-4 {
+        background: #7b3bb5;
+      }
+
+      .footnote {
+        margin-top: 8px;
+        font-size: 12px;
+        color: var(--ink-soft);
+      }
+
+      .error {
+        margin-top: 8px;
+        color: #9b2c2c;
+        font-family: "IBM Plex Mono", ui-monospace, monospace;
+        font-size: 12px;
+      }
+
+      @keyframes float-in {
+        from {
+          opacity: 0;
+          transform: translateY(-10px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      @keyframes rise-in {
+        from {
+          opacity: 0;
+          transform: translateY(12px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      @media (max-width: 900px) {
+        th:nth-child(n + 5),
+        td:nth-child(n + 5) {
+          display: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <header>
+        <h1>UK AQ Local Dashboard</h1>
+        <p>
+          Live snapshot of PM2.5, PM10, and NO2 freshness using timeseries last_value_at. Data updates
+          from your local API.
+        </p>
+        <div class="meta">
+          <div class="meta-left">
+            <span class="meta-status" id="status">Waiting for data...</span>
+            <span class="meta-note" id="data-meta">Project n/a • Data n/a</span>
+          </div>
+          <div class="refresh-controls">
+            <span>Refresh</span>
+            <div class="refresh-group" id="refresh-group">
+              <span class="refresh-pill">
+                <input type="radio" name="refresh" id="refresh-1" value="60" />
+                <label for="refresh-1">1 min</label>
+              </span>
+              <span class="refresh-pill">
+                <input type="radio" name="refresh" id="refresh-5" value="300" checked />
+                <label for="refresh-5">5 min</label>
+              </span>
+              <span class="refresh-pill">
+                <input type="radio" name="refresh" id="refresh-10" value="600" />
+                <label for="refresh-10">10 min</label>
+              </span>
+              <span class="refresh-pill">
+                <input type="radio" name="refresh" id="refresh-30" value="1800" />
+                <label for="refresh-30">30 min</label>
+              </span>
+              <span class="refresh-pill">
+                <input type="radio" name="refresh" id="refresh-60" value="3600" />
+                <label for="refresh-60">60 min</label>
+              </span>
+            </div>
+            <button class="refresh-button" id="refresh-now">Refresh now</button>
+          </div>
+        </div>
+        <div class="error" id="error"></div>
+      </header>
+
+      <div class="grid" id="dashboard"></div>
+    </div>
+
+    <script>
+      const dashboardEl = document.getElementById("dashboard");
+      const statusEl = document.getElementById("status");
+      const dataMetaEl = document.getElementById("data-meta");
+      const errorEl = document.getElementById("error");
+      const refreshGroup = document.getElementById("refresh-group");
+      const refreshNowBtn = document.getElementById("refresh-now");
+      let refreshTimer = null;
+      let refreshSeconds = 300;
+      let wasHidden = document.hidden;
+
+      const bucketOrder = ["0-3 Hours", "3-6 Hours", "6-24 Hours", "1 - 7 Days", "Older than 7 Days"];
+
+      function formatTime(value) {
+        if (!value) return "n/a";
+        const date = new Date(value);
+        return date.toLocaleString();
+      }
+
+      function formatCount(value) {
+        if (value === null || value === undefined || Number.isNaN(Number(value))) {
+          return "n/a";
+        }
+        return Number(value).toLocaleString();
+      }
+
+      function formatStations(run) {
+        if (run.stations_updated !== null && run.stations_updated !== undefined) {
+          return formatCount(run.stations_updated);
+        }
+        if (run.series_polled !== null && run.series_polled !== undefined) {
+          return `${formatCount(run.series_polled)} series`;
+        }
+        return "n/a";
+      }
+
+      function formatSeries(run) {
+        if (run.series_polled !== null && run.series_polled !== undefined) {
+          return formatCount(run.series_polled);
+        }
+        if (run.timeseries_updated !== null && run.timeseries_updated !== undefined) {
+          return formatCount(run.timeseries_updated);
+        }
+        return "n/a";
+      }
+
+      function statusClass(status) {
+        return (status || "unknown").toLowerCase();
+      }
+
+      function formatMinutes(value) {
+        if (value === null || value === undefined || Number.isNaN(Number(value))) {
+          return null;
+        }
+        return `${Number(value)}m`;
+      }
+
+      function formatDurationSeconds(totalSeconds) {
+        if (totalSeconds === null || totalSeconds === undefined || Number.isNaN(Number(totalSeconds))) {
+          return null;
+        }
+        const rounded = Math.max(0, Math.round(Number(totalSeconds)));
+        const minutes = Math.floor(rounded / 60);
+        const seconds = rounded % 60;
+        return `${minutes}m ${seconds}s`;
+      }
+
+      function calcDurationMinutes(run) {
+        const startRaw = run.run_started_at;
+        const endRaw = run.run_ended_at;
+        if (startRaw && endRaw) {
+          const start = new Date(startRaw).getTime();
+          const end = new Date(endRaw).getTime();
+          if (!Number.isNaN(start) && !Number.isNaN(end) && end >= start) {
+            return (end - start) / 60000;
+          }
+        }
+        if (run.in_flight_minutes !== null && run.in_flight_minutes !== undefined) {
+          return Number(run.in_flight_minutes);
+        }
+        return null;
+      }
+
+      function setStatus(text) {
+        statusEl.textContent = text;
+      }
+
+      function setDataMeta(payload) {
+        const projectRef = payload && payload.project_ref ? payload.project_ref : "n/a";
+        dataMetaEl.textContent = `Project ${projectRef}`;
+      }
+
+      function setError(text) {
+        errorEl.textContent = text || "";
+      }
+
+      function clearRefreshTimer() {
+        if (refreshTimer) {
+          clearInterval(refreshTimer);
+          refreshTimer = null;
+        }
+      }
+
+      function startRefreshTimer() {
+        clearRefreshTimer();
+        if (document.hidden) {
+          return;
+        }
+        refreshTimer = setInterval(loadDashboard, refreshSeconds * 1000);
+      }
+
+      function setRefreshInterval(seconds) {
+        refreshSeconds = seconds;
+        startRefreshTimer();
+      }
+
+      function renderPanel(pollutant) {
+        const panel = document.createElement("section");
+        panel.className = "panel";
+        panel.innerHTML = `
+          <h2>${pollutant.label} <span class="chip">${pollutant.key}</span></h2>
+          <table>
+            <thead>
+              <tr>
+                <th>Connector</th>
+                <th>Stations</th>
+                <th>Active</th>
+                <th>0-3</th>
+                <th>3-6</th>
+                <th>6-24</th>
+                <th>1-7</th>
+                <th>7+</th>
+                <th>Trend</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${pollutant.connectors
+                .map((row) => {
+                  const total = row.stations_with_pollutant || 0;
+                  const active = row.active_stations_with_pollutant || 0;
+                  const bucketCounts = bucketOrder.map((bucket) => row.buckets[bucket] || 0);
+                  const segments = bucketCounts
+                    .map((count, idx) => {
+                      const pct = total ? (count / total) * 100 : 0;
+                      const label = `${bucketOrder[idx]}: ${count}`;
+                      return `<span class="seg seg-${idx}" style="width:${pct}%" title="${label}"></span>`;
+                    })
+                    .join("");
+                  return `
+                    <tr>
+                      <td class="connector-name">${row.label}</td>
+                      <td>${total}</td>
+                      <td>${active}</td>
+                      <td>${bucketCounts[0]}</td>
+                      <td>${bucketCounts[1]}</td>
+                      <td>${bucketCounts[2]}</td>
+                      <td>${bucketCounts[3]}</td>
+                      <td>${bucketCounts[4]}</td>
+                      <td><div class="bucket-bar">${segments}</div></td>
+                    </tr>
+                  `;
+                })
+                .join("")}
+            </tbody>
+          </table>
+          <div class="footnote">Buckets are based on timeseries last_value_at timestamps.</div>
+        `;
+        return panel;
+      }
+
+      function renderDispatchPanel(runs) {
+        const panel = document.createElement("section");
+        panel.className = "panel";
+        panel.innerHTML = `
+          <h2>Dispatcher Feed <span class="chip">ingest runs</span></h2>
+          <table class="dispatch-table">
+            <thead>
+              <tr>
+                <th>Connector</th>
+                <th>Status</th>
+                <th>Duration</th>
+                <th>Updated</th>
+                <th>Last observed</th>
+                <th>Stations</th>
+                <th>Observations</th>
+                <th>Series</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${runs
+                .map((run) => {
+                  const status = statusClass(run.run_status);
+                  const timestamp = run.run_timestamp || run.run_ended_at || run.run_started_at;
+                  const minutes = formatMinutes(run.in_flight_minutes);
+                  const durationMinutes = calcDurationMinutes(run);
+                  const duration = durationMinutes === null ? null : formatDurationSeconds(durationMinutes * 60);
+                  const runtimeBadge = minutes
+                    ? `<span class="runtime-pill ${
+                        Number(run.in_flight_minutes) >= 5 ? "overdue" : ""
+                      }">${minutes}</span>`
+                    : "";
+                  return `
+                    <tr>
+                      <td class="connector-name">${run.connector_label || run.connector_code || "Unknown"}</td>
+                      <td>
+                        <div class="status-stack">
+                          <span class="status-pill ${status}">${run.run_status || "unknown"}</span>
+                          ${runtimeBadge}
+                        </div>
+                      </td>
+                      <td>${duration || "n/a"}</td>
+                      <td>${formatTime(timestamp)}</td>
+                      <td>${formatTime(run.last_observed_at)}</td>
+                      <td>${formatStations(run)}</td>
+                      <td>${formatCount(run.observations_upserted)}</td>
+                      <td>${formatSeries(run)}</td>
+                    </tr>
+                  `;
+                })
+                .join("")}
+            </tbody>
+          </table>
+          <div class="footnote">Ordered by most recent run end time.</div>
+        `;
+        return panel;
+      }
+
+      function renderConnectorSettingsPanel(connectors) {
+        const panel = document.createElement("section");
+        panel.className = "panel";
+        panel.innerHTML = `
+          <h2>Polling settings <span class="chip">i</span></h2>
+          <table>
+            <thead>
+              <tr>
+                <th>Connector</th>
+                <th>Poll enabled</th>
+                <th>Interval (min)</th>
+                <th>Window (hrs)</th>
+                <th>Batch size</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${connectors
+                .map((row) => {
+                  const label = row.display_name || row.label || row.connector_code || "";
+                  const enabled = row.poll_enabled === true
+                    ? "true"
+                    : row.poll_enabled === false
+                      ? "false"
+                      : "";
+                  const interval = row.poll_interval_minutes ?? "";
+                  const windowHours = row.poll_window_hours ?? "";
+                  const batchSize = row.poll_timeseries_batch_size ?? "";
+                  return `
+                    <tr data-connector-id="${row.id}">
+                      <td class="connector-name">${label}</td>
+                      <td>
+                        <select class="settings-select" data-field="poll_enabled">
+                          <option value="" ${enabled === "" ? "selected" : ""}>NULL</option>
+                          <option value="true" ${enabled === "true" ? "selected" : ""}>TRUE</option>
+                          <option value="false" ${enabled === "false" ? "selected" : ""}>FALSE</option>
+                        </select>
+                      </td>
+                      <td>
+                        <input class="settings-input" data-field="poll_interval_minutes" type="number" min="0" step="1" value="${interval}" />
+                      </td>
+                      <td>
+                        <input class="settings-input" data-field="poll_window_hours" type="number" min="0" step="1" value="${windowHours}" />
+                      </td>
+                      <td>
+                        <input class="settings-input" data-field="poll_timeseries_batch_size" type="number" min="0" step="1" value="${batchSize}" />
+                      </td>
+                    </tr>
+                  `;
+                })
+                .join("")}
+            </tbody>
+          </table>
+          <div class="settings-actions">
+            <button class="settings-button" id="commit-settings">Commit changes</button>
+          </div>
+        `;
+
+        const commitButton = panel.querySelector("#commit-settings");
+        if (commitButton) {
+          commitButton.addEventListener("click", async () => {
+            const rows = Array.from(panel.querySelectorAll("tbody tr"));
+            const updates = rows.map((rowEl) => {
+              const connectorId = rowEl.getAttribute("data-connector-id");
+              const getValue = (field) => {
+                const input = rowEl.querySelector(`[data-field="${field}"]`);
+                return input ? input.value : "";
+              };
+              const parseOptionalNumber = (value) => {
+                if (value === "" || value === null || value === undefined) return null;
+                const parsed = Number(value);
+                return Number.isFinite(parsed) ? Math.floor(parsed) : null;
+              };
+              const enabled = getValue("poll_enabled");
+              return {
+                id: connectorId ? Number(connectorId) : null,
+                poll_enabled: enabled === "true" ? true : enabled === "false" ? false : null,
+                poll_interval_minutes: parseOptionalNumber(getValue("poll_interval_minutes")),
+                poll_window_hours: parseOptionalNumber(getValue("poll_window_hours")),
+                poll_timeseries_batch_size: parseOptionalNumber(getValue("poll_timeseries_batch_size")),
+              };
+            }).filter((row) => row.id !== null);
+
+            setError("");
+            setStatus("Saving settings...");
+            try {
+              const resp = await fetch("/api/connectors", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ updates }),
+              });
+              if (!resp.ok) {
+                const text = await resp.text();
+                throw new Error(text || `Request failed (${resp.status})`);
+              }
+              await loadDashboard();
+            } catch (err) {
+              setError(err.message || String(err));
+              setStatus("Error");
+            }
+          });
+        }
+        return panel;
+      }
+
+      function renderDispatcherSettingsPanel(settings) {
+        const panel = document.createElement("section");
+        panel.className = "panel";
+        const parallel = Boolean(settings.dispatcher_parallel_ingest);
+        const maxRuns = Number.isFinite(Number(settings.max_runs_per_dispatch_call))
+          ? Number(settings.max_runs_per_dispatch_call)
+          : 1;
+        const updatedAt = settings.updated_at ? formatTime(settings.updated_at) : "n/a";
+        panel.innerHTML = `
+          <h2>Dispatcher settings <span class="chip">i</span></h2>
+          <div class="settings-inline">
+            <label class="settings-toggle">
+              <input type="checkbox" id="dispatcher-parallel" ${parallel ? "checked" : ""} />
+              Parallel ingest
+            </label>
+            <label>
+              Max runs per call
+              <input class="settings-input" id="dispatcher-max-runs" type="number" min="1" step="1" value="${maxRuns}" />
+            </label>
+            <span class="meta-note">Last updated: ${updatedAt}</span>
+          </div>
+          <div class="settings-actions">
+            <button class="settings-button" id="commit-dispatcher-settings">Save dispatcher settings</button>
+          </div>
+        `;
+
+        const commitButton = panel.querySelector("#commit-dispatcher-settings");
+        if (commitButton) {
+          commitButton.addEventListener("click", async () => {
+            const parallelEl = panel.querySelector("#dispatcher-parallel");
+            const maxRunsEl = panel.querySelector("#dispatcher-max-runs");
+            const maxRunsValue = maxRunsEl ? Number(maxRunsEl.value) : 1;
+            setError("");
+            setStatus("Saving dispatcher settings...");
+            try {
+              const resp = await fetch("/api/dispatcher_settings", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  dispatcher_parallel_ingest: Boolean(parallelEl && parallelEl.checked),
+                  max_runs_per_dispatch_call: Number.isFinite(maxRunsValue) ? maxRunsValue : 1,
+                }),
+              });
+              if (!resp.ok) {
+                const text = await resp.text();
+                throw new Error(text || `Request failed (${resp.status})`);
+              }
+              await loadDashboard();
+            } catch (err) {
+              setError(err.message || String(err));
+              setStatus("Error");
+            }
+          });
+        }
+
+        return panel;
+      }
+
+      async function loadDashboard() {
+        setError("");
+        setStatus("Loading...");
+        try {
+          const resp = await fetch(`/api/dashboard?t=${Date.now()}`);
+          const text = await resp.text();
+          let payload = null;
+          try {
+            payload = JSON.parse(text);
+          } catch (err) {
+            payload = null;
+          }
+          if (!resp.ok) {
+            const message =
+              (payload && (payload.error || payload.message)) ||
+              text ||
+              `Request failed (${resp.status})`;
+            throw new Error(message);
+          }
+          const data = payload || {};
+          dashboardEl.innerHTML = "";
+          if (Array.isArray(data.connectors_settings)) {
+            dashboardEl.appendChild(renderConnectorSettingsPanel(data.connectors_settings));
+          }
+          if (data.dispatcher_settings) {
+            dashboardEl.appendChild(renderDispatcherSettingsPanel(data.dispatcher_settings));
+          }
+          if (Array.isArray(data.dispatch_runs)) {
+            dashboardEl.appendChild(renderDispatchPanel(data.dispatch_runs));
+          }
+          data.pollutants.forEach((pollutant) => {
+            dashboardEl.appendChild(renderPanel(pollutant));
+          });
+          setStatus(`Updated ${formatTime(data.generated_at)} (local time)`);
+          setDataMeta(data);
+        } catch (err) {
+          setError(err.message || String(err));
+          setStatus("Error");
+        }
+      }
+
+      refreshGroup.addEventListener("change", (event) => {
+        if (event.target && event.target.name === "refresh") {
+          const value = Number(event.target.value);
+          if (Number.isFinite(value) && value > 0) {
+            setRefreshInterval(value);
+          }
+        }
+      });
+
+      refreshNowBtn.addEventListener("click", () => {
+        loadDashboard();
+      });
+
+      document.addEventListener("visibilitychange", () => {
+        if (document.hidden) {
+          clearRefreshTimer();
+          wasHidden = true;
+          return;
+        }
+        startRefreshTimer();
+        if (wasHidden) {
+          loadDashboard();
+          wasHidden = false;
+        }
+      });
+
+      setRefreshInterval(refreshSeconds);
+      loadDashboard();
+    </script>
+  </body>
+</html>

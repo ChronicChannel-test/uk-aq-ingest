@@ -1,0 +1,20 @@
+{
+  "stations": [
+    {
+      "id": "100",
+      "label": "Station Alpha",
+      "stationType": "AURN",
+      "properties": {
+        "id": "100",
+        "label": "Station Alpha",
+        "stationType": "AURN",
+        "region": "Example",
+        "timeseries": ["ts-1"]
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [0.1, 51.5]
+      }
+    }
+  ]
+}

@@ -1,0 +1,242 @@
+event_message,event_type,function_id,id,level,timestamp
+shutdown,Shutdown,bbe777de-f045-46ad-9b35-cffb0d025675,bed66adb-8567-454b-8cbe-539c16e146b0,log,1769859761579000
+"dispatch_edge_function {
+  path: ""ingest_breathelondon"",
+  has_cron_secret: true,
+  cron_secret_length: 20,
+  auth_key_type: ""anon"",
+  auth_key_length: 208
+}
+",Log,bbe777de-f045-46ad-9b35-cffb0d025675,26765ed7-022c-4f96-a958-639e78f15061,info,1769859747516000
+"uk_aq_dispatch_polls cron secret { has_cron_secret: true, cron_secret_length: 20 }
+",Log,bbe777de-f045-46ad-9b35-cffb0d025675,b1c1e361-f803-42f2-9ec2-ea52ef2f4156,info,1769859746589000
+"Listening on http://localhost:9999/
+",Log,bbe777de-f045-46ad-9b35-cffb0d025675,7ba0f5f1-8fd9-4d13-8d8e-f82fd7fac5fe,info,1769859746586000
+booted (time: 24ms),Boot,bbe777de-f045-46ad-9b35-cffb0d025675,2f90cf83-4e3a-492d-b4fb-dac0cc307cf6,log,1769859746585000
+shutdown,Shutdown,bbe777de-f045-46ad-9b35-cffb0d025675,b3b9020b-a07c-4d60-bc8b-cdf5be0316c2,log,1769859703197000
+"uk_aq_dispatch_polls cron secret { has_cron_secret: true, cron_secret_length: 20 }
+",Log,bbe777de-f045-46ad-9b35-cffb0d025675,08452dfc-0d92-426b-afed-754a0b78bd67,info,1769859686571000
+"Listening on http://localhost:9999/
+",Log,bbe777de-f045-46ad-9b35-cffb0d025675,171dd4d9-f0f1-4f3e-88c5-9d4b2edc2965,info,1769859686567000
+booted (time: 23ms),Boot,bbe777de-f045-46ad-9b35-cffb0d025675,1dc353db-8b8a-415d-ae55-7625aa969146,log,1769859686566000
+shutdown,Shutdown,bbe777de-f045-46ad-9b35-cffb0d025675,807b9ab8-2f1f-4567-8069-08a097bf6da4,log,1769859641592000
+"dispatch_edge_function {
+  path: ""ingest_openaq"",
+  has_cron_secret: true,
+  cron_secret_length: 20,
+  auth_key_type: ""anon"",
+  auth_key_length: 208
+}
+",Log,bbe777de-f045-46ad-9b35-cffb0d025675,9c28c77f-e4d2-4b96-a9da-5099df66035d,info,1769859629643000
+"uk_aq_dispatch_polls cron secret { has_cron_secret: true, cron_secret_length: 20 }
+",Log,bbe777de-f045-46ad-9b35-cffb0d025675,f902eaff-08b5-453c-aafb-476370497b4a,info,1769859628188000
+"Listening on http://localhost:9999/
+",Log,bbe777de-f045-46ad-9b35-cffb0d025675,62a547d8-46cb-49d8-83f7-174ccbbae1c6,info,1769859628184000
+booted (time: 24ms),Boot,bbe777de-f045-46ad-9b35-cffb0d025675,b9a4a2e5-20df-4df8-a5fb-4286db797e29,log,1769859628183000
+shutdown,Shutdown,bbe777de-f045-46ad-9b35-cffb0d025675,119914ce-d56f-4f27-b661-cfe64362451a,log,1769859581582000
+"uk_aq_dispatch_polls cron secret { has_cron_secret: true, cron_secret_length: 20 }
+",Log,bbe777de-f045-46ad-9b35-cffb0d025675,5166a220-fc73-4068-8f32-cfd127c99128,info,1769859566576000
+"Listening on http://localhost:9999/
+",Log,bbe777de-f045-46ad-9b35-cffb0d025675,e542fa94-7036-4134-8d80-c2b9dfcf9859,info,1769859566572000
+booted (time: 24ms),Boot,bbe777de-f045-46ad-9b35-cffb0d025675,e716893b-dab3-4bfd-9fd6-f5a01258fc07,log,1769859566571000
+shutdown,Shutdown,bbe777de-f045-46ad-9b35-cffb0d025675,2fc8a459-288c-4445-8a79-77ea404a2312,log,1769859521579000
+"dispatch_edge_function {
+  path: ""ingest_openaq"",
+  has_cron_secret: true,
+  cron_secret_length: 20,
+  auth_key_type: ""anon"",
+  auth_key_length: 208
+}
+",Log,bbe777de-f045-46ad-9b35-cffb0d025675,89e75d4a-8632-45e4-9b54-a02cbf6d3e6f,info,1769859507734000
+"uk_aq_dispatch_polls cron secret { has_cron_secret: true, cron_secret_length: 20 }
+",Log,bbe777de-f045-46ad-9b35-cffb0d025675,b62b4ab6-2b53-4e28-80ba-1459cdc5fd11,info,1769859506571000
+"Listening on http://localhost:9999/
+",Log,bbe777de-f045-46ad-9b35-cffb0d025675,5d155a10-6f0c-4776-a9c0-df439679cbbe,info,1769859506567000
+booted (time: 23ms),Boot,bbe777de-f045-46ad-9b35-cffb0d025675,afef76f4-56a9-4526-b557-42a3ffacb925,log,1769859506566000
+shutdown,Shutdown,bbe777de-f045-46ad-9b35-cffb0d025675,9e90dab7-b6b3-485c-87b5-dac462a94f96,log,1769859461585000
+"uk_aq_dispatch_polls cron secret { has_cron_secret: true, cron_secret_length: 20 }
+",Log,bbe777de-f045-46ad-9b35-cffb0d025675,c64aa12c-0e56-449d-80e3-c2ec125220df,info,1769859446567000
+"Listening on http://localhost:9999/
+",Log,bbe777de-f045-46ad-9b35-cffb0d025675,22dcfa9f-c211-4f46-bc8c-e395f7d67f6d,info,1769859446563000
+booted (time: 23ms),Boot,bbe777de-f045-46ad-9b35-cffb0d025675,a2f9302f-3d9d-4245-a609-733ed8822598,log,1769859446562000
+shutdown,Shutdown,bbe777de-f045-46ad-9b35-cffb0d025675,f97e2bf3-0f02-495f-9952-c922efa071c2,log,1769859402152000
+"dispatch_edge_function {
+  path: ""ingest_openaq"",
+  has_cron_secret: true,
+  cron_secret_length: 20,
+  auth_key_type: ""anon"",
+  auth_key_length: 208
+}
+",Log,bbe777de-f045-46ad-9b35-cffb0d025675,8647faba-2475-4c77-a00b-f8539cb33d0b,info,1769859387968000
+"uk_aq_dispatch_polls cron secret { has_cron_secret: true, cron_secret_length: 20 }
+",Log,bbe777de-f045-46ad-9b35-cffb0d025675,cff99f2f-dfb8-4755-9394-c9daf8201c2c,info,1769859386578000
+"Listening on http://localhost:9999/
+",Log,bbe777de-f045-46ad-9b35-cffb0d025675,09399a4a-e302-4077-af1d-4d2741a842a0,info,1769859386575000
+booted (time: 23ms),Boot,bbe777de-f045-46ad-9b35-cffb0d025675,27aae8db-ee5f-49bf-adbd-f7fe2cc38be9,log,1769859386574000
+shutdown,Shutdown,bbe777de-f045-46ad-9b35-cffb0d025675,e3c70dae-0d68-41b3-894c-6ad04ec43a12,log,1769859341577000
+"uk_aq_dispatch_polls cron secret { has_cron_secret: true, cron_secret_length: 20 }
+",Log,bbe777de-f045-46ad-9b35-cffb0d025675,beedd775-cb39-4ab5-9806-071f0ad1b36d,info,1769859327145000
+"Listening on http://localhost:9999/
+",Log,bbe777de-f045-46ad-9b35-cffb0d025675,6119dbda-9cf4-4a51-97b1-53df78f60a40,info,1769859327141000
+booted (time: 23ms),Boot,bbe777de-f045-46ad-9b35-cffb0d025675,61923b22-c9f3-493f-b16c-f0039e6cdb97,log,1769859327140000
+shutdown,Shutdown,bbe777de-f045-46ad-9b35-cffb0d025675,81f41907-c262-426f-aa3c-1ed468afe17b,log,1769859281577000
+"dispatch_edge_function {
+  path: ""ingest_openaq"",
+  has_cron_secret: true,
+  cron_secret_length: 20,
+  auth_key_type: ""anon"",
+  auth_key_length: 208
+}
+",Log,bbe777de-f045-46ad-9b35-cffb0d025675,51e40154-e678-464a-b8b2-09148b94d923,info,1769859267752000
+"uk_aq_dispatch_polls cron secret { has_cron_secret: true, cron_secret_length: 20 }
+",Log,bbe777de-f045-46ad-9b35-cffb0d025675,c50c07a5-05e0-4625-b8c9-1be859ba1ca7,info,1769859266568000
+"Listening on http://localhost:9999/
+",Log,bbe777de-f045-46ad-9b35-cffb0d025675,ebff0039-b220-45d0-a5ce-c8771cad52bd,info,1769859266565000
+booted (time: 23ms),Boot,bbe777de-f045-46ad-9b35-cffb0d025675,648c335a-6efd-4da2-937a-846016d30a2c,log,1769859266564000
+shutdown,Shutdown,bbe777de-f045-46ad-9b35-cffb0d025675,266febfb-8ee7-4307-86d5-47abd9d14c04,log,1769859221586000
+"uk_aq_dispatch_polls cron secret { has_cron_secret: true, cron_secret_length: 20 }
+",Log,bbe777de-f045-46ad-9b35-cffb0d025675,5065e22d-1a5d-4461-8619-7d6734016d46,info,1769859206570000
+"Listening on http://localhost:9999/
+",Log,bbe777de-f045-46ad-9b35-cffb0d025675,4c04dd24-1a18-4909-8e6e-1d7118d2dd1b,info,1769859206567000
+booted (time: 23ms),Boot,bbe777de-f045-46ad-9b35-cffb0d025675,d965f597-e214-4edd-be9d-d05f5d37f0b8,log,1769859206566000
+"dispatch_edge_function {
+  path: ""ingest_openaq"",
+  has_cron_secret: true,
+  cron_secret_length: 20,
+  auth_key_type: ""anon"",
+  auth_key_length: 208
+}
+",Log,bbe777de-f045-46ad-9b35-cffb0d025675,700bf901-0161-48f6-8b22-199e9bdcc44e,info,1769859185838000
+shutdown,Shutdown,bbe777de-f045-46ad-9b35-cffb0d025675,3f165c83-73c8-482f-9a4b-83ef4e9903d6,log,1769859161644000
+"dispatch_edge_function {
+  path: ""ingest_uk_air_sos"",
+  has_cron_secret: true,
+  cron_secret_length: 20,
+  auth_key_type: ""anon"",
+  auth_key_length: 208
+}
+",Log,bbe777de-f045-46ad-9b35-cffb0d025675,0d3dc183-431d-4aed-8a02-5667eb339c33,info,1769859147385000
+"uk_aq_dispatch_polls cron secret { has_cron_secret: true, cron_secret_length: 20 }
+",Log,bbe777de-f045-46ad-9b35-cffb0d025675,b09ea388-8cb6-45ef-a1d6-30cb89171916,info,1769859146578000
+"Listening on http://localhost:9999/
+",Log,bbe777de-f045-46ad-9b35-cffb0d025675,1137f0a6-5357-4aac-a660-d6e1def3edf1,info,1769859146575000
+booted (time: 26ms),Boot,bbe777de-f045-46ad-9b35-cffb0d025675,55adaa0f-431e-4c54-8de3-eeece9d82854,log,1769859146574000
+shutdown,Shutdown,bbe777de-f045-46ad-9b35-cffb0d025675,56109c54-9f68-45f3-998b-4294184c4111,log,1769859105480000
+"uk_aq_dispatch_polls cron secret { has_cron_secret: true, cron_secret_length: 20 }
+",Log,bbe777de-f045-46ad-9b35-cffb0d025675,85778a67-430c-4a97-bde7-598e3f8a20eb,info,1769859086601000
+"Listening on http://localhost:9999/
+",Log,bbe777de-f045-46ad-9b35-cffb0d025675,6cf8284c-b0c1-469e-8199-1334ff113849,info,1769859086598000
+booted (time: 23ms),Boot,bbe777de-f045-46ad-9b35-cffb0d025675,b779510f-5d95-45bd-89ed-7dac0c2be81b,log,1769859086597000
+shutdown,Shutdown,bbe777de-f045-46ad-9b35-cffb0d025675,d803bb60-b75a-496e-b25b-31eda9f28590,log,1769859041603000
+"dispatch_edge_function {
+  path: ""ingest_openaq"",
+  has_cron_secret: true,
+  cron_secret_length: 20,
+  auth_key_type: ""anon"",
+  auth_key_length: 208
+}
+",Log,bbe777de-f045-46ad-9b35-cffb0d025675,e9874352-a324-4c5e-97a0-36c9df4f2a48,info,1769859031308000
+"uk_aq_dispatch_polls cron secret { has_cron_secret: true, cron_secret_length: 20 }
+",Log,bbe777de-f045-46ad-9b35-cffb0d025675,5cfa5f4f-b2a0-41ac-baca-50852548d7e6,info,1769859030473000
+"Listening on http://localhost:9999/
+",Log,bbe777de-f045-46ad-9b35-cffb0d025675,e6a6e1d7-344c-423a-9dcd-684d8b9b4b34,info,1769859030469000
+booted (time: 23ms),Boot,bbe777de-f045-46ad-9b35-cffb0d025675,89bba66e-5af9-449b-b468-f1fafbb40fa8,log,1769859030464000
+shutdown,Shutdown,bbe777de-f045-46ad-9b35-cffb0d025675,c1c756f0-52cf-4143-815c-68fa15e43ad8,log,1769858981583000
+"uk_aq_dispatch_polls cron secret { has_cron_secret: true, cron_secret_length: 20 }
+",Log,bbe777de-f045-46ad-9b35-cffb0d025675,403e3ecc-749f-411c-9145-5ed5038d64bd,info,1769858966581000
+"Listening on http://localhost:9999/
+",Log,bbe777de-f045-46ad-9b35-cffb0d025675,05f44402-d5da-4bb6-8b78-a5e4f91afb52,info,1769858966577000
+booted (time: 31ms),Boot,bbe777de-f045-46ad-9b35-cffb0d025675,6b74288e-1188-455d-85fa-d1ffe89202cf,log,1769858966575000
+shutdown,Shutdown,bbe777de-f045-46ad-9b35-cffb0d025675,a7b813fc-f323-4683-93c2-b549465726a9,log,1769858921583000
+"dispatch_edge_function {
+  path: ""ingest_openaq"",
+  has_cron_secret: true,
+  cron_secret_length: 20,
+  auth_key_type: ""anon"",
+  auth_key_length: 208
+}
+",Log,bbe777de-f045-46ad-9b35-cffb0d025675,ac914b32-7f15-452e-940a-c9e0e9115660,info,1769858908029000
+"uk_aq_dispatch_polls cron secret { has_cron_secret: true, cron_secret_length: 20 }
+",Log,bbe777de-f045-46ad-9b35-cffb0d025675,1efe844e-5607-4756-b230-ab0d3b23df56,info,1769858906573000
+"Listening on http://localhost:9999/
+",Log,bbe777de-f045-46ad-9b35-cffb0d025675,e77c55d1-5bb2-4854-b786-4b534d3376d0,info,1769858906570000
+booted (time: 23ms),Boot,bbe777de-f045-46ad-9b35-cffb0d025675,57432c60-da3d-4823-99f0-b26e005b1645,log,1769858906569000
+shutdown,Shutdown,bbe777de-f045-46ad-9b35-cffb0d025675,b6d04adf-34ee-45a3-b56e-9ee8e709eac1,log,1769858861576000
+"dispatch_edge_function {
+  path: ""ingest_sensorcommunity"",
+  has_cron_secret: true,
+  cron_secret_length: 20,
+  auth_key_type: ""anon"",
+  auth_key_length: 208
+}
+",Log,bbe777de-f045-46ad-9b35-cffb0d025675,bb70b2d5-371f-4929-a56f-341180711fd4,info,1769858847167000
+"uk_aq_dispatch_polls cron secret { has_cron_secret: true, cron_secret_length: 20 }
+",Log,bbe777de-f045-46ad-9b35-cffb0d025675,fd57bb76-f58b-49d2-9ed0-441bf0e8f69b,info,1769858846567000
+"Listening on http://localhost:9999/
+",Log,bbe777de-f045-46ad-9b35-cffb0d025675,c49cbb16-7710-4e93-a3db-24a028f71f9f,info,1769858846564000
+booted (time: 23ms),Boot,bbe777de-f045-46ad-9b35-cffb0d025675,93222aab-a444-4b55-ae20-6c380331484d,log,1769858846563000
+shutdown,Shutdown,bbe777de-f045-46ad-9b35-cffb0d025675,00f71523-4a5b-4413-b49f-9b95a5a256c7,log,1769858802055000
+"dispatch_edge_function {
+  path: ""ingest_openaq"",
+  has_cron_secret: true,
+  cron_secret_length: 20,
+  auth_key_type: ""anon"",
+  auth_key_length: 208
+}
+",Log,bbe777de-f045-46ad-9b35-cffb0d025675,6c408e88-267b-4d45-9e99-2ea1216f01b2,info,1769858787869000
+"uk_aq_dispatch_polls cron secret { has_cron_secret: true, cron_secret_length: 20 }
+",Log,bbe777de-f045-46ad-9b35-cffb0d025675,7d1b93fd-82aa-4396-9126-f3744d5f0fef,info,1769858786568000
+"Listening on http://localhost:9999/
+",Log,bbe777de-f045-46ad-9b35-cffb0d025675,8924d150-b6c6-400b-859b-c2507d10a448,info,1769858786565000
+booted (time: 23ms),Boot,bbe777de-f045-46ad-9b35-cffb0d025675,6ff2262d-38b7-4122-a708-5f9bfafb0179,log,1769858786564000
+shutdown,Shutdown,bbe777de-f045-46ad-9b35-cffb0d025675,b29c6e1c-7e18-41bb-ba26-166e99ceecd7,log,1769858741644000
+"uk_aq_dispatch_polls cron secret { has_cron_secret: true, cron_secret_length: 20 }
+",Log,bbe777de-f045-46ad-9b35-cffb0d025675,1387f58b-8055-4d0a-95a9-9ee7e010ed71,info,1769858727032000
+"Listening on http://localhost:9999/
+",Log,bbe777de-f045-46ad-9b35-cffb0d025675,918153e0-a5b7-4bb5-a1e9-4ba33aa1bca3,info,1769858727028000
+booted (time: 23ms),Boot,bbe777de-f045-46ad-9b35-cffb0d025675,1a4132cb-3c81-4c13-9cd0-9cd0e7f8af2a,log,1769858727027000
+shutdown,Shutdown,bbe777de-f045-46ad-9b35-cffb0d025675,307366cf-d608-4ca2-9ef8-c549afeb534a,log,1769858681546000
+"dispatch_edge_function {
+  path: ""ingest_openaq"",
+  has_cron_secret: true,
+  cron_secret_length: 20,
+  auth_key_type: ""anon"",
+  auth_key_length: 208
+}
+",Log,bbe777de-f045-46ad-9b35-cffb0d025675,a0eee9d6-1e4c-49a6-b284-f7a7c0ad836e,info,1769858667926000
+"uk_aq_dispatch_polls cron secret { has_cron_secret: true, cron_secret_length: 20 }
+",Log,bbe777de-f045-46ad-9b35-cffb0d025675,b9988cb2-653e-455a-99a3-f540889ad491,info,1769858666632000
+"Listening on http://localhost:9999/
+",Log,bbe777de-f045-46ad-9b35-cffb0d025675,0c468fba-207b-499c-857f-4a00550a50e2,info,1769858666627000
+booted (time: 23ms),Boot,bbe777de-f045-46ad-9b35-cffb0d025675,1cd5dca1-be47-414d-b664-add5dbed66f8,log,1769858666626000
+shutdown,Shutdown,bbe777de-f045-46ad-9b35-cffb0d025675,b2eab27b-62cc-418f-b8ca-0a518bebd1e6,log,1769858621555000
+"uk_aq_dispatch_polls cron secret { has_cron_secret: true, cron_secret_length: 20 }
+",Log,bbe777de-f045-46ad-9b35-cffb0d025675,7ac7c586-112c-4e8b-bd2d-6c42dc905168,info,1769858606536000
+"Listening on http://localhost:9999/
+",Log,bbe777de-f045-46ad-9b35-cffb0d025675,760f709d-15fc-461a-9e02-e61cf710a153,info,1769858606533000
+booted (time: 23ms),Boot,bbe777de-f045-46ad-9b35-cffb0d025675,5435f8c0-722a-44df-9587-25c8f1834997,log,1769858606532000
+shutdown,Shutdown,bbe777de-f045-46ad-9b35-cffb0d025675,63dedd44-9f80-4d3f-a663-eb5fabffd343,log,1769858561537000
+"dispatch_edge_function {
+  path: ""ingest_openaq"",
+  has_cron_secret: true,
+  cron_secret_length: 20,
+  auth_key_type: ""anon"",
+  auth_key_length: 208
+}
+",Log,bbe777de-f045-46ad-9b35-cffb0d025675,306d26e8-3490-41b6-b9c7-2ba1201566da,info,1769858547893000
+"uk_aq_dispatch_polls cron secret { has_cron_secret: true, cron_secret_length: 20 }
+",Log,bbe777de-f045-46ad-9b35-cffb0d025675,3b28d842-5910-428e-aabd-87a551e689fc,info,1769858546545000
+"Listening on http://localhost:9999/
+",Log,bbe777de-f045-46ad-9b35-cffb0d025675,a20801e6-d34a-43c1-9a92-58d8fdc001c4,info,1769858546542000
+booted (time: 26ms),Boot,bbe777de-f045-46ad-9b35-cffb0d025675,b7a8cff5-90c8-4bba-92e1-5f9646b070dc,log,1769858546541000
+shutdown,Shutdown,bbe777de-f045-46ad-9b35-cffb0d025675,e381040c-0245-4293-89f8-d45d08de77bf,log,1769858502982000
+"dispatch_edge_function {
+  path: ""ingest_uk_air_sos"",
+  has_cron_secret: true,
+  cron_secret_length: 20,
+  auth_key_type: ""anon"",
+  auth_key_length: 208
+}
+",Log,bbe777de-f045-46ad-9b35-cffb0d025675,9e1e80e3-a150-4cd1-bae2-71aa81a7a476,info,1769858487288000
+"uk_aq_dispatch_polls cron secret { has_cron_secret: true, cron_secret_length: 20 }
+",Log,bbe777de-f045-46ad-9b35-cffb0d025675,0ae25638-190b-4591-a428-63a2c0915dc6,info,1769858486521000

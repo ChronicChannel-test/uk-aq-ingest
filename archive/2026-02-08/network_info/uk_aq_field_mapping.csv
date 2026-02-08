@@ -1,0 +1,17 @@
+db_field,openaq,breathelondon,sensorcommunity,erg_laqn,uk_air_sos
+stations.station_ref,locations.id,SiteCode,sensor.id or station.sensor_id or station.id,SiteCode | SiteID | SiteId | Site,station id from SOS payload (fallback: parsed from label)
+stations.label,location.name or location.locality (fallback: OpenAQ {id}),SiteName,location.name or station.location_name,label (fallback: station_ref),station label from SOS payload
+stations.station_name,provider shortname + location name; append owner if different,SiteName,same as label,label (fallback: station_ref),derived from SOS label (parsed station name)
+stations.station_type,isMobile => mobile/fixed,SiteClassification,sensor_type.name or sensor_type.id,null (not provided),SOS station type if present
+stations.station_exposure,null,SiteLocationType,indoor/outdoor from location.indoor,null (not provided),SOS station exposure if present
+stations.region,locality or country.name,SiteGroup,null (not provided),null (not provided),SOS region if present
+stations.geometry,coordinates.longitude/latitude,Longitude/Latitude,location.longitude/latitude,LAQN site coordinates if present,SOS station coordinates if present
+timeseries.timeseries_ref,sensor.id,{station_ref}:{species},{station_ref}:{pollutant},{station_ref}:{species},timeseries id from SOS payload
+timeseries.label,{locationId} {parameter.displayName or parameter.name},{station_name} {species label},{station_ref} {pollutant label},{station_name} {species label},timeseries label from SOS payload
+observations.observed_at,measurement.datetime.utc,data timestamp from BL feed,measurement timestamp from Sensor.Community,data timestamp from LAQN feed,observation time from SOS payload
+observations.value,measurement.value,BL value per species,sensor value per pollutant,LAQN value per species,SOS observed value
+,,,,,
+,openaq,breathelondon,sensorcommunity,erg_laqn,uk_air_sos
+station_name_logic,"provider_shortname + location_name; if owner present and != provider, append ' - owner'",SiteName,label from location; used as station_name,label or station_ref,derived from SOS label; fallback to parsed label
+source_fields,location.name or location.locality; provider.name; owner.name,SiteName,location.name or station.location_name,SiteName/label; SiteCode,timeseries/station label
+notes,Owner is omitted when it matches provider (case-insensitive).,"If SiteName missing, station_name is null and label falls back to SiteCode.",station_name mirrors label.,"Uses label if present, else station_ref.","Uses SOS label parsing helpers to extract station name; if parsing fails, label is used."

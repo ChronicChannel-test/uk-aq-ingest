@@ -1,0 +1,76 @@
+name: Deploy Supabase Edge Function
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "supabase/functions/**"
+      - "supabase/uk_aq_polling_cron.sql"
+  workflow_dispatch:
+
+jobs:
+  deploy-edge-function:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Inject project ref into web page
+        env:
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_PUBLISHABLE_DEFAULT_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_DEFAULT_KEY }}
+          SUPABASE_ANON_JWT: ${{ secrets.SUPABASE_ANON_JWT }}
+        run: |
+          node scripts/uk_aq_inject_project_ref.mjs
+      - name: Set Supabase secrets
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_SECRETS_ENV: ${{ secrets.SUPABASE_SECRETS_ENV }}
+        run: |
+          if [ -z "${SUPABASE_SECRETS_ENV:-}" ]; then
+            echo "Missing SUPABASE_SECRETS_ENV secret." >&2
+            exit 1
+          fi
+          printf '%s' "${SUPABASE_SECRETS_ENV}" > .env.supabase
+          supabase secrets set             --env-file .env.supabase             --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"
+
+
+
+      - name: Deploy function
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          supabase functions deploy ingest_uk_air_sos \
+            --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"
+          supabase functions deploy ingest_breathelondon \
+            --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"
+          supabase functions deploy ingest_erg_laqn \
+            --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"
+          supabase functions deploy ingest_sensorcommunity \
+            --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"
+          supabase functions deploy ingest_openaq \
+            --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"
+          supabase functions deploy uk_aq_dispatch_polls \
+            --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"
+          supabase functions deploy uk_aq_latest \
+            --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"
+          supabase functions deploy uk_aq_bristol_latest \
+            --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"
+          supabase functions deploy uk_aq_surbiton_latest \
+            --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"
+          supabase functions deploy uk_aq_la_hex \
+            --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"
+          supabase functions deploy uk_aq_pcon_hex \
+            --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"
+          supabase functions deploy uk_aq_stations \
+            --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"
+          supabase functions deploy uk_aq_timeseries \
+            --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"
+          supabase functions deploy uk_aq_station_snapshot \
+            --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"

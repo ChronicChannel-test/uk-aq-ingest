@@ -1,0 +1,1700 @@
+// @ts-nocheck
+import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
+
+type PollRequest = {
+  connector_id?: string;
+  connector_code?: string;
+  connector_label?: string;
+  window_hours?: number;
+  pollutants?: string[] | string;
+  timeseries_ids?: string[] | string;
+  timeseries_limit?: number;
+};
+
+type ConnectorRow = {
+  id: string;
+  connector_code: string;
+  label: string;
+  service_url: string | null;
+  poll_enabled: boolean | null;
+  poll_window_hours: number | null;
+  poll_timeseries_batch_size: number | null;
+};
+
+type DropboxConfig = {
+  appKey: string;
+  appSecret: string;
+  refreshToken: string;
+};
+
+type ErrorLogEntry = {
+  source: string;
+  severity: string;
+  message: string;
+  stack?: string | null;
+  context?: Record<string, unknown> | null;
+  connector_code?: string | null;
+  connector_id?: string | number | null;
+  station_id?: string | number | null;
+  timeseries_id?: string | number | null;
+};
+
+const DEFAULT_BASE_URL = "https://uk-air.defra.gov.uk/sos-ukair/api/v1";
+const DEFAULT_SERVICE_LABEL = "UK-AIR-SOS";
+const DEFAULT_CONNECTOR_CODE = "uk_air_sos";
+const DEFAULT_WINDOW_HOURS = 6;
+const DEFAULT_MAX_RUNTIME_SECONDS = 110;
+const DEFAULT_TIMEOUT_MS = 30_000;
+const PAGE_SIZE = 1000;
+const CONCURRENCY_LIMIT = 5;
+
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL")
+  ?? Deno.env.get("SB_SUPABASE_URL")
+  ?? "";
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")
+  ?? Deno.env.get("SB_SERVICE_ROLE_KEY")
+  ?? "";
+const UK_AQ_CORE_SCHEMA = Deno.env.get("UK_AQ_CORE_SCHEMA")
+  ?? "uk_aq_core";
+const UK_AQ_RAW_SCHEMA = Deno.env.get("UK_AQ_RAW_SCHEMA")
+  ?? "uk_aq_raw";
+const SB_UK_AQ_CRON_SECRET = Deno.env.get("SB_UK_AQ_CRON_SECRET") ?? "";
+const UK_AIR_SOS_BASE_URL = (Deno.env.get("UK_AIR_SOS_BASE_URL")
+  ?? Deno.env.get("UK_AIR_BASE_URL")
+  ?? DEFAULT_BASE_URL).replace(/\/$/, "");
+const UK_AIR_SOS_SERVICE_LABEL = Deno.env.get("UK_AIR_SOS_SERVICE_LABEL")
+  ?? Deno.env.get("UK_AIR_SERVICE_LABEL")
+  ?? DEFAULT_SERVICE_LABEL;
+const UK_AIR_SOS_CONNECTOR_CODE = Deno.env.get("UK_AIR_SOS_CONNECTOR_CODE")
+  ?? DEFAULT_CONNECTOR_CODE;
+const UK_AIR_SOS_MAX_RUNTIME_SECONDS = Number(
+  Deno.env.get("UK_AIR_SOS_MAX_RUNTIME_SECONDS") ?? DEFAULT_MAX_RUNTIME_SECONDS,
+);
+const DROPBOX_APP_KEY = Deno.env.get("DROPBOX_APP_KEY") ?? "";
+const DROPBOX_APP_SECRET = Deno.env.get("DROPBOX_APP_SECRET") ?? "";
+const DROPBOX_REFRESH_TOKEN = Deno.env.get("DROPBOX_REFRESH_TOKEN") ?? "";
+const DROPBOX_ALLOWED_SUPABASE_URL = Deno.env.get("UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL") ?? "";
+const DROPBOX_ERROR_ALLOWED_SUPABASE_URL =
+  Deno.env.get("UK_AIR_ERROR_DROPBOX_ALLOWED_SUPABASE_URL") ?? "";
+const DROPBOX_ROOT_FOLDER = (() => {
+  const raw = Deno.env.get("UK_AQ_DROPBOX_ROOT") ?? "";
+  return normalizeDropboxPath(raw);
+})();
+
+const DROPBOX_LOG_FOLDER = dropboxWithRoot("/connectors/uk_air_sos/log");
+const DROPBOX_RAW_FOLDER = dropboxWithRoot("/connectors/uk_air_sos/raw_data");
+const DROPBOX_ERROR_FOLDER = dropboxWithRoot(
+  Deno.env.get("UK_AIR_ERROR_DROPBOX_FOLDER") ?? "error_log",
+);
+const DROPBOX_LOG_RETENTION_DAYS = 31;
+const DROPBOX_TOKEN_URL = "https://api.dropbox.com/oauth2/token";
+const DROPBOX_UPLOAD_URL = "https://content.dropboxapi.com/2/files/upload";
+const DROPBOX_LIST_FOLDER_URL = "https://api.dropboxapi.com/2/files/list_folder";
+const DROPBOX_DELETE_URL = "https://api.dropboxapi.com/2/files/delete_v2";
+
+const REST_BASE_URL = SUPABASE_URL
+  ? `${SUPABASE_URL.replace(/\/$/, "")}/rest/v1`
+  : "";
+
+function postgrestHeaders(prefer?: string, schema = UK_AQ_CORE_SCHEMA): Record<string, string> {
+  const headers: Record<string, string> = {
+    apikey: SUPABASE_SERVICE_ROLE_KEY,
+    Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+    "Content-Type": "application/json",
+  };
+  if (prefer) {
+    headers.Prefer = prefer;
+  }
+  if (schema && schema !== "public") {
+    headers["Accept-Profile"] = schema;
+    headers["Content-Profile"] = schema;
+  }
+  return headers;
+}
+
+function requireCronSecret(req: Request): Response | null {
+  if (!SB_UK_AQ_CRON_SECRET) {
+    return null;
+  }
+  const header = req.headers.get("x-cron-secret");
+  if (!header || header !== SB_UK_AQ_CRON_SECRET) {
+    console.warn("cron_secret_mismatch", {
+      has_cron_secret: Boolean(SB_UK_AQ_CRON_SECRET),
+      header_present: Boolean(header),
+      header_length: header ? header.length : 0,
+    });
+    return new Response("Unauthorized", { status: 401 });
+  }
+  return null;
+}
+
+async function postgrestRequest<T>(
+  method: string,
+  table: string,
+  params?: Record<string, string>,
+  body?: unknown,
+  prefer?: string,
+  schema?: string,
+): Promise<{ data: T | null; error: { message: string } | null }> {
+  if (!REST_BASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    return { data: null, error: { message: "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY." } };
+  }
+  const url = new URL(`${REST_BASE_URL}/${table}`);
+  for (const [key, value] of Object.entries(params ?? {})) {
+    if (value !== undefined && value !== null) {
+      url.searchParams.set(key, String(value));
+    }
+  }
+  const resp = await fetch(url.toString(), {
+    method,
+    headers: postgrestHeaders(prefer, schema),
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  let payload: unknown = null;
+  if (resp.status !== 204) {
+    const contentType = resp.headers.get("content-type") ?? "";
+    payload = contentType.includes("application/json") ? await resp.json() : await resp.text();
+  }
+  if (!resp.ok) {
+    const message = (payload as { message?: string; error_description?: string; error?: string })?.message
+      ?? (payload as { error_description?: string })?.error_description
+      ?? (payload as { error?: string })?.error
+      ?? resp.statusText;
+    return { data: null, error: { message: String(message) } };
+  }
+  return { data: payload as T, error: null };
+}
+
+const ERROR_LOGGER = createErrorLogger(
+  loadErrorDropboxConfig(),
+  Boolean(SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY),
+);
+
+function logUnhandledError(
+  message: string,
+  err: unknown,
+  context: Record<string, unknown>,
+): void {
+  const error = err instanceof Error ? err : new Error(String(err));
+  void ERROR_LOGGER.logError({
+    source: "edge",
+    severity: "error",
+    message,
+    stack: error.stack,
+    context,
+    connector_code: UK_AIR_SOS_CONNECTOR_CODE,
+  });
+}
+
+addEventListener("error", (event) => {
+  if (typeof event.preventDefault === "function") {
+    event.preventDefault();
+  }
+  logUnhandledError(
+    "Unhandled error event.",
+    event.error ?? event.message,
+    {
+      message: event.message,
+      filename: event.filename,
+      lineno: event.lineno,
+      colno: event.colno,
+    },
+  );
+});
+
+addEventListener("unhandledrejection", (event) => {
+  if (typeof event.preventDefault === "function") {
+    event.preventDefault();
+  }
+  logUnhandledError(
+    "Unhandled promise rejection.",
+    event.reason,
+    {
+      reason: event.reason instanceof Error ? event.reason.message : String(event.reason),
+    },
+  );
+});
+
+serve(async (req) => {
+  if (req.method !== "POST") {
+    return new Response("Method not allowed", { status: 405 });
+  }
+  const authResponse = requireCronSecret(req);
+  if (authResponse) {
+    return authResponse;
+  }
+  const log = createLogBuffer();
+  const dropboxConfig = loadDropboxConfig();
+  const errorLogger = ERROR_LOGGER;
+  const rawRecorder = dropboxConfig ? createRawRecorder() : null;
+  const errors: string[] = [];
+  let status = 200;
+  let polled = 0;
+  let observationsUpserted = 0;
+  let skippedNoLastValueAt = 0;
+  let skippedStaleLastValueAt = 0;
+  let responsePayload: Record<string, unknown> = {};
+  let connector: ConnectorRow | null = null;
+  let requestedConnectorId: string | undefined;
+  let requestedConnectorCode = UK_AIR_SOS_CONNECTOR_CODE;
+  let requestedConnectorLabel = UK_AIR_SOS_SERVICE_LABEL;
+  let requestedWindowHours: number | undefined;
+  let requestedPollutants: string[] | undefined;
+  let requestedLimit: number | undefined;
+  let requestedSeries: string[] | undefined;
+  const runStartedAt = Date.now();
+  const maxRuntimeSeconds = Number.isFinite(UK_AIR_SOS_MAX_RUNTIME_SECONDS)
+    ? Math.max(30, UK_AIR_SOS_MAX_RUNTIME_SECONDS)
+    : DEFAULT_MAX_RUNTIME_SECONDS;
+  const runtimeDeadline = runStartedAt + maxRuntimeSeconds * 1000;
+  const shouldStop = () => Date.now() >= runtimeDeadline;
+  let timeBudgetHit = false;
+
+  try {
+    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+      status = 500;
+      responsePayload = { error: "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY." };
+      log.error("Missing Supabase configuration.");
+    } else {
+      const payload = await readJson(req);
+      requestedConnectorId = asString(payload?.connector_id);
+      requestedConnectorCode = asString(payload?.connector_code) || UK_AIR_SOS_CONNECTOR_CODE;
+      requestedConnectorLabel = asString(payload?.connector_label) || UK_AIR_SOS_SERVICE_LABEL;
+      requestedWindowHours = asNumber(payload?.window_hours, undefined);
+      requestedPollutants = parseList(payload?.pollutants);
+      requestedLimit = asNumber(payload?.timeseries_limit, undefined);
+      requestedSeries = parseList(payload?.timeseries_ids);
+
+      log.info("Poll request", {
+        connector_id: requestedConnectorId ?? null,
+        connector_code: requestedConnectorCode,
+        connector_label: requestedConnectorLabel,
+        window_hours: requestedWindowHours ?? null,
+        pollutants: requestedPollutants?.length ?? null,
+        timeseries_ids: requestedSeries?.length ?? null,
+        timeseries_limit: requestedLimit ?? null,
+      });
+
+      connector = await loadConnector(
+        requestedConnectorId,
+        requestedConnectorCode,
+        requestedConnectorLabel,
+      );
+      if (!connector) {
+        status = 404;
+        responsePayload = { error: "Connector not found." };
+        log.warn("Connector not found.");
+      } else if (connector.poll_enabled === false) {
+        status = 200;
+        responsePayload = { status: "poll_disabled", connector_id: connector.id };
+        log.info("Polling disabled for connector.", { connector_id: connector.id });
+      } else {
+        let shouldPoll = true;
+        const pollWindow = requestedWindowHours ?? connector.poll_window_hours ?? DEFAULT_WINDOW_HOURS;
+        const effectiveLimit = requestedLimit ?? connector.poll_timeseries_batch_size ?? undefined;
+        const baseUrl = (connector.service_url || UK_AIR_SOS_BASE_URL).replace(/\/$/, "");
+        const now = new Date();
+        const windowStart = new Date(now.getTime() - pollWindow * 60 * 60 * 1000);
+
+        let series = await loadTimeseries(connector.id);
+        if (requestedSeries?.length) {
+          const requestedSet = new Set(requestedSeries.map((value) => value.toLowerCase()));
+          series = series.filter((row) => {
+            const idMatch = row.id && requestedSet.has(String(row.id).toLowerCase());
+            const sourceMatch = row.timeseries_ref
+              && requestedSet.has(String(row.timeseries_ref).toLowerCase());
+            return idMatch || sourceMatch;
+          });
+        }
+
+        if (requestedPollutants?.length) {
+          const allowedPhenomena = await loadPhenomena(connector.id, requestedPollutants);
+          if (allowedPhenomena.size === 0) {
+            status = 200;
+            responsePayload = { status: "no_matching_pollutants", connector_id: connector.id };
+            log.warn("No matching pollutants for connector.", { connector_id: connector.id });
+            shouldPoll = false;
+          } else {
+            series = series.filter((row) =>
+              row.phenomenon_id && allowedPhenomena.has(row.phenomenon_id)
+            );
+          }
+        }
+
+        if (shouldPoll) {
+          const checkpointCandidates = requestedSeries?.length ? series.slice() : [];
+          const beforeRecencyFilter = series.length;
+          series = series.filter((row) => {
+            if (!row.last_value_at) {
+              skippedNoLastValueAt += 1;
+              return false;
+            }
+            const parsed = new Date(row.last_value_at);
+            if (Number.isNaN(parsed.getTime())) {
+              skippedNoLastValueAt += 1;
+              return false;
+            }
+            if (parsed < windowStart) {
+              skippedStaleLastValueAt += 1;
+              return false;
+            }
+            return true;
+          });
+          if (beforeRecencyFilter !== series.length) {
+            log.info("Timeseries recency filter applied", {
+              total: beforeRecencyFilter,
+              remaining: series.length,
+              skipped_no_last_value_at: skippedNoLastValueAt,
+              skipped_stale_last_value_at: skippedStaleLastValueAt,
+              window_hours: pollWindow,
+            });
+          }
+          if (typeof effectiveLimit === "number" && effectiveLimit > 0) {
+            series = series.slice(0, effectiveLimit);
+          }
+
+          const timespan = `${windowStart.toISOString()}/${now.toISOString()}`;
+          if (rawRecorder) {
+            rawRecorder.recordEvent("context", {
+              connector_id: connector.id,
+              connector_code: connector.connector_code,
+              connector_label: connector.label,
+              timespan,
+              window_hours: pollWindow,
+              timeseries_limit: typeof effectiveLimit === "number" ? effectiveLimit : null,
+              pollutants: requestedPollutants?.length ? requestedPollutants : "all",
+            });
+          }
+
+          timeBudgetHit = await runPool(series, CONCURRENCY_LIMIT, async (row) => {
+            if (shouldStop()) {
+              return;
+            }
+            try {
+              const sourceId = row.timeseries_ref || String(row.id);
+              const data = await fetchJson(
+                baseUrl,
+                `/timeseries/${encodeURIComponent(sourceId)}/getData`,
+                { timespan, format: "tvp" },
+                rawRecorder,
+              );
+              const points = parseDatapoints(data?.values, row.id);
+              if (points.length) {
+                const connectorIdForObs = connector?.id ?? requestedConnectorId ?? null;
+                if (connectorIdForObs == null) {
+                  throw new Error("observations upsert failed: connector_id is required");
+                }
+                let droppedDuplicates = 0;
+                const deduped = new Map<string, { observed_at: string; value: number | null; status: string | null }>();
+                for (const point of points) {
+                  if (deduped.has(point.observed_at)) {
+                    droppedDuplicates += 1;
+                  }
+                  deduped.set(point.observed_at, point);
+                }
+                if (droppedDuplicates) {
+                  console.warn("Dropping duplicate observations", {
+                    timeseries_id: row.id,
+                    dropped: droppedDuplicates,
+                    total: points.length,
+                  });
+                }
+                const observationRows = Array.from(deduped.values()).map((point) => ({
+                  connector_id: connectorIdForObs,
+                  timeseries_id: row.id,
+                  observed_at: point.observed_at,
+                  value: point.value,
+                  status: point.status,
+                }));
+                const { error } = await postgrestRequest(
+                  "POST",
+                  "observations",
+                  { on_conflict: "connector_id,timeseries_id,observed_at" },
+                  observationRows,
+                  "resolution=merge-duplicates,return=minimal",
+                );
+                if (error) {
+                  throw new Error(`observations upsert failed for ${row.id}: ${error.message}`);
+                }
+                observationsUpserted += observationRows.length;
+              }
+              await upsertLastValue(
+                row.id,
+                data,
+                points,
+                errorLogger,
+                connector?.id ?? requestedConnectorId ?? null,
+                connector?.connector_code ?? requestedConnectorCode ?? UK_AIR_SOS_CONNECTOR_CODE,
+              );
+              polled += 1;
+            } catch (err) {
+              const message = err instanceof Error ? err.message : String(err);
+              errors.push(`${row.id}: ${message}`);
+              console.warn(`Poll failed for ${row.id}: ${message}`);
+              await errorLogger.logError({
+                source: "edge",
+                severity: "error",
+                message: `Poll failed for timeseries ${row.id}.`,
+                stack: err instanceof Error ? err.stack : undefined,
+                context: {
+                  timeseries_ref: row.timeseries_ref,
+                  timespan,
+                  connector_id: connector?.id ?? requestedConnectorId ?? null,
+                },
+                connector_code: connector?.connector_code ?? requestedConnectorCode ?? UK_AIR_SOS_CONNECTOR_CODE,
+                connector_id: connector?.id ?? requestedConnectorId ?? null,
+                timeseries_id: row.id,
+              });
+            }
+          }, shouldStop);
+
+          if (timeBudgetHit) {
+            log.warn("Stopping UK-AIR SOS poll early (runtime budget exceeded).", {
+              max_runtime_seconds: maxRuntimeSeconds,
+            });
+          }
+
+          if (checkpointCandidates.length) {
+            await upsertUkAirSosTimeseriesCheckpoints(
+              checkpointCandidates.map((row) => ({ id: row.id })),
+              now.toISOString(),
+              errorLogger,
+              connector?.id ?? requestedConnectorId ?? null,
+              connector?.connector_code ?? requestedConnectorCode ?? UK_AIR_SOS_CONNECTOR_CODE,
+            );
+          }
+
+          const { error: pollUpdateError } = await postgrestRequest(
+            "PATCH",
+            "connectors",
+            { id: `eq.${connector.id}` },
+            { last_polled_at: now.toISOString() },
+            "return=minimal",
+          );
+          if (pollUpdateError) {
+            errors.push(`connector last_polled_at update failed: ${pollUpdateError.message}`);
+            await errorLogger.logError({
+              source: "edge",
+              severity: "error",
+              message: "Failed to update connectors.last_polled_at.",
+              context: {
+                connector_id: connector.id,
+                error: pollUpdateError.message,
+              },
+              connector_code: connector.connector_code ?? requestedConnectorCode ?? UK_AIR_SOS_CONNECTOR_CODE,
+              connector_id: connector.id,
+            });
+          }
+
+          status = errors.length ? 207 : 200;
+          responsePayload = {
+            status: "ok",
+            connector_id: connector.id,
+            series_polled: polled,
+            observations_upserted: observationsUpserted,
+            errors,
+            partial: timeBudgetHit,
+            stopped_reason: timeBudgetHit ? "runtime_budget_exceeded" : null,
+          };
+        }
+      }
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    errors.push(message);
+    status = 500;
+    responsePayload = { error: "Unhandled error", message };
+    log.error("Unhandled error during poll.", { message });
+    await errorLogger.logError({
+      source: "edge",
+      severity: "error",
+      message: "Unhandled error during poll.",
+      stack: err instanceof Error ? err.stack : undefined,
+      context: {
+        connector_id: requestedConnectorId ?? null,
+        connector_code: requestedConnectorCode,
+        connector_label: requestedConnectorLabel,
+      },
+      connector_code: requestedConnectorCode ?? UK_AIR_SOS_CONNECTOR_CODE,
+      connector_id: requestedConnectorId ?? null,
+    });
+  } finally {
+    log.info("Poll summary", {
+      connector_id: connector?.id ?? requestedConnectorId ?? null,
+      series_polled: polled,
+      observations_upserted: observationsUpserted,
+      errors: errors.length,
+    });
+    if (errors.length) {
+      log.warn("Poll errors", { sample: errors.slice(0, 25) });
+    }
+    let accessToken: string | null = null;
+    const resolvedConnectorCode = connector?.connector_code
+      ?? requestedConnectorCode
+      ?? UK_AIR_SOS_CONNECTOR_CODE;
+    const refreshDropbox = dropboxConfig
+      ? () => dropboxRefreshAccessToken(dropboxConfig)
+      : undefined;
+    if (dropboxConfig) {
+      try {
+        accessToken = await dropboxRefreshAccessToken(dropboxConfig);
+      } catch (err) {
+        console.warn("Dropbox token request failed:", err);
+      }
+    }
+    if (accessToken) {
+      accessToken = await uploadDropboxLog(
+        accessToken,
+        log,
+        connector?.id ?? requestedConnectorId ?? null,
+        resolvedConnectorCode,
+        errorLogger,
+        refreshDropbox,
+      );
+      accessToken = await uploadDropboxRaw(
+        accessToken,
+        rawRecorder,
+        connector?.id ?? requestedConnectorId ?? null,
+        resolvedConnectorCode,
+        errorLogger,
+        refreshDropbox,
+      );
+    }
+  }
+
+  return json(responsePayload, status);
+});
+
+async function readJson(req: Request): Promise<PollRequest | null> {
+  try {
+    return await req.json();
+  } catch {
+    return null;
+  }
+}
+
+function json(payload: unknown, status = 200): Response {
+  return new Response(JSON.stringify(payload, null, 2), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+type LogBuffer = {
+  lines: string[];
+  info: (message: string, context?: Record<string, unknown>) => void;
+  warn: (message: string, context?: Record<string, unknown>) => void;
+  error: (message: string, context?: Record<string, unknown>) => void;
+};
+
+type RawRecorder = {
+  lines: string[];
+  responseCount: number;
+  recordEvent: (name: string, payload: Record<string, unknown>) => void;
+  recordResponse: (
+    path: string,
+    params: Record<string, string>,
+    statusCode: number,
+    payload: unknown,
+  ) => void;
+};
+
+function createLogBuffer(): LogBuffer {
+  const lines: string[] = [];
+  const push = (level: string, message: string, context?: Record<string, unknown>) => {
+    const timestamp = new Date().toISOString();
+    const base = `${timestamp} ${level} ${message}`;
+    lines.push(context ? `${base} ${formatContext(context)}` : base);
+  };
+  return {
+    lines,
+    info: (message, context) => push("INFO", message, context),
+    warn: (message, context) => push("WARN", message, context),
+    error: (message, context) => push("ERROR", message, context),
+  };
+}
+
+function formatContext(context: Record<string, unknown>): string {
+  return Object.entries(context)
+    .map(([key, value]) => `${key}=${formatLogValue(value)}`)
+    .join(" ");
+}
+
+function formatLogValue(value: unknown): string {
+  if (value === null || value === undefined) {
+    return "null";
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map((entry) => formatLogValue(entry)).join(",")}]`;
+  }
+  if (typeof value === "object") {
+    return JSON.stringify(value);
+  }
+  return String(value);
+}
+
+function createRawRecorder(): RawRecorder {
+  const lines: string[] = [];
+  const write = (entry: Record<string, unknown>) => {
+    lines.push(JSON.stringify(entry));
+  };
+  const recorder: RawRecorder = {
+    lines,
+    responseCount: 0,
+    recordEvent: (name, payload) => {
+      write({
+        type: name,
+        recorded_at: new Date().toISOString(),
+        payload,
+      });
+    },
+    recordResponse: (path, params, statusCode, payload) => {
+      recorder.responseCount += 1;
+      write({
+        type: "response",
+        fetched_at: new Date().toISOString(),
+        path,
+        params,
+        status_code: statusCode,
+        payload,
+      });
+    },
+  };
+  write({ type: "meta", created_at: new Date().toISOString() });
+  return recorder;
+}
+
+function asString(value: unknown): string | undefined {
+  if (typeof value === "string" && value.trim()) {
+    return value.trim();
+  }
+  return undefined;
+}
+
+function asNumber(value: unknown, fallback: number | undefined): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+  return fallback;
+}
+
+function parseList(value: unknown): string[] | undefined {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item).trim()).filter(Boolean);
+  }
+  if (typeof value === "string") {
+    const parts = value.split(",").map((item) => item.trim()).filter(Boolean);
+    return parts.length ? parts : undefined;
+  }
+  return undefined;
+}
+
+function normalizeServiceLabel(label: string | undefined): string {
+  if (!label) {
+    return UK_AIR_SOS_SERVICE_LABEL;
+  }
+  const trimmed = label.trim();
+  if (!trimmed) {
+    return UK_AIR_SOS_SERVICE_LABEL;
+  }
+  if (trimmed.toLowerCase().startsWith("my timeseries service")) {
+    return UK_AIR_SOS_SERVICE_LABEL;
+  }
+  return trimmed;
+}
+
+function loadDropboxConfig(): DropboxConfig | null {
+  if (!DROPBOX_APP_KEY || !DROPBOX_APP_SECRET || !DROPBOX_REFRESH_TOKEN) {
+    return null;
+  }
+  if (!DROPBOX_ALLOWED_SUPABASE_URL || DROPBOX_ALLOWED_SUPABASE_URL !== SUPABASE_URL) {
+    return null;
+  }
+  return {
+    appKey: DROPBOX_APP_KEY,
+    appSecret: DROPBOX_APP_SECRET,
+    refreshToken: DROPBOX_REFRESH_TOKEN,
+  };
+}
+
+function loadErrorDropboxConfig(): DropboxConfig | null {
+  if (!DROPBOX_APP_KEY || !DROPBOX_APP_SECRET || !DROPBOX_REFRESH_TOKEN) {
+    return null;
+  }
+  return {
+    appKey: DROPBOX_APP_KEY,
+    appSecret: DROPBOX_APP_SECRET,
+    refreshToken: DROPBOX_REFRESH_TOKEN,
+  };
+}
+
+function normalizeDropboxPath(raw: string): string {
+  const cleaned = raw.trim();
+  if (!cleaned) {
+    return "";
+  }
+  const rooted = cleaned.startsWith("/") ? cleaned : `/${cleaned}`;
+  return rooted.replace(/\/$/, "");
+}
+
+function dropboxWithRoot(path: string): string {
+  const cleaned = normalizeDropboxPath(path);
+  if (!DROPBOX_ROOT_FOLDER) {
+    return cleaned;
+  }
+  if (!cleaned) {
+    return DROPBOX_ROOT_FOLDER;
+  }
+  if (cleaned === DROPBOX_ROOT_FOLDER || cleaned.startsWith(`${DROPBOX_ROOT_FOLDER}/`)) {
+    return cleaned;
+  }
+  return `${DROPBOX_ROOT_FOLDER}${cleaned}`;
+}
+
+function normalizeConnectorPrefix(connectorCode: string | null): string {
+  const cleaned = (connectorCode ?? "").trim().toLowerCase();
+  const normalized = cleaned.replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+  return normalized || "unknown";
+}
+
+function buildDropboxLogPath(
+  connectorCode: string | null,
+  timestamp: Date,
+): string {
+  const stamp = formatCompactTimestamp(timestamp);
+  const dateFolder = formatDateYmd(timestamp);
+  const prefix = normalizeConnectorPrefix(connectorCode);
+  return `${DROPBOX_LOG_FOLDER}/${dateFolder}/uk_aq_log_edge_${prefix}_${stamp}.log`;
+}
+
+function buildDropboxRawPath(
+  connectorCode: string | null,
+  timestamp: Date,
+): string {
+  const stamp = formatCompactTimestamp(timestamp);
+  const dateFolder = formatDateYmd(timestamp);
+  const prefix = normalizeConnectorPrefix(connectorCode);
+  return `${DROPBOX_RAW_FOLDER}/${dateFolder}/uk_aq_raw_edge_${prefix}_${stamp}.zip`;
+}
+
+function buildDropboxErrorPath(
+  errorId: string,
+  createdAt: string,
+  connectorCode: string | null,
+): string {
+  const dateFolder = createdAt.slice(0, 10);
+  const stamp = formatCompactTimestamp(new Date(createdAt));
+  const prefix = normalizeConnectorPrefix(connectorCode);
+  return `${DROPBOX_ERROR_FOLDER}/${dateFolder}/uk_aq_error_edge_${prefix}_${stamp}_${errorId}.json`;
+}
+
+function formatCompactTimestamp(timestamp: Date): string {
+  return timestamp.toISOString().replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z");
+}
+
+function formatDateYmd(timestamp: Date): string {
+  return timestamp.toISOString().slice(0, 10);
+}
+
+async function uploadDropboxLog(
+  accessToken: string,
+  log: LogBuffer,
+  connectorId: string | null,
+  connectorCode: string | null,
+  errorLogger: { logError: (entry: ErrorLogEntry) => Promise<void> },
+  refreshToken?: () => Promise<string>,
+): Promise<string> {
+  if (!accessToken) {
+    return accessToken;
+  }
+  const content = log.lines.join("\n") + "\n";
+  if (!content.trim()) {
+    return accessToken;
+  }
+  try {
+    const logPath = buildDropboxLogPath(connectorCode, new Date());
+    accessToken = await dropboxUploadFileWithRetry(
+      accessToken,
+      logPath,
+      content,
+      refreshToken,
+    );
+    await dropboxArchiveLogs(accessToken, DROPBOX_LOG_FOLDER, DROPBOX_LOG_RETENTION_DAYS, 365);
+  } catch (err) {
+    console.warn("Dropbox log upload failed:", err);
+    await errorLogger.logError({
+      source: "edge",
+      severity: "error",
+      message: "Dropbox log upload failed.",
+      stack: err instanceof Error ? err.stack : undefined,
+      context: {
+        connector_id: connectorId,
+        connector_code: connectorCode,
+        error: err instanceof Error ? err.message : String(err),
+      },
+      connector_code: connectorCode ?? null,
+      connector_id: connectorId ?? null,
+    });
+  }
+  return accessToken;
+}
+
+async function uploadDropboxRaw(
+  accessToken: string,
+  recorder: RawRecorder | null,
+  connectorId: string | null,
+  connectorCode: string | null,
+  errorLogger: { logError: (entry: ErrorLogEntry) => Promise<void> },
+  refreshToken?: () => Promise<string>,
+): Promise<string> {
+  if (!accessToken || !recorder || recorder.responseCount === 0) {
+    return accessToken;
+  }
+  const content = recorder.lines.join("\n") + "\n";
+  if (!content.trim()) {
+    return accessToken;
+  }
+  try {
+    const rawPath = buildDropboxRawPath(connectorCode, new Date());
+    const filename = rawPath.split("/").pop() ?? "uk_aq_raw_edge.jsonl";
+    const jsonlName = filename.replace(/\.zip$/i, ".jsonl");
+    const zipped = await zipTextCompressed(jsonlName, content);
+    accessToken = await dropboxUploadFileWithRetry(
+      accessToken,
+      rawPath,
+      zipped,
+      refreshToken,
+    );
+  } catch (err) {
+    console.warn("Dropbox raw upload failed:", err);
+    await errorLogger.logError({
+      source: "edge",
+      severity: "error",
+      message: "Dropbox raw upload failed.",
+      stack: err instanceof Error ? err.stack : undefined,
+      context: {
+        connector_id: connectorId,
+        connector_code: connectorCode,
+        error: err instanceof Error ? err.message : String(err),
+      },
+      connector_code: connectorCode ?? null,
+      connector_id: connectorId ?? null,
+    });
+  }
+  return accessToken;
+}
+
+function createErrorLogger(config: DropboxConfig | null, enabled: boolean) {
+  let accessToken: string | null = null;
+  return {
+    async logError(entry: ErrorLogEntry): Promise<void> {
+      if (!enabled) {
+        return;
+      }
+      const errorId = crypto.randomUUID();
+      const createdAt = new Date().toISOString();
+      const row = {
+        id: errorId,
+        source: entry.source,
+        severity: entry.severity,
+        message: entry.message,
+        stack: entry.stack ?? null,
+        context: entry.context ?? null,
+        connector_id: entry.connector_id ?? null,
+        station_id: entry.station_id ?? null,
+        timeseries_id: entry.timeseries_id ?? null,
+      };
+      const { error } = await postgrestRequest(
+        "POST",
+        "error_logs",
+        undefined,
+        row,
+        "return=minimal",
+        UK_AQ_RAW_SCHEMA,
+      );
+      if (error) {
+        console.warn("error_logs insert failed:", error.message);
+        return;
+      }
+      if (!config) {
+        return;
+      }
+      try {
+        if (!accessToken) {
+          accessToken = await dropboxRefreshAccessToken(config);
+        }
+        const dropboxPath = buildDropboxErrorPath(
+          errorId,
+          createdAt,
+          entry.connector_code ?? UK_AIR_SOS_CONNECTOR_CODE,
+        );
+        const payload = {
+          ...row,
+          connector_code: entry.connector_code ?? null,
+          created_at: createdAt,
+          dropbox_path: dropboxPath,
+        };
+        accessToken = await dropboxUploadFileWithRetry(
+          accessToken,
+          dropboxPath,
+          JSON.stringify(payload, null, 2),
+          () => dropboxRefreshAccessToken(config),
+        );
+        await postgrestRequest(
+          "PATCH",
+          "error_logs",
+          { id: `eq.${errorId}` },
+          { dropbox_path: dropboxPath },
+          "return=minimal",
+          UK_AQ_RAW_SCHEMA,
+        );
+      } catch (err) {
+        console.warn("Dropbox error log upload failed:", err);
+      }
+    },
+  };
+}
+
+class DropboxHttpError extends Error {
+  status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+  }
+}
+
+async function dropboxRefreshAccessToken(config: DropboxConfig): Promise<string> {
+  const payload = new URLSearchParams({
+    grant_type: "refresh_token",
+    refresh_token: config.refreshToken,
+    client_id: config.appKey,
+    client_secret: config.appSecret,
+  });
+  const resp = await fetch(DROPBOX_TOKEN_URL, {
+    method: "POST",
+    body: payload,
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+  });
+  if (!resp.ok) {
+    throw new Error(`Dropbox token request failed (${resp.status})`);
+  }
+  const data = await resp.json();
+  const token = data?.access_token;
+  if (!token) {
+    throw new Error("Dropbox token response missing access_token.");
+  }
+  return token;
+}
+
+async function dropboxUploadFile(
+  accessToken: string,
+  path: string,
+  contents: string | Uint8Array,
+): Promise<void> {
+  const body = typeof contents === "string" ? new TextEncoder().encode(contents) : contents;
+  const resp = await fetch(DROPBOX_UPLOAD_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Dropbox-API-Arg": JSON.stringify({
+        path,
+        mode: "add",
+        autorename: true,
+        mute: false,
+      }),
+      "Content-Type": "application/octet-stream",
+    },
+    body,
+  });
+  if (!resp.ok) {
+    throw new DropboxHttpError(`Dropbox upload failed (${resp.status})`, resp.status);
+  }
+}
+
+async function dropboxUploadFileWithRetry(
+  accessToken: string,
+  path: string,
+  contents: string | Uint8Array,
+  refreshToken?: () => Promise<string>,
+): Promise<string> {
+  try {
+    await dropboxUploadFile(accessToken, path, contents);
+    return accessToken;
+  } catch (err) {
+    if (err instanceof DropboxHttpError && err.status === 401 && refreshToken) {
+      const refreshed = await refreshToken();
+      await dropboxUploadFile(refreshed, path, contents);
+      return refreshed;
+    }
+    throw err;
+  }
+}
+
+const CRC_TABLE = (() => {
+  const table = new Uint32Array(256);
+  for (let i = 0; i < table.length; i += 1) {
+    let c = i;
+    for (let k = 0; k < 8; k += 1) {
+      c = (c & 1) ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    }
+    table[i] = c >>> 0;
+  }
+  return table;
+})();
+
+function crc32(data: Uint8Array): number {
+  let crc = 0xffffffff;
+  for (const byte of data) {
+    const idx = (crc ^ byte) & 0xff;
+    crc = CRC_TABLE[idx] ^ (crc >>> 8);
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function toDosDateTime(date: Date): { dosTime: number; dosDate: number } {
+  const year = Math.max(1980, date.getUTCFullYear());
+  const month = date.getUTCMonth() + 1;
+  const day = date.getUTCDate();
+  const hour = date.getUTCHours();
+  const minute = date.getUTCMinutes();
+  const second = date.getUTCSeconds();
+  const dosTime = (hour << 11) | (minute << 5) | Math.floor(second / 2);
+  const dosDate = ((year - 1980) << 9) | (month << 5) | day;
+  return { dosTime, dosDate };
+}
+
+async function zipTextCompressed(filename: string, content: string): Promise<Uint8Array> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(content);
+  const nameBytes = encoder.encode(filename);
+  const crc = crc32(data);
+  const fileSize = data.length;
+  const compressed = await deflateRaw(data);
+  const compressedSize = compressed.length;
+  const { dosTime, dosDate } = toDosDateTime(new Date());
+
+  const header: number[] = [];
+  const push16 = (value: number) => {
+    header.push(value & 0xff, (value >>> 8) & 0xff);
+  };
+  const push32 = (value: number) => {
+    header.push(value & 0xff, (value >>> 8) & 0xff, (value >>> 16) & 0xff, (value >>> 24) & 0xff);
+  };
+
+  // Local file header.
+  push32(0x04034b50);
+  push16(20);
+  push16(0);
+  push16(8);
+  push16(dosTime);
+  push16(dosDate);
+  push32(crc);
+  push32(compressedSize);
+  push32(fileSize);
+  push16(nameBytes.length);
+  push16(0);
+
+  const localHeader = new Uint8Array([...header, ...nameBytes]);
+  const localOffset = 0;
+  const centralOffset = localHeader.length + compressedSize;
+
+  const central: number[] = [];
+  const c16 = (value: number) => {
+    central.push(value & 0xff, (value >>> 8) & 0xff);
+  };
+  const c32 = (value: number) => {
+    central.push(value & 0xff, (value >>> 8) & 0xff, (value >>> 16) & 0xff, (value >>> 24) & 0xff);
+  };
+
+  // Central directory header.
+  c32(0x02014b50);
+  c16(20);
+  c16(20);
+  c16(0);
+  c16(8);
+  c16(dosTime);
+  c16(dosDate);
+  c32(crc);
+  c32(compressedSize);
+  c32(fileSize);
+  c16(nameBytes.length);
+  c16(0);
+  c16(0);
+  c16(0);
+  c16(0);
+  c32(0);
+  c32(localOffset);
+
+  const centralHeader = new Uint8Array([...central, ...nameBytes]);
+
+  const end: number[] = [];
+  const e16 = (value: number) => {
+    end.push(value & 0xff, (value >>> 8) & 0xff);
+  };
+  const e32 = (value: number) => {
+    end.push(value & 0xff, (value >>> 8) & 0xff, (value >>> 16) & 0xff, (value >>> 24) & 0xff);
+  };
+  e32(0x06054b50);
+  e16(0);
+  e16(0);
+  e16(1);
+  e16(1);
+  e32(centralHeader.length);
+  e32(centralOffset);
+  e16(0);
+
+  const endHeader = new Uint8Array(end);
+  const output = new Uint8Array(
+    localHeader.length + compressedSize + centralHeader.length + endHeader.length,
+  );
+  output.set(localHeader, 0);
+  output.set(compressed, localHeader.length);
+  output.set(centralHeader, localHeader.length + compressedSize);
+  output.set(endHeader, localHeader.length + compressedSize + centralHeader.length);
+  return output;
+}
+
+async function deflateRaw(data: Uint8Array): Promise<Uint8Array> {
+  const stream = new Blob([data]).stream().pipeThrough(new CompressionStream("deflate-raw"));
+  const buffer = await new Response(stream).arrayBuffer();
+  return new Uint8Array(buffer);
+}
+
+async function dropboxArchiveLogs(
+  accessToken: string,
+  folder: string,
+  days: number,
+  archiveDays: number,
+): Promise<void> {
+  const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+  const archiveCutoff = Date.now() - archiveDays * 24 * 60 * 60 * 1000;
+  const archiveFolder = `${folder}/archive`;
+  const listFolder = async (path: string): Promise<Array<Record<string, unknown>>> => {
+    let payload: Record<string, unknown> = { path };
+    const entries: Array<Record<string, unknown>> = [];
+    while (true) {
+      const resp = await fetch(DROPBOX_LIST_FOLDER_URL, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+      if (resp.status === 409) {
+        return [];
+      }
+      if (!resp.ok) {
+        throw new Error(`Dropbox list_folder failed (${resp.status})`);
+      }
+      const data = await resp.json();
+      entries.push(...(Array.isArray(data?.entries) ? data.entries : []));
+      if (!data?.has_more) {
+        return entries;
+      }
+      payload = { cursor: data.cursor };
+    }
+  };
+
+  const [rootEntries, archiveEntries] = await Promise.all([
+    listFolder(folder),
+    listFolder(archiveFolder),
+  ]);
+  const archiveNames = new Set(
+    archiveEntries
+      .filter((entry) => entry?.[".tag"] === "file")
+      .map((entry) => String(entry?.name ?? "")),
+  );
+
+  for (const entry of rootEntries) {
+    if (entry?.[".tag"] !== "folder") {
+      continue;
+    }
+    const name = String(entry?.name ?? "");
+    if (!name || name === "archive") {
+      continue;
+    }
+    const parsed = parseYmd(name);
+    if (!parsed || parsed.getTime() >= cutoff) {
+      continue;
+    }
+    const archiveName = `${name}.zip`;
+    const folderPath = String(entry?.path_lower || entry?.path_display || "");
+    if (!folderPath) {
+      continue;
+    }
+    if (!archiveNames.has(archiveName)) {
+      const zipped = await dropboxDownloadZip(accessToken, folderPath);
+      await dropboxUploadFile(accessToken, `${archiveFolder}/${archiveName}`, new Uint8Array(zipped));
+      archiveNames.add(archiveName);
+    }
+    await fetch(DROPBOX_DELETE_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ path: folderPath }),
+    });
+  }
+
+  for (const entry of archiveEntries) {
+    if (entry?.[".tag"] !== "file") {
+      continue;
+    }
+    const name = String(entry?.name ?? "");
+    if (!name.endsWith(".zip")) {
+      continue;
+    }
+    const parsed = parseYmd(name.slice(0, -4));
+    if (!parsed || parsed.getTime() >= archiveCutoff) {
+      continue;
+    }
+    const path = String(entry?.path_lower || entry?.path_display || "");
+    if (!path) {
+      continue;
+    }
+    await fetch(DROPBOX_DELETE_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ path }),
+    });
+  }
+}
+
+async function dropboxDownloadZip(accessToken: string, path: string): Promise<ArrayBuffer> {
+  const resp = await fetch(DROPBOX_DOWNLOAD_ZIP_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Dropbox-API-Arg": JSON.stringify({ path }),
+    },
+  });
+  if (!resp.ok) {
+    throw new Error(`Dropbox download_zip failed (${resp.status})`);
+  }
+  return await resp.arrayBuffer();
+}
+
+function parseYmd(value: string): Date | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) {
+    return null;
+  }
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) {
+    return null;
+  }
+  return new Date(Date.UTC(year, month - 1, day));
+}
+
+async function loadConnector(
+  connectorId: string | undefined,
+  connectorCode: string,
+  _connectorLabel: string,
+): Promise<ConnectorRow | null> {
+  const select =
+    "id,connector_code,label,display_name,service_url,poll_enabled,poll_window_hours,poll_timeseries_batch_size";
+  if (connectorId) {
+    const { data } = await postgrestRequest<ConnectorRow[]>("GET", "connectors", {
+      select,
+      id: `eq.${connectorId}`,
+      limit: "1",
+    });
+    if (data && data[0]) {
+      return data[0];
+    }
+  }
+
+  if (connectorCode) {
+    const { data } = await postgrestRequest<ConnectorRow[]>("GET", "connectors", {
+      select,
+      connector_code: `eq.${connectorCode}`,
+      limit: "1",
+    });
+    if (data && data[0]) {
+      return data[0];
+    }
+  }
+  return null;
+}
+
+async function loadTimeseries(
+  connectorId: string,
+): Promise<Array<{
+  id: number;
+  timeseries_ref: string | null;
+  phenomenon_id: string | null;
+  last_value_at: string | null;
+}>> {
+  const rows: Array<{
+    id: number;
+    timeseries_ref: string | null;
+    phenomenon_id: string | null;
+    last_value_at: string | null;
+  }> = [];
+  let offset = 0;
+  while (true) {
+    const { data, error } = await postgrestRequest<
+      Array<{
+        id: number;
+        timeseries_ref: string | null;
+        phenomenon_id: string | null;
+        last_value_at: string | null;
+      }>
+    >("GET", "timeseries", {
+      select: "id,timeseries_ref,phenomenon_id,last_value_at",
+      connector_id: `eq.${connectorId}`,
+      limit: String(PAGE_SIZE),
+      offset: String(offset),
+    });
+    if (error) {
+      throw new Error(`Failed to load timeseries: ${error.message}`);
+    }
+    if (!data || data.length === 0) {
+      break;
+    }
+    rows.push(...data.map((row) => ({
+      id: Number(row.id),
+      timeseries_ref: row.timeseries_ref ? String(row.timeseries_ref) : null,
+      phenomenon_id: row.phenomenon_id ? String(row.phenomenon_id) : null,
+      last_value_at: row.last_value_at ? String(row.last_value_at) : null,
+    })));
+    if (data.length < PAGE_SIZE) {
+      break;
+    }
+    offset += PAGE_SIZE;
+  }
+  return rows;
+}
+
+async function loadPhenomena(connectorId: string, filters: string[]): Promise<Set<string>> {
+  const needle = new Set(filters.map((value) => value.toLowerCase()));
+  const { data, error } = await postgrestRequest<
+    Array<{ id: string; label: string | null; notation: string | null; eionet_uri: string | null }>
+  >("GET", "phenomena", {
+    select: "id,label,notation,eionet_uri",
+    connector_id: `eq.${connectorId}`,
+  });
+  if (error) {
+    throw new Error(`Failed to load phenomena: ${error.message}`);
+  }
+  const matches = new Set<string>();
+  for (const row of data || []) {
+    const id = row.id ? String(row.id) : "";
+    const label = row.label ? String(row.label) : "";
+    const notation = row.notation ? String(row.notation) : "";
+    const uri = row.eionet_uri ? String(row.eionet_uri) : "";
+    if (
+      (id && needle.has(id.toLowerCase())) ||
+      (label && needle.has(label.toLowerCase())) ||
+      (notation && needle.has(notation.toLowerCase())) ||
+      (uri && needle.has(uri.toLowerCase()))
+    ) {
+      if (id) {
+        matches.add(id);
+      }
+    }
+  }
+  return matches;
+}
+
+function extractList(payload: unknown, keys: string[]): Array<Record<string, unknown>> {
+  if (Array.isArray(payload)) {
+    return payload as Array<Record<string, unknown>>;
+  }
+  if (payload && typeof payload === "object") {
+    for (const key of keys) {
+      const items = (payload as Record<string, unknown>)[key];
+      if (Array.isArray(items)) {
+        return items as Array<Record<string, unknown>>;
+      }
+    }
+  }
+  return [];
+}
+
+async function fetchJson(
+  baseUrl: string,
+  path: string,
+  params: Record<string, string>,
+  recorder?: RawRecorder | null,
+): Promise<any> {
+  const url = new URL(`${baseUrl.replace(/\/$/, "")}/${path.replace(/^\//, "")}`);
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== null) {
+      url.searchParams.set(key, String(value));
+    }
+  }
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
+  try {
+    const resp = await fetch(url.toString(), { signal: controller.signal });
+    const contentType = resp.headers.get("content-type") || "";
+    const payload = contentType.includes("application/json")
+      ? await resp.json()
+      : await resp.text();
+    if (recorder) {
+      recorder.recordResponse(path, params, resp.status, payload);
+    }
+    if (!resp.ok) {
+      throw new Error(`HTTP ${resp.status} ${resp.statusText}`);
+    }
+    return payload;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+let emptySeriesLogs = 0;
+
+function parseDatapoints(
+  values: unknown,
+  seriesId?: number,
+): Array<{ observed_at: string; value: number | null; status: string | null }> {
+  let rows = values;
+  if (!Array.isArray(rows) && rows && typeof rows === "object") {
+    const nested = (rows as Record<string, unknown>).values
+      ?? (rows as Record<string, unknown>).data;
+    if (Array.isArray(nested)) {
+      rows = nested;
+    }
+  }
+  if (!Array.isArray(rows)) {
+    logEmptySeries(seriesId, rows, "values not array");
+    return [];
+  }
+  if (rows.length === 0) {
+    logEmptySeries(seriesId, { row_count: 0 }, "no rows");
+    return [];
+  }
+  const points: Array<{ observed_at: string; value: number | null; status: string | null }> = [];
+  for (const row of rows) {
+    if (Array.isArray(row)) {
+      if (row.length < 2) {
+        continue;
+      }
+      const observedAt = parseTimestamp(row[0]);
+      if (!observedAt) {
+        continue;
+      }
+      const value = toNumber(row[1]);
+      const status = row.length > 2 && row[2] != null ? String(row[2]) : null;
+      points.push({
+        observed_at: observedAt.toISOString(),
+        value,
+        status,
+      });
+      continue;
+    }
+    if (row && typeof row === "object") {
+      const record = row as Record<string, unknown>;
+      const observedAt = parseTimestamp(
+        record.timestamp ?? record.time ?? record.phenomenonTime ?? record.dateTime ?? record.datetime,
+      );
+      if (!observedAt) {
+        continue;
+      }
+      const value = toNumber(record.value ?? record.result ?? record.v);
+      const status = record.status != null ? String(record.status)
+        : record.quality != null ? String(record.quality)
+        : record.qc != null ? String(record.qc)
+        : null;
+      points.push({
+        observed_at: observedAt.toISOString(),
+        value,
+        status,
+      });
+    }
+  }
+  if (!points.length) {
+    logEmptySeries(seriesId, rows[0], "no parsed datapoints");
+  }
+  return points;
+}
+
+function toNumber(value: unknown): number | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  const num = Number(value);
+  if (!Number.isFinite(num)) {
+    return null;
+  }
+  return num;
+}
+
+function parseTimestamp(value: unknown): Date | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const timestamp = value < 1e12 ? value * 1000 : value;
+    const observedAt = new Date(timestamp);
+    return Number.isNaN(observedAt.getTime()) ? null : observedAt;
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return null;
+    }
+    const numeric = Number(trimmed);
+    if (Number.isFinite(numeric)) {
+      const timestamp = numeric < 1e12 ? numeric * 1000 : numeric;
+      const observedAt = new Date(timestamp);
+      return Number.isNaN(observedAt.getTime()) ? null : observedAt;
+    }
+    const observedAt = new Date(trimmed);
+    return Number.isNaN(observedAt.getTime()) ? null : observedAt;
+  }
+  return null;
+}
+
+function logEmptySeries(seriesId: number | undefined, sample: unknown, reason: string): void {
+  if (emptySeriesLogs >= 3) {
+    return;
+  }
+  emptySeriesLogs += 1;
+  console.warn("No datapoints parsed", {
+    series_id: seriesId ?? null,
+    reason,
+    sample,
+  });
+}
+
+async function upsertLastValue(
+  seriesId: string,
+  data: Record<string, unknown>,
+  points: Array<{ observed_at: string; value: number | null }>,
+  errorLogger: { logError: (entry: ErrorLogEntry) => Promise<void> },
+  connectorId: string | null,
+  connectorCode: string | null,
+): Promise<void> {
+  const lastValueFromPayload = toNumber(data?.lastValue);
+  const lastValueTimestamp = data?.lastValueTimestamp;
+  const lastPoint = points.length ? points[points.length - 1] : null;
+  let lastValueAt: string | null = null;
+  if (lastPoint?.observed_at) {
+    lastValueAt = lastPoint.observed_at;
+  } else if (typeof lastValueTimestamp === "string") {
+    const parsed = new Date(lastValueTimestamp);
+    if (!Number.isNaN(parsed.getTime())) {
+      lastValueAt = parsed.toISOString();
+    }
+  } else if (typeof lastValueTimestamp === "number") {
+    lastValueAt = new Date(lastValueTimestamp).toISOString();
+  }
+
+  const resolvedLastValue = lastPoint ? lastPoint.value ?? null : lastValueFromPayload;
+
+  if (!lastValueAt && resolvedLastValue === null) {
+    return;
+  }
+  const payload: Record<string, unknown> = {};
+  if (lastValueAt) {
+    payload.last_value_at = lastValueAt;
+  }
+  if (resolvedLastValue !== null) {
+    payload.last_value = resolvedLastValue;
+  }
+  const { error } = await postgrestRequest(
+    "PATCH",
+    "timeseries",
+    { id: `eq.${seriesId}` },
+    payload,
+    "return=minimal",
+  );
+  if (error) {
+    console.warn(`timeseries update failed for ${seriesId}: ${error.message}`);
+    await errorLogger.logError({
+      source: "edge",
+      severity: "error",
+      message: "Failed to update timeseries last_value fields.",
+      context: {
+        timeseries_id: seriesId,
+        connector_id: connectorId,
+        error: error.message,
+      },
+      connector_code: connectorCode ?? UK_AIR_SOS_CONNECTOR_CODE,
+      connector_id: connectorId ?? null,
+      timeseries_id: seriesId,
+    });
+  }
+}
+
+async function upsertUkAirSosTimeseriesCheckpoints(
+  series: Array<{ id: number }>,
+  polledAt: string,
+  errorLogger: { logError: (entry: ErrorLogEntry) => Promise<void> },
+  connectorId: string | null,
+  connectorCode: string | null,
+): Promise<void> {
+  if (!series.length) {
+    return;
+  }
+  for (let idx = 0; idx < series.length; idx += 200) {
+    const chunk = series.slice(idx, idx + 200);
+    const rows = chunk.map((row) => ({
+      timeseries_id: row.id,
+      last_polled_at: polledAt,
+      updated_at: polledAt,
+    }));
+    const { error } = await postgrestRequest(
+      "POST",
+      "uk_air_sos_timeseries_checkpoints",
+      { on_conflict: "timeseries_id" },
+      rows,
+      "resolution=merge-duplicates,return=minimal",
+      UK_AQ_RAW_SCHEMA,
+    );
+    if (error) {
+      console.warn("uk_air_sos_timeseries_checkpoints upsert failed", error.message);
+      await errorLogger.logError({
+        source: "edge",
+        severity: "error",
+        message: "Failed to update uk_air_sos_timeseries_checkpoints.",
+        context: {
+          connector_id: connectorId,
+          error: error.message,
+        },
+        connector_code: connectorCode ?? UK_AIR_SOS_CONNECTOR_CODE,
+        connector_id: connectorId,
+      });
+    }
+  }
+}
+
+async function runPool<T>(
+  items: T[],
+  limit: number,
+  worker: (item: T) => Promise<void>,
+  shouldStop?: () => boolean,
+): Promise<boolean> {
+  const executing = new Set<Promise<void>>();
+  let stopped = false;
+  for (const item of items) {
+    if (shouldStop?.()) {
+      stopped = true;
+      break;
+    }
+    const task = worker(item).finally(() => executing.delete(task));
+    executing.add(task);
+    if (executing.size >= limit) {
+      await Promise.race(executing);
+    }
+  }
+  await Promise.all(executing);
+  return stopped;
+}

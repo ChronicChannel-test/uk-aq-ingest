@@ -1,0 +1,32 @@
+name: OpenAQ Stations Test Sync
+
+permissions:
+  contents: read
+
+on:
+  workflow_dispatch:
+
+jobs:
+  openaq-stations-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install requests python-dotenv psycopg2-binary
+
+      - name: Sync OpenAQ stations (test)
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          OPENAQ_BASE_URL: ${{ secrets.OPENAQ_BASE_URL }}
+          OPENAQ_API_KEY: ${{ secrets.OPENAQ_API_KEY }}
+        run: |
+          python3 scripts/openaq/openaq_list_stations.py --to-supabase --toggle-polling

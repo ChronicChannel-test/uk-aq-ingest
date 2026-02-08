@@ -1,0 +1,361 @@
+name: UK-AQ Stations Daily Sync
+
+permissions:
+  contents: write
+
+on:
+  schedule:
+    # GitHub schedules are UTC.
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+jobs:
+  sync-stations:
+    runs-on: ubuntu-latest
+    env:
+      UK_AIR_SOS_CONNECTOR_CODE: uk_air_sos
+      SCOMM_CONNECTOR_CODE: sensorcommunity
+      RUN_SCOMM_STATIONS_EXPORT: "0"
+      DROPBOX_APP_KEY: ${{ secrets.DROPBOX_APP_KEY }}
+      DROPBOX_APP_SECRET: ${{ secrets.DROPBOX_APP_SECRET }}
+      DROPBOX_REFRESH_TOKEN: ${{ secrets.DROPBOX_REFRESH_TOKEN }}
+      UK_AQ_DROPBOX_ROOT: ${{ secrets.UK_AQ_DROPBOX_ROOT }}
+      UK_AIR_ERROR_DROPBOX_FOLDER: ${{ secrets.UK_AIR_ERROR_DROPBOX_FOLDER }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install requests python-dotenv supabase pyproj psycopg2-binary
+
+      - name: Sync stations
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          UK_AIR_SOS_BASE_URL: ${{ secrets.UK_AIR_SOS_BASE_URL }}
+        run: |
+          python3 scripts/uk_air_sos/uk_air_sos_list_stations.py --to-supabase
+
+      - name: Check UK-AIR SOS polling flag
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          python3 - <<'PY'
+          import os
+          import requests
+
+          supabase_url = os.environ.get("SUPABASE_URL")
+          supabase_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+          if not supabase_url or not supabase_key:
+              raise SystemExit("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required.")
+          url = f"{supabase_url}/rest/v1/connectors"
+          resp = requests.get(
+              url,
+              params={"connector_code": "eq.uk_air_sos", "select": "poll_enabled"},
+              headers={
+                  "apikey": supabase_key,
+                  "Authorization": f"Bearer {supabase_key}",
+                  "Accept-Profile": "uk_aq_core",
+                  "Content-Profile": "uk_aq_core",
+              },
+              timeout=30,
+          )
+          resp.raise_for_status()
+          rows = resp.json()
+          poll_enabled = bool(rows and rows[0].get("poll_enabled"))
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as handle:
+              handle.write(f"UK_AIR_SOS_POLL_WAS_ENABLED={'1' if poll_enabled else '0'}\\n")
+          print(f"UK_AIR_SOS_POLL_WAS_ENABLED={poll_enabled}")
+          PY
+
+      - name: Pause UK-AIR SOS polling
+        if: env.UK_AIR_SOS_POLL_WAS_ENABLED == '1'
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          python3 - <<'PY'
+          import os
+          import requests
+
+          supabase_url = os.environ.get("SUPABASE_URL")
+          supabase_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+          if not supabase_url or not supabase_key:
+              raise SystemExit("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required.")
+          url = f"{supabase_url}/rest/v1/connectors"
+          resp = requests.patch(
+              url,
+              params={"connector_code": "eq.uk_air_sos"},
+              headers={
+                  "apikey": supabase_key,
+                  "Authorization": f"Bearer {supabase_key}",
+                  "Content-Type": "application/json",
+                  "Accept-Profile": "uk_aq_core",
+                  "Content-Profile": "uk_aq_core",
+              },
+              json={"poll_enabled": False},
+              timeout=30,
+          )
+          resp.raise_for_status()
+          print("Paused uk_air_sos polling.")
+          PY
+
+      - name: Discover UK-AIR SOS timeseries
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          UK_AIR_SOS_BASE_URL: ${{ secrets.UK_AIR_SOS_BASE_URL }}
+        run: |
+          python3 scripts/uk_air_sos/uk_air_sos_ingest.py --discover
+
+      - name: Refresh UK-AIR SOS recent observations
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          UK_AIR_SOS_BASE_URL: ${{ secrets.UK_AIR_SOS_BASE_URL }}
+        run: |
+          python3 scripts/uk_air_sos/uk_air_sos_ingest.py --refresh-recent --hours 6
+
+      - name: Resume UK-AIR SOS polling
+        if: always() && env.UK_AIR_SOS_POLL_WAS_ENABLED == '1'
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          python3 - <<'PY'
+          import os
+          import requests
+
+          supabase_url = os.environ.get("SUPABASE_URL")
+          supabase_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+          if not supabase_url or not supabase_key:
+              raise SystemExit("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required.")
+          url = f"{supabase_url}/rest/v1/connectors"
+          resp = requests.patch(
+              url,
+              params={"connector_code": "eq.uk_air_sos"},
+              headers={
+                  "apikey": supabase_key,
+                  "Authorization": f"Bearer {supabase_key}",
+                  "Content-Type": "application/json",
+                  "Accept-Profile": "uk_aq_core",
+                  "Content-Profile": "uk_aq_core",
+              },
+              json={"poll_enabled": True},
+              timeout=30,
+          )
+          resp.raise_for_status()
+          print("Resumed uk_air_sos polling.")
+          PY
+
+      - name: Sync Breathe London stations
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          BREATHELONDON_API_KEY: ${{ secrets.BREATHELONDON_API_KEY }}
+          BREATHELONDON_BASE_URL: ${{ secrets.BREATHELONDON_BASE_URL }}
+        run: |
+          python3 scripts/breathelondon/breathelondon_list_stations.py --to-supabase
+
+      - name: Sync LAQN stations
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          LAQN_BASE_URL: ${{ secrets.LAQN_BASE_URL }}
+        run: |
+          python3 scripts/erg_laqn/erg_laqn_list_stations.py --to-supabase
+
+      - name: Sync OpenAQ stations
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          OPENAQ_BASE_URL: ${{ secrets.OPENAQ_BASE_URL }}
+          OPENAQ_API_KEY: ${{ secrets.OPENAQ_API_KEY }}
+        run: |
+          python3 scripts/openaq/openaq_list_stations.py --to-supabase --toggle-polling
+
+      - name: Discover Sensor.Community stations (optional)
+        if: env.RUN_SCOMM_STATIONS_EXPORT == '1'
+        env:
+          SCOMM_BASE_URL: ${{ secrets.SCOMM_BASE_URL }}
+          SCOMM_COUNTRY: ${{ secrets.SCOMM_COUNTRY }}
+        run: |
+          python3 scripts/sensorcommunity/sensorcommunity_list_stations.py \
+            --output "${SCOMM_CONNECTOR_CODE}_stations.json"
+
+      - name: Refresh station PCON/LA from Aiven
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          PCON_AIVEN_PG_DSN: ${{ secrets.PCON_AIVEN_PG_DSN }}
+          PCON_VERSION: ${{ vars.PCON_VERSION }}
+          LA_VERSION: ${{ vars.LA_VERSION }}
+        run: |
+          python3 scripts/uk_aq_refresh_station_geo_aiven.py
+
+      - name: Check null station_name
+        id: check_null_station_name
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          python3 - <<'PY'
+          import os
+          import re
+          import requests
+
+          supabase_url = os.environ.get("SUPABASE_URL")
+          supabase_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+          core_schema = os.environ.get("UK_AQ_CORE_SCHEMA", "uk_aq_core")
+          if not supabase_url or not supabase_key:
+            raise SystemExit("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required.")
+
+          def count_null(field, require_geometry=False, label=None):
+            params = [f"select=id", f"{field}=is.null"]
+            if require_geometry:
+              params.append("geometry=not.is.null")
+            url = f"{supabase_url}/rest/v1/stations?{'&'.join(params)}"
+            resp = requests.get(
+              url,
+              headers={
+                "apikey": supabase_key,
+                "Authorization": f"Bearer {supabase_key}",
+                "Prefer": "count=exact",
+                "Accept-Profile": core_schema,
+                "Content-Profile": core_schema,
+              },
+              timeout=30,
+            )
+            if label:
+              print(f"{label} url={url} status={resp.status_code}")
+            resp.raise_for_status()
+            content_range = resp.headers.get("content-range", "")
+            if label:
+              print(f"{label} content-range={content_range!r}")
+            match = re.search(r"/(\d+)$", content_range)
+            if not match:
+              return 0
+            return int(match.group(1))
+
+          project_ref = None
+          match = re.search(r"https?://([^./]+)\.supabase\.(co|in)", supabase_url)
+          if match:
+            project_ref = match.group(1)
+          print(f"Supabase project ref: {project_ref or '<unknown>'}")
+
+          station_name_missing_all = count_null(
+            "station_name",
+            require_geometry=False,
+            label="station_name_null_all",
+          )
+          station_name_missing = count_null(
+            "station_name",
+            require_geometry=True,
+            label="station_name_null_with_geometry",
+          )
+
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as handle:
+            handle.write(f"STATION_NAME_NULL_COUNT={station_name_missing}\\n")
+            handle.write(f"STATION_NAME_NULL_COUNT_ALL={station_name_missing_all}\\n")
+            handle.write(f"STATION_NAME_SHOULD_RUN={'1' if station_name_missing > 0 else '0'}\\n")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as handle:
+            handle.write(f"station_name_null_count={station_name_missing}\\n")
+            handle.write(f"station_name_null_count_all={station_name_missing_all}\\n")
+            handle.write(f"station_name_should_run={'1' if station_name_missing > 0 else '0'}\\n")
+
+          print(
+            "Missing station_name:",
+            station_name_missing,
+            "(all rows:",
+            station_name_missing_all,
+            ")",
+          )
+          PY
+
+      - name: Debug station_name outputs
+        run: |
+          echo "station_name_null_count=${{ steps.check_null_station_name.outputs.station_name_null_count }}"
+          echo "station_name_null_count_all=${{ steps.check_null_station_name.outputs.station_name_null_count_all }}"
+          echo "station_name_should_run=${{ steps.check_null_station_name.outputs.station_name_should_run }}"
+          echo "STATION_NAME_NULL_COUNT=$STATION_NAME_NULL_COUNT"
+          echo "STATION_NAME_NULL_COUNT_ALL=$STATION_NAME_NULL_COUNT_ALL"
+          echo "STATION_NAME_SHOULD_RUN=$STATION_NAME_SHOULD_RUN"
+
+      - name: Enrich station names
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          DROPBOX_APP_KEY: ${{ secrets.DROPBOX_APP_KEY }}
+          DROPBOX_APP_SECRET: ${{ secrets.DROPBOX_APP_SECRET }}
+          DROPBOX_REFRESH_TOKEN: ${{ secrets.DROPBOX_REFRESH_TOKEN }}
+          UK_AQ_OS_OPEN_NAMES_GB_DROPBOX_PATH: ${{ secrets.UK_AQ_OS_OPEN_NAMES_GB_DROPBOX_PATH }}
+        run: |
+          python3 - <<'PY'
+          import os
+          import re
+          import requests
+
+          supabase_url = os.environ.get("SUPABASE_URL")
+          supabase_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+          core_schema = os.environ.get("UK_AQ_CORE_SCHEMA", "uk_aq_core")
+          if not supabase_url or not supabase_key:
+            raise SystemExit("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required.")
+
+          def count_null(field, require_geometry=False):
+            params = [f"select=id", f"{field}=is.null"]
+            if require_geometry:
+              params.append("geometry=not.is.null")
+            url = f"{supabase_url}/rest/v1/stations?{'&'.join(params)}"
+            resp = requests.get(
+              url,
+              headers={
+                "apikey": supabase_key,
+                "Authorization": f"Bearer {supabase_key}",
+                "Prefer": "count=exact",
+                "Accept-Profile": core_schema,
+                "Content-Profile": core_schema,
+              },
+              timeout=30,
+            )
+            resp.raise_for_status()
+            content_range = resp.headers.get("content-range", "")
+            match = re.search(r"/(\d+)$", content_range)
+            if not match:
+              return 0
+            return int(match.group(1))
+
+          missing_with_geometry = count_null("station_name", require_geometry=True)
+          should_run = 1 if missing_with_geometry > 0 else 0
+          with open("station_name_should_run.env", "w", encoding="utf-8") as handle:
+            handle.write(f"STATION_NAME_SHOULD_RUN={should_run}\n")
+          print(f"station_name_missing_with_geometry={missing_with_geometry}")
+          print(f"station_name_should_run={should_run}")
+          PY
+          source station_name_should_run.env
+          if [ "$STATION_NAME_SHOULD_RUN" != "1" ]; then
+            echo "No missing station_name with geometry; skipping enrichment."
+            exit 0
+          fi
+          python3 scripts/uk_aq_enrich_station_names.py --apply
+
+      - name: Export stations to Dropbox
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          DROPBOX_APP_KEY: ${{ secrets.DROPBOX_APP_KEY }}
+          DROPBOX_APP_SECRET: ${{ secrets.DROPBOX_APP_SECRET }}
+          DROPBOX_REFRESH_TOKEN: ${{ secrets.DROPBOX_REFRESH_TOKEN }}
+          UK_AQ_DROPBOX_ROOT: ${{ secrets.UK_AQ_DROPBOX_ROOT }}
+          UK_AQ_STATIONS_DROPBOX_DIR: ${{ secrets.UK_AQ_STATIONS_DROPBOX_DIR }}
+        run: |
+          python3 scripts/uk_aq_export_stations_dropbox.py
