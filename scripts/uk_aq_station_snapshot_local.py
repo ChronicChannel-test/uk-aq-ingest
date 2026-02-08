@@ -220,6 +220,7 @@ class StationSnapshotHandler(BaseHTTPRequestHandler):
         payload = json.dumps(
             {
                 "edge_url": self.server.edge_url,
+                "default_station_id": self.server.default_station_id,
                 "default_jwt": access_token or "",
             },
             indent=2,
@@ -343,6 +344,7 @@ def main() -> None:
     server = ThreadingHTTPServer((args.host, args.port), StationSnapshotHandler)
     server.html_path = html_path
     server.edge_url = edge_url
+    server.default_station_id = (os.getenv("CLEANAIRSURB_ST_ID") or "").strip()
     server.auth_lock = threading.Lock()
     server.auth_state = {
         "access_token": dev_jwt,

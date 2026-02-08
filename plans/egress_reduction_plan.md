@@ -143,6 +143,12 @@ One row per Supabase-related call site (active code + notable test/demo scripts)
    - Pros: bandwidth reduction with minimal code.
    - Cons: may rely on hosting/CDN config.
    - Risk: low; Impact: med.
+5) **Keep cursor internals, trim row-level cursor fields**
+   - Keep `updated_at` in DB/RPC logic for stable cursoring (`since` + `since_id`).
+   - Return only cursor tokens (`next_since`, `next_since_id`) to public clients by default.
+   - Pros: preserves correctness while shaving per-row JSON bytes.
+   - Cons: if admin/debug UIs need `updated_at`, they should use a separate debug mode/endpoint.
+   - Risk: low; Impact: med.
 
 **Recommendation**
 - Do (1) + (4) first; evaluate (2) for `uk_aq_latest` and `uk_aq_timeseries` once client dependencies are mapped.
@@ -329,6 +335,7 @@ One row per Supabase-related call site (active code + notable test/demo scripts)
 1) ⏳ Add ETag/If-None-Match support for Edge Function responses.
 2) ⏳ Add server-side downsampling / aggregation for timeseries.
 3) ✅ Introduce “since” incremental fetch for `uk_aq_latest` and `uk_aq_timeseries`.
+4) ⏳ Remove row-level `updated_at` from `uk_aq_latest` public payloads (keep server-side cursoring and `next_since` / `next_since_id`).
 
 ### Phase 3 (structural)
 1) ⏳ Materialized views for “latest per station/pollutant” and key aggregates.

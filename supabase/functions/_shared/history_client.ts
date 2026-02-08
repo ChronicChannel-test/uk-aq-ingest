@@ -81,6 +81,14 @@ const HISTORY_SCHEMA = (
     "uk_aq_public"
 ).trim();
 
+// RPC functions are defined in uk_aq_public, while tables live in uk_aq_history.
+// Keep backward compatibility with HISTORY_DB_SCHEMA values that may point at table schema.
+const HISTORY_RPC_SCHEMA = (
+  HISTORY_SCHEMA.toLowerCase() === "uk_aq_history"
+    ? "uk_aq_public"
+    : HISTORY_SCHEMA || "uk_aq_public"
+).trim();
+
 const HISTORY_UPSERT_RPC = (Deno.env.get("HISTORY_UPSERT_RPC") ||
   "uk_aq_rpc_history_observations_upsert")
   .trim();
@@ -160,20 +168,19 @@ export function createSupabaseHistoryClient(): ReturnType<typeof createClient> {
     );
   }
   if (!historyClientCache) {
-    const schema = HISTORY_SCHEMA || "uk_aq_public";
+    const schema = HISTORY_RPC_SCHEMA || "uk_aq_public";
     historyClientCache = createClient(
       HISTORY_SUPABASE_URL,
       HISTORY_SERVICE_ROLE_KEY,
-      {
+      ({
         auth: { persistSession: false, autoRefreshToken: false },
+        db: { schema: schema as never },
         global: {
           headers: {
             "X-Client-Info": "uk-aq-ingest-history-dualwrite",
-            "Accept-Profile": schema,
-            "Content-Profile": schema,
           },
         },
-      },
+      }) as never,
     );
   }
   return historyClientCache;

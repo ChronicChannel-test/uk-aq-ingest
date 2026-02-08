@@ -170,7 +170,7 @@
         </div>
         <div class="control">
           <label for="stationId">station_id</label>
-          <input id="stationId" type="text" value="189841" placeholder="e.g. 1234" />
+          <input id="stationId" type="text" placeholder="e.g. 1234" />
         </div>
         <div class="control">
           <label for="stationRef">station_ref</label>
@@ -487,6 +487,9 @@
         const config = await response.json();
         if (config.edge_url) {
           el.edgeUrl.value = config.edge_url;
+        }
+        if (config.default_station_id) {
+          el.stationId.value = String(config.default_station_id).trim();
         }
         if (config.default_jwt) {
           authToken = String(config.default_jwt);
