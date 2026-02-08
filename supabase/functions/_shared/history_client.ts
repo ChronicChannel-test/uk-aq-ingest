@@ -76,6 +76,12 @@ const HISTORY_SERVICE_ROLE_KEY = (
   Deno.env.get("HISTORY_SERVICE_ROLE_KEY") ?? ""
 ).trim();
 
+const HISTORY_SCHEMA = (
+  Deno.env.get("HISTORY_SCHEMA") ??
+    Deno.env.get("HISTORY_DB_SCHEMA") ??
+    "uk_aq_public"
+).trim();
+
 const HISTORY_UPSERT_RPC = (Deno.env.get("HISTORY_UPSERT_RPC") ||
   "uk_aq_rpc_history_observations_upsert")
   .trim();
@@ -160,6 +166,7 @@ export function createSupabaseHistoryClient(): SupabaseClient {
       HISTORY_SERVICE_ROLE_KEY,
       {
         auth: { persistSession: false, autoRefreshToken: false },
+        db: { schema: HISTORY_SCHEMA || "uk_aq_public" },
         global: {
           headers: {
             "X-Client-Info": "uk-aq-ingest-history-dualwrite",
