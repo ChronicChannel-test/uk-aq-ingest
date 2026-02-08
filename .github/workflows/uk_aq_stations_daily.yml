@@ -20,7 +20,6 @@ jobs:
       DROPBOX_APP_SECRET: ${{ secrets.DROPBOX_APP_SECRET }}
       DROPBOX_REFRESH_TOKEN: ${{ secrets.DROPBOX_REFRESH_TOKEN }}
       UK_AQ_DROPBOX_ROOT: ${{ secrets.UK_AQ_DROPBOX_ROOT }}
-      UK_AIR_ERROR_DROPBOX_FOLDER: ${{ secrets.UK_AIR_ERROR_DROPBOX_FOLDER }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -39,11 +38,11 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          UK_AIR_SOS_BASE_URL: ${{ secrets.UK_AIR_SOS_BASE_URL }}
         run: |
           python3 scripts/uk_air_sos/uk_air_sos_list_stations.py --to-supabase
 
       - name: Check UK-AIR SOS polling flag
+        id: check_uk_air_sos_polling
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
@@ -73,11 +72,13 @@ jobs:
           poll_enabled = bool(rows and rows[0].get("poll_enabled"))
           with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as handle:
               handle.write(f"UK_AIR_SOS_POLL_WAS_ENABLED={'1' if poll_enabled else '0'}\\n")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as handle:
+              handle.write(f"poll_was_enabled={'1' if poll_enabled else '0'}\\n")
           print(f"UK_AIR_SOS_POLL_WAS_ENABLED={poll_enabled}")
           PY
 
       - name: Pause UK-AIR SOS polling
-        if: env.UK_AIR_SOS_POLL_WAS_ENABLED == '1'
+        if: steps.check_uk_air_sos_polling.outputs.poll_was_enabled == '1'
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
@@ -112,12 +113,11 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          UK_AIR_SOS_BASE_URL: ${{ secrets.UK_AIR_SOS_BASE_URL }}
         run: |
           python3 scripts/uk_air_sos/uk_air_sos_ingest.py --discover
 
       - name: Resume UK-AIR SOS polling
-        if: always() && env.UK_AIR_SOS_POLL_WAS_ENABLED == '1'
+        if: always() && steps.check_uk_air_sos_polling.outputs.poll_was_enabled == '1'
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
@@ -153,7 +153,6 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           BREATHELONDON_API_KEY: ${{ secrets.BREATHELONDON_API_KEY }}
-          BREATHELONDON_BASE_URL: ${{ secrets.BREATHELONDON_BASE_URL }}
         run: |
           python3 scripts/breathelondon/breathelondon_list_stations.py --to-supabase
 
@@ -161,7 +160,6 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          LAQN_BASE_URL: ${{ secrets.LAQN_BASE_URL }}
         run: |
           python3 scripts/erg_laqn/erg_laqn_list_stations.py --to-supabase
 
@@ -170,16 +168,12 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
-          OPENAQ_BASE_URL: ${{ secrets.OPENAQ_BASE_URL }}
           OPENAQ_API_KEY: ${{ secrets.OPENAQ_API_KEY }}
         run: |
           python3 scripts/openaq/openaq_list_stations.py --to-supabase --toggle-polling
 
       - name: Discover Sensor.Community stations (optional)
         if: env.RUN_SCOMM_STATIONS_EXPORT == '1'
-        env:
-          SCOMM_BASE_URL: ${{ secrets.SCOMM_BASE_URL }}
-          SCOMM_COUNTRY: ${{ secrets.SCOMM_COUNTRY }}
         run: |
           python3 scripts/sensorcommunity/sensorcommunity_list_stations.py \
             --output "${SCOMM_CONNECTOR_CODE}_stations.json"
@@ -189,8 +183,6 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           PCON_AIVEN_PG_DSN: ${{ secrets.PCON_AIVEN_PG_DSN }}
-          PCON_VERSION: ${{ vars.PCON_VERSION }}
-          LA_VERSION: ${{ vars.LA_VERSION }}
         run: |
           python3 scripts/uk_aq_refresh_station_geo_aiven.py
 
