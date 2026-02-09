@@ -749,7 +749,7 @@ async function dropboxUploadFile(
     },
     body: typeof contents === "string"
       ? new TextEncoder().encode(contents)
-      : contents,
+      : Uint8Array.from(contents),
   });
   if (!resp.ok) {
     throw new Error(`Dropbox upload failed (${resp.status})`);
@@ -847,7 +847,7 @@ function appendSample(
   return next;
 }
 
-function medianSeconds(values: number[] | null): number | null {
+function _medianSeconds(values: number[] | null): number | null {
   if (!Array.isArray(values) || values.length === 0) {
     return null;
   }
@@ -2990,7 +2990,7 @@ serve(async (req) => {
 
   let observationsUpserted = 0;
   let observationsRowsPrepared = 0;
-  let seriesPolled = observationsByTimeseries.size;
+  const seriesPolled = observationsByTimeseries.size;
   let lastObservedAt: string | null = null;
   let timeseriesLastUpdated = 0;
   const timeseriesErrors: string[] = [];
@@ -3143,7 +3143,7 @@ serve(async (req) => {
     };
     for (const stationId of polledStationIds) {
       const checkpoint = checkpointByStationId[stationId];
-      const isNewCheckpoint = checkpoint === undefined;
+      const _isNewCheckpoint = checkpoint === undefined;
       const previousLastObserved = checkpoint?.last_observed_at ?? null;
       const previousNextDue = checkpoint?.next_due_at ?? null;
       let observSamples = checkpoint?.observ_interval_samples ?? [];

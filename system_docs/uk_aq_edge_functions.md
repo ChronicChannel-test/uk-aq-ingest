@@ -132,6 +132,7 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
   - Writes an error log entry when timeseries refs are polled but cannot be mapped to internal `timeseries_id`s (includes sample refs + station ids/refs when available).
   - Buffers error log lines for optional Dropbox error log uploads.
   - Logs timeseries mapping diagnostics (missing refs/station ids samples) to aid checkpoint debugging.
+  - Maintenance (2026-02-09): lint cleanup and stricter Dropbox upload byte typing (`Uint8Array.from`) for Deno type compatibility.
 
 ### ingest_breathelondon
 - Purpose: Poll Breathe London Communities for hourly observations with checkpointing.
