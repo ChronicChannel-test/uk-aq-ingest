@@ -1,0 +1,74 @@
+# UK AQ Dispatcher + Ingest Flow
+
+This doc explains the current two-stage dispatcher flow and why the Cloudflare worker calls the dispatcher twice per cron tick.
+
+## Overview
+
+The scheduler is split into selection and execution:
+
+1. `mode=enqueue`:
+- Selects due connectors from `uk_aq_core.connectors`.
+- Writes queue jobs into `uk_aq_raw.dispatch_connector_queue` (one row per connector).
+- Returns quickly.
+
+2. `mode=run_queue`:
+- Claims queued jobs from `uk_aq_raw.dispatch_connector_queue`.
+- Executes one queued connector ingest job (by default).
+- Resolves the queue job as success/failure with retry backoff.
+
+This removes long ingest runtime from due-selection calls.
+
+## Why the Worker Calls Both
+
+The worker must do both actions in sequence:
+
+- If it only calls `mode=enqueue`, jobs accumulate but no ingest runs.
+- If it only calls `mode=run_queue`, no new due connectors are added to the queue.
+
+Calling both in one tick guarantees:
+- due connectors keep entering the queue, and
+- at least one queued job is processed per tick.
+
+## Queue Objects
+
+Queue table:
+- `uk_aq_raw.dispatch_connector_queue`
+
+Queue RPCs:
+- `uk_aq_core.uk_aq_dispatch_queue_enqueue(p_entries jsonb)`
+- `uk_aq_core.uk_aq_dispatch_queue_claim(p_batch_limit int, p_lease_seconds int)`
+- `uk_aq_core.uk_aq_dispatch_queue_resolve(p_resolutions jsonb)`
+
+## Dispatcher Modes
+
+`uk_aq_dispatch_polls` supports:
+- `mode=enqueue` (default)
+- `mode=run_queue`
+- `mode=legacy` (direct dispatch path kept as fallback)
+
+Worker behavior:
+- Calls `mode=enqueue`, then `mode=run_queue`.
+- If a queue-mode call fails, falls back to `mode=legacy` for that cron tick.
+
+## Runtime + Backoff
+
+Queue retry behavior:
+- Failed jobs increment `attempts`.
+- `next_attempt_at` uses backoff (30s, 120s, 600s, then 1800s default).
+- Claimed jobs have a lease (`lease_expires_at`) so interrupted runs can be recovered.
+
+Relevant env vars:
+- `DISPATCH_QUEUE_CLAIM_BATCH_LIMIT` (default `1`)
+- `DISPATCH_QUEUE_LEASE_SECONDS` (default `900`)
+- `DISPATCH_TIME_BUDGET_MS` (default `120000`)
+- `DISPATCH_SHUTDOWN_BUFFER_MS` (default `10000`)
+- `DISPATCH_EDGE_CALL_TIMEOUT_MS` (default `90000`)
+
+## Operational Notes
+
+- Keep `max_runs_per_dispatch_call` low (`1`) unless there is spare runtime capacity.
+- Use queue mode for normal operation; use `mode=legacy` only as fallback/debug.
+- Monitor:
+  - `uk_aq_raw.dispatch_connector_queue` row count, attempts, and last_error
+  - `uk_aq_core.uk_aq_ingest_runs` for per-connector outcomes
+  - `uk_aq_raw.history_observation_outbox` separately (history dual-write queue)

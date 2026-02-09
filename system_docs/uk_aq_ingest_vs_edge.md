@@ -2,6 +2,8 @@
 
 This project uses **two different ingestion paths** that serve different purposes.
 
+Dispatcher/queue runtime flow is documented in `system_docs/uk_aq_dispatcher_ingest_flow.md`.
+
 ## Ingest script (`scripts/uk_air_sos/uk_air_sos_ingest.py`)
 
 **Purpose:** full discovery + data refresh.

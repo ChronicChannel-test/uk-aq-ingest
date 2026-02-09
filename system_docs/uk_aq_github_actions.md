@@ -80,6 +80,12 @@ SB_UK_AQ_CRON_SECRET=...
 - Worker: `workers/uk_aq_dispatcher`.
 - Secrets: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`,
   `SUPABASE_URL`, `SB_ANON_JWT`, `SB_UK_AQ_CRON_SECRET`.
+- Deploy sequence:
+  1. Deploy current Worker code (`Deploy Worker (base)`).
+  2. Apply all three secrets in one `wrangler secret bulk` call (with retry).
+  3. Deploy again (`Deploy Worker`) so code + updated secrets are active together.
+- Why bulk secrets: avoids Cloudflare Worker Versions failure seen with multiple sequential
+  `wrangler secret put` calls in one run.
 
 ### `uk_air_sos_site_register_monthly.yml`
 - Schedule: monthly on day 1 at 04:15 UTC.

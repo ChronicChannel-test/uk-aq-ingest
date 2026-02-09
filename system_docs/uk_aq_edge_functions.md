@@ -23,6 +23,7 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
   - `mode=run_queue` claims queued work and executes ingest for queued connectors.
   - `mode=legacy` keeps the previous direct-dispatch behavior.
 - Triggered by: External scheduler (Cloudflare Worker cron) calling the edge function directly.
+- Flow reference: `system_docs/uk_aq_dispatcher_ingest_flow.md`
 - Reads:
   - `connectors` (`poll_enabled`, `poll_interval_minutes`, `poll_window_hours`, `poll_timeseries_batch_size`, `last_polled_at`)
   - `dispatcher_settings` (`dispatcher_parallel_ingest`, `max_runs_per_dispatch_call`)
