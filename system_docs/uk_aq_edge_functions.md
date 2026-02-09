@@ -65,7 +65,10 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
   - Cloudflare worker cron runs every 2 minutes (`workers/uk_aq_dispatcher/wrangler.toml`) and calls:
     - `mode=enqueue` then
     - `mode=run_queue`
+  - `mode=run_queue` claim size now scales with dispatcher settings:
+    `max(DISPATCH_QUEUE_CLAIM_BATCH_LIMIT, max_runs_per_dispatch_call when parallel ingest is enabled)`.
   - Worker fallback: if either queue-mode call fails, worker falls back to `mode=legacy` for that cron tick.
+  - Disabled connectors are auto-resolved from queue in `mode=run_queue` (`queue_entry_disabled_connector`) so stale retries do not keep firing after `poll_enabled=false`.
   - For `uk_air_sos`, uses `poll_timeseries_batch_size` with `uk_air_sos_select_timeseries_ids` (`uk_air_sos_timeseries_checkpoints`) and passes `timeseries_ids`/`timeseries_limit`.
   - Uses `uk_aq_public.uk_aq_rpc_dispatch_claim` to atomically claim a connector slot before dispatch.
   - Updates `connectors.last_run_start`, `last_run_end`, `last_run_status`, `last_run_message`, and `last_polled_at` for each attempted dispatch.

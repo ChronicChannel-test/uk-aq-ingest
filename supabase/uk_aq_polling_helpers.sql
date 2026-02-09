@@ -432,7 +432,7 @@ begin
       last_polled_at
     from candidates
     where due_at <= now()
-      and due_at >= now() - interval '3 hours'
+      and due_at >= now() - interval '6 hours'
       and (last_polled_at is null or last_polled_at <= now() - interval '5 minutes')
     order by last_polled_at asc nulls first, due_at asc
     limit batch_limit
@@ -444,7 +444,7 @@ begin
       c.due_at,
       c.last_polled_at
     from candidates c
-    where c.due_at < now() - interval '3 hours'
+    where c.due_at < now() - interval '6 hours'
       and c.due_at >= now() - interval '24 hours'
       and (c.last_polled_at is null or c.last_polled_at <= now() - interval '1 hour')
       and not exists (

@@ -56,6 +56,7 @@ Queue retry behavior:
 - Failed jobs increment `attempts`.
 - `next_attempt_at` uses backoff (30s, 120s, 600s, then 1800s default).
 - Claimed jobs have a lease (`lease_expires_at`) so interrupted runs can be recovered.
+- Queued jobs for disabled connectors are resolved and dropped (`queue_entry_disabled_connector`).
 
 Relevant env vars:
 - `DISPATCH_QUEUE_CLAIM_BATCH_LIMIT` (default `1`)
@@ -63,6 +64,8 @@ Relevant env vars:
 - `DISPATCH_TIME_BUDGET_MS` (default `150000`)
 - `DISPATCH_SHUTDOWN_BUFFER_MS` (default `10000`)
 - `DISPATCH_EDGE_CALL_TIMEOUT_MS` (default `140000`)
+- Effective queue claim size per `run_queue` call:
+  `max(DISPATCH_QUEUE_CLAIM_BATCH_LIMIT, max_runs_per_dispatch_call when parallel ingest is enabled)`.
 
 ## Operational Notes
 

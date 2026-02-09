@@ -485,6 +485,13 @@ function normalizeDispatcherSettings(
   };
 }
 
+function resolveRunQueueClaimLimit(settings: DispatcherSettings): number {
+  const settingsLimit = settings.dispatcher_parallel_ingest
+    ? settings.max_runs_per_dispatch_call
+    : 1;
+  return Math.max(1, settingsLimit, DISPATCH_QUEUE_CLAIM_BATCH_LIMIT);
+}
+
 async function loadDispatcherSettings(): Promise<DispatcherSettings | null> {
   const { data, error } = await postgrestRequest<DispatcherSettings[]>(
     "GET",
@@ -1233,8 +1240,9 @@ serve(async (req) => {
   let queueEnqueued = 0;
 
   if (dispatchMode === "run_queue") {
+    const runQueueClaimLimit = resolveRunQueueClaimLimit(settings);
     try {
-      queueClaimRows = await claimDispatchQueueJobs(DISPATCH_QUEUE_CLAIM_BATCH_LIMIT);
+      queueClaimRows = await claimDispatchQueueJobs(runQueueClaimLimit);
     } catch (error) {
       await logError({
         severity: "error",
@@ -1278,6 +1286,14 @@ serve(async (req) => {
           id: Number(row.id),
           ok: true,
           error: "queue_entry_unknown_connector",
+        });
+        continue;
+      }
+      if (connector.poll_enabled !== true) {
+        missingConnectorResolutions.push({
+          id: Number(row.id),
+          ok: true,
+          error: "queue_entry_disabled_connector",
         });
         continue;
       }
@@ -1369,6 +1385,9 @@ serve(async (req) => {
     max_runs: settings.dispatcher_parallel_ingest
       ? settings.max_runs_per_dispatch_call
       : 1,
+    run_queue_claim_limit: dispatchMode === "run_queue"
+      ? resolveRunQueueClaimLimit(settings)
+      : null,
     due_candidates: dueCandidates.map((item) => ({
       connector_code: item.connectorCode,
       last_polled_ms: item.lastPolledMs,
