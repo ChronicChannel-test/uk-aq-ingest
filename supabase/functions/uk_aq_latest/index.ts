@@ -1,4 +1,3 @@
-// @ts-nocheck
 //trigger deploy 2026-02-09 13:34
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { cacheControlHeaders } from "../_shared/cache.ts";
@@ -609,7 +608,7 @@ function deriveNextCursor(
   return { since: bestSince, sinceId: bestId ?? 0 };
 }
 
-function maxTimestamp(values: Array<string | null | undefined>, fallback: string | null): string | null {
+function _maxTimestamp(values: Array<string | null | undefined>, fallback: string | null): string | null {
   let best = fallback ? normalizeTimestamp(fallback) : null;
   let bestMs = best ? Date.parse(best) : Number.NEGATIVE_INFINITY;
   values.forEach((value) => {

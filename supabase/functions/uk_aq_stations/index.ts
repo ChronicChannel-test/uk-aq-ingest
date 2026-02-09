@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { cacheControlHeaders, CACHE_CONTROL_SUCCESS_SMAXAGE_300 } from "../_shared/cache.ts";
 
@@ -96,7 +95,8 @@ serve(async (req) => {
   const region = normalizeText(url.searchParams.get("region"));
   const stationLike = normalizeText(url.searchParams.get("station_like"));
   const targetLimit = parseLimit(url.searchParams.get("limit"), MAX_LIMIT);
-  const pageSize = parseLimit(url.searchParams.get("page_size"), MAX_PAGE_SIZE, DEFAULT_PAGE_SIZE);
+  const pageSize = parseLimit(url.searchParams.get("page_size"), MAX_PAGE_SIZE, DEFAULT_PAGE_SIZE)
+    ?? DEFAULT_PAGE_SIZE;
 
   try {
     const rows = await fetchStations({

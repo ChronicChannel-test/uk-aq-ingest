@@ -499,7 +499,7 @@ function findRecentInFlightConnector(
 }
 
 function isConnectorInFlight(
-  connector: ConnectorRow | null,
+  _connector: ConnectorRow | null,
   latestRun: IngestRunRow | null,
   now: Date,
 ): boolean {
@@ -567,7 +567,7 @@ async function settleStaleInFlight(
   }
 }
 
-async function reconcileInFlightByLastPolled(
+async function _reconcileInFlightByLastPolled(
   connectors: ConnectorRow[],
 ): Promise<void> {
   for (const connector of connectors) {

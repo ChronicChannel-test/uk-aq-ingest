@@ -1,8 +1,11 @@
-// @ts-nocheck
 // trigger deploy 2026-02-09 12:36
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { cacheControlHeaders } from "../_shared/cache.ts";
-import { flushHistoryOutbox, writeHistoryWithOutbox } from "../_shared/history_client.ts";
+import {
+  flushHistoryOutbox,
+  type HistoryObservationRow,
+  writeHistoryWithOutbox,
+} from "../_shared/history_client.ts";
 
 type PollRequest = {
   connector_id?: string;
@@ -315,6 +318,14 @@ function formatLogValue(value: unknown): string {
     return JSON.stringify(value);
   }
   return String(value);
+}
+
+function asNonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed || null;
 }
 
 function createRawRecorder(): RawRecorder {
@@ -887,7 +898,7 @@ function toHistoryObservationRow(
   connectorCode: string,
   serviceRef: string,
   timeseriesRef: string,
-): Record<string, unknown> | null {
+): HistoryObservationRow | null {
   const observedAt = String(observationRow.observed_at ?? "").trim();
   if (!observedAt) {
     return null;
@@ -1200,7 +1211,7 @@ async function dropboxUploadFile(
   path: string,
   contents: string | Uint8Array,
 ): Promise<void> {
-  const body = typeof contents === "string" ? new TextEncoder().encode(contents) : contents;
+  const body = typeof contents === "string" ? new TextEncoder().encode(contents) : Uint8Array.from(contents);
   const resp = await fetch(DROPBOX_UPLOAD_URL, {
     method: "POST",
     headers: {
@@ -1364,7 +1375,7 @@ async function zipTextCompressed(filename: string, content: string): Promise<Uin
 }
 
 async function deflateRaw(data: Uint8Array): Promise<Uint8Array> {
-  const stream = new Blob([data]).stream().pipeThrough(new CompressionStream("deflate-raw"));
+  const stream = new Blob([Uint8Array.from(data)]).stream().pipeThrough(new CompressionStream("deflate-raw"));
   const buffer = await new Response(stream).arrayBuffer();
   return new Uint8Array(buffer);
 }
@@ -1410,14 +1421,15 @@ async function dropboxArchiveLogs(
   const existingArchives = new Set(
     archiveEntries
       .filter((entry) => entry?.[".tag"] === "file" && entry?.name)
-      .map((entry) => entry.name),
+      .map((entry) => asNonEmptyString(entry.name))
+      .filter((name): name is string => Boolean(name)),
   );
 
   for (const entry of entries) {
     if (entry?.[".tag"] !== "folder") {
       continue;
     }
-    const name = entry?.name;
+    const name = asNonEmptyString(entry?.name);
     if (!name || name === "archive") {
       continue;
     }
@@ -1427,7 +1439,7 @@ async function dropboxArchiveLogs(
     }
     const archiveName = `${name}.zip`;
     const archivePath = `${archiveFolder}/${archiveName}`;
-    const folderPath = entry?.path_lower ?? entry?.path_display;
+    const folderPath = asNonEmptyString(entry?.path_lower) ?? asNonEmptyString(entry?.path_display);
     if (!folderPath) {
       continue;
     }
@@ -1442,7 +1454,7 @@ async function dropboxArchiveLogs(
     if (entry?.[".tag"] !== "file") {
       continue;
     }
-    const name = entry?.name ?? "";
+    const name = asNonEmptyString(entry?.name) ?? "";
     if (!name.endsWith(".zip")) {
       continue;
     }
@@ -1451,7 +1463,7 @@ async function dropboxArchiveLogs(
     if (!Number.isFinite(archiveDate) || archiveDate >= archiveCutoff) {
       continue;
     }
-    const path = entry?.path_lower ?? entry?.path_display;
+    const path = asNonEmptyString(entry?.path_lower) ?? asNonEmptyString(entry?.path_display);
     if (!path) {
       continue;
     }
@@ -1754,7 +1766,7 @@ serve(async (req) => {
               const timeseriesIdMap = await fetchTimeseriesIds(connector.id, requestedServiceRef, timeseriesRefs);
 
               const observationRows: Array<Record<string, unknown>> = [];
-              const historyRows: Array<Record<string, unknown>> = [];
+              const historyRows: HistoryObservationRow[] = [];
               for (const entry of observationsByTimeseries.values()) {
                 const timeseriesRef = `${entry.station_ref}:${entry.pollutant}`;
                 const timeseriesId = timeseriesIdMap[timeseriesRef];

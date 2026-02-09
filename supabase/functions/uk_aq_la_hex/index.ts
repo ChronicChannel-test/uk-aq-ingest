@@ -1,4 +1,3 @@
-// @ts-nocheck
 //trigger deploy 2026-02-09 13:34
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { cacheControlHeaders } from "../_shared/cache.ts";

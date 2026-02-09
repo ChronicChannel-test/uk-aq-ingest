@@ -12,6 +12,9 @@ Endpoint egress observability note: public read endpoints emit sampled egress
 metrics and persist them via RPCs defined in `supabase/uk_aq_egress_metrics.sql`
 (`uk_aq_record_endpoint_metric`, `uk_aq_cleanup_endpoint_metrics`).
 
+Maintenance note (2026-02-09): removed `@ts-nocheck` from ingest/stations edge
+functions and fixed strict typing/lint issues without changing runtime behavior.
+
 ## Functions
 
 ### uk_aq_dispatch_polls

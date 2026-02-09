@@ -1,8 +1,11 @@
-// @ts-nocheck
 // trigger deploy 2026-02-09 12:36 
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { cacheControlHeaders } from "../_shared/cache.ts";
-import { flushHistoryOutbox, writeHistoryWithOutbox } from "../_shared/history_client.ts";
+import {
+  flushHistoryOutbox,
+  type HistoryObservationRow,
+  writeHistoryWithOutbox,
+} from "../_shared/history_client.ts";
 
 type PollRequest = {
   api_key?: string;
@@ -637,6 +640,17 @@ async function fetchStationsFromDb(
     const select = activeOnly
       ? "id,station_ref,station_name,label,removed_at,station_metadata(attributes)"
       : "id,station_ref,station_name,label";
+    const params: Record<string, string> = {
+      select,
+      connector_id: `eq.${connectorId}`,
+      service_ref: `eq.${serviceRef}`,
+      order: "station_ref.asc",
+      limit: String(pageLimit),
+      offset: String(offset),
+    };
+    if (refFilter) {
+      params.station_ref = refFilter;
+    }
     const { data, error } = await postgrestRequest<
       Array<{
         id: number;
@@ -649,15 +663,7 @@ async function fetchStationsFromDb(
     >(
       "GET",
       "stations",
-      {
-        select,
-        connector_id: `eq.${connectorId}`,
-        service_ref: `eq.${serviceRef}`,
-        station_ref: refFilter ?? undefined,
-        order: "station_ref.asc",
-        limit: String(pageLimit),
-        offset: String(offset),
-      },
+      params,
     );
     if (error) {
       throw new Error(`Failed to load stations from Supabase: ${error.message}`);
@@ -668,9 +674,7 @@ async function fetchStationsFromDb(
         if (row.removed_at) {
           continue;
         }
-        const metadata = Array.isArray(row.station_metadata)
-          ? row.station_metadata?.[0]?.attributes ?? {}
-          : row.station_metadata?.attributes ?? {};
+        const metadata = row.station_metadata?.[0]?.attributes ?? {};
         const enabled = String(metadata?.enabled ?? "").toLowerCase();
         const siteActive = String(metadata?.site_active ?? "").toLowerCase();
         const enabledOk = ["y", "yes", "true", "1"].includes(enabled);
@@ -937,8 +941,8 @@ function toHistoryObservationRows(
   timeseriesRef: string,
   connectorId: number,
   timeseriesId: number,
-): Array<Record<string, unknown>> {
-  const historyRows: Array<Record<string, unknown>> = [];
+): HistoryObservationRow[] {
+  const historyRows: HistoryObservationRow[] = [];
   for (const row of rows) {
     const observedAt = asString(row.observed_at);
     if (!observedAt) {
@@ -1249,7 +1253,7 @@ async function dropboxUploadFile(
   path: string,
   contents: string | Uint8Array,
 ): Promise<void> {
-  const body = typeof contents === "string" ? new TextEncoder().encode(contents) : contents;
+  const body = typeof contents === "string" ? new TextEncoder().encode(contents) : Uint8Array.from(contents);
   const resp = await fetch(DROPBOX_UPLOAD_URL, {
     method: "POST",
     headers: {
@@ -1413,7 +1417,7 @@ async function zipTextCompressed(filename: string, content: string): Promise<Uin
 }
 
 async function deflateRaw(data: Uint8Array): Promise<Uint8Array> {
-  const stream = new Blob([data]).stream().pipeThrough(new CompressionStream("deflate-raw"));
+  const stream = new Blob([Uint8Array.from(data)]).stream().pipeThrough(new CompressionStream("deflate-raw"));
   const buffer = await new Response(stream).arrayBuffer();
   return new Uint8Array(buffer);
 }
@@ -1764,7 +1768,7 @@ serve(async (req) => {
               start_date: startDateOverride ? startDateOverride.toISOString() : null,
             });
           }
-          let stationRows: Record<string, unknown>[] = [];
+          const stationRows: Record<string, unknown>[] = [];
           let stationIdMap: Record<string, number> = {};
           stationsRequested = stationRefs.length ? stationRefs.length : null;
 
@@ -2000,7 +2004,7 @@ serve(async (req) => {
                       const { rows, lastObserved: windowLast, lastValue: windowValue } = extractObservations(
                         payload,
                         timeseriesId,
-                        connector.id,
+                        Number(connector.id),
                       );
                       if (rows.length) {
                         if (!dryRun) {
@@ -2031,7 +2035,7 @@ serve(async (req) => {
                         lastObserved = windowLast;
                         lastValue = windowValue;
                       }
-                    } catch (error) {
+                    } catch (_error) {
                       break;
                     }
                     cursor = endTime;

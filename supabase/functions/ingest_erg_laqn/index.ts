@@ -1,8 +1,11 @@
-// @ts-nocheck
 // trigger deploy 2026-02-09 12:36
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { cacheControlHeaders } from "../_shared/cache.ts";
-import { flushHistoryOutbox, writeHistoryWithOutbox } from "../_shared/history_client.ts";
+import {
+  flushHistoryOutbox,
+  type HistoryObservationRow,
+  writeHistoryWithOutbox,
+} from "../_shared/history_client.ts";
 import {
   addUtcDays,
   buildErgDateRange,
@@ -335,7 +338,7 @@ async function fetchJson(
   url: string,
   params?: Record<string, string>,
   log?: LogBuffer,
-  rawRecorder?: RawRecorder,
+  rawRecorder?: RawRecorder | null,
 ): Promise<unknown> {
   const requestUrl = new URL(url);
   if (params) {
@@ -914,8 +917,8 @@ function toHistoryObservationRows(
   timeseriesRef: string,
   connectorId: number,
   timeseriesId: number,
-): Array<Record<string, unknown>> {
-  const historyRows: Array<Record<string, unknown>> = [];
+): HistoryObservationRow[] {
+  const historyRows: HistoryObservationRow[] = [];
   for (const row of rows) {
     const observedAt = String(row.observed_at ?? "").trim();
     if (!observedAt) {
@@ -1376,7 +1379,7 @@ async function dropboxUploadFile(
   path: string,
   contents: string | Uint8Array,
 ): Promise<void> {
-  const body = typeof contents === "string" ? new TextEncoder().encode(contents) : contents;
+  const body = typeof contents === "string" ? new TextEncoder().encode(contents) : Uint8Array.from(contents);
   const resp = await fetch(DROPBOX_UPLOAD_URL, {
     method: "POST",
     headers: {
@@ -1401,7 +1404,7 @@ async function dropboxUploadFileOverwrite(
   path: string,
   contents: string | Uint8Array,
 ): Promise<void> {
-  const body = typeof contents === "string" ? new TextEncoder().encode(contents) : contents;
+  const body = typeof contents === "string" ? new TextEncoder().encode(contents) : Uint8Array.from(contents);
   const resp = await fetch(DROPBOX_UPLOAD_URL, {
     method: "POST",
     headers: {
@@ -1584,7 +1587,7 @@ async function zipTextCompressed(filename: string, content: string): Promise<Uin
 }
 
 async function deflateRaw(data: Uint8Array): Promise<Uint8Array> {
-  const stream = new Blob([data]).stream().pipeThrough(new CompressionStream("deflate-raw"));
+  const stream = new Blob([Uint8Array.from(data)]).stream().pipeThrough(new CompressionStream("deflate-raw"));
   const buffer = await new Response(stream).arrayBuffer();
   return new Uint8Array(buffer);
 }
@@ -1748,7 +1751,7 @@ serve(async (req) => {
   const now = new Date();
   const {
     startDate,
-    endDate,
+    endDate: _endDate,
     startDateStr: startStr,
     endDateStr: endStr,
     utcTodayStart,

@@ -1,4 +1,3 @@
-// @ts-nocheck
 // trigger deploy 2026-02-09 12:36
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { cacheControlHeaders } from "../_shared/cache.ts";
@@ -82,7 +81,7 @@ const DROPBOX_APP_KEY = Deno.env.get("DROPBOX_APP_KEY") ?? "";
 const DROPBOX_APP_SECRET = Deno.env.get("DROPBOX_APP_SECRET") ?? "";
 const DROPBOX_REFRESH_TOKEN = Deno.env.get("DROPBOX_REFRESH_TOKEN") ?? "";
 const DROPBOX_ALLOWED_SUPABASE_URL = Deno.env.get("UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL") ?? "";
-const DROPBOX_ERROR_ALLOWED_SUPABASE_URL =
+const _DROPBOX_ERROR_ALLOWED_SUPABASE_URL =
   Deno.env.get("UK_AIR_ERROR_DROPBOX_ALLOWED_SUPABASE_URL") ?? "";
 const DROPBOX_ROOT_FOLDER = (() => {
   const raw = Deno.env.get("UK_AQ_DROPBOX_ROOT") ?? "";
@@ -98,6 +97,7 @@ const DROPBOX_LOG_RETENTION_DAYS = 31;
 const DROPBOX_TOKEN_URL = "https://api.dropbox.com/oauth2/token";
 const DROPBOX_UPLOAD_URL = "https://content.dropboxapi.com/2/files/upload";
 const DROPBOX_LIST_FOLDER_URL = "https://api.dropboxapi.com/2/files/list_folder";
+const DROPBOX_DOWNLOAD_ZIP_URL = "https://content.dropboxapi.com/2/files/download_zip";
 const DROPBOX_DELETE_URL = "https://api.dropboxapi.com/2/files/delete_v2";
 
 const REST_BASE_URL = SUPABASE_URL
@@ -798,7 +798,7 @@ function takeCircular<T>(rows: T[], start: number, count: number): T[] {
   return result;
 }
 
-function normalizeServiceLabel(label: string | undefined): string {
+function _normalizeServiceLabel(label: string | undefined): string {
   if (!label) {
     return UK_AIR_SOS_SERVICE_LABEL;
   }
@@ -1101,7 +1101,7 @@ async function dropboxUploadFile(
   path: string,
   contents: string | Uint8Array,
 ): Promise<void> {
-  const body = typeof contents === "string" ? new TextEncoder().encode(contents) : contents;
+  const body = typeof contents === "string" ? new TextEncoder().encode(contents) : Uint8Array.from(contents);
   const resp = await fetch(DROPBOX_UPLOAD_URL, {
     method: "POST",
     headers: {
@@ -1265,7 +1265,7 @@ async function zipTextCompressed(filename: string, content: string): Promise<Uin
 }
 
 async function deflateRaw(data: Uint8Array): Promise<Uint8Array> {
-  const stream = new Blob([data]).stream().pipeThrough(new CompressionStream("deflate-raw"));
+  const stream = new Blob([Uint8Array.from(data)]).stream().pipeThrough(new CompressionStream("deflate-raw"));
   const buffer = await new Response(stream).arrayBuffer();
   return new Uint8Array(buffer);
 }
@@ -1439,12 +1439,14 @@ async function loadTimeseries(
 ): Promise<Array<{
   id: number;
   timeseries_ref: string | null;
+  service_ref: string | null;
   phenomenon_id: string | null;
   last_value_at: string | null;
 }>> {
   const rows: Array<{
     id: number;
     timeseries_ref: string | null;
+    service_ref: string | null;
     phenomenon_id: string | null;
     last_value_at: string | null;
   }> = [];
@@ -1454,11 +1456,12 @@ async function loadTimeseries(
       Array<{
         id: number;
         timeseries_ref: string | null;
+        service_ref: string | null;
         phenomenon_id: string | null;
         last_value_at: string | null;
       }>
     >("GET", "timeseries", {
-      select: "id,timeseries_ref,phenomenon_id,last_value_at",
+      select: "id,timeseries_ref,service_ref,phenomenon_id,last_value_at",
       connector_id: `eq.${connectorId}`,
       limit: String(PAGE_SIZE),
       offset: String(offset),
@@ -1472,6 +1475,7 @@ async function loadTimeseries(
     rows.push(...data.map((row) => ({
       id: Number(row.id),
       timeseries_ref: row.timeseries_ref ? String(row.timeseries_ref) : null,
+      service_ref: row.service_ref ? String(row.service_ref) : null,
       phenomenon_id: row.phenomenon_id ? String(row.phenomenon_id) : null,
       last_value_at: row.last_value_at ? String(row.last_value_at) : null,
     })));
@@ -1514,7 +1518,7 @@ async function loadPhenomena(connectorId: string, filters: string[]): Promise<Se
   return matches;
 }
 
-function extractList(payload: unknown, keys: string[]): Array<Record<string, unknown>> {
+function _extractList(payload: unknown, keys: string[]): Array<Record<string, unknown>> {
   if (Array.isArray(payload)) {
     return payload as Array<Record<string, unknown>>;
   }
@@ -1678,7 +1682,7 @@ function logEmptySeries(seriesId: number | undefined, sample: unknown, reason: s
 }
 
 async function upsertLastValue(
-  seriesId: string,
+  seriesId: number,
   data: Record<string, unknown>,
   points: Array<{ observed_at: string; value: number | null }>,
   errorLogger: { logError: (entry: ErrorLogEntry) => Promise<void> },
