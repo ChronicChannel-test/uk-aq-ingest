@@ -29,13 +29,18 @@ async function readSecret(value: unknown): Promise<string> {
 async function invokeDispatch(
   env: Env,
   mode: "enqueue" | "run_queue" | "legacy",
-): Promise<boolean> {
+  payload: Record<string, unknown> = {},
+): Promise<{ ok: boolean; status: number; body: unknown }> {
   const supabaseUrl = await readSecret(env.SUPABASE_URL);
   const supabaseAnonJwt = await readSecret(env.SB_ANON_JWT);
   const cronSecret = await readSecret(env.SB_UK_AQ_CRON_SECRET ?? "");
   if (!supabaseUrl || !supabaseAnonJwt) {
     console.error("Missing SUPABASE_URL or SB_ANON_JWT.");
-    return false;
+    return {
+      ok: false,
+      status: 500,
+      body: "missing_supabase_secrets",
+    };
   }
   const url = `${normalizeBaseUrl(supabaseUrl)}/functions/v1/uk_aq_dispatch_polls`;
   const headers: Record<string, string> = {
@@ -49,27 +54,65 @@ async function invokeDispatch(
   const resp = await fetch(url, {
     method: "POST",
     headers,
-    body: JSON.stringify({ source: "cloudflare", mode }),
+    body: JSON.stringify({ source: "cloudflare", mode, ...payload }),
   });
   if (!resp.ok) {
     const body = await resp.text().catch(() => "");
     console.error("uk_aq_dispatch_polls failed", { mode, status: resp.status, body });
-    return false;
+    return { ok: false, status: resp.status, body };
   }
-  const body = await resp.text().catch(() => "");
+  const contentType = (resp.headers.get("content-type") ?? "").toLowerCase();
+  const body = contentType.includes("application/json")
+    ? await resp.json().catch(() => null)
+    : await resp.text().catch(() => "");
   console.log("uk_aq_dispatch_polls succeeded", { mode, body });
-  return true;
+  return { ok: true, status: resp.status, body };
+}
+
+function parsePositiveInt(
+  value: unknown,
+  fallback: number,
+): number {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric < 1) {
+    return fallback;
+  }
+  return Math.max(1, Math.floor(numeric));
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  return value as Record<string, unknown>;
+}
+
+function resolveRunQueueFanout(enqueueBody: unknown): number {
+  const root = asRecord(enqueueBody);
+  const settings = asRecord(root?.dispatcher_settings);
+  const maxRuns = parsePositiveInt(settings?.max_runs_per_dispatch_call, 1);
+  return Math.max(1, maxRuns);
 }
 
 export default {
   async scheduled(_event: unknown, env: Env, _ctx: unknown): Promise<void> {
-    const enqueueOk = await invokeDispatch(env, "enqueue");
-    if (!enqueueOk) {
+    const enqueueResult = await invokeDispatch(env, "enqueue");
+    if (!enqueueResult.ok) {
       await invokeDispatch(env, "legacy");
       return;
     }
-    const runQueueOk = await invokeDispatch(env, "run_queue");
-    if (!runQueueOk) {
+    const fanout = resolveRunQueueFanout(enqueueResult.body);
+
+    const runQueueResults = await Promise.all(
+      Array.from({ length: fanout }, (_, index) =>
+        invokeDispatch(env, "run_queue", {
+          run_queue_claim_limit: 1,
+          fanout_index: index + 1,
+          fanout_total: fanout,
+        })
+      ),
+    );
+    if (runQueueResults.every((result) => !result.ok)) {
       await invokeDispatch(env, "legacy");
     }
   },

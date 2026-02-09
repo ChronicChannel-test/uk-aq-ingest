@@ -1,6 +1,6 @@
 # UK AQ Dispatcher + Ingest Flow
 
-This doc explains the current two-stage dispatcher flow and why the Cloudflare worker calls the dispatcher twice per cron tick.
+This doc explains the current two-stage dispatcher flow and why the Cloudflare worker calls the dispatcher once for enqueue and then run-queue calls per cron tick.
 
 ## Overview
 
@@ -13,7 +13,7 @@ The scheduler is split into selection and execution:
 
 2. `mode=run_queue`:
 - Claims queued jobs from `uk_aq_raw.dispatch_connector_queue`.
-- Executes one queued connector ingest job (by default).
+- Executes one queued connector ingest job per call (when `run_queue_claim_limit=1`).
 - Resolves the queue job as success/failure with retry backoff.
 
 This removes long ingest runtime from due-selection calls.
@@ -27,7 +27,7 @@ The worker must do both actions in sequence:
 
 Calling both in one tick guarantees:
 - due connectors keep entering the queue, and
-- at least one queued job is processed per tick.
+- queued jobs can be processed in parallel via run-queue fan-out calls.
 
 ## Queue Objects
 
@@ -47,7 +47,7 @@ Queue RPCs:
 - `mode=legacy` (direct dispatch path kept as fallback)
 
 Worker behavior:
-- Calls `mode=enqueue`, then `mode=run_queue`.
+- Calls `mode=enqueue`, reads `dispatcher_settings.max_runs_per_dispatch_call`, then calls `mode=run_queue` that many times in parallel.
 - If a queue-mode call fails, falls back to `mode=legacy` for that cron tick.
 
 ## Runtime + Backoff
@@ -64,12 +64,14 @@ Relevant env vars:
 - `DISPATCH_TIME_BUDGET_MS` (default `150000`)
 - `DISPATCH_SHUTDOWN_BUFFER_MS` (default `10000`)
 - `DISPATCH_EDGE_CALL_TIMEOUT_MS` (default `140000`)
+- `DISPATCH_MIN_START_EDGE_CALL_MS` (default `30000`)
 - Effective queue claim size per `run_queue` call:
-  `max(DISPATCH_QUEUE_CLAIM_BATCH_LIMIT, max_runs_per_dispatch_call when parallel ingest is enabled)`.
+  `run_queue_claim_limit` request payload value (when provided), else `DISPATCH_QUEUE_CLAIM_BATCH_LIMIT`.
+- Worker currently sends `run_queue_claim_limit=1` per run-queue call so one claim maps to one ingest run.
 
 ## Operational Notes
 
-- Keep `max_runs_per_dispatch_call` low (`1`) unless there is spare runtime capacity.
+- Single concurrency dial: `dispatcher_settings.max_runs_per_dispatch_call`.
 - Use queue mode for normal operation; use `mode=legacy` only as fallback/debug.
 - Monitor:
   - `uk_aq_raw.dispatch_connector_queue` row count, attempts, and last_error

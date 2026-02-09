@@ -135,7 +135,6 @@ const IN_FLIGHT_TIMEOUT_MINUTES = (() => {
     : NaN;
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 10;
 })();
-const DEFAULT_PARALLEL_INGEST = false;
 const DEFAULT_MAX_RUNS_PER_DISPATCH_CALL = 1;
 const MIN_EDGE_CALL_TIMEOUT_MS = 5000;
 const MIN_DISPATCH_TIME_BUDGET_MS = MIN_EDGE_CALL_TIMEOUT_MS + 1000;
@@ -165,6 +164,11 @@ const DISPATCH_SHUTDOWN_BUFFER_MS = parseMillisecondsSetting(
 const DISPATCH_EDGE_CALL_TIMEOUT_MS = parseMillisecondsSetting(
   Deno.env.get("DISPATCH_EDGE_CALL_TIMEOUT_MS"),
   140000,
+  MIN_EDGE_CALL_TIMEOUT_MS,
+);
+const DISPATCH_MIN_START_EDGE_CALL_MS = parseMillisecondsSetting(
+  Deno.env.get("DISPATCH_MIN_START_EDGE_CALL_MS"),
+  30000,
   MIN_EDGE_CALL_TIMEOUT_MS,
 );
 const DISPATCH_EFFECTIVE_SHUTDOWN_BUFFER_MS = Math.min(
@@ -474,22 +478,25 @@ function isDue(
 function normalizeDispatcherSettings(
   settings: DispatcherSettings | null,
 ): DispatcherSettings {
-  const parallel = settings?.dispatcher_parallel_ingest ??
-    DEFAULT_PARALLEL_INGEST;
   const maxRuns = Number.isFinite(settings?.max_runs_per_dispatch_call)
     ? Math.max(1, Math.floor(settings?.max_runs_per_dispatch_call ?? 1))
     : DEFAULT_MAX_RUNS_PER_DISPATCH_CALL;
   return {
-    dispatcher_parallel_ingest: Boolean(parallel),
+    dispatcher_parallel_ingest: maxRuns > 1,
     max_runs_per_dispatch_call: maxRuns,
   };
 }
 
-function resolveRunQueueClaimLimit(settings: DispatcherSettings): number {
-  const settingsLimit = settings.dispatcher_parallel_ingest
-    ? settings.max_runs_per_dispatch_call
-    : 1;
-  return Math.max(1, settingsLimit, DISPATCH_QUEUE_CLAIM_BATCH_LIMIT);
+function resolveRunQueueClaimLimitFromRequest(
+  payload: Record<string, unknown>,
+): number | null {
+  const numeric = asNumber(
+    payload.run_queue_claim_limit ?? payload.queue_claim_limit,
+  );
+  if (numeric === null || !Number.isFinite(numeric) || numeric < 1) {
+    return null;
+  }
+  return Math.max(1, Math.floor(numeric));
 }
 
 async function loadDispatcherSettings(): Promise<DispatcherSettings | null> {
@@ -1056,11 +1063,7 @@ async function callEdgeFunction(
   if (SB_UK_AQ_CRON_SECRET) {
     headers["X-Cron-Secret"] = SB_UK_AQ_CRON_SECRET;
   }
-  const remainingMs = Math.max(
-    0,
-    DISPATCH_TIME_BUDGET_MS - (Date.now() - dispatchStartedAtMs) -
-      DISPATCH_EFFECTIVE_SHUTDOWN_BUFFER_MS,
-  );
+  const remainingMs = getDispatchRemainingMs(dispatchStartedAtMs);
   if (remainingMs < MIN_EDGE_CALL_TIMEOUT_MS) {
     return {
       ok: false,
@@ -1123,10 +1126,17 @@ function windowHoursToDays(windowHours: number): number {
   return Math.max(1, Math.ceil(windowHours / 24));
 }
 
+function getDispatchRemainingMs(dispatchStartedAtMs: number): number {
+  return Math.max(
+    0,
+    DISPATCH_TIME_BUDGET_MS - (Date.now() - dispatchStartedAtMs) -
+      DISPATCH_EFFECTIVE_SHUTDOWN_BUFFER_MS,
+  );
+}
+
 function isDispatchBudgetRemaining(dispatchStartedAtMs: number): boolean {
-  const elapsed = Date.now() - dispatchStartedAtMs;
-  return elapsed + DISPATCH_EFFECTIVE_SHUTDOWN_BUFFER_MS <
-    DISPATCH_TIME_BUDGET_MS;
+  return getDispatchRemainingMs(dispatchStartedAtMs) >=
+    DISPATCH_MIN_START_EDGE_CALL_MS;
 }
 
 serve(async (req) => {
@@ -1209,12 +1219,14 @@ serve(async (req) => {
   await settleStaleInFlight(connectors, latestRuns, now);
 
   const settings = normalizeDispatcherSettings(await loadDispatcherSettings());
+  const enqueueMaxRuns = settings.max_runs_per_dispatch_call;
+  const enqueueParallel = enqueueMaxRuns > 1;
 
   const connectorMap = new Map(
     connectors.map((row) => [row.connector_code, row]),
   );
   const inFlight = findRecentInFlightConnector(latestRuns, now);
-  if (dispatchMode !== "run_queue" && inFlight && !settings.dispatcher_parallel_ingest) {
+  if (dispatchMode !== "run_queue" && inFlight && !enqueueParallel) {
     for (const connectorCode of TARGET_CONNECTORS) {
       results.set(connectorCode, {
         connector_code: connectorCode,
@@ -1237,10 +1249,12 @@ serve(async (req) => {
     connector: ConnectorRow | null;
   }[] = [];
   let queueClaimRows: DispatchQueueClaimRow[] = [];
+  let runQueueClaimLimit: number | null = null;
   let queueEnqueued = 0;
 
   if (dispatchMode === "run_queue") {
-    const runQueueClaimLimit = resolveRunQueueClaimLimit(settings);
+    runQueueClaimLimit = resolveRunQueueClaimLimitFromRequest(requestPayload) ??
+      DISPATCH_QUEUE_CLAIM_BATCH_LIMIT;
     try {
       queueClaimRows = await claimDispatchQueueJobs(runQueueClaimLimit);
     } catch (error) {
@@ -1372,9 +1386,7 @@ serve(async (req) => {
 
     const selectedCandidates = selectDueConnectors(
       dueCandidates,
-      settings.dispatcher_parallel_ingest
-        ? settings.max_runs_per_dispatch_call
-        : 1,
+      enqueueMaxRuns,
     );
     selected = selectedCandidates.selected;
     skipped = selectedCandidates.skipped;
@@ -1382,11 +1394,10 @@ serve(async (req) => {
 
   console.log("dispatch_selection", {
     dispatch_mode: dispatchMode,
-    max_runs: settings.dispatcher_parallel_ingest
-      ? settings.max_runs_per_dispatch_call
-      : 1,
+    max_runs: dispatchMode === "enqueue" ? enqueueMaxRuns : null,
+    enqueue_parallel: dispatchMode === "enqueue" ? enqueueParallel : null,
     run_queue_claim_limit: dispatchMode === "run_queue"
-      ? resolveRunQueueClaimLimit(settings)
+      ? runQueueClaimLimit
       : null,
     due_candidates: dueCandidates.map((item) => ({
       connector_code: item.connectorCode,
