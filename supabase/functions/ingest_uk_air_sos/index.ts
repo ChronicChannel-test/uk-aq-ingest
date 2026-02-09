@@ -1671,7 +1671,8 @@ function logEmptySeries(seriesId: number | undefined, sample: unknown, reason: s
     return;
   }
   emptySeriesLogs += 1;
-  console.warn("No datapoints parsed", {
+  const log = reason === "no rows" ? console.info : console.warn;
+  log("No datapoints parsed", {
     series_id: seriesId ?? null,
     reason,
     sample,
