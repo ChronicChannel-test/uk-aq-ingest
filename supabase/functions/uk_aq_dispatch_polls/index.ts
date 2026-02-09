@@ -472,12 +472,66 @@ function isDue(
   if (!Number.isFinite(intervalMinutes) || intervalMinutes <= 0) {
     return true;
   }
+  const runStartedAt = parseDate(connector?.last_run_start ?? null);
+  const runEndedAt = parseDate(connector?.last_run_end ?? null);
+  if (runStartedAt && !runEndedAt) {
+    const runningGuardMs = Math.max(
+      intervalMinutes * 60 * 1000,
+      IN_FLIGHT_TIMEOUT_MINUTES * 60 * 1000,
+    );
+    const runningAgeMs = now.getTime() - runStartedAt.getTime();
+    if (Number.isFinite(runningAgeMs) && runningAgeMs >= 0 && runningAgeMs < runningGuardMs) {
+      return false;
+    }
+  }
   const dispatchAnchor = getDispatchAnchorDate(connector);
   if (!dispatchAnchor) {
     return true;
   }
   const elapsedMs = now.getTime() - dispatchAnchor.getTime();
   return elapsedMs >= intervalMinutes * 60 * 1000;
+}
+
+function getDispatchStartGuard(
+  connector: ConnectorRow | null,
+  connectorCode: string,
+  now: Date,
+): { blocked: true; reason: "running" | "started_recently"; retryInSeconds: number } | null {
+  const runStartedAt = parseDate(connector?.last_run_start ?? null);
+  if (!runStartedAt) {
+    return null;
+  }
+  const intervalMinutes = getIntervalMinutes(connector, connectorCode);
+  const intervalMs = Math.max(60_000, intervalMinutes * 60 * 1000);
+  const elapsedMs = now.getTime() - runStartedAt.getTime();
+  if (!Number.isFinite(elapsedMs) || elapsedMs < 0) {
+    return null;
+  }
+  const runEndedAt = parseDate(connector?.last_run_end ?? null);
+  if (!runEndedAt) {
+    const runningGuardMs = Math.max(
+      intervalMs,
+      IN_FLIGHT_TIMEOUT_MINUTES * 60 * 1000,
+    );
+    if (elapsedMs < runningGuardMs) {
+      const remainingMs = runningGuardMs - elapsedMs;
+      return {
+        blocked: true,
+        reason: "running",
+        retryInSeconds: Math.max(30, Math.min(3600, Math.ceil(remainingMs / 1000))),
+      };
+    }
+    return null;
+  }
+  if (elapsedMs < intervalMs) {
+    const remainingMs = intervalMs - elapsedMs;
+    return {
+      blocked: true,
+      reason: "started_recently",
+      retryInSeconds: Math.max(30, Math.min(3600, Math.ceil(remainingMs / 1000))),
+    };
+  }
+  return null;
 }
 
 function normalizeDispatcherSettings(
@@ -1489,6 +1543,39 @@ serve(async (req) => {
     const connectorCode = candidate.connectorCode;
     const connector = candidate.connector;
     const queueJobId = candidate.queueJobId;
+    const dispatchStartGuard = getDispatchStartGuard(
+      connector,
+      connectorCode,
+      new Date(),
+    );
+    if (dispatchStartGuard) {
+      const detail = dispatchStartGuard.reason === "running"
+        ? "in_flight_running"
+        : "started_within_interval";
+      results.set(connectorCode, {
+        connector_code: connectorCode,
+        status: "skipped",
+        detail,
+      });
+      if (queueJobId !== undefined) {
+        try {
+          await resolveDispatchQueueJobs([
+            {
+              id: queueJobId,
+              ok: false,
+              error: detail,
+              retry_in_seconds: dispatchStartGuard.retryInSeconds,
+            },
+          ]);
+        } catch (error) {
+          console.warn("dispatch queue resolve failed", {
+            id: queueJobId,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+      continue;
+    }
     const runStart = new Date();
     const claimed = await dispatchClaim(
       connectorCode,

@@ -59,7 +59,11 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
     - Enqueues up to `max_runs_per_dispatch_call` connectors per call.
 - In-flight behavior:
   - `mode=enqueue` skips global dispatch if any connector is in-flight when `max_runs_per_dispatch_call=1`.
+  - Simple guard applies for all connectors:
+    - If `last_run_end` is null and `last_run_start` is recent, do not enqueue/dispatch again.
+    - If a run started within the connector interval, do not dispatch again yet.
   - `mode=run_queue` claims queued jobs using per-request `run_queue_claim_limit` (or `DISPATCH_QUEUE_CLAIM_BATCH_LIMIT` default) and then uses `uk_aq_rpc_dispatch_claim` for per-connector in-flight safety.
+  - In `mode=run_queue`, queued jobs blocked by this guard are resolved with retry (`in_flight_running` or `started_within_interval`) instead of starting an overlap run.
   - When `max_runs_per_dispatch_call>1`, in-flight checks are per connector; other connectors can still dispatch.
   - Stale in-flight runs (>10 minutes) are auto-closed as `failed` with `in_flight_timeout` and a `uk_aq_ingest_runs` row is inserted.
   - If a connector has `last_run_end` null but the latest `uk_aq_ingest_runs` row has `run_ended_at`, the connector row is reconciled as `ingest_runs_reconciled`.
