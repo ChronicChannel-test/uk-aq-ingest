@@ -1394,8 +1394,8 @@ serve(async (req) => {
 
   console.log("dispatch_selection", {
     dispatch_mode: dispatchMode,
-    max_runs: dispatchMode === "enqueue" ? enqueueMaxRuns : null,
-    enqueue_parallel: dispatchMode === "enqueue" ? enqueueParallel : null,
+    max_runs: enqueueMaxRuns,
+    enqueue_parallel: enqueueParallel,
     run_queue_claim_limit: dispatchMode === "run_queue"
       ? runQueueClaimLimit
       : null,
