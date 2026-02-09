@@ -31,7 +31,7 @@ Env quick reference (Supabase blocks secrets prefixed with `SUPABASE_`):
 | Context | Required | Optional |
 | --- | --- | --- |
 | Local scripts (.env) | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | `UK_AIR_SOS_BASE_URL`, `UK_AIR_SOS_SERVICE_LABEL` |
-| Edge function runtime (Supabase secrets) | `SB_SUPABASE_URL`, `SB_SERVICE_ROLE_KEY` | `UK_AIR_SOS_BASE_URL`, `UK_AIR_SOS_SERVICE_LABEL`, `HISTORY_SUPABASE_URL`, `HISTORY_SERVICE_ROLE_KEY`, `HISTORY_UPSERT_RPC`, `HISTORY_OUTBOX_FLUSH_LIMIT`, `HISTORY_UPSERT_CHUNK_SIZE` |
+| Edge function runtime (Supabase secrets) | `SB_SUPABASE_URL`, `SB_SERVICE_ROLE_KEY` | `UK_AIR_SOS_BASE_URL`, `UK_AIR_SOS_SERVICE_LABEL`, `HISTORY_SUPABASE_URL`, `HISTORY_SERVICE_ROLE_KEY`, `HISTORY_UPSERT_RPC`, `HISTORY_OUTBOX_FLUSH_LIMIT`, `HISTORY_UPSERT_CHUNK_SIZE`, `HISTORY_OUTBOX_DISPATCH_MAX_FLUSHES` |
 | GitHub Actions deploy | `SUPABASE_ACCESS_TOKEN`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_PROJECT_REF` (Secrets) | `UK_AIR_SOS_BASE_URL`, `UK_AIR_SOS_SERVICE_LABEL` (Secrets) |
 
 Install dependencies in a virtual environment:
@@ -114,6 +114,7 @@ Use this flow when creating fresh MAIN + HISTORY projects.
      - `HISTORY_UPSERT_RPC` (default `uk_aq_rpc_history_observations_upsert`)
      - `HISTORY_OUTBOX_FLUSH_LIMIT` (default `10`)
      - `HISTORY_UPSERT_CHUNK_SIZE` (default `500`)
+     - `HISTORY_OUTBOX_DISPATCH_MAX_FLUSHES` (default `3`, `uk_aq_dispatch_polls` outbox batches per run)
 4. Operational notes:
    - Outbox retries history delivery without backfill exports.
    - `uk_aq_raw.history_sync_receipt_daily` records per-day delivery receipts for future safe retention deletes.

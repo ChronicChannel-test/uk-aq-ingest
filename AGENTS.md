@@ -1,5 +1,8 @@
 # Agent Notes
 
+## Main Repo
+- `CIC-test-uk-aq-ingest` is the main repo for this project and the default starting point for cross-repo work.
+
 ## Schema
 - Permission confirmed: all files under `/Users/mikehinford/Library/CloudStorage/Dropbox/Projects/CIC Website/CIC Air Quality Networks/CIC-test-uk-aq-schema/uk-aq-schema` may be edited (except `archive/`).
 - Read the schema files at the start of the session.

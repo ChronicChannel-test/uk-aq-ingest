@@ -1,5 +1,8 @@
 # Cross-repo map: CIC-test-uk-aq-ingest
 
+## Main repo
+- `CIC-test-uk-aq-ingest` is the main repo for this project and the default starting point for cross-repo tasks.
+
 ## Purpose
 This repo houses ingestion, backfill, and connector tooling for UK AQ, plus Supabase Edge Functions that power live polling and API access. It is the operational hub that reads from external data sources and writes to the database defined in the schema repo.
 

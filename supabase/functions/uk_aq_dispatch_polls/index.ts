@@ -1,5 +1,9 @@
 // Dispatch connector polls based on connectors table settings.
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
+import {
+  flushHistoryOutbox,
+  type HistoryOutboxFlushStats,
+} from "../_shared/history_client.ts";
 
 type ConnectorRow = {
   id: string;
@@ -51,6 +55,13 @@ type ErrorLogEntry = {
   message: string;
   context?: Record<string, unknown> | null;
   connector_id?: string | number | null;
+};
+
+type HistoryOutboxDrainSummary = HistoryOutboxFlushStats & {
+  batches: number;
+  warnings: string[];
+  max_batches: number;
+  error?: string;
 };
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ??
@@ -108,6 +119,18 @@ const IN_FLIGHT_TIMEOUT_MINUTES = (() => {
 })();
 const DEFAULT_PARALLEL_INGEST = false;
 const DEFAULT_MAX_RUNS_PER_DISPATCH_CALL = 1;
+const HISTORY_OUTBOX_DISPATCH_MAX_FLUSHES = parsePositiveInt(
+  Deno.env.get("HISTORY_OUTBOX_DISPATCH_MAX_FLUSHES"),
+  3,
+);
+
+function parsePositiveInt(raw: string | undefined, fallback: number): number {
+  const value = Number(raw ?? "");
+  if (!Number.isFinite(value)) {
+    return fallback;
+  }
+  return Math.max(1, Math.trunc(value));
+}
 
 function postgrestHeaders(schema = UK_AQ_CORE_SCHEMA): Record<string, string> {
   const headers: Record<string, string> = {
@@ -742,6 +765,62 @@ async function postgrestRpcRequest<T>(
   );
 }
 
+async function publicRpcRequest<T>(
+  fn: string,
+  args?: Record<string, unknown>,
+): Promise<{ data: T | null; error: { message: string } | null }> {
+  return await postgrestRequest<T>(
+    "POST",
+    `rpc/${fn}`,
+    undefined,
+    args ?? {},
+    "uk_aq_public",
+  );
+}
+
+function emptyHistoryOutboxDrainSummary(): HistoryOutboxDrainSummary {
+  return {
+    batches: 0,
+    max_batches: HISTORY_OUTBOX_DISPATCH_MAX_FLUSHES,
+    claimed: 0,
+    delivered: 0,
+    failed: 0,
+    receipts_upserted: 0,
+    rows_resolved: 0,
+    warnings: [],
+  };
+}
+
+async function drainHistoryOutboxFromDispatcher(): Promise<
+  HistoryOutboxDrainSummary
+> {
+  const summary = emptyHistoryOutboxDrainSummary();
+  for (let idx = 0; idx < HISTORY_OUTBOX_DISPATCH_MAX_FLUSHES; idx += 1) {
+    const batchWarnings: string[] = [];
+    const stats = await flushHistoryOutbox(publicRpcRequest, (message) => {
+      batchWarnings.push(message);
+      console.warn("history_outbox_flush_warning", { message });
+    });
+    summary.batches += 1;
+    summary.claimed += stats.claimed;
+    summary.delivered += stats.delivered;
+    summary.failed += stats.failed;
+    summary.receipts_upserted += stats.receipts_upserted;
+    summary.rows_resolved += stats.rows_resolved;
+    if (batchWarnings.length) {
+      summary.warnings.push(...batchWarnings);
+    }
+    if (stats.claimed === 0) {
+      break;
+    }
+    // Avoid repeatedly hammering the same failing payloads in a single run.
+    if (stats.failed > 0 && stats.delivered === 0) {
+      break;
+    }
+  }
+  return summary;
+}
+
 async function loadConnectorConfigs(): Promise<ConnectorRow[]> {
   const { data, error } = await postgrestRequest<ConnectorRow[]>(
     "GET",
@@ -892,6 +971,16 @@ serve(async (req) => {
   });
 
   const now = new Date();
+  const historyOutbox = await drainHistoryOutboxFromDispatcher().catch((
+    error,
+  ) => {
+    const summary = emptyHistoryOutboxDrainSummary();
+    summary.error = error instanceof Error ? error.message : String(error);
+    console.warn("history_outbox_flush_failed", {
+      error: summary.error,
+    });
+    return summary;
+  });
   const results = new Map<string, DispatchResult>();
   let connectors: ConnectorRow[] = [];
   let latestRuns = new Map<string, IngestRunRow>();
@@ -906,6 +995,7 @@ serve(async (req) => {
     });
     return jsonResponse({
       error: error instanceof Error ? error.message : String(error),
+      history_outbox: historyOutbox,
     }, 500);
   }
 
@@ -929,6 +1019,7 @@ serve(async (req) => {
     return jsonResponse({
       checked_at: now.toISOString(),
       in_flight: inFlight,
+      history_outbox: historyOutbox,
       results: TARGET_CONNECTORS.map((code) => results.get(code)),
     });
   }
@@ -968,6 +1059,7 @@ serve(async (req) => {
   if (!dueCandidates.length) {
     return jsonResponse({
       checked_at: now.toISOString(),
+      history_outbox: historyOutbox,
       results: TARGET_CONNECTORS.map((code) => results.get(code)),
     });
   }
@@ -1310,6 +1402,7 @@ serve(async (req) => {
   return jsonResponse({
     checked_at: now.toISOString(),
     dispatcher_settings: settings,
+    history_outbox: historyOutbox,
     results: TARGET_CONNECTORS.map((code) => results.get(code)),
   });
 });

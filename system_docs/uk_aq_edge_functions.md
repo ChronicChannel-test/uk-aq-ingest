@@ -27,6 +27,8 @@ RPC calls, because history RPCs are exposed from `uk_aq_public`.
   - Requires `X-Cron-Secret` when `SB_UK_AQ_CRON_SECRET` is set.
   - Uses the Supabase service role key to read connector settings.
   - Uses `SB_ANON_JWT` (falls back to service role) to call ingest functions.
+  - Runs history outbox draining on every dispatcher invocation (before connector selection).
+  - Outbox drain repeats up to `HISTORY_OUTBOX_DISPATCH_MAX_FLUSHES` batches per dispatcher run (default `3`).
   - Only dispatches connectors with `poll_enabled=true` (null/false are skipped).
   - Dispatches one due connector per run, selecting the oldest `last_polled_at` (null first).
     - When `dispatcher_parallel_ingest` is true, dispatches up to `max_runs_per_dispatch_call` connectors per run (still max one per connector).
@@ -298,6 +300,7 @@ Dropbox folders:
 Optional:
 - `UK_AQ_CORE_SCHEMA` (defaults to `uk_aq_core`; used for PostgREST profile headers)
 - `UK_AQ_RAW_SCHEMA` (defaults to `uk_aq_raw`; used for raw tables like `error_logs` and checkpoint tables)
+- `HISTORY_OUTBOX_DISPATCH_MAX_FLUSHES` (optional; defaults to `3`; dispatcher outbox batches per run)
 - `UK_AIR_ERROR_DROPBOX_FOLDER` (defaults to `error_log`)
 - `BREATHELONDON_ERROR_DROPBOX_FOLDER` (optional override for Breathe London)
 - `SCOMM_ERROR_DROPBOX_FOLDER` (optional override for Sensor.Community)
