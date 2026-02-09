@@ -2,7 +2,6 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { cacheControlHeaders } from "../_shared/cache.ts";
 import {
-  flushHistoryOutbox,
   type HistoryObservationRow,
   writeHistoryWithOutbox,
 } from "../_shared/history_client.ts";
@@ -1604,11 +1603,6 @@ serve(async (req) => {
           status = 404;
           responsePayload = { ok: false, error: "Connector not found." };
           log.error("Connector not found.");
-        }
-        if (status === 200 && connector) {
-          await flushHistoryOutbox(publicRpcRequest, (message) => {
-            log.warn("History outbox flush warning.", { message });
-          });
         }
 
         let records: Array<Record<string, unknown>> = [];

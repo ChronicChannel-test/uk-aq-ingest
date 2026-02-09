@@ -2,7 +2,6 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { cacheControlHeaders } from "../_shared/cache.ts";
 import {
-  flushHistoryOutbox,
   type HistoryObservationRow,
   writeHistoryWithOutbox,
 } from "../_shared/history_client.ts";
@@ -1806,11 +1805,6 @@ serve(async (req) => {
     connectorId = connector?.id ?? null;
     if (!connectorId) {
       throw new Error("Connector not found.");
-    }
-    if (!dryRun) {
-      await flushHistoryOutbox(publicRpcRequest, (message) => {
-        log.warn("History outbox flush warning.", { message });
-      });
     }
 
     const stationsPayload = await fetchJson(

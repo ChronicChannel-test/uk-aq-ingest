@@ -2,7 +2,6 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { cacheControlHeaders } from "../_shared/cache.ts";
 import {
-  flushHistoryOutbox,
   type HistoryObservationRow,
   writeHistoryWithOutbox,
 } from "../_shared/history_client.ts";
@@ -2163,15 +2162,6 @@ serve(async (req) => {
   const connector = await loadConnector(connectorCode);
   if (!connector) {
     return jsonResponse({ error: "Connector not found." }, 404);
-  }
-
-  if (!dryRun) {
-    await flushHistoryOutbox(rpcRequest, (message) => {
-      logLine("WARN", "OpenAQ history outbox flush warning", {
-        connector_id: connector.id,
-        message,
-      });
-    });
   }
 
   let bbox: string;

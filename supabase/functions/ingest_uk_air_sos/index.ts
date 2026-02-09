@@ -1,7 +1,7 @@
 // trigger deploy 2026-02-09 12:36
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { cacheControlHeaders } from "../_shared/cache.ts";
-import { flushHistoryOutbox, writeHistoryWithOutbox } from "../_shared/history_client.ts";
+import { writeHistoryWithOutbox } from "../_shared/history_client.ts";
 
 type PollRequest = {
   connector_id?: string;
@@ -344,9 +344,6 @@ serve(async (req) => {
         }
 
         if (shouldPoll) {
-          await flushHistoryOutbox(publicRpcRequest, (message) => {
-            log.warn("History outbox flush warning", { message });
-          });
           const checkpointCandidates = requestedSeries?.length ? series.slice() : [];
           const beforeRecencyFilter = series.length;
           const withRecentLastValue = series.filter((row) => {
