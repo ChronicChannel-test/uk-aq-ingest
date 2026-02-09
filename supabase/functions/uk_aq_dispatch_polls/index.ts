@@ -138,6 +138,10 @@ const DISPATCH_EDGE_CALL_TIMEOUT_MS = parsePositiveInt(
   90000,
 );
 const MIN_EDGE_CALL_TIMEOUT_MS = 5000;
+const DISPATCH_EFFECTIVE_SHUTDOWN_BUFFER_MS = Math.min(
+  DISPATCH_SHUTDOWN_BUFFER_MS,
+  Math.max(0, DISPATCH_TIME_BUDGET_MS - MIN_EDGE_CALL_TIMEOUT_MS),
+);
 
 function parsePositiveInt(raw: string | undefined, fallback: number): number {
   const value = Number(raw ?? "");
@@ -951,7 +955,7 @@ async function callEdgeFunction(
   const remainingMs = Math.max(
     0,
     DISPATCH_TIME_BUDGET_MS - (Date.now() - dispatchStartedAtMs) -
-      DISPATCH_SHUTDOWN_BUFFER_MS,
+      DISPATCH_EFFECTIVE_SHUTDOWN_BUFFER_MS,
   );
   if (remainingMs < MIN_EDGE_CALL_TIMEOUT_MS) {
     return {
@@ -1017,7 +1021,8 @@ function windowHoursToDays(windowHours: number): number {
 
 function isDispatchBudgetRemaining(dispatchStartedAtMs: number): boolean {
   const elapsed = Date.now() - dispatchStartedAtMs;
-  return elapsed + DISPATCH_SHUTDOWN_BUFFER_MS < DISPATCH_TIME_BUDGET_MS;
+  return elapsed + DISPATCH_EFFECTIVE_SHUTDOWN_BUFFER_MS <
+    DISPATCH_TIME_BUDGET_MS;
 }
 
 serve(async (req) => {
@@ -1038,6 +1043,14 @@ serve(async (req) => {
     has_cron_secret: Boolean(SB_UK_AQ_CRON_SECRET),
     cron_secret_length: SB_UK_AQ_CRON_SECRET ? SB_UK_AQ_CRON_SECRET.length : 0,
   });
+  if (DISPATCH_EFFECTIVE_SHUTDOWN_BUFFER_MS !== DISPATCH_SHUTDOWN_BUFFER_MS) {
+    console.warn("dispatch_shutdown_buffer_clamped", {
+      dispatch_time_budget_ms: DISPATCH_TIME_BUDGET_MS,
+      dispatch_shutdown_buffer_ms: DISPATCH_SHUTDOWN_BUFFER_MS,
+      effective_shutdown_buffer_ms: DISPATCH_EFFECTIVE_SHUTDOWN_BUFFER_MS,
+      min_edge_call_timeout_ms: MIN_EDGE_CALL_TIMEOUT_MS,
+    });
+  }
 
   const dispatchStartedAtMs = Date.now();
   const now = new Date();
