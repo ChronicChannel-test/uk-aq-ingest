@@ -26,13 +26,16 @@ async function readSecret(value: unknown): Promise<string> {
   return value ? String(value) : "";
 }
 
-async function invokeDispatch(env: Env): Promise<void> {
+async function invokeDispatch(
+  env: Env,
+  mode: "enqueue" | "run_queue" | "legacy",
+): Promise<boolean> {
   const supabaseUrl = await readSecret(env.SUPABASE_URL);
   const supabaseAnonJwt = await readSecret(env.SB_ANON_JWT);
   const cronSecret = await readSecret(env.SB_UK_AQ_CRON_SECRET ?? "");
   if (!supabaseUrl || !supabaseAnonJwt) {
     console.error("Missing SUPABASE_URL or SB_ANON_JWT.");
-    return;
+    return false;
   }
   const url = `${normalizeBaseUrl(supabaseUrl)}/functions/v1/uk_aq_dispatch_polls`;
   const headers: Record<string, string> = {
@@ -46,16 +49,28 @@ async function invokeDispatch(env: Env): Promise<void> {
   const resp = await fetch(url, {
     method: "POST",
     headers,
-    body: JSON.stringify({ source: "cloudflare" }),
+    body: JSON.stringify({ source: "cloudflare", mode }),
   });
   if (!resp.ok) {
     const body = await resp.text().catch(() => "");
-    console.error("uk_aq_dispatch_polls failed", resp.status, body);
+    console.error("uk_aq_dispatch_polls failed", { mode, status: resp.status, body });
+    return false;
   }
+  const body = await resp.text().catch(() => "");
+  console.log("uk_aq_dispatch_polls succeeded", { mode, body });
+  return true;
 }
 
 export default {
   async scheduled(_event: unknown, env: Env, _ctx: unknown): Promise<void> {
-    await invokeDispatch(env);
+    const enqueueOk = await invokeDispatch(env, "enqueue");
+    if (!enqueueOk) {
+      await invokeDispatch(env, "legacy");
+      return;
+    }
+    const runQueueOk = await invokeDispatch(env, "run_queue");
+    if (!runQueueOk) {
+      await invokeDispatch(env, "legacy");
+    }
   },
 };

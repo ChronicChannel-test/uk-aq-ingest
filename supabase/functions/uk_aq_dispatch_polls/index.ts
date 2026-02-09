@@ -38,6 +38,22 @@ type DispatchResult = {
   response_status?: number;
 };
 
+type DispatchMode = "enqueue" | "run_queue" | "legacy";
+
+type DispatchCandidate = {
+  connectorCode: string;
+  connector: ConnectorRow | null;
+  lastPolledMs: number;
+  queueJobId?: number;
+};
+
+type DispatchQueueClaimRow = {
+  id: number;
+  connector_code: string;
+  payload: Record<string, unknown> | null;
+  attempts: number;
+};
+
 type RunMetrics = {
   stations_updated: number | null;
   observations_upserted: number | null;
@@ -127,6 +143,14 @@ const MIN_DISPATCH_SHUTDOWN_BUFFER_MS = 1000;
 const HISTORY_OUTBOX_DISPATCH_MAX_FLUSHES = parsePositiveInt(
   Deno.env.get("HISTORY_OUTBOX_DISPATCH_MAX_FLUSHES"),
   3,
+);
+const DISPATCH_QUEUE_CLAIM_BATCH_LIMIT = parsePositiveInt(
+  Deno.env.get("DISPATCH_QUEUE_CLAIM_BATCH_LIMIT"),
+  1,
+);
+const DISPATCH_QUEUE_LEASE_SECONDS = parsePositiveInt(
+  Deno.env.get("DISPATCH_QUEUE_LEASE_SECONDS"),
+  900,
 );
 const DISPATCH_TIME_BUDGET_MS = parseMillisecondsSetting(
   Deno.env.get("DISPATCH_TIME_BUDGET_MS"),
@@ -633,18 +657,10 @@ async function reconcileInFlightByLatestRun(
 }
 
 function selectDueConnectors(
-  dueCandidates: {
-    connectorCode: string;
-    connector: ConnectorRow | null;
-    lastPolledMs: number;
-  }[],
+  dueCandidates: DispatchCandidate[],
   maxRuns: number,
 ): {
-  selected: {
-    connectorCode: string;
-    connector: ConnectorRow | null;
-    lastPolledMs: number;
-  }[];
+  selected: DispatchCandidate[];
   skipped: {
     connectorCode: string;
     connector: ConnectorRow | null;
@@ -736,6 +752,66 @@ async function dispatchClaim(
     return false;
   }
   return Boolean(data[0]?.claimed);
+}
+
+async function enqueueDispatchQueue(connectorCodes: string[]): Promise<number> {
+  if (!connectorCodes.length) {
+    return 0;
+  }
+  const entries = connectorCodes.map((connectorCode) => ({
+    connector_code: connectorCode,
+    payload: { connector_code: connectorCode },
+    next_attempt_at: new Date().toISOString(),
+  }));
+  const { data, error } = await postgrestRpcRequest<
+    Array<{ rows_enqueued: number }>
+  >(
+    "uk_aq_dispatch_queue_enqueue",
+    { p_entries: entries },
+  );
+  if (error) {
+    throw new Error(`Dispatch queue enqueue failed: ${error.message}`);
+  }
+  return Number(data?.[0]?.rows_enqueued ?? 0);
+}
+
+async function claimDispatchQueueJobs(
+  batchLimit: number,
+): Promise<DispatchQueueClaimRow[]> {
+  const { data, error } = await postgrestRpcRequest<DispatchQueueClaimRow[]>(
+    "uk_aq_dispatch_queue_claim",
+    {
+      p_batch_limit: Math.max(1, Math.floor(batchLimit)),
+      p_lease_seconds: DISPATCH_QUEUE_LEASE_SECONDS,
+    },
+  );
+  if (error) {
+    throw new Error(`Dispatch queue claim failed: ${error.message}`);
+  }
+  return Array.isArray(data) ? data : [];
+}
+
+async function resolveDispatchQueueJobs(
+  resolutions: Array<{
+    id: number;
+    ok: boolean;
+    error?: string;
+    retry_in_seconds?: number;
+  }>,
+): Promise<number> {
+  if (!resolutions.length) {
+    return 0;
+  }
+  const { data, error } = await postgrestRpcRequest<
+    Array<{ rows_resolved: number }>
+  >(
+    "uk_aq_dispatch_queue_resolve",
+    { p_resolutions: resolutions },
+  );
+  if (error) {
+    throw new Error(`Dispatch queue resolve failed: ${error.message}`);
+  }
+  return Number(data?.[0]?.rows_resolved ?? 0);
 }
 
 async function updateConnectorRun(
@@ -1054,6 +1130,20 @@ serve(async (req) => {
   if (authResponse) {
     return authResponse;
   }
+  let requestPayload: Record<string, unknown> = {};
+  try {
+    requestPayload = await req.json();
+  } catch {
+    requestPayload = {};
+  }
+  const dispatchModeRaw = String(
+    requestPayload.mode ?? requestPayload.dispatch_mode ?? "enqueue",
+  ).trim().toLowerCase();
+  const dispatchMode: DispatchMode = dispatchModeRaw === "run_queue"
+    ? "run_queue"
+    : dispatchModeRaw === "legacy"
+    ? "legacy"
+    : "enqueue";
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
     return jsonResponse({
       error: "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY.",
@@ -1063,6 +1153,7 @@ serve(async (req) => {
   console.log("uk_aq_dispatch_polls cron secret", {
     has_cron_secret: Boolean(SB_UK_AQ_CRON_SECRET),
     cron_secret_length: SB_UK_AQ_CRON_SECRET ? SB_UK_AQ_CRON_SECRET.length : 0,
+    dispatch_mode: dispatchMode,
   });
   if (DISPATCH_EFFECTIVE_SHUTDOWN_BUFFER_MS !== DISPATCH_SHUTDOWN_BUFFER_MS) {
     console.warn("dispatch_shutdown_buffer_clamped", {
@@ -1075,18 +1166,20 @@ serve(async (req) => {
 
   const dispatchStartedAtMs = Date.now();
   const now = new Date();
-  const historyOutbox = await drainHistoryOutboxFromDispatcher(
-    dispatchStartedAtMs,
-  ).catch((
-    error,
-  ) => {
-    const summary = emptyHistoryOutboxDrainSummary();
-    summary.error = error instanceof Error ? error.message : String(error);
-    console.warn("history_outbox_flush_failed", {
-      error: summary.error,
+  const historyOutbox = dispatchMode === "run_queue"
+    ? emptyHistoryOutboxDrainSummary()
+    : await drainHistoryOutboxFromDispatcher(
+      dispatchStartedAtMs,
+    ).catch((
+      error,
+    ) => {
+      const summary = emptyHistoryOutboxDrainSummary();
+      summary.error = error instanceof Error ? error.message : String(error);
+      console.warn("history_outbox_flush_failed", {
+        error: summary.error,
+      });
+      return summary;
     });
-    return summary;
-  });
   const results = new Map<string, DispatchResult>();
   let connectors: ConnectorRow[] = [];
   let latestRuns = new Map<string, IngestRunRow>();
@@ -1114,7 +1207,7 @@ serve(async (req) => {
     connectors.map((row) => [row.connector_code, row]),
   );
   const inFlight = findRecentInFlightConnector(latestRuns, now);
-  if (inFlight && !settings.dispatcher_parallel_ingest) {
+  if (dispatchMode !== "run_queue" && inFlight && !settings.dispatcher_parallel_ingest) {
     for (const connectorCode of TARGET_CONNECTORS) {
       results.set(connectorCode, {
         connector_code: connectorCode,
@@ -1130,59 +1223,160 @@ serve(async (req) => {
     });
   }
 
-  const dueCandidates: {
+  const dueCandidates: DispatchCandidate[] = [];
+  let selected: DispatchCandidate[] = [];
+  let skipped: {
     connectorCode: string;
     connector: ConnectorRow | null;
-    lastPolledMs: number;
   }[] = [];
+  let queueClaimRows: DispatchQueueClaimRow[] = [];
+  let queueEnqueued = 0;
 
-  for (const connectorCode of TARGET_CONNECTORS) {
-    const connector = connectorMap.get(connectorCode) ?? null;
-    const latestRun = latestRuns.get(connectorCode) ?? null;
-    if (isConnectorInFlight(connector, latestRun, now)) {
-      results.set(connectorCode, {
-        connector_code: connectorCode,
-        status: "skipped",
-        detail: "in_flight",
+  if (dispatchMode === "run_queue") {
+    try {
+      queueClaimRows = await claimDispatchQueueJobs(DISPATCH_QUEUE_CLAIM_BATCH_LIMIT);
+    } catch (error) {
+      await logError({
+        severity: "error",
+        message: error instanceof Error ? error.message : String(error),
+        context: {
+          component: "uk_aq_dispatch_polls",
+          step: "queue_claim",
+        },
       });
-      continue;
+      return jsonResponse({
+        error: error instanceof Error ? error.message : String(error),
+        dispatch_mode: dispatchMode,
+        history_outbox: historyOutbox,
+      }, 500);
     }
-    if (!isDue(connector, connectorCode, now)) {
-      results.set(connectorCode, {
-        connector_code: connectorCode,
-        status: "skipped",
-        detail: "not_due",
+
+    if (!queueClaimRows.length) {
+      for (const connectorCode of TARGET_CONNECTORS) {
+        results.set(connectorCode, {
+          connector_code: connectorCode,
+          status: "skipped",
+          detail: "queue_empty",
+        });
+      }
+      return jsonResponse({
+        checked_at: now.toISOString(),
+        dispatch_mode: dispatchMode,
+        dispatcher_settings: settings,
+        history_outbox: historyOutbox,
+        queue: { claimed: 0, enqueued: 0, resolved: 0 },
+        results: TARGET_CONNECTORS.map((code) => results.get(code)),
       });
-      continue;
     }
-    dueCandidates.push({
-      connectorCode,
-      connector,
-      lastPolledMs: getLastPolledMs(connector),
-    });
+
+    const missingConnectorResolutions: Array<{ id: number; ok: boolean; error: string }> = [];
+    for (const row of queueClaimRows) {
+      const connectorCode = String(row.connector_code ?? "").trim();
+      const connector = connectorMap.get(connectorCode) ?? null;
+      if (!connector || !TARGET_CONNECTORS.includes(connectorCode)) {
+        missingConnectorResolutions.push({
+          id: Number(row.id),
+          ok: true,
+          error: "queue_entry_unknown_connector",
+        });
+        continue;
+      }
+      selected.push({
+        connectorCode,
+        connector,
+        lastPolledMs: getLastPolledMs(connector),
+        queueJobId: Number(row.id),
+      });
+    }
+    if (missingConnectorResolutions.length) {
+      try {
+        await resolveDispatchQueueJobs(missingConnectorResolutions);
+      } catch (error) {
+        console.warn("dispatch queue resolve failed for unknown connectors", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+    if (!selected.length) {
+      for (const connectorCode of TARGET_CONNECTORS) {
+        results.set(connectorCode, {
+          connector_code: connectorCode,
+          status: "skipped",
+          detail: "queue_empty",
+        });
+      }
+      return jsonResponse({
+        checked_at: now.toISOString(),
+        dispatch_mode: dispatchMode,
+        dispatcher_settings: settings,
+        history_outbox: historyOutbox,
+        queue: {
+          claimed: queueClaimRows.length,
+          enqueued: 0,
+          resolved: missingConnectorResolutions.length,
+        },
+        results: TARGET_CONNECTORS.map((code) => results.get(code)),
+      });
+    }
+  } else {
+    for (const connectorCode of TARGET_CONNECTORS) {
+      const connector = connectorMap.get(connectorCode) ?? null;
+      const latestRun = latestRuns.get(connectorCode) ?? null;
+      if (isConnectorInFlight(connector, latestRun, now)) {
+        results.set(connectorCode, {
+          connector_code: connectorCode,
+          status: "skipped",
+          detail: "in_flight",
+        });
+        continue;
+      }
+      if (!isDue(connector, connectorCode, now)) {
+        results.set(connectorCode, {
+          connector_code: connectorCode,
+          status: "skipped",
+          detail: "not_due",
+        });
+        continue;
+      }
+      dueCandidates.push({
+        connectorCode,
+        connector,
+        lastPolledMs: getLastPolledMs(connector),
+      });
+    }
+
+    if (!dueCandidates.length) {
+      return jsonResponse({
+        checked_at: now.toISOString(),
+        dispatch_mode: dispatchMode,
+        history_outbox: historyOutbox,
+        results: TARGET_CONNECTORS.map((code) => results.get(code)),
+      });
+    }
+
+    const selectedCandidates = selectDueConnectors(
+      dueCandidates,
+      settings.dispatcher_parallel_ingest
+        ? settings.max_runs_per_dispatch_call
+        : 1,
+    );
+    selected = selectedCandidates.selected;
+    skipped = selectedCandidates.skipped;
   }
 
-  if (!dueCandidates.length) {
-    return jsonResponse({
-      checked_at: now.toISOString(),
-      history_outbox: historyOutbox,
-      results: TARGET_CONNECTORS.map((code) => results.get(code)),
-    });
-  }
-
-  const { selected, skipped } = selectDueConnectors(
-    dueCandidates,
-    settings.dispatcher_parallel_ingest
-      ? settings.max_runs_per_dispatch_call
-      : 1,
-  );
   console.log("dispatch_selection", {
+    dispatch_mode: dispatchMode,
     max_runs: settings.dispatcher_parallel_ingest
       ? settings.max_runs_per_dispatch_call
       : 1,
     due_candidates: dueCandidates.map((item) => ({
       connector_code: item.connectorCode,
       last_polled_ms: item.lastPolledMs,
+    })),
+    queue_claimed: queueClaimRows.map((item) => ({
+      id: item.id,
+      connector_code: item.connector_code,
+      attempts: item.attempts,
     })),
     selected: selected.map((item) => item.connectorCode),
     skipped: skipped.map((item) => item.connectorCode),
@@ -1195,6 +1389,60 @@ serve(async (req) => {
       detail: "not_selected",
     });
   }
+  if (dispatchMode === "run_queue") {
+    const selectedSet = new Set(selected.map((item) => item.connectorCode));
+    for (const connectorCode of TARGET_CONNECTORS) {
+      if (selectedSet.has(connectorCode) || results.has(connectorCode)) {
+        continue;
+      }
+      results.set(connectorCode, {
+        connector_code: connectorCode,
+        status: "skipped",
+        detail: "queue_not_selected",
+      });
+    }
+  }
+
+  if (dispatchMode === "enqueue") {
+    try {
+      queueEnqueued = await enqueueDispatchQueue(
+        selected.map((item) => item.connectorCode),
+      );
+    } catch (error) {
+      await logError({
+        severity: "error",
+        message: error instanceof Error ? error.message : String(error),
+        context: {
+          component: "uk_aq_dispatch_polls",
+          step: "queue_enqueue",
+          selected: selected.map((item) => item.connectorCode),
+        },
+      });
+      return jsonResponse({
+        error: error instanceof Error ? error.message : String(error),
+        dispatch_mode: dispatchMode,
+        history_outbox: historyOutbox,
+      }, 500);
+    }
+    for (const item of selected) {
+      results.set(item.connectorCode, {
+        connector_code: item.connectorCode,
+        status: "queued",
+        detail: "queue_enqueued",
+      });
+    }
+    return jsonResponse({
+      checked_at: now.toISOString(),
+      dispatch_mode: dispatchMode,
+      dispatcher_settings: settings,
+      history_outbox: historyOutbox,
+      queue: {
+        enqueued: queueEnqueued,
+        selected: selected.map((item) => item.connectorCode),
+      },
+      results: TARGET_CONNECTORS.map((code) => results.get(code)),
+    });
+  }
 
   let budgetBreakIndex: number | null = null;
   for (let selectedIndex = 0; selectedIndex < selected.length; selectedIndex += 1) {
@@ -1205,6 +1453,7 @@ serve(async (req) => {
     const candidate = selected[selectedIndex];
     const connectorCode = candidate.connectorCode;
     const connector = candidate.connector;
+    const queueJobId = candidate.queueJobId;
     const runStart = new Date();
     const claimed = await dispatchClaim(
       connectorCode,
@@ -1218,6 +1467,23 @@ serve(async (req) => {
         status: "skipped",
         detail: "in_flight_claimed",
       });
+      if (queueJobId !== undefined) {
+        try {
+          await resolveDispatchQueueJobs([
+            {
+              id: queueJobId,
+              ok: false,
+              error: "in_flight_claimed",
+              retry_in_seconds: 120,
+            },
+          ]);
+        } catch (error) {
+          console.warn("dispatch queue resolve failed", {
+            id: queueJobId,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
       continue;
     }
     let runStatus = "failed";
@@ -1528,11 +1794,30 @@ serve(async (req) => {
           response_payload: lastResponse?.body ?? null,
         });
       }
+      if (queueJobId !== undefined) {
+        const ok = runStatus === "succeeded" || runStatus === "skipped";
+        try {
+          await resolveDispatchQueueJobs([
+            {
+              id: queueJobId,
+              ok,
+              error: ok ? undefined : runMessage || "dispatch_failed",
+              retry_in_seconds: ok ? undefined : 120,
+            },
+          ]);
+        } catch (error) {
+          console.warn("dispatch queue resolve failed", {
+            id: queueJobId,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
     }
   }
   if (budgetBreakIndex !== null) {
     for (let idx = budgetBreakIndex; idx < selected.length; idx += 1) {
       const connectorCode = selected[idx].connectorCode;
+      const queueJobId = selected[idx].queueJobId;
       if (results.has(connectorCode)) {
         continue;
       }
@@ -1541,13 +1826,35 @@ serve(async (req) => {
         status: "skipped",
         detail: "dispatch_time_budget",
       });
+      if (queueJobId !== undefined) {
+        try {
+          await resolveDispatchQueueJobs([
+            {
+              id: queueJobId,
+              ok: false,
+              error: "dispatch_time_budget",
+              retry_in_seconds: 30,
+            },
+          ]);
+        } catch (error) {
+          console.warn("dispatch queue resolve failed", {
+            id: queueJobId,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
     }
   }
 
   return jsonResponse({
     checked_at: now.toISOString(),
+    dispatch_mode: dispatchMode,
     dispatcher_settings: settings,
     history_outbox: historyOutbox,
+    queue: {
+      claimed: queueClaimRows.length,
+      enqueued: queueEnqueued,
+    },
     results: TARGET_CONNECTORS.map((code) => results.get(code)),
   });
 });

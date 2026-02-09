@@ -18,13 +18,22 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
 ## Functions
 
 ### uk_aq_dispatch_polls
-- Purpose: Dispatch due connector polls based on `connectors` scheduling fields.
+- Purpose: Two-stage dispatcher endpoint.
+  - `mode=enqueue` selects due connectors and enqueues them.
+  - `mode=run_queue` claims queued work and executes ingest for queued connectors.
+  - `mode=legacy` keeps the previous direct-dispatch behavior.
 - Triggered by: External scheduler (Cloudflare Worker cron) calling the edge function directly.
 - Reads:
   - `connectors` (`poll_enabled`, `poll_interval_minutes`, `poll_window_hours`, `poll_timeseries_batch_size`, `last_polled_at`)
   - `dispatcher_settings` (`dispatcher_parallel_ingest`, `max_runs_per_dispatch_call`)
+- Queue tables/RPCs (from `supabase/uk_aq_polling_helpers.sql`):
+  - `uk_aq_raw.dispatch_connector_queue`
+  - `uk_aq_core.uk_aq_dispatch_queue_enqueue`
+  - `uk_aq_core.uk_aq_dispatch_queue_claim`
+  - `uk_aq_core.uk_aq_dispatch_queue_resolve`
 - Station batch helpers: `breathelondon_select_station_refs`, `erg_laqn_select_station_refs` (defined in `supabase/uk_aq_polling_helpers.sql`)
 - Calls:
+  - In `mode=run_queue` only:
   - `ingest_uk_air_sos` (`window_hours`)
   - `ingest_sensorcommunity` (`country=GB`)
   - `ingest_openaq` (`window_hours`, `batch_size` from `connectors.poll_timeseries_batch_size`, default 56)
@@ -34,7 +43,8 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
   - Requires `X-Cron-Secret` when `SB_UK_AQ_CRON_SECRET` is set.
   - Uses the Supabase service role key to read connector settings.
   - Uses `SB_ANON_JWT` (falls back to service role) to call ingest functions.
-  - Runs history outbox draining on every dispatcher invocation (before connector selection).
+  - Runs history outbox draining in `mode=enqueue` before selection.
+  - Skips history outbox draining in `mode=run_queue` to maximize job execution time.
   - Outbox drain repeats up to `HISTORY_OUTBOX_DISPATCH_MAX_FLUSHES` batches per dispatcher run (default `3`).
   - Uses a runtime budget guard to avoid platform timeout overruns:
     - `DISPATCH_TIME_BUDGET_MS` (default `120000`)
@@ -42,14 +52,19 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
     - `DISPATCH_EDGE_CALL_TIMEOUT_MS` (default `90000`)
     - Tiny/invalid ms values are ignored and reset to defaults (minimums: budget `>=6000`, shutdown buffer `>=1000`, edge timeout `>=5000`).
   - If `DISPATCH_SHUTDOWN_BUFFER_MS` is set too high, dispatcher now clamps it to keep at least one edge-call timeout window available (prevents no-op runs that skip outbox drain with `dispatch_time_budget`).
-  - Only dispatches connectors with `poll_enabled=true` (null/false are skipped).
-  - Dispatches one due connector per run, selecting the oldest `last_polled_at` (null first).
-    - When `dispatcher_parallel_ingest` is true, dispatches up to `max_runs_per_dispatch_call` connectors per run (still max one per connector).
-- Skips dispatch if any connector is in-flight (latest `uk_aq_ingest_runs` row has null `run_ended_at` within 10 minutes), and claims a connector slot before dispatch.
+  - Only enqueues/dispatches connectors with `poll_enabled=true` (null/false are skipped).
+  - `mode=enqueue` selects the oldest due connectors by `last_polled_at` (null first).
+    - When `dispatcher_parallel_ingest` is true, up to `max_runs_per_dispatch_call` connectors are enqueued per call.
+- In-flight behavior:
+  - `mode=enqueue` skips global dispatch if any connector is in-flight when parallel ingest is disabled.
+  - `mode=run_queue` claims one queued job and then uses `uk_aq_rpc_dispatch_claim` for per-connector in-flight safety.
   - When `dispatcher_parallel_ingest` is true, in-flight checks are per connector; other connectors can still dispatch.
   - Stale in-flight runs (>10 minutes) are auto-closed as `failed` with `in_flight_timeout` and a `uk_aq_ingest_runs` row is inserted.
   - If a connector has `last_run_end` null but the latest `uk_aq_ingest_runs` row has `run_ended_at`, the connector row is reconciled as `ingest_runs_reconciled`.
-  - Cloudflare worker cron runs every 2 minutes (`workers/uk_aq_dispatcher/wrangler.toml`).
+  - Cloudflare worker cron runs every 2 minutes (`workers/uk_aq_dispatcher/wrangler.toml`) and calls:
+    - `mode=enqueue` then
+    - `mode=run_queue`
+  - Worker fallback: if either queue-mode call fails, worker falls back to `mode=legacy` for that cron tick.
   - For `uk_air_sos`, uses `poll_timeseries_batch_size` with `uk_air_sos_select_timeseries_ids` (`uk_air_sos_timeseries_checkpoints`) and passes `timeseries_ids`/`timeseries_limit`.
   - Uses `uk_aq_public.uk_aq_rpc_dispatch_claim` to atomically claim a connector slot before dispatch.
   - Updates `connectors.last_run_start`, `last_run_end`, `last_run_status`, `last_run_message`, and `last_polled_at` for each attempted dispatch.
@@ -332,6 +347,8 @@ Optional:
 - `DISPATCH_TIME_BUDGET_MS` (optional; defaults to `120000`; dispatcher per-request runtime budget)
 - `DISPATCH_SHUTDOWN_BUFFER_MS` (optional; defaults to `10000`; reserved time before budget to return cleanly)
 - `DISPATCH_EDGE_CALL_TIMEOUT_MS` (optional; defaults to `90000`; per-child ingest timeout within dispatcher)
+- `DISPATCH_QUEUE_CLAIM_BATCH_LIMIT` (optional; defaults to `1`; queue jobs claimed per `mode=run_queue` call)
+- `DISPATCH_QUEUE_LEASE_SECONDS` (optional; defaults to `900`; queue job lease during processing)
 - `UK_AQ_EGRESS_LOG_SAMPLE_RATE` (optional; defaults to `0.2`; sample rate for `2xx` endpoint metrics)
 - `UK_AQ_EGRESS_METRICS_DB_ENABLED` (optional; defaults to `true`; DB write toggle for endpoint metrics)
 - `UK_AQ_EGRESS_METRICS_CLEANUP_SAMPLE_RATE` (optional; defaults to `0.01`; chance to run retention cleanup after write)
