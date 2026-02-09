@@ -121,23 +121,28 @@ const IN_FLIGHT_TIMEOUT_MINUTES = (() => {
 })();
 const DEFAULT_PARALLEL_INGEST = false;
 const DEFAULT_MAX_RUNS_PER_DISPATCH_CALL = 1;
+const MIN_EDGE_CALL_TIMEOUT_MS = 5000;
+const MIN_DISPATCH_TIME_BUDGET_MS = MIN_EDGE_CALL_TIMEOUT_MS + 1000;
+const MIN_DISPATCH_SHUTDOWN_BUFFER_MS = 1000;
 const HISTORY_OUTBOX_DISPATCH_MAX_FLUSHES = parsePositiveInt(
   Deno.env.get("HISTORY_OUTBOX_DISPATCH_MAX_FLUSHES"),
   3,
 );
-const DISPATCH_TIME_BUDGET_MS = parsePositiveInt(
+const DISPATCH_TIME_BUDGET_MS = parseMillisecondsSetting(
   Deno.env.get("DISPATCH_TIME_BUDGET_MS"),
   120000,
+  MIN_DISPATCH_TIME_BUDGET_MS,
 );
-const DISPATCH_SHUTDOWN_BUFFER_MS = parsePositiveInt(
+const DISPATCH_SHUTDOWN_BUFFER_MS = parseMillisecondsSetting(
   Deno.env.get("DISPATCH_SHUTDOWN_BUFFER_MS"),
   10000,
+  MIN_DISPATCH_SHUTDOWN_BUFFER_MS,
 );
-const DISPATCH_EDGE_CALL_TIMEOUT_MS = parsePositiveInt(
+const DISPATCH_EDGE_CALL_TIMEOUT_MS = parseMillisecondsSetting(
   Deno.env.get("DISPATCH_EDGE_CALL_TIMEOUT_MS"),
   90000,
+  MIN_EDGE_CALL_TIMEOUT_MS,
 );
-const MIN_EDGE_CALL_TIMEOUT_MS = 5000;
 const DISPATCH_EFFECTIVE_SHUTDOWN_BUFFER_MS = Math.min(
   DISPATCH_SHUTDOWN_BUFFER_MS,
   Math.max(0, DISPATCH_TIME_BUDGET_MS - MIN_EDGE_CALL_TIMEOUT_MS),
@@ -149,6 +154,22 @@ function parsePositiveInt(raw: string | undefined, fallback: number): number {
     return fallback;
   }
   return Math.max(1, Math.trunc(value));
+}
+
+function parseMillisecondsSetting(
+  raw: string | undefined,
+  fallback: number,
+  minValue: number,
+): number {
+  const value = Number(raw ?? "");
+  if (!Number.isFinite(value)) {
+    return fallback;
+  }
+  const normalized = Math.trunc(value);
+  if (normalized < minValue) {
+    return fallback;
+  }
+  return normalized;
 }
 
 function postgrestHeaders(schema = UK_AQ_CORE_SCHEMA): Record<string, string> {

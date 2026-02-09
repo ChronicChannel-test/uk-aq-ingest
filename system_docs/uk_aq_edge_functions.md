@@ -40,6 +40,7 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
     - `DISPATCH_TIME_BUDGET_MS` (default `120000`)
     - `DISPATCH_SHUTDOWN_BUFFER_MS` (default `10000`)
     - `DISPATCH_EDGE_CALL_TIMEOUT_MS` (default `90000`)
+    - Tiny/invalid ms values are ignored and reset to defaults (minimums: budget `>=6000`, shutdown buffer `>=1000`, edge timeout `>=5000`).
   - If `DISPATCH_SHUTDOWN_BUFFER_MS` is set too high, dispatcher now clamps it to keep at least one edge-call timeout window available (prevents no-op runs that skip outbox drain with `dispatch_time_budget`).
   - Only dispatches connectors with `poll_enabled=true` (null/false are skipped).
   - Dispatches one due connector per run, selecting the oldest `last_polled_at` (null first).
