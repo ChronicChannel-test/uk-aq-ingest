@@ -1014,7 +1014,7 @@ async function loadStationRefs(
   if (!data || !Array.isArray(data)) {
     return [];
   }
-  return data.map((ref) => String(ref).trim().toUpperCase()).filter(Boolean);
+  return data.map((ref) => String(ref).trim()).filter(Boolean);
 }
 
 async function loadUkAirSosTimeseriesIds(

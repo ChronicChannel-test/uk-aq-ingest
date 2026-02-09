@@ -404,7 +404,7 @@ function parseSpeciesList(value: string | string[] | undefined | null): string[]
 
 function parseStationRefs(value: string | string[] | undefined | null): string[] {
   const raw = Array.isArray(value) ? value.join(",") : (value ?? "");
-  return raw.split(",").map((item) => item.trim().toUpperCase()).filter(Boolean);
+  return raw.split(",").map((item) => item.trim()).filter(Boolean);
 }
 
 function parseStartDate(value: string | undefined | null): Date | null {
@@ -1668,6 +1668,9 @@ serve(async (req) => {
       const baseUrl = asString(request.base_url) ?? BREATHELONDON_BASE_URL;
       const speciesList = parseSpeciesList(request.species ?? "IPM25,INO2");
       const stationRefs = parseStationRefs(request.station_refs ?? []);
+      const stationRefLookup = new Set(
+        stationRefs.map((ref) => ref.trim().toLowerCase()).filter(Boolean),
+      );
       const initialDays = asNumber(request.initial_days, DEFAULT_INITIAL_DAYS) ?? DEFAULT_INITIAL_DAYS;
       const windowHours = asNumber(request.window_hours, DEFAULT_WINDOW_HOURS) ?? DEFAULT_WINDOW_HOURS;
       const sleepSeconds = asNumber(request.sleep_seconds, DEFAULT_SLEEP_SECONDS) ?? DEFAULT_SLEEP_SECONDS;
@@ -1801,7 +1804,10 @@ serve(async (req) => {
                 if (!row.station_ref) {
                   continue;
                 }
-                if (stationRefs.length && !stationRefs.includes(String(row.station_ref).toUpperCase())) {
+                if (
+                  stationRefLookup.size &&
+                  !stationRefLookup.has(String(row.station_ref).trim().toLowerCase())
+                ) {
                   continue;
                 }
                 stationRows.push(row);
