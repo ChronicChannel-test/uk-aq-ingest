@@ -2,13 +2,52 @@
 
 Date: 2026-02-02
 Scope: Analysis and plan only; no code changes performed.
-Status update: 2026-02-06 (tracked against current repos).
+Status update: 2026-02-09 (tracked against current repos and live queue behavior).
 
 Status markers:
 - ✅ Done
 - 🎯 Next (highest impact)
 - ⏳ Pending
 - [ONLY IF NECESSARY] Defer unless needed after higher-priority changes
+
+Current state snapshot (Monday, February 9, 2026):
+- History outbox backlog is actively reducing again (from ~4,585 rows at 12:07 UTC to ~4,516 rows at 12:54 UTC).
+- Dispatcher now includes automatic outbox draining logic (`uk_aq_dispatch_polls`) before connector dispatch.
+- Highest remaining egress pressure is still front-end map polling (`uk_aq_latest` with `limit=10000`) and repeated high-frequency requests.
+
+---
+
+## Immediate Next (execution order)
+
+1) 🎯 Complete deploy and runtime verification for outbox auto-drain
+- Deploy updated `uk_aq_dispatch_polls` and verify `history_outbox` stats in responses/logs.
+- Confirm queue continues to trend down over at least 2-4 hours on Monday, February 9, 2026.
+- If drain rate is too low, tune:
+  - `HISTORY_OUTBOX_DISPATCH_MAX_FLUSHES` (dispatcher-side batches/run)
+  - `HISTORY_OUTBOX_FLUSH_LIMIT` (rows/claim batch)
+
+2) 🎯 Prevent new bad backlog from old bundles
+- Redeploy all active `ingest_*` edge functions so history dual-write/runtime behavior is consistent.
+- Validate no fresh `history_observation_outbox.last_error` entries of `Invalid schema: public` after deploy.
+
+3) 🎯 Add endpoint-level egress observability
+- Add response size + duration logging on highest-traffic public endpoints:
+  - `uk_aq_latest`
+  - `uk_aq_pcon_hex`
+  - `uk_aq_la_hex`
+  - `uk_aq_timeseries`
+- Track per-endpoint request count, average payload bytes, and p95 payload bytes.
+
+4) [ONLY IF NECESSARY] Reduce primary front-end driver safely
+- Keep incremental `since`/`since_id` path as the primary strategy first.
+- Only reduce default map poll pressure if Steps 1-3 and 5 are insufficient:
+  - Start with 60s -> 120s for hex map panels.
+  - Keep manual refresh and visibility-trigger refresh behavior.
+- Re-measure user-visible freshness impact before any further changes.
+
+5) ⏳ Roll out ETag/If-None-Match across remaining public endpoints
+- `uk_aq_latest` already supports ETag/304.
+- Extend same pattern to `uk_aq_pcon_hex`, `uk_aq_la_hex`, and `uk_aq_timeseries`.
 
 This plan is based on the authoritative cross-repo READMEs and a scan of all five repos for Supabase-related network calls, polling patterns, and large payload risks.
 

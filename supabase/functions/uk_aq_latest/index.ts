@@ -3,6 +3,7 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { cacheControlHeaders } from "../_shared/cache.ts";
 import { createWeakEtag, ifNoneMatchMatches } from "../_shared/etag.ts";
+import { logEndpointEgress } from "../_shared/egress_metrics.ts";
 
 const DEFAULT_STATION_LIKE = null;
 const DEFAULT_LIMIT = 1000;
@@ -87,8 +88,13 @@ serve(async (req) => {
       headers: { ...CORS_HEADERS, ...cacheControlHeaders(405) },
     });
   }
+  const startedAtMs = Date.now();
+  const finish = (response: Response, fields: Record<string, unknown> = {}) =>
+    logEndpointEgress(req, "uk_aq_latest", startedAtMs, response, fields);
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-    return json({ error: "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY." }, 500);
+    return await finish(json({ error: "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY." }, 500), {
+      error_type: "missing_env",
+    });
   }
 
   const url = new URL(req.url);
@@ -111,16 +117,35 @@ serve(async (req) => {
   const rawSinceId = url.searchParams.get("since_id");
   const sinceId = rawSinceId === null ? null : normalizeCursorId(rawSinceId);
   if (rawSince !== null && since === null) {
-    return json({ error: "Invalid since timestamp. Provide ISO-8601 datetime (e.g. 2026-02-07T10:30:00Z)." }, 400);
+    return await finish(
+      json({ error: "Invalid since timestamp. Provide ISO-8601 datetime (e.g. 2026-02-07T10:30:00Z)." }, 400),
+      { error_type: "invalid_since" },
+    );
   }
   if (rawSinceId !== null && sinceId === null) {
-    return json({ error: "Invalid since_id. Provide a non-negative integer." }, 400);
+    return await finish(json({ error: "Invalid since_id. Provide a non-negative integer." }, 400), {
+      error_type: "invalid_since_id",
+    });
   }
   if (!since && sinceId !== null) {
-    return json({ error: "since_id requires since." }, 400);
+    return await finish(json({ error: "since_id requires since." }, 400), {
+      error_type: "since_id_without_since",
+    });
   }
   const ifNoneMatch = req.headers.get("if-none-match");
   const effectiveSinceId = since ? (sinceId ?? 0) : null;
+  const requestFields = {
+    has_region: Boolean(region),
+    has_pcon_code: Boolean(pconCode),
+    has_station_like: Boolean(stationLike),
+    has_connector_id: Boolean(connectorId),
+    pollutant: pollutant ?? null,
+    window: windowLabel,
+    limit,
+    has_since: Boolean(since),
+    has_since_id: effectiveSinceId !== null,
+    has_if_none_match: Boolean(ifNoneMatch),
+  };
 
   try {
     if (since && ifNoneMatch) {
@@ -154,9 +179,16 @@ serve(async (req) => {
           payload: emptyPayload,
         });
         if (ifNoneMatchMatches(ifNoneMatch, emptyEtag)) {
-          return notModified(emptyEtag);
+          return await finish(notModified(emptyEtag), {
+            ...requestFields,
+            result: "empty_304",
+          });
         }
-        return json(emptyPayload, 200, { ETag: emptyEtag });
+        return await finish(json(emptyPayload, 200, { ETag: emptyEtag }), {
+          ...requestFields,
+          result: "empty_200",
+          row_count: 0,
+        });
       }
     }
     const result = await loadLatest({
@@ -188,12 +220,16 @@ serve(async (req) => {
       payload,
     });
     if (ifNoneMatchMatches(ifNoneMatch, etag)) {
-      return notModified(etag);
+      return await finish(notModified(etag), { ...requestFields, result: "not_modified" });
     }
-    return json(payload, 200, { ETag: etag });
+    return await finish(json(payload, 200, { ETag: etag }), {
+      ...requestFields,
+      result: "ok",
+      row_count: result.rows.length,
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    return json({ error: message }, 500);
+    return await finish(json({ error: message }, 500), { ...requestFields, error_type: "runtime" });
   }
 });
 

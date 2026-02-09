@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { cacheControlHeaders, CACHE_CONTROL_SUCCESS_SMAXAGE_300 } from "../_shared/cache.ts";
+import { logEndpointEgress } from "../_shared/egress_metrics.ts";
 
 const DEFAULT_WINDOW = "24h";
 
@@ -91,27 +92,45 @@ serve(async (req) => {
       headers: { ...CORS_HEADERS, ...cacheControlHeaders(405, CACHE_CONTROL_SUCCESS_SMAXAGE_300) },
     });
   }
+  const startedAtMs = Date.now();
+  const finish = (response: Response, fields: Record<string, unknown> = {}) =>
+    logEndpointEgress(req, "uk_aq_timeseries", startedAtMs, response, fields);
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-    return json({ error: "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY." }, 500);
+    return await finish(json({ error: "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY." }, 500), {
+      error_type: "missing_env",
+    });
   }
 
   const url = new URL(req.url);
   const timeseriesId = parseId(url.searchParams.get("timeseries_id"));
   if (!timeseriesId) {
-    return json({ error: "Missing or invalid timeseries_id." }, 400);
+    return await finish(json({ error: "Missing or invalid timeseries_id." }, 400), {
+      error_type: "invalid_timeseries_id",
+    });
   }
   const windowLabel = normalizeWindow(url.searchParams.get("window"));
   const rawLimit = url.searchParams.get("limit");
   const limit = parseOptionalLimit(rawLimit);
   if (rawLimit !== null && limit === null) {
-    return json({ error: "Invalid limit. Provide a positive integer or omit limit." }, 400);
+    return await finish(json({ error: "Invalid limit. Provide a positive integer or omit limit." }, 400), {
+      error_type: "invalid_limit",
+    });
   }
   const rawSince = url.searchParams.get("since");
   const since = rawSince === null ? null : normalizeTimestamp(rawSince);
   if (rawSince !== null && since === null) {
-    return json({ error: "Invalid since timestamp. Provide ISO-8601 datetime (e.g. 2026-02-07T10:30:00Z)." }, 400);
+    return await finish(
+      json({ error: "Invalid since timestamp. Provide ISO-8601 datetime (e.g. 2026-02-07T10:30:00Z)." }, 400),
+      { error_type: "invalid_since" },
+    );
   }
   const hours = WINDOW_HOURS[windowLabel] ?? WINDOW_HOURS[DEFAULT_WINDOW];
+  const requestFields = {
+    timeseries_id: timeseriesId,
+    window: windowLabel,
+    limit: limit ?? null,
+    has_since: Boolean(since),
+  };
 
   const end = new Date();
   const startTime = new Date(end.getTime() - hours * 60 * 60 * 1000);
@@ -134,7 +153,7 @@ serve(async (req) => {
     const row = Array.isArray(data) && data.length > 0 ? data[0] : null;
     const rows = Array.isArray(row?.data) ? row.data : [];
     const nextSince = maxObservedTimestamp(rows, since);
-    return json({
+    return await finish(json({
       timeseries_id: row?.timeseries_id ?? timeseriesId,
       window: row?.window ?? windowLabel,
       start: row?.start ?? startTime.toISOString(),
@@ -144,10 +163,10 @@ serve(async (req) => {
       count: row?.count ?? rows.length,
       guideline: row?.guideline ?? null,
       data: rows,
-    });
+    }), { ...requestFields, row_count: rows.length });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    return json({ error: message }, 500);
+    return await finish(json({ error: message }, 500), { ...requestFields, error_type: "runtime" });
   }
 });
 

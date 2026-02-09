@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { cacheControlHeaders } from "../_shared/cache.ts";
+import { logEndpointEgress } from "../_shared/egress_metrics.ts";
 
 const DEFAULT_LIMIT = 10000;
 const MAX_LIMIT = 20000;
@@ -472,14 +473,24 @@ serve(async (req) => {
       headers: { ...CORS_HEADERS, ...cacheControlHeaders(405) },
     });
   }
+  const startedAtMs = Date.now();
+  const finish = (response: Response, fields: Record<string, unknown> = {}) =>
+    logEndpointEgress(req, "uk_aq_la_hex", startedAtMs, response, fields);
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-    return json({ error: "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY." }, 500);
+    return await finish(json({ error: "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY." }, 500), {
+      error_type: "missing_env",
+    });
   }
 
   const url = new URL(req.url);
   const laVersion = normalizeText(url.searchParams.get("la_version"));
   const region = normalizeText(url.searchParams.get("region"));
   const limit = parseLimit(url.searchParams.get("limit"), DEFAULT_LIMIT);
+  const requestFields = {
+    has_la_version: Boolean(laVersion),
+    has_region: Boolean(region),
+    limit,
+  };
 
   try {
     const rows = await loadLatest({ laVersion, region, limit });
@@ -487,16 +498,16 @@ serve(async (req) => {
       new Set(rows.map((row) => row.la_version).filter(Boolean)),
     ).sort();
     const lastUpdated = maxTimestamp(rows.map((row) => row.latest_value_at));
-    return json({
+    return await finish(json({
       metric_default: "median",
       count: rows.length,
       la_versions: versions,
       last_updated: lastUpdated,
       data: rows,
-    });
+    }), { ...requestFields, row_count: rows.length });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    return json({ error: message }, 500);
+    return await finish(json({ error: message }, 500), { ...requestFields, error_type: "runtime" });
   }
 });
 
