@@ -28,7 +28,7 @@ This network uses OpenAQ's API to pull UK monitoring locations and latest values
 
 ## Poll cadence
 - Intended polling cadence: every 60 minutes with a 6-hour window (configurable via connector settings).
-- Runtime budget: default 110s (`OPENAQ_MAX_RUNTIME_SECONDS`).
+- Runtime budget: default 120s (`OPENAQ_MAX_RUNTIME_SECONDS`).
 - Uses per-station scheduling in `uk_aq_raw.openaq_station_checkpoints` (next_due_at, last_observed_at, sample arrays).
   `next_due_at` is set whenever `last_observed_at` advances. If either interval or lag has fewer
   than 10 samples, it is set to `now() + 5 minutes`. Otherwise it uses the last observed time plus

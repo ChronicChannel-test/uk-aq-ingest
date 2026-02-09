@@ -140,7 +140,7 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
   - Stores OpenAQ owner in `station_metadata.attributes.openaq_owner` when present and not `Unknown*`.
   - Updates `timeseries.last_value` and `timeseries.last_value_at` based on the most recent measurement.
   - Uses public RPCs for database writes (schemas are not exposed via PostgREST).
-  - Enforces a runtime budget (default 110s) and returns `partial=true` when exceeded.
+  - Enforces a runtime budget (default 120s) and returns `partial=true` when exceeded.
   - Requires `X-Cron-Secret` when `SB_UK_AQ_CRON_SECRET` is set.
   - Stops issuing new requests when rate-limit remaining drops below the threshold (default 5), on HTTP 429, on OpenAQ HTTP 401, or when the per-run request budget is exhausted.
 - Logs:
@@ -372,7 +372,7 @@ Optional:
 - `OPENAQ_PAGE_LIMIT` (optional; defaults to `1000`)
 - `OPENAQ_MAX_PAGES` (optional; defaults to `50`)
 - `OPENAQ_CONCURRENCY` (optional; defaults to `6`)
-- `OPENAQ_MAX_RUNTIME_SECONDS` (optional; defaults to `110`)
+- `OPENAQ_MAX_RUNTIME_SECONDS` (optional; defaults to `120`)
 - `OPENAQ_RATE_LIMIT_RETRIES` (optional; defaults to `3`)
 - `OPENAQ_INGEST_STATION_FETCH` (optional; defaults to `false`)
 - `OPENAQ_TIERED_LIMIT` (optional; defaults to `50`)
@@ -383,7 +383,7 @@ Optional:
 - `BREATHELONDON_CONNECTOR_CODE` / `BREATHELONDON_SERVICE_REF` (optional override)
 - `BREATHELONDON_SERVICE_LABEL` (optional override)
 - `BREATHELONDON_USER_AGENT` (optional override)
-- `BREATHELONDON_MAX_RUNTIME_SECONDS` (optional; defaults to 110)
+- `BREATHELONDON_MAX_RUNTIME_SECONDS` (optional; defaults to 120)
 - `LAQN_BASE_URL` (optional override for ERG LAQN API base URL)
 - `LAQN_CONNECTOR_CODE` / `LAQN_SERVICE_REF` (optional override)
 - `LAQN_CONNECTOR_LABEL` (optional override, `LAQN_SERVICE_LABEL` also accepted)
@@ -395,8 +395,8 @@ Optional:
 - `LAQN_RAW_DROPBOX_ALLOWED_SUPABASE_URL` (optional allowlist override for ERG LAQN raw uploads)
 - `LAQN_ERROR_DROPBOX_ALLOWED_SUPABASE_URL` (optional allowlist override for ERG LAQN error uploads)
 - `LAQN_ERROR_DROPBOX_FOLDER` (optional override for ERG LAQN error folder)
-- `LAQN_MAX_RUNTIME_SECONDS` (optional; defaults to 110)
-- `UK_AIR_SOS_MAX_RUNTIME_SECONDS` (optional; defaults to 110)
+- `LAQN_MAX_RUNTIME_SECONDS` (optional; defaults to 120)
+- `UK_AIR_SOS_MAX_RUNTIME_SECONDS` (optional; defaults to 120)
 - `SB_UK_AQ_CRON_SECRET` (when set, ingest functions require `X-Cron-Secret`)
 
 ## Notes

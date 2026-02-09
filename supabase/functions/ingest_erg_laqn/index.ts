@@ -70,7 +70,7 @@ const DEFAULT_SPECIES = ["NO2", "PM10", "PM25", "O3"];
 const DEFAULT_DAYS = 1;
 const DEFAULT_BATCH_SIZE = 500;
 const DEFAULT_SLEEP_SECONDS = 0.2;
-const DEFAULT_MAX_RUNTIME_SECONDS = 110;
+const DEFAULT_MAX_RUNTIME_SECONDS = 120;
 const DEFAULT_TIMEOUT_MS = 30_000;
 const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
 const UPSERT_PREFER = "resolution=merge-duplicates,return=minimal";
