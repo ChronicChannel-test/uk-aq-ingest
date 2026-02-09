@@ -55,7 +55,7 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
     - Tiny/invalid ms values are ignored and reset to defaults (minimums: budget `>=6000`, shutdown buffer `>=1000`, edge timeout `>=5000`).
   - If `DISPATCH_SHUTDOWN_BUFFER_MS` is set too high, dispatcher now clamps it to keep at least one edge-call timeout window available (prevents no-op runs that skip outbox drain with `dispatch_time_budget`).
   - Only enqueues/dispatches connectors with `poll_enabled=true` (null/false are skipped).
-  - `mode=enqueue` selects the oldest due connectors by `last_polled_at` (null first).
+  - `mode=enqueue` selects oldest due connectors by dispatch anchor (`last_run_start` fallback `last_polled_at`, null first).
     - Enqueues up to `max_runs_per_dispatch_call` connectors per call.
 - In-flight behavior:
   - `mode=enqueue` skips global dispatch if any connector is in-flight when `max_runs_per_dispatch_call=1`.

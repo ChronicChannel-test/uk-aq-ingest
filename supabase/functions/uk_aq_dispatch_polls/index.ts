@@ -43,7 +43,7 @@ type DispatchMode = "enqueue" | "run_queue" | "legacy";
 type DispatchCandidate = {
   connectorCode: string;
   connector: ConnectorRow | null;
-  lastPolledMs: number;
+  dispatchAnchorMs: number;
   queueJobId?: number;
 };
 
@@ -409,9 +409,14 @@ function parseDate(value: string | null): Date | null {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
-function getLastPolledMs(connector: ConnectorRow | null): number {
-  const lastPolled = parseDate(connector?.last_polled_at ?? null);
-  return lastPolled ? lastPolled.getTime() : Number.NEGATIVE_INFINITY;
+function getDispatchAnchorDate(connector: ConnectorRow | null): Date | null {
+  return parseDate(connector?.last_run_start ?? null) ??
+    parseDate(connector?.last_polled_at ?? null);
+}
+
+function getDispatchAnchorMs(connector: ConnectorRow | null): number {
+  const anchor = getDispatchAnchorDate(connector);
+  return anchor ? anchor.getTime() : Number.NEGATIVE_INFINITY;
 }
 
 function getIntervalMinutes(
@@ -467,11 +472,11 @@ function isDue(
   if (!Number.isFinite(intervalMinutes) || intervalMinutes <= 0) {
     return true;
   }
-  const lastPolled = parseDate(connector?.last_polled_at ?? null);
-  if (!lastPolled) {
+  const dispatchAnchor = getDispatchAnchorDate(connector);
+  if (!dispatchAnchor) {
     return true;
   }
-  const elapsedMs = now.getTime() - lastPolled.getTime();
+  const elapsedMs = now.getTime() - dispatchAnchor.getTime();
   return elapsedMs >= intervalMinutes * 60 * 1000;
 }
 
@@ -684,8 +689,8 @@ function selectDueConnectors(
     return { selected: [], skipped: [] };
   }
   const sorted = [...dueCandidates].sort((a, b) => {
-    if (a.lastPolledMs !== b.lastPolledMs) {
-      return a.lastPolledMs - b.lastPolledMs;
+    if (a.dispatchAnchorMs !== b.dispatchAnchorMs) {
+      return a.dispatchAnchorMs - b.dispatchAnchorMs;
     }
     return a.connectorCode.localeCompare(b.connectorCode);
   });
@@ -1314,7 +1319,7 @@ serve(async (req) => {
       selected.push({
         connectorCode,
         connector,
-        lastPolledMs: getLastPolledMs(connector),
+        dispatchAnchorMs: getDispatchAnchorMs(connector),
         queueJobId: Number(row.id),
       });
     }
@@ -1371,7 +1376,7 @@ serve(async (req) => {
       dueCandidates.push({
         connectorCode,
         connector,
-        lastPolledMs: getLastPolledMs(connector),
+        dispatchAnchorMs: getDispatchAnchorMs(connector),
       });
     }
 
@@ -1401,7 +1406,7 @@ serve(async (req) => {
       : null,
     due_candidates: dueCandidates.map((item) => ({
       connector_code: item.connectorCode,
-      last_polled_ms: item.lastPolledMs,
+      dispatch_anchor_ms: item.dispatchAnchorMs,
     })),
     queue_claimed: queueClaimRows.map((item) => ({
       id: item.id,
