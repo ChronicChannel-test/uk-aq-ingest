@@ -1973,6 +1973,10 @@ serve(async (req) => {
                     continue;
                   }
                   const checkpointDate = previousLastObserved ? new Date(previousLastObserved) : null;
+                  let checkpointCutoffMs = checkpointDate ? checkpointDate.getTime() : null;
+                  if (checkpointCutoffMs !== null && !Number.isFinite(checkpointCutoffMs)) {
+                    checkpointCutoffMs = null;
+                  }
                   let lastObserved = previousLastObserved ?? null;
                   let lastValue: number | null = null;
                   let startTime: Date;
@@ -2011,9 +2015,19 @@ serve(async (req) => {
                         timeseriesId,
                         Number(connector.id),
                       );
-                      if (rows.length) {
+                      const freshRows = checkpointCutoffMs === null
+                        ? rows
+                        : rows.filter((point) => {
+                          const observedAt = asString(point.observed_at);
+                          if (!observedAt) {
+                            return false;
+                          }
+                          const observedMs = Date.parse(observedAt);
+                          return Number.isFinite(observedMs) && observedMs > checkpointCutoffMs!;
+                        });
+                      if (freshRows.length) {
                         if (!dryRun) {
-                          for (const batch of chunk(rows, batchSize)) {
+                          for (const batch of chunk(freshRows, batchSize)) {
                             observationsUpserted += await upsertObservations(batch);
                             await writeHistoryWithOutbox(
                               publicRpcRequest,
@@ -2039,6 +2053,10 @@ serve(async (req) => {
                       if (windowLast && (!lastObserved || windowLast > lastObserved)) {
                         lastObserved = windowLast;
                         lastValue = windowValue;
+                        const windowLastMs = Date.parse(windowLast);
+                        if (Number.isFinite(windowLastMs)) {
+                          checkpointCutoffMs = windowLastMs;
+                        }
                       }
                     } catch (_error) {
                       break;
