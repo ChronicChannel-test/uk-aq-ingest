@@ -49,7 +49,7 @@ const DEFAULT_SERVICE_LABEL = "Sensor.Community";
 const DEFAULT_COUNTRY = "GB";
 const DEFAULT_USER_AGENT = "uk-air-quality-networks";
 const DEFAULT_TIMEOUT_MS = 30_000;
-const DEFAULT_MAX_RUNTIME_SECONDS = 110;
+const DEFAULT_MAX_RUNTIME_SECONDS = 120;
 const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
 
 const UK_BBOX = {

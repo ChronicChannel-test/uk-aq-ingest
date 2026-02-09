@@ -48,9 +48,9 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
   - Skips history outbox draining in `mode=run_queue` to maximize job execution time.
   - Outbox drain repeats up to `HISTORY_OUTBOX_DISPATCH_MAX_FLUSHES` batches per dispatcher run (default `3`).
   - Uses a runtime budget guard to avoid platform timeout overruns:
-    - `DISPATCH_TIME_BUDGET_MS` (default `120000`)
+    - `DISPATCH_TIME_BUDGET_MS` (default `140000`)
     - `DISPATCH_SHUTDOWN_BUFFER_MS` (default `10000`)
-    - `DISPATCH_EDGE_CALL_TIMEOUT_MS` (default `90000`)
+    - `DISPATCH_EDGE_CALL_TIMEOUT_MS` (default `120000`)
     - Tiny/invalid ms values are ignored and reset to defaults (minimums: budget `>=6000`, shutdown buffer `>=1000`, edge timeout `>=5000`).
   - If `DISPATCH_SHUTDOWN_BUFFER_MS` is set too high, dispatcher now clamps it to keep at least one edge-call timeout window available (prevents no-op runs that skip outbox drain with `dispatch_time_budget`).
   - Only enqueues/dispatches connectors with `poll_enabled=true` (null/false are skipped).
@@ -345,9 +345,9 @@ Optional:
 - `UK_AQ_CORE_SCHEMA` (defaults to `uk_aq_core`; used for PostgREST profile headers)
 - `UK_AQ_RAW_SCHEMA` (defaults to `uk_aq_raw`; used for raw tables like `error_logs` and checkpoint tables)
 - `HISTORY_OUTBOX_DISPATCH_MAX_FLUSHES` (optional; defaults to `3`; dispatcher outbox batches per run)
-- `DISPATCH_TIME_BUDGET_MS` (optional; defaults to `120000`; dispatcher per-request runtime budget)
+- `DISPATCH_TIME_BUDGET_MS` (optional; defaults to `140000`; dispatcher per-request runtime budget)
 - `DISPATCH_SHUTDOWN_BUFFER_MS` (optional; defaults to `10000`; reserved time before budget to return cleanly)
-- `DISPATCH_EDGE_CALL_TIMEOUT_MS` (optional; defaults to `90000`; per-child ingest timeout within dispatcher)
+- `DISPATCH_EDGE_CALL_TIMEOUT_MS` (optional; defaults to `120000`; per-child ingest timeout within dispatcher)
 - `DISPATCH_QUEUE_CLAIM_BATCH_LIMIT` (optional; defaults to `1`; queue jobs claimed per `mode=run_queue` call)
 - `DISPATCH_QUEUE_LEASE_SECONDS` (optional; defaults to `900`; queue job lease during processing)
 - `UK_AQ_EGRESS_LOG_SAMPLE_RATE` (optional; defaults to `0.2`; sample rate for `2xx` endpoint metrics)
@@ -361,7 +361,7 @@ Optional:
 - `SCOMM_ERROR_DROPBOX_FOLDER` (optional override for Sensor.Community)
 - `SCOMM_ERROR_DROPBOX_ALLOWED_SUPABASE_URL` (optional allowlist for Sensor.Community error uploads)
 - `SCOMM_INGEST_MET_FIELDS` (defaults to `false`; set `true` to ingest temperature/humidity/pressure)
-- `SCOMM_MAX_RUNTIME_SECONDS` (optional; defaults to 110)
+- `SCOMM_MAX_RUNTIME_SECONDS` (optional; defaults to 120)
 - `OPENAQ_BASE_URL` (optional; defaults to `https://api.openaq.org/v3`)
 - `OPENAQ_API_KEY` (required for `ingest_openaq`)
 - `OPENAQ_CONNECTOR_CODE` (optional; defaults to `openaq`)

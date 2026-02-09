@@ -60,9 +60,9 @@ Queue retry behavior:
 Relevant env vars:
 - `DISPATCH_QUEUE_CLAIM_BATCH_LIMIT` (default `1`)
 - `DISPATCH_QUEUE_LEASE_SECONDS` (default `900`)
-- `DISPATCH_TIME_BUDGET_MS` (default `120000`)
+- `DISPATCH_TIME_BUDGET_MS` (default `140000`)
 - `DISPATCH_SHUTDOWN_BUFFER_MS` (default `10000`)
-- `DISPATCH_EDGE_CALL_TIMEOUT_MS` (default `90000`)
+- `DISPATCH_EDGE_CALL_TIMEOUT_MS` (default `120000`)
 
 ## Operational Notes
 

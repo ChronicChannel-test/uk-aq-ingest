@@ -154,7 +154,7 @@ const DISPATCH_QUEUE_LEASE_SECONDS = parsePositiveInt(
 );
 const DISPATCH_TIME_BUDGET_MS = parseMillisecondsSetting(
   Deno.env.get("DISPATCH_TIME_BUDGET_MS"),
-  120000,
+  140000,
   MIN_DISPATCH_TIME_BUDGET_MS,
 );
 const DISPATCH_SHUTDOWN_BUFFER_MS = parseMillisecondsSetting(
@@ -164,7 +164,7 @@ const DISPATCH_SHUTDOWN_BUFFER_MS = parseMillisecondsSetting(
 );
 const DISPATCH_EDGE_CALL_TIMEOUT_MS = parseMillisecondsSetting(
   Deno.env.get("DISPATCH_EDGE_CALL_TIMEOUT_MS"),
-  90000,
+  120000,
   MIN_EDGE_CALL_TIMEOUT_MS,
 );
 const DISPATCH_EFFECTIVE_SHUTDOWN_BUFFER_MS = Math.min(
