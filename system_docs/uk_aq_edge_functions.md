@@ -8,6 +8,10 @@ History dual-write note: shared history writes normalize `HISTORY_SCHEMA` /
 `HISTORY_DB_SCHEMA` values `uk_aq_history` and `public` to `uk_aq_public` for
 RPC calls, because history RPCs are exposed from `uk_aq_public`.
 
+Endpoint egress observability note: public read endpoints emit sampled egress
+metrics and persist them via RPCs defined in `supabase/uk_aq_egress_metrics.sql`
+(`uk_aq_record_endpoint_metric`, `uk_aq_cleanup_endpoint_metrics`).
+
 ## Functions
 
 ### uk_aq_dispatch_polls
@@ -29,6 +33,10 @@ RPC calls, because history RPCs are exposed from `uk_aq_public`.
   - Uses `SB_ANON_JWT` (falls back to service role) to call ingest functions.
   - Runs history outbox draining on every dispatcher invocation (before connector selection).
   - Outbox drain repeats up to `HISTORY_OUTBOX_DISPATCH_MAX_FLUSHES` batches per dispatcher run (default `3`).
+  - Uses a runtime budget guard to avoid platform timeout overruns:
+    - `DISPATCH_TIME_BUDGET_MS` (default `120000`)
+    - `DISPATCH_SHUTDOWN_BUFFER_MS` (default `10000`)
+    - `DISPATCH_EDGE_CALL_TIMEOUT_MS` (default `90000`)
   - Only dispatches connectors with `poll_enabled=true` (null/false are skipped).
   - Dispatches one due connector per run, selecting the oldest `last_polled_at` (null first).
     - When `dispatcher_parallel_ingest` is true, dispatches up to `max_runs_per_dispatch_call` connectors per run (still max one per connector).
@@ -184,6 +192,8 @@ RPC calls, because history RPCs are exposed from `uk_aq_public`.
 - RPC backing: `uk_aq_latest_rpc` via `/rest/v1/rpc/uk_aq_latest_rpc`.
 - Cache-Control: success responses use `public, max-age=60, s-maxage=180, stale-while-revalidate=300, stale-if-error=86400`; errors use `no-store`.
 - Memberships are returned as-is (no filtering by network membership).
+- Egress observability: sampled success responses plus all `304`/`4xx`/`5xx`
+  are recorded via `_shared/egress_metrics.ts` (console logs + DB metrics RPC).
 - `display_name` logic:
   - Uses `connectors.station_display_name_template` if present, with tokens `{station_name}`, `{station_label}`, `{station_ref}`.
   - Fallback is always `{station_name} - {station_ref}` (or `station_label` if `station_name` is missing).
@@ -199,6 +209,8 @@ curl "https://YOUR_PROJECT.supabase.co/functions/v1/uk_aq_latest?region=London&p
 - Returns: timeseries rows with station + phenomenon metadata, `display_name`, and latest values.
 - `display_name` logic matches `uk_aq_latest`.
 - Cache-Control: success responses use `public, max-age=60, s-maxage=180, stale-while-revalidate=300, stale-if-error=86400`; errors use `no-store`.
+- Egress observability: sampled success responses plus all `304`/`4xx`/`5xx`
+  are recorded via `_shared/egress_metrics.ts`.
 - Notes:
   - Explicitly embeds `connectors` via `timeseries_connector_id_fkey` to avoid ambiguous PostgREST relationships after observations gained `connector_id`.
 
@@ -208,6 +220,8 @@ curl "https://YOUR_PROJECT.supabase.co/functions/v1/uk_aq_latest?region=London&p
 - Returns: timeseries rows with station + phenomenon metadata, `display_name`, and latest values.
 - `display_name` logic matches `uk_aq_latest`.
 - Cache-Control: success responses use `public, max-age=60, s-maxage=300, stale-while-revalidate=300, stale-if-error=86400`; errors use `no-store`.
+- Egress observability: sampled success responses plus all `304`/`4xx`/`5xx`
+  are recorded via `_shared/egress_metrics.ts`.
 - RPC backing: `uk_aq_surbiton_latest_rpc` via `/rest/v1/rpc/uk_aq_surbiton_latest_rpc`.
 - Notes:
   - Explicitly embeds `connectors` via `timeseries_connector_id_fkey` to avoid ambiguous PostgREST relationships after observations gained `connector_id`.
@@ -219,6 +233,8 @@ curl "https://YOUR_PROJECT.supabase.co/functions/v1/uk_aq_latest?region=London&p
 - Params: `connector_id`, `region`, `station_like`, `limit`, `page_size`.
 - RPC backing: `uk_aq_stations_rpc` via `/rest/v1/rpc/uk_aq_stations_rpc`.
 - Cache-Control: success responses use `public, max-age=60, s-maxage=300, stale-while-revalidate=300, stale-if-error=86400`; errors use `no-store`.
+- Egress observability: sampled success responses plus all `304`/`4xx`/`5xx`
+  are recorded via `_shared/egress_metrics.ts`.
 
 ### uk_aq_la_hex
 - Purpose: Serve LA-level latest PM2.5 summaries (median + mean) for the hex cartogram.
@@ -227,6 +243,8 @@ curl "https://YOUR_PROJECT.supabase.co/functions/v1/uk_aq_latest?region=London&p
 - Params: `region`, `la_version`, `limit`.
 - RPC backing: `uk_aq_la_hex_rpc` via `/rest/v1/rpc/uk_aq_la_hex_rpc`.
 - Cache-Control: success responses use `public, max-age=60, s-maxage=180, stale-while-revalidate=300, stale-if-error=86400`; errors use `no-store`.
+- Egress observability: sampled success responses plus all `304`/`4xx`/`5xx`
+  are recorded via `_shared/egress_metrics.ts`.
 
 ### uk_aq_pcon_hex
 - Purpose: Serve constituency-level latest PM2.5 summaries (median + mean) for the hex cartogram.
@@ -235,6 +253,8 @@ curl "https://YOUR_PROJECT.supabase.co/functions/v1/uk_aq_latest?region=London&p
 - Params: `pcon_version`, `limit`.
 - RPC backing: `uk_aq_pcon_hex_rpc` via `/rest/v1/rpc/uk_aq_pcon_hex_rpc`.
 - Cache-Control: success responses use `public, max-age=60, s-maxage=300, stale-while-revalidate=300, stale-if-error=86400`; errors use `no-store`.
+- Egress observability: sampled success responses plus all `304`/`4xx`/`5xx`
+  are recorded via `_shared/egress_metrics.ts`.
 
 ### uk_aq_timeseries
 - Purpose: Serve raw observation points for a single timeseries.
@@ -244,6 +264,8 @@ curl "https://YOUR_PROJECT.supabase.co/functions/v1/uk_aq_latest?region=London&p
 - Notes: when `limit` is omitted, all rows in the requested window are returned (no default cap).
 - RPC backing: `uk_aq_timeseries_rpc` via `/rest/v1/rpc/uk_aq_timeseries_rpc`.
 - Cache-Control: success responses use `public, max-age=60, s-maxage=300, stale-while-revalidate=300, stale-if-error=86400`; errors use `no-store`.
+- Egress observability: sampled success responses plus all `304`/`4xx`/`5xx`
+  are recorded via `_shared/egress_metrics.ts`.
 
 Curl test example (shape check):
 ```bash
@@ -301,6 +323,15 @@ Optional:
 - `UK_AQ_CORE_SCHEMA` (defaults to `uk_aq_core`; used for PostgREST profile headers)
 - `UK_AQ_RAW_SCHEMA` (defaults to `uk_aq_raw`; used for raw tables like `error_logs` and checkpoint tables)
 - `HISTORY_OUTBOX_DISPATCH_MAX_FLUSHES` (optional; defaults to `3`; dispatcher outbox batches per run)
+- `DISPATCH_TIME_BUDGET_MS` (optional; defaults to `120000`; dispatcher per-request runtime budget)
+- `DISPATCH_SHUTDOWN_BUFFER_MS` (optional; defaults to `10000`; reserved time before budget to return cleanly)
+- `DISPATCH_EDGE_CALL_TIMEOUT_MS` (optional; defaults to `90000`; per-child ingest timeout within dispatcher)
+- `UK_AQ_EGRESS_LOG_SAMPLE_RATE` (optional; defaults to `0.2`; sample rate for `2xx` endpoint metrics)
+- `UK_AQ_EGRESS_METRICS_DB_ENABLED` (optional; defaults to `true`; DB write toggle for endpoint metrics)
+- `UK_AQ_EGRESS_METRICS_CLEANUP_SAMPLE_RATE` (optional; defaults to `0.01`; chance to run retention cleanup after write)
+- `UK_AQ_EGRESS_METRICS_CLEANUP_MIN_INTERVAL_MS` (optional; defaults to `900000`; minimum interval between cleanup attempts)
+- `UK_AQ_EGRESS_METRICS_AGG_RETENTION_DAYS` (optional; defaults to `30`; minute aggregate retention)
+- `UK_AQ_EGRESS_METRICS_RAW_RETENTION_DAYS` (optional; defaults to `7`; raw `304`/error event retention)
 - `UK_AIR_ERROR_DROPBOX_FOLDER` (defaults to `error_log`)
 - `BREATHELONDON_ERROR_DROPBOX_FOLDER` (optional override for Breathe London)
 - `SCOMM_ERROR_DROPBOX_FOLDER` (optional override for Sensor.Community)

@@ -31,7 +31,7 @@ Env quick reference (Supabase blocks secrets prefixed with `SUPABASE_`):
 | Context | Required | Optional |
 | --- | --- | --- |
 | Local scripts (.env) | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | `UK_AIR_SOS_BASE_URL`, `UK_AIR_SOS_SERVICE_LABEL` |
-| Edge function runtime (Supabase secrets) | `SB_SUPABASE_URL`, `SB_SERVICE_ROLE_KEY` | `UK_AIR_SOS_BASE_URL`, `UK_AIR_SOS_SERVICE_LABEL`, `HISTORY_SUPABASE_URL`, `HISTORY_SERVICE_ROLE_KEY`, `HISTORY_UPSERT_RPC`, `HISTORY_OUTBOX_FLUSH_LIMIT`, `HISTORY_UPSERT_CHUNK_SIZE`, `HISTORY_OUTBOX_DISPATCH_MAX_FLUSHES` |
+| Edge function runtime (Supabase secrets) | `SB_SUPABASE_URL`, `SB_SERVICE_ROLE_KEY` | `UK_AIR_SOS_BASE_URL`, `UK_AIR_SOS_SERVICE_LABEL`, `HISTORY_SUPABASE_URL`, `HISTORY_SERVICE_ROLE_KEY`, `HISTORY_UPSERT_RPC`, `HISTORY_OUTBOX_FLUSH_LIMIT`, `HISTORY_UPSERT_CHUNK_SIZE`, `HISTORY_OUTBOX_DISPATCH_MAX_FLUSHES`, `UK_AQ_EGRESS_LOG_SAMPLE_RATE`, `UK_AQ_EGRESS_METRICS_DB_ENABLED`, `UK_AQ_EGRESS_METRICS_CLEANUP_SAMPLE_RATE`, `UK_AQ_EGRESS_METRICS_CLEANUP_MIN_INTERVAL_MS`, `UK_AQ_EGRESS_METRICS_AGG_RETENTION_DAYS`, `UK_AQ_EGRESS_METRICS_RAW_RETENTION_DAYS`, `DISPATCH_TIME_BUDGET_MS`, `DISPATCH_SHUTDOWN_BUFFER_MS`, `DISPATCH_EDGE_CALL_TIMEOUT_MS` |
 | GitHub Actions deploy | `SUPABASE_ACCESS_TOKEN`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_PROJECT_REF` (Secrets) | `UK_AIR_SOS_BASE_URL`, `UK_AIR_SOS_SERVICE_LABEL` (Secrets) |
 
 Install dependencies in a virtual environment:
@@ -84,6 +84,7 @@ UK_AIR_SOS_SERVICE_LABEL=UK-AIR-SOS
 ```
 
 Helper RPC SQL for the poller lives in `supabase/uk_aq_polling_helpers.sql`.
+Endpoint egress metrics SQL (minute aggregates + error/304 raw events) lives in `supabase/uk_aq_egress_metrics.sql`.
 
 GitHub Actions deployment secrets (used by `.github/workflows/supabase_edge_deploy.yml`):
 - `SUPABASE_ACCESS_TOKEN`

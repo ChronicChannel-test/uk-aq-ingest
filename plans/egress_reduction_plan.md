@@ -36,7 +36,11 @@ Current state snapshot (Monday, February 9, 2026):
   - `uk_aq_pcon_hex`
   - `uk_aq_la_hex`
   - `uk_aq_timeseries`
-- Track per-endpoint request count, average payload bytes, and p95 payload bytes.
+- ✅ Implemented in code:
+  - `_shared/egress_metrics.ts` writes sampled/structured metrics.
+  - Hybrid storage model (`supabase/uk_aq_egress_metrics.sql`): minute aggregates + raw `304`/error events.
+  - Default retention: 30 days aggregates, 7 days raw events.
+- Remaining action: apply SQL in Supabase and redeploy endpoints so DB metrics start populating.
 
 4) [ONLY IF NECESSARY] Reduce primary front-end driver safely
 - Keep incremental `since`/`since_id` path as the primary strategy first.
