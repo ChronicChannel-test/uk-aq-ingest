@@ -62,6 +62,8 @@ type HistoryOutboxDrainSummary = HistoryOutboxFlushStats & {
   warnings: string[];
   max_batches: number;
   error?: string;
+  stopped_early?: boolean;
+  stop_reason?: string;
 };
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ??
@@ -123,6 +125,19 @@ const HISTORY_OUTBOX_DISPATCH_MAX_FLUSHES = parsePositiveInt(
   Deno.env.get("HISTORY_OUTBOX_DISPATCH_MAX_FLUSHES"),
   3,
 );
+const DISPATCH_TIME_BUDGET_MS = parsePositiveInt(
+  Deno.env.get("DISPATCH_TIME_BUDGET_MS"),
+  120000,
+);
+const DISPATCH_SHUTDOWN_BUFFER_MS = parsePositiveInt(
+  Deno.env.get("DISPATCH_SHUTDOWN_BUFFER_MS"),
+  10000,
+);
+const DISPATCH_EDGE_CALL_TIMEOUT_MS = parsePositiveInt(
+  Deno.env.get("DISPATCH_EDGE_CALL_TIMEOUT_MS"),
+  90000,
+);
+const MIN_EDGE_CALL_TIMEOUT_MS = 5000;
 
 function parsePositiveInt(raw: string | undefined, fallback: number): number {
   const value = Number(raw ?? "");
@@ -791,11 +806,18 @@ function emptyHistoryOutboxDrainSummary(): HistoryOutboxDrainSummary {
   };
 }
 
-async function drainHistoryOutboxFromDispatcher(): Promise<
+async function drainHistoryOutboxFromDispatcher(
+  dispatchStartedAtMs: number,
+): Promise<
   HistoryOutboxDrainSummary
 > {
   const summary = emptyHistoryOutboxDrainSummary();
   for (let idx = 0; idx < HISTORY_OUTBOX_DISPATCH_MAX_FLUSHES; idx += 1) {
+    if (!isDispatchBudgetRemaining(dispatchStartedAtMs)) {
+      summary.stopped_early = true;
+      summary.stop_reason = "dispatch_time_budget";
+      break;
+    }
     const batchWarnings: string[] = [];
     const stats = await flushHistoryOutbox(publicRpcRequest, (message) => {
       batchWarnings.push(message);
@@ -908,6 +930,7 @@ async function loadUkAirSosTimeseriesIds(
 async function callEdgeFunction(
   path: string,
   payload: Record<string, unknown>,
+  dispatchStartedAtMs: number,
 ): Promise<{ ok: boolean; status: number; body: unknown }> {
   if (!SUPABASE_URL) {
     throw new Error("Missing SUPABASE_URL.");
@@ -925,18 +948,59 @@ async function callEdgeFunction(
   if (SB_UK_AQ_CRON_SECRET) {
     headers["X-Cron-Secret"] = SB_UK_AQ_CRON_SECRET;
   }
+  const remainingMs = Math.max(
+    0,
+    DISPATCH_TIME_BUDGET_MS - (Date.now() - dispatchStartedAtMs) -
+      DISPATCH_SHUTDOWN_BUFFER_MS,
+  );
+  if (remainingMs < MIN_EDGE_CALL_TIMEOUT_MS) {
+    return {
+      ok: false,
+      status: 503,
+      body: {
+        error: "dispatch_time_budget",
+        remaining_ms: remainingMs,
+      },
+    };
+  }
+  const timeoutMs = Math.max(
+    MIN_EDGE_CALL_TIMEOUT_MS,
+    Math.min(DISPATCH_EDGE_CALL_TIMEOUT_MS, Math.floor(remainingMs)),
+  );
+  const controller = new AbortController();
+  const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
   console.log("dispatch_edge_function", {
     path,
+    timeout_ms: timeoutMs,
+    remaining_budget_ms: remainingMs,
     has_cron_secret: Boolean(SB_UK_AQ_CRON_SECRET),
     cron_secret_length: SB_UK_AQ_CRON_SECRET ? SB_UK_AQ_CRON_SECRET.length : 0,
     auth_key_type: SB_ANON_JWT ? "anon" : "service_role",
     auth_key_length: authKey.length,
   });
-  const resp = await fetch(url, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(payload),
-  });
+  let resp: Response;
+  try {
+    resp = await fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      return {
+        ok: false,
+        status: 504,
+        body: {
+          error: "dispatch_edge_timeout",
+          timeout_ms: timeoutMs,
+        },
+      };
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutHandle);
+  }
   const contentType = resp.headers.get("content-type") ?? "";
   const payloadBody = contentType.includes("application/json")
     ? await resp.json().catch(() => null)
@@ -949,6 +1013,11 @@ function windowHoursToDays(windowHours: number): number {
     return 1;
   }
   return Math.max(1, Math.ceil(windowHours / 24));
+}
+
+function isDispatchBudgetRemaining(dispatchStartedAtMs: number): boolean {
+  const elapsed = Date.now() - dispatchStartedAtMs;
+  return elapsed + DISPATCH_SHUTDOWN_BUFFER_MS < DISPATCH_TIME_BUDGET_MS;
 }
 
 serve(async (req) => {
@@ -970,8 +1039,11 @@ serve(async (req) => {
     cron_secret_length: SB_UK_AQ_CRON_SECRET ? SB_UK_AQ_CRON_SECRET.length : 0,
   });
 
+  const dispatchStartedAtMs = Date.now();
   const now = new Date();
-  const historyOutbox = await drainHistoryOutboxFromDispatcher().catch((
+  const historyOutbox = await drainHistoryOutboxFromDispatcher(
+    dispatchStartedAtMs,
+  ).catch((
     error,
   ) => {
     const summary = emptyHistoryOutboxDrainSummary();
@@ -1090,7 +1162,13 @@ serve(async (req) => {
     });
   }
 
-  for (const candidate of selected) {
+  let budgetBreakIndex: number | null = null;
+  for (let selectedIndex = 0; selectedIndex < selected.length; selectedIndex += 1) {
+    if (!isDispatchBudgetRemaining(dispatchStartedAtMs)) {
+      budgetBreakIndex = selectedIndex;
+      break;
+    }
+    const candidate = selected[selectedIndex];
     const connectorCode = candidate.connectorCode;
     const connector = candidate.connector;
     const runStart = new Date();
@@ -1132,7 +1210,11 @@ serve(async (req) => {
         if (timeseriesIds.length) {
           payload.timeseries_ids = timeseriesIds;
         }
-        const resp = await callEdgeFunction("ingest_uk_air_sos", payload);
+        const resp = await callEdgeFunction(
+          "ingest_uk_air_sos",
+          payload,
+          dispatchStartedAtMs,
+        );
         lastResponse = { status: resp.status, body: resp.body };
         if (!resp.ok) {
           runStatus = "failed";
@@ -1158,10 +1240,14 @@ serve(async (req) => {
           detail: resp.ok ? "dispatched" : JSON.stringify(resp.body),
         });
       } else if (connectorCode === "sensorcommunity") {
-        const resp = await callEdgeFunction("ingest_sensorcommunity", {
-          connector_code: connectorCode,
-          country: "GB",
-        });
+        const resp = await callEdgeFunction(
+          "ingest_sensorcommunity",
+          {
+            connector_code: connectorCode,
+            country: "GB",
+          },
+          dispatchStartedAtMs,
+        );
         lastResponse = { status: resp.status, body: resp.body };
         if (!resp.ok) {
           runStatus = "failed";
@@ -1189,11 +1275,15 @@ serve(async (req) => {
       } else if (connectorCode === "openaq") {
         const windowHours = getWindowHours(connector, connectorCode);
         const batchSize = getBatchLimit(connector, connectorCode);
-        const resp = await callEdgeFunction("ingest_openaq", {
-          connector_code: connectorCode,
-          window_hours: windowHours,
-          batch_size: batchSize,
-        });
+        const resp = await callEdgeFunction(
+          "ingest_openaq",
+          {
+            connector_code: connectorCode,
+            window_hours: windowHours,
+            batch_size: batchSize,
+          },
+          dispatchStartedAtMs,
+        );
         lastResponse = { status: resp.status, body: resp.body };
         if (!resp.ok) {
           runStatus = "failed";
@@ -1242,15 +1332,19 @@ serve(async (req) => {
           });
         } else {
           const windowHours = getWindowHours(connector, connectorCode);
-          const resp = await callEdgeFunction("ingest_breathelondon", {
-            connector_code: connectorCode,
-            service_ref: connectorCode,
-            station_refs: stationRefs,
-            skip_stations: true,
-            active_only: true,
-            initial_days: 2,
-            window_hours: windowHours,
-          });
+          const resp = await callEdgeFunction(
+            "ingest_breathelondon",
+            {
+              connector_code: connectorCode,
+              service_ref: connectorCode,
+              station_refs: stationRefs,
+              skip_stations: true,
+              active_only: true,
+              initial_days: 2,
+              window_hours: windowHours,
+            },
+            dispatchStartedAtMs,
+          );
           lastResponse = { status: resp.status, body: resp.body };
           if (!resp.ok) {
             runStatus = "failed";
@@ -1296,14 +1390,18 @@ serve(async (req) => {
           });
         } else {
           const windowHours = getWindowHours(connector, connectorCode);
-          const resp = await callEdgeFunction("ingest_erg_laqn", {
-            connector_code: connectorCode,
-            service_ref: connectorCode,
-            group: "London",
-            days: windowHoursToDays(windowHours),
-            start_from_latest: true,
-            station_refs: stationRefs,
-          });
+          const resp = await callEdgeFunction(
+            "ingest_erg_laqn",
+            {
+              connector_code: connectorCode,
+              service_ref: connectorCode,
+              group: "London",
+              days: windowHoursToDays(windowHours),
+              start_from_latest: true,
+              station_refs: stationRefs,
+            },
+            dispatchStartedAtMs,
+          );
           lastResponse = { status: resp.status, body: resp.body };
           if (!resp.ok) {
             runStatus = "failed";
@@ -1396,6 +1494,19 @@ serve(async (req) => {
           response_payload: lastResponse?.body ?? null,
         });
       }
+    }
+  }
+  if (budgetBreakIndex !== null) {
+    for (let idx = budgetBreakIndex; idx < selected.length; idx += 1) {
+      const connectorCode = selected[idx].connectorCode;
+      if (results.has(connectorCode)) {
+        continue;
+      }
+      results.set(connectorCode, {
+        connector_code: connectorCode,
+        status: "skipped",
+        detail: "dispatch_time_budget",
+      });
     }
   }
 
