@@ -1658,7 +1658,7 @@ serve(async (req) => {
               service_ref: connectorCode,
               station_refs: stationRefs,
               skip_stations: true,
-              active_only: true,
+              active_only: false,
               initial_days: 2,
               window_hours: windowHours,
             },

@@ -673,12 +673,18 @@ async function fetchStationsFromDb(
         if (row.removed_at) {
           continue;
         }
-        const metadata = row.station_metadata?.[0]?.attributes ?? {};
-        const enabled = String(metadata?.enabled ?? "").toLowerCase();
-        const siteActive = String(metadata?.site_active ?? "").toLowerCase();
-        const enabledOk = ["y", "yes", "true", "1"].includes(enabled);
-        const activeOk = ["y", "yes", "true", "1"].includes(siteActive);
-        if (!enabledOk && !activeOk) {
+        const metadataRows = Array.isArray(row.station_metadata)
+          ? row.station_metadata
+          : [];
+        const anyActiveMetadata = metadataRows.some((metadataRow) => {
+          const attributes = metadataRow?.attributes ?? {};
+          const enabled = String(attributes?.enabled ?? "").toLowerCase();
+          const siteActive = String(attributes?.site_active ?? "").toLowerCase();
+          const enabledOk = ["y", "yes", "true", "1"].includes(enabled);
+          const activeOk = ["y", "yes", "true", "1"].includes(siteActive);
+          return enabledOk || activeOk;
+        });
+        if (!anyActiveMetadata) {
           continue;
         }
         rows.push({
