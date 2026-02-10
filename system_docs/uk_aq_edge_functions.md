@@ -115,6 +115,8 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
   - Honors `connectors.overwrite_station_name` to decide when `stations.station_name` can be overwritten (false keeps existing non-null names).
   - Enforces a runtime budget and returns partial progress (`partial=true`, `stopped_reason=runtime_budget_exceeded`, optional `stopped_phase`) when exceeded.
   - Reserves a response buffer (`SCOMM_RESPONSE_BUFFER_MS`, default `10000`) and skips non-critical Dropbox uploads when the remaining budget is too low.
+  - Performs dual-write to main observations and history in parallel to reduce end-to-end runtime.
+  - Runtime ingest no longer performs Sensor.Community timeseries phenomenon backfill; run that as maintenance in the daily stations workflow.
 - Logs:
   - Writes a log file to Dropbox `/connectors/sensorcommunity/log/YYYY-MM-DD/` (prefix `uk_aq_log_edge_scomm_`).
   - Writes raw payloads to Dropbox `/connectors/sensorcommunity/raw_data/YYYY-MM-DD/` as ZIP (prefix `uk_aq_raw_edge_scomm_`).
@@ -370,8 +372,9 @@ Optional:
 - `SCOMM_ERROR_DROPBOX_FOLDER` (optional override for Sensor.Community)
 - `SCOMM_ERROR_DROPBOX_ALLOWED_SUPABASE_URL` (optional allowlist for Sensor.Community error uploads)
 - `SCOMM_INGEST_MET_FIELDS` (defaults to `false`; set `true` to ingest temperature/humidity/pressure)
-- `SCOMM_MAX_RUNTIME_SECONDS` (optional; defaults to 120)
+- `SCOMM_MAX_RUNTIME_SECONDS` (optional; defaults to `130`)
 - `SCOMM_RESPONSE_BUFFER_MS` (optional; defaults to `10000`; reserved budget before runtime cutoff to return response cleanly)
+- `SCOMM_OBSERVATION_UPSERT_CHUNK_SIZE` (optional; defaults to `1000`; chunk size for Sensor.Community observation upserts to main DB)
 - `OPENAQ_BASE_URL` (optional; defaults to `https://api.openaq.org/v3`)
 - `OPENAQ_API_KEY` (required for `ingest_openaq`)
 - `OPENAQ_CONNECTOR_CODE` (optional; defaults to `openaq`)
