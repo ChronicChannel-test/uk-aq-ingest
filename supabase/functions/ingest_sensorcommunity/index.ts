@@ -49,6 +49,8 @@ const DEFAULT_COUNTRY = "GB";
 const DEFAULT_USER_AGENT = "uk-air-quality-networks";
 const DEFAULT_TIMEOUT_MS = 30_000;
 const DEFAULT_MAX_RUNTIME_SECONDS = 120;
+const DEFAULT_RESPONSE_BUFFER_MS = 10_000;
+const MIN_FETCH_TIMEOUT_MS = 1_000;
 const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
 
 const UK_BBOX = {
@@ -58,12 +60,23 @@ const UK_BBOX = {
   north: 61.0,
 };
 
-const BASE_VALUE_TYPE_MAP: Record<string, { pollutant: string; label: string; uom: string }> = {
+const BASE_VALUE_TYPE_MAP: Record<
+  string,
+  { pollutant: string; label: string; uom: string }
+> = {
   P1: { pollutant: "pm10", label: "PM10", uom: "ug/m3" },
   P2: { pollutant: "pm2.5", label: "PM2.5", uom: "ug/m3" },
 };
 
-const BASE_SCOMM_PHENOMENA: Record<string, { eionet_uri: string; label: string; notation: string; pollutant_label: string }> = {
+const BASE_SCOMM_PHENOMENA: Record<
+  string,
+  {
+    eionet_uri: string;
+    label: string;
+    notation: string;
+    pollutant_label: string;
+  }
+> = {
   pm10: {
     eionet_uri: "sensorcommunity:pm10",
     label: "PM10",
@@ -78,39 +91,54 @@ const BASE_SCOMM_PHENOMENA: Record<string, { eionet_uri: string; label: string; 
   },
 };
 
-const SUPABASE_URL = Deno.env.get("SUPABASE_URL")
-  ?? Deno.env.get("SB_SUPABASE_URL")
-  ?? "";
-const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")
-  ?? Deno.env.get("SB_SERVICE_ROLE_KEY")
-  ?? "";
-const UK_AQ_CORE_SCHEMA = Deno.env.get("UK_AQ_CORE_SCHEMA")
-  ?? "uk_aq_core";
-const UK_AQ_RAW_SCHEMA = Deno.env.get("UK_AQ_RAW_SCHEMA")
-  ?? "uk_aq_raw";
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ??
+  Deno.env.get("SB_SUPABASE_URL") ??
+  "";
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
+  Deno.env.get("SB_SERVICE_ROLE_KEY") ??
+  "";
+const UK_AQ_CORE_SCHEMA = Deno.env.get("UK_AQ_CORE_SCHEMA") ??
+  "uk_aq_core";
+const UK_AQ_RAW_SCHEMA = Deno.env.get("UK_AQ_RAW_SCHEMA") ??
+  "uk_aq_raw";
 
-const SCOMM_BASE_URL = (Deno.env.get("SCOMM_BASE_URL") ?? DEFAULT_BASE_URL).replace(/\/$/, "");
-const SCOMM_CONNECTOR_CODE = Deno.env.get("SCOMM_CONNECTOR_CODE")
-  ?? Deno.env.get("SCOMM_CONNECTOR_REF")
-  ?? Deno.env.get("SCOMM_SERVICE_REF")
-  ?? DEFAULT_CONNECTOR_CODE;
-const SCOMM_SERVICE_REF = Deno.env.get("SCOMM_SERVICE_REF") ?? SCOMM_CONNECTOR_CODE;
-const SCOMM_SERVICE_LABEL = Deno.env.get("SCOMM_SERVICE_LABEL")
-  ?? Deno.env.get("SCOMM_CONNECTOR_LABEL")
-  ?? DEFAULT_SERVICE_LABEL;
+const SCOMM_BASE_URL = (Deno.env.get("SCOMM_BASE_URL") ?? DEFAULT_BASE_URL)
+  .replace(/\/$/, "");
+const SCOMM_CONNECTOR_CODE = Deno.env.get("SCOMM_CONNECTOR_CODE") ??
+  Deno.env.get("SCOMM_CONNECTOR_REF") ??
+  Deno.env.get("SCOMM_SERVICE_REF") ??
+  DEFAULT_CONNECTOR_CODE;
+const SCOMM_SERVICE_REF = Deno.env.get("SCOMM_SERVICE_REF") ??
+  SCOMM_CONNECTOR_CODE;
+const SCOMM_SERVICE_LABEL = Deno.env.get("SCOMM_SERVICE_LABEL") ??
+  Deno.env.get("SCOMM_CONNECTOR_LABEL") ??
+  DEFAULT_SERVICE_LABEL;
 const SCOMM_COUNTRY = Deno.env.get("SCOMM_COUNTRY") ?? DEFAULT_COUNTRY;
 const SCOMM_USER_AGENT = Deno.env.get("SCOMM_USER_AGENT") ?? DEFAULT_USER_AGENT;
-const SCOMM_INGEST_MET_FIELDS = parseBool(Deno.env.get("SCOMM_INGEST_MET_FIELDS"), false);
+const SCOMM_INGEST_MET_FIELDS = parseBool(
+  Deno.env.get("SCOMM_INGEST_MET_FIELDS"),
+  false,
+);
 const SCOMM_MAX_RUNTIME_SECONDS = Number(
   Deno.env.get("SCOMM_MAX_RUNTIME_SECONDS") ?? DEFAULT_MAX_RUNTIME_SECONDS,
 );
+const SCOMM_RESPONSE_BUFFER_MS = Number(
+  Deno.env.get("SCOMM_RESPONSE_BUFFER_MS") ?? DEFAULT_RESPONSE_BUFFER_MS,
+);
 const SB_UK_AQ_CRON_SECRET = Deno.env.get("SB_UK_AQ_CRON_SECRET") ?? "";
 
-const VALUE_TYPE_MAP: Record<string, { pollutant: string; label: string; uom: string }> = {
+const VALUE_TYPE_MAP: Record<
+  string,
+  { pollutant: string; label: string; uom: string }
+> = {
   ...BASE_VALUE_TYPE_MAP,
   ...(SCOMM_INGEST_MET_FIELDS
     ? {
-      temperature: { pollutant: "temperature", label: "Temperature", uom: "degC" },
+      temperature: {
+        pollutant: "temperature",
+        label: "Temperature",
+        uom: "degC",
+      },
       humidity: { pollutant: "humidity", label: "Humidity", uom: "%" },
       pressure: { pollutant: "pressure", label: "Pressure", uom: "hPa" },
     }
@@ -119,7 +147,12 @@ const VALUE_TYPE_MAP: Record<string, { pollutant: string; label: string; uom: st
 
 const SCOMM_PHENOMENA: Record<
   string,
-  { eionet_uri: string; label: string; notation: string; pollutant_label: string }
+  {
+    eionet_uri: string;
+    label: string;
+    notation: string;
+    pollutant_label: string;
+  }
 > = {
   ...BASE_SCOMM_PHENOMENA,
   ...(SCOMM_INGEST_MET_FIELDS
@@ -149,38 +182,47 @@ const SCOMM_PHENOMENA: Record<
 const DROPBOX_APP_KEY = Deno.env.get("DROPBOX_APP_KEY") ?? "";
 const DROPBOX_APP_SECRET = Deno.env.get("DROPBOX_APP_SECRET") ?? "";
 const DROPBOX_REFRESH_TOKEN = Deno.env.get("DROPBOX_REFRESH_TOKEN") ?? "";
-const DROPBOX_ALLOWED_SUPABASE_URL = Deno.env.get("SCOMM_RAW_DROPBOX_ALLOWED_SUPABASE_URL")
-  ?? Deno.env.get("UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL")
-  ?? "";
-const DROPBOX_ERROR_ALLOWED_SUPABASE_URL = Deno.env.get("SCOMM_ERROR_DROPBOX_ALLOWED_SUPABASE_URL")
-  ?? Deno.env.get("UK_AIR_ERROR_DROPBOX_ALLOWED_SUPABASE_URL")
-  ?? "";
+const DROPBOX_ALLOWED_SUPABASE_URL =
+  Deno.env.get("SCOMM_RAW_DROPBOX_ALLOWED_SUPABASE_URL") ??
+    Deno.env.get("UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL") ??
+    "";
+const DROPBOX_ERROR_ALLOWED_SUPABASE_URL =
+  Deno.env.get("SCOMM_ERROR_DROPBOX_ALLOWED_SUPABASE_URL") ??
+    Deno.env.get("UK_AIR_ERROR_DROPBOX_ALLOWED_SUPABASE_URL") ??
+    "";
 const DROPBOX_ROOT_FOLDER = (() => {
-  const raw = Deno.env.get("SCOMM_DROPBOX_ROOT")
-    ?? Deno.env.get("UK_AQ_DROPBOX_ROOT")
-    ?? "";
+  const raw = Deno.env.get("SCOMM_DROPBOX_ROOT") ??
+    Deno.env.get("UK_AQ_DROPBOX_ROOT") ??
+    "";
   return normalizeDropboxPath(raw);
 })();
 
 const DROPBOX_LOG_FOLDER = dropboxWithRoot("/connectors/sensorcommunity/log");
-const DROPBOX_RAW_FOLDER = dropboxWithRoot("/connectors/sensorcommunity/raw_data");
+const DROPBOX_RAW_FOLDER = dropboxWithRoot(
+  "/connectors/sensorcommunity/raw_data",
+);
 const DROPBOX_ERROR_FOLDER = dropboxWithRoot(
-  Deno.env.get("SCOMM_ERROR_DROPBOX_FOLDER")
-    ?? Deno.env.get("UK_AIR_ERROR_DROPBOX_FOLDER")
-    ?? "error_log",
+  Deno.env.get("SCOMM_ERROR_DROPBOX_FOLDER") ??
+    Deno.env.get("UK_AIR_ERROR_DROPBOX_FOLDER") ??
+    "error_log",
 );
 const DROPBOX_LOG_RETENTION_DAYS = 31;
 const DROPBOX_TOKEN_URL = "https://api.dropbox.com/oauth2/token";
 const DROPBOX_UPLOAD_URL = "https://content.dropboxapi.com/2/files/upload";
-const DROPBOX_LIST_FOLDER_URL = "https://api.dropboxapi.com/2/files/list_folder";
-const DROPBOX_DOWNLOAD_ZIP_URL = "https://content.dropboxapi.com/2/files/download_zip";
+const DROPBOX_LIST_FOLDER_URL =
+  "https://api.dropboxapi.com/2/files/list_folder";
+const DROPBOX_DOWNLOAD_ZIP_URL =
+  "https://content.dropboxapi.com/2/files/download_zip";
 const DROPBOX_DELETE_URL = "https://api.dropboxapi.com/2/files/delete_v2";
 
 const REST_BASE_URL = SUPABASE_URL
   ? `${SUPABASE_URL.replace(/\/$/, "")}/rest/v1`
   : "";
 
-function parseBool(value: string | null | undefined, defaultValue = false): boolean {
+function parseBool(
+  value: string | null | undefined,
+  defaultValue = false,
+): boolean {
   if (value === null || value === undefined) {
     return defaultValue;
   }
@@ -188,7 +230,10 @@ function parseBool(value: string | null | undefined, defaultValue = false): bool
   return ["1", "true", "yes", "y", "on"].includes(normalized);
 }
 
-function postgrestHeaders(prefer?: string, schema = UK_AQ_CORE_SCHEMA): Record<string, string> {
+function postgrestHeaders(
+  prefer?: string,
+  schema = UK_AQ_CORE_SCHEMA,
+): Record<string, string> {
   const headers: Record<string, string> = {
     apikey: SUPABASE_SERVICE_ROLE_KEY,
     Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
@@ -224,7 +269,10 @@ async function postgrestRequest<T>(
   schema?: string,
 ): Promise<{ data: T | null; error: { message: string } | null }> {
   if (!REST_BASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-    return { data: null, error: { message: "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY." } };
+    return {
+      data: null,
+      error: { message: "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY." },
+    };
   }
   const url = new URL(`${REST_BASE_URL}/${table}`);
   for (const [key, value] of Object.entries(params ?? {})) {
@@ -232,24 +280,42 @@ async function postgrestRequest<T>(
       url.searchParams.set(key, String(value));
     }
   }
-  const resp = await fetch(url.toString(), {
-    method,
-    headers: postgrestHeaders(prefer, schema),
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
-  let payload: unknown = null;
-  if (resp.status !== 204) {
-    const contentType = resp.headers.get("content-type") ?? "";
-    payload = contentType.includes("application/json") ? await resp.json() : await resp.text();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
+  try {
+    const resp = await fetch(url.toString(), {
+      method,
+      headers: postgrestHeaders(prefer, schema),
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal: controller.signal,
+    });
+    let payload: unknown = null;
+    if (resp.status !== 204) {
+      const contentType = resp.headers.get("content-type") ?? "";
+      payload = contentType.includes("application/json")
+        ? await resp.json()
+        : await resp.text();
+    }
+    if (!resp.ok) {
+      const message = (payload as {
+        message?: string;
+        error_description?: string;
+        error?: string;
+      })?.message ??
+        (payload as { error_description?: string })?.error_description ??
+        (payload as { error?: string })?.error ??
+        resp.statusText;
+      return { data: null, error: { message: String(message) } };
+    }
+    return { data: payload as T, error: null };
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") {
+      throw new Error("PostgREST request timed out.");
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeout);
   }
-  if (!resp.ok) {
-    const message = (payload as { message?: string; error_description?: string; error?: string })?.message
-      ?? (payload as { error_description?: string })?.error_description
-      ?? (payload as { error?: string })?.error
-      ?? resp.statusText;
-    return { data: null, error: { message: String(message) } };
-  }
-  return { data: payload as T, error: null };
 }
 
 async function publicRpcRequest<T>(
@@ -287,7 +353,11 @@ type RawRecorder = {
 
 function createLogBuffer(): LogBuffer {
   const lines: string[] = [];
-  const push = (level: string, message: string, context?: Record<string, unknown>) => {
+  const push = (
+    level: string,
+    message: string,
+    context?: Record<string, unknown>,
+  ) => {
     const timestamp = new Date().toISOString();
     const base = `${timestamp} ${level} ${message}`;
     lines.push(context ? `${base} ${formatContext(context)}` : base);
@@ -366,10 +436,27 @@ async function fetchJsonWithRetry(
   url: string,
   attempts = 3,
   rawRecorder?: RawRecorder | null,
+  deadlineMs?: number,
 ): Promise<unknown> {
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    if (deadlineMs !== undefined) {
+      const remainingBudgetMs = deadlineMs - Date.now();
+      if (remainingBudgetMs <= MIN_FETCH_TIMEOUT_MS) {
+        throw new Error(
+          "Runtime budget exhausted before Sensor.Community fetch completed.",
+        );
+      }
+    }
+
+    const timeoutMs = deadlineMs !== undefined
+      ? Math.max(
+        MIN_FETCH_TIMEOUT_MS,
+        Math.min(DEFAULT_TIMEOUT_MS, deadlineMs - Date.now() - 250),
+      )
+      : DEFAULT_TIMEOUT_MS;
+
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const resp = await fetch(url, {
         headers: {
@@ -391,14 +478,36 @@ async function fetchJsonWithRetry(
         parsed.searchParams.forEach((value, key) => {
           params[key] = value;
         });
-        rawRecorder.recordResponse(parsed.pathname, params, resp.status, payload);
+        rawRecorder.recordResponse(
+          parsed.pathname,
+          params,
+          resp.status,
+          payload,
+        );
       }
       return payload;
     } catch (err) {
+      if (
+        err instanceof DOMException &&
+        err.name === "AbortError" &&
+        deadlineMs !== undefined &&
+        deadlineMs - Date.now() <= MIN_FETCH_TIMEOUT_MS
+      ) {
+        throw new Error(
+          "Runtime budget exhausted before Sensor.Community fetch completed.",
+        );
+      }
       if (attempt >= attempts) {
         throw err;
       }
-      await sleep(Math.min(30_000, 2 ** attempt * 1000));
+      const retryDelayMs = Math.min(30_000, 2 ** attempt * 1000);
+      if (deadlineMs !== undefined) {
+        const remainingBudgetMs = deadlineMs - Date.now();
+        if (remainingBudgetMs <= retryDelayMs + MIN_FETCH_TIMEOUT_MS) {
+          throw err;
+        }
+      }
+      await sleep(retryDelayMs);
     } finally {
       clearTimeout(timeout);
     }
@@ -410,7 +519,9 @@ function coerceNumber(value: unknown): number | null {
   if (value === null || value === undefined) {
     return null;
   }
-  const num = typeof value === "number" ? value : Number.parseFloat(String(value));
+  const num = typeof value === "number"
+    ? value
+    : Number.parseFloat(String(value));
   return Number.isFinite(num) ? num : null;
 }
 
@@ -434,7 +545,8 @@ function maybeSwapCoords(
 
 function stationCoords(
   station: Record<string, unknown>,
-  bbox: { west: number; south: number; east: number; north: number } | null = null,
+  bbox: { west: number; south: number; east: number; north: number } | null =
+    null,
 ): [number | null, number | null] {
   let coords: unknown = null;
   if (station.geometry && typeof station.geometry === "object") {
@@ -470,7 +582,8 @@ function stationInBboxOrMissingCoords(
   if (!(lon >= -180 && lon <= 180 && lat >= -90 && lat <= 90)) {
     return false;
   }
-  return lon >= bbox.west && lon <= bbox.east && lat >= bbox.south && lat <= bbox.north;
+  return lon >= bbox.west && lon <= bbox.east && lat >= bbox.south &&
+    lat <= bbox.north;
 }
 
 function stationStub(record: Record<string, unknown>): Record<string, unknown> {
@@ -500,21 +613,28 @@ function normalizeStationPayload(record: Record<string, unknown>): {
   const sensor = (record.sensor && typeof record.sensor === "object")
     ? record.sensor as Record<string, unknown>
     : {};
-  const sensorType = (record.sensor_type && typeof record.sensor_type === "object")
-    ? record.sensor_type as Record<string, unknown>
-    : {};
+  const sensorType =
+    (record.sensor_type && typeof record.sensor_type === "object")
+      ? record.sensor_type as Record<string, unknown>
+      : {};
   const lon = coerceNumber(location.longitude);
   const lat = coerceNumber(location.latitude);
   const [lonVal, latVal] = maybeSwapCoords(lon, lat, UK_BBOX);
   const stationRef = sensor.id ?? record.sensor_id ?? record.id;
-  const label = (location.name ?? record.location_name) as string | null ?? null;
-  const stationType = (sensorType.name ?? sensorType.id) as string | null ?? null;
+  const label = (location.name ?? record.location_name) as string | null ??
+    null;
+  const stationType = (sensorType.name ?? sensorType.id) as string | null ??
+    null;
   const exposure = stationExposure(location);
   return {
-    station_ref: stationRef !== undefined && stationRef !== null ? String(stationRef) : null,
+    station_ref: stationRef !== undefined && stationRef !== null
+      ? String(stationRef)
+      : null,
     label,
     station_name: label,
-    station_type: stationType !== undefined && stationType !== null ? String(stationType) : null,
+    station_type: stationType !== undefined && stationType !== null
+      ? String(stationType)
+      : null,
     station_exposure: exposure,
     longitude: lonVal,
     latitude: latVal,
@@ -576,9 +696,15 @@ function parseTimestamp(value: unknown): string | null {
     return null;
   }
   let candidate = trimmed;
-  if (!candidate.endsWith("Z") && !candidate.includes("+") && !candidate.includes("T")) {
+  if (
+    !candidate.endsWith("Z") && !candidate.includes("+") &&
+    !candidate.includes("T")
+  ) {
     candidate = candidate.replace(" ", "T") + "Z";
-  } else if (!candidate.endsWith("Z") && candidate.includes("T") && !candidate.includes("+")) {
+  } else if (
+    !candidate.endsWith("Z") && candidate.includes("T") &&
+    !candidate.includes("+")
+  ) {
     candidate = candidate + "Z";
   }
   const ms = Date.parse(candidate);
@@ -602,30 +728,41 @@ async function loadConnector(
   _connectorLabel: string,
   _serviceUrl: string,
 ): Promise<ConnectorRow | null> {
-  const select = "id,connector_code,label,display_name,service_url,overwrite_station_name";
+  const select =
+    "id,connector_code,label,display_name,service_url,overwrite_station_name";
   if (connectorId) {
-    const { data } = await postgrestRequest<ConnectorRow[]>("GET", "connectors", {
-      select,
-      id: `eq.${connectorId}`,
-      limit: "1",
-    });
+    const { data } = await postgrestRequest<ConnectorRow[]>(
+      "GET",
+      "connectors",
+      {
+        select,
+        id: `eq.${connectorId}`,
+        limit: "1",
+      },
+    );
     if (data && data[0]) {
       return data[0];
     }
   }
 
-  const { data: existing } = await postgrestRequest<ConnectorRow[]>("GET", "connectors", {
-    select,
-    connector_code: `eq.${connectorCode}`,
-    limit: "1",
-  });
+  const { data: existing } = await postgrestRequest<ConnectorRow[]>(
+    "GET",
+    "connectors",
+    {
+      select,
+      connector_code: `eq.${connectorCode}`,
+      limit: "1",
+    },
+  );
   if (existing && existing[0]) {
     return existing[0];
   }
   return null;
 }
 
-async function upsertPhenomena(connectorId: string): Promise<Record<string, number>> {
+async function upsertPhenomena(
+  connectorId: string,
+): Promise<Record<string, number>> {
   const payload = Object.values(SCOMM_PHENOMENA).map((meta) => ({
     connector_id: connectorId,
     eionet_uri: meta.eionet_uri,
@@ -640,13 +777,17 @@ async function upsertPhenomena(connectorId: string): Promise<Record<string, numb
     payload,
     "resolution=merge-duplicates,return=minimal",
   );
-  const { data } = await postgrestRequest<Array<{ id: number; eionet_uri: string }>>(
+  const { data } = await postgrestRequest<
+    Array<{ id: number; eionet_uri: string }>
+  >(
     "GET",
     "phenomena",
     {
       select: "id,eionet_uri",
       connector_id: `eq.${connectorId}`,
-      eionet_uri: postgrestIn(Object.values(SCOMM_PHENOMENA).map((meta) => meta.eionet_uri)),
+      eionet_uri: postgrestIn(
+        Object.values(SCOMM_PHENOMENA).map((meta) => meta.eionet_uri),
+      ),
     },
   );
   const idsByUri: Record<string, number> = {};
@@ -711,7 +852,9 @@ async function upsertStations(
         continue;
       }
       const existingName = existingNames[stationRef];
-      if (existingName && typeof existingName === "string" && existingName.trim()) {
+      if (
+        existingName && typeof existingName === "string" && existingName.trim()
+      ) {
         if ("station_name" in row) {
           delete row.station_name;
         }
@@ -736,7 +879,9 @@ async function fetchStationNames(
   const mapping: Record<string, string | null> = {};
   for (let idx = 0; idx < stationRefs.length; idx += 200) {
     const chunk = stationRefs.slice(idx, idx + 200);
-    const { data } = await postgrestRequest<Array<{ station_ref: string; station_name: string | null }>>(
+    const { data } = await postgrestRequest<
+      Array<{ station_ref: string; station_name: string | null }>
+    >(
       "GET",
       "stations",
       {
@@ -761,7 +906,9 @@ async function fetchStationIds(
   const mapping: Record<string, number> = {};
   for (let idx = 0; idx < stationRefs.length; idx += 200) {
     const chunk = stationRefs.slice(idx, idx + 200);
-    const { data } = await postgrestRequest<Array<{ id: number; station_ref: string }>>(
+    const { data } = await postgrestRequest<
+      Array<{ id: number; station_ref: string }>
+    >(
       "GET",
       "stations",
       {
@@ -803,7 +950,9 @@ async function backfillTimeseriesPhenomena(
   let offset = 0;
   const limit = 1000;
   while (true) {
-    const { data } = await postgrestRequest<Array<{ id: number; timeseries_ref: string | null }>>(
+    const { data } = await postgrestRequest<
+      Array<{ id: number; timeseries_ref: string | null }>
+    >(
       "GET",
       "timeseries",
       {
@@ -861,7 +1010,9 @@ async function fetchTimeseriesIds(
   const mapping: Record<string, number> = {};
   for (let idx = 0; idx < timeseriesRefs.length; idx += 200) {
     const chunk = timeseriesRefs.slice(idx, idx + 200);
-    const { data } = await postgrestRequest<Array<{ id: number; timeseries_ref: string }>>(
+    const { data } = await postgrestRequest<
+      Array<{ id: number; timeseries_ref: string }>
+    >(
       "GET",
       "timeseries",
       {
@@ -878,7 +1029,9 @@ async function fetchTimeseriesIds(
   return mapping;
 }
 
-async function upsertObservations(rows: Array<Record<string, unknown>>): Promise<number> {
+async function upsertObservations(
+  rows: Array<Record<string, unknown>>,
+): Promise<number> {
   if (!rows.length) {
     return 0;
   }
@@ -909,7 +1062,9 @@ function toHistoryObservationRow(
     timeseries_ref: timeseriesRef,
     observed_at: observedAt,
     value: Number.isFinite(numericValue) ? numericValue : null,
-    status: observationRow.status == null ? null : String(observationRow.status),
+    status: observationRow.status == null
+      ? null
+      : String(observationRow.status),
     connector_id: Number(observationRow.connector_id),
     timeseries_id: Number(observationRow.timeseries_id),
   };
@@ -919,7 +1074,10 @@ function loadDropboxConfig(): DropboxConfig | null {
   if (!DROPBOX_APP_KEY || !DROPBOX_APP_SECRET || !DROPBOX_REFRESH_TOKEN) {
     return null;
   }
-  if (!DROPBOX_ALLOWED_SUPABASE_URL || DROPBOX_ALLOWED_SUPABASE_URL !== SUPABASE_URL) {
+  if (
+    !DROPBOX_ALLOWED_SUPABASE_URL ||
+    DROPBOX_ALLOWED_SUPABASE_URL !== SUPABASE_URL
+  ) {
     return null;
   }
   return {
@@ -933,7 +1091,10 @@ function loadErrorDropboxConfig(): DropboxConfig | null {
   if (!DROPBOX_APP_KEY || !DROPBOX_APP_SECRET || !DROPBOX_REFRESH_TOKEN) {
     return null;
   }
-  if (DROPBOX_ERROR_ALLOWED_SUPABASE_URL && DROPBOX_ERROR_ALLOWED_SUPABASE_URL !== SUPABASE_URL) {
+  if (
+    DROPBOX_ERROR_ALLOWED_SUPABASE_URL &&
+    DROPBOX_ERROR_ALLOWED_SUPABASE_URL !== SUPABASE_URL
+  ) {
     return null;
   }
   return {
@@ -960,7 +1121,10 @@ function dropboxWithRoot(path: string): string {
   if (!cleaned) {
     return DROPBOX_ROOT_FOLDER;
   }
-  if (cleaned === DROPBOX_ROOT_FOLDER || cleaned.startsWith(`${DROPBOX_ROOT_FOLDER}/`)) {
+  if (
+    cleaned === DROPBOX_ROOT_FOLDER ||
+    cleaned.startsWith(`${DROPBOX_ROOT_FOLDER}/`)
+  ) {
     return cleaned;
   }
   return `${DROPBOX_ROOT_FOLDER}${cleaned}`;
@@ -971,7 +1135,10 @@ function normalizeConnectorPrefix(connectorCode: string | null): string {
   if (cleaned === "sensorcommunity") {
     return "scomm";
   }
-  const normalized = cleaned.replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+  const normalized = cleaned.replace(/[^a-z0-9]+/g, "_").replace(
+    /^_+|_+$/g,
+    "",
+  );
   return normalized || "scomm";
 }
 
@@ -1037,7 +1204,12 @@ async function uploadDropboxLog(
       content,
       refreshToken,
     );
-    await dropboxArchiveLogs(accessToken, DROPBOX_LOG_FOLDER, DROPBOX_LOG_RETENTION_DAYS, 365);
+    await dropboxArchiveLogs(
+      accessToken,
+      DROPBOX_LOG_FOLDER,
+      DROPBOX_LOG_RETENTION_DAYS,
+      365,
+    );
   } catch (err) {
     console.warn("Dropbox log upload failed:", err);
     await errorLogger.logError({
@@ -1182,7 +1354,9 @@ class DropboxHttpError extends Error {
   }
 }
 
-async function dropboxRefreshAccessToken(config: DropboxConfig): Promise<string> {
+async function dropboxRefreshAccessToken(
+  config: DropboxConfig,
+): Promise<string> {
   const payload = new URLSearchParams({
     grant_type: "refresh_token",
     refresh_token: config.refreshToken,
@@ -1210,7 +1384,9 @@ async function dropboxUploadFile(
   path: string,
   contents: string | Uint8Array,
 ): Promise<void> {
-  const body = typeof contents === "string" ? new TextEncoder().encode(contents) : Uint8Array.from(contents);
+  const body = typeof contents === "string"
+    ? new TextEncoder().encode(contents)
+    : Uint8Array.from(contents);
   const resp = await fetch(DROPBOX_UPLOAD_URL, {
     method: "POST",
     headers: {
@@ -1226,7 +1402,10 @@ async function dropboxUploadFile(
     body,
   });
   if (!resp.ok) {
-    throw new DropboxHttpError(`Dropbox upload failed (${resp.status})`, resp.status);
+    throw new DropboxHttpError(
+      `Dropbox upload failed (${resp.status})`,
+      resp.status,
+    );
   }
 }
 
@@ -1282,7 +1461,10 @@ function toDosDateTime(date: Date): { dosTime: number; dosDate: number } {
   return { dosTime, dosDate };
 }
 
-async function zipTextCompressed(filename: string, content: string): Promise<Uint8Array> {
+async function zipTextCompressed(
+  filename: string,
+  content: string,
+): Promise<Uint8Array> {
   const encoder = new TextEncoder();
   const data = encoder.encode(content);
   const nameBytes = encoder.encode(filename);
@@ -1297,7 +1479,12 @@ async function zipTextCompressed(filename: string, content: string): Promise<Uin
     header.push(value & 0xff, (value >>> 8) & 0xff);
   };
   const push32 = (value: number) => {
-    header.push(value & 0xff, (value >>> 8) & 0xff, (value >>> 16) & 0xff, (value >>> 24) & 0xff);
+    header.push(
+      value & 0xff,
+      (value >>> 8) & 0xff,
+      (value >>> 16) & 0xff,
+      (value >>> 24) & 0xff,
+    );
   };
 
   push32(0x04034b50);
@@ -1321,7 +1508,12 @@ async function zipTextCompressed(filename: string, content: string): Promise<Uin
     central.push(value & 0xff, (value >>> 8) & 0xff);
   };
   const c32 = (value: number) => {
-    central.push(value & 0xff, (value >>> 8) & 0xff, (value >>> 16) & 0xff, (value >>> 24) & 0xff);
+    central.push(
+      value & 0xff,
+      (value >>> 8) & 0xff,
+      (value >>> 16) & 0xff,
+      (value >>> 24) & 0xff,
+    );
   };
 
   c32(0x02014b50);
@@ -1350,7 +1542,12 @@ async function zipTextCompressed(filename: string, content: string): Promise<Uin
     end.push(value & 0xff, (value >>> 8) & 0xff);
   };
   const e32 = (value: number) => {
-    end.push(value & 0xff, (value >>> 8) & 0xff, (value >>> 16) & 0xff, (value >>> 24) & 0xff);
+    end.push(
+      value & 0xff,
+      (value >>> 8) & 0xff,
+      (value >>> 16) & 0xff,
+      (value >>> 24) & 0xff,
+    );
   };
 
   e32(0x06054b50);
@@ -1364,17 +1561,23 @@ async function zipTextCompressed(filename: string, content: string): Promise<Uin
 
   const endHeader = new Uint8Array(end);
   const output = new Uint8Array(
-    localHeader.length + compressedSize + centralHeader.length + endHeader.length,
+    localHeader.length + compressedSize + centralHeader.length +
+      endHeader.length,
   );
   output.set(localHeader, 0);
   output.set(compressed, localHeader.length);
   output.set(centralHeader, localHeader.length + compressedSize);
-  output.set(endHeader, localHeader.length + compressedSize + centralHeader.length);
+  output.set(
+    endHeader,
+    localHeader.length + compressedSize + centralHeader.length,
+  );
   return output;
 }
 
 async function deflateRaw(data: Uint8Array): Promise<Uint8Array> {
-  const stream = new Blob([Uint8Array.from(data)]).stream().pipeThrough(new CompressionStream("deflate-raw"));
+  const stream = new Blob([Uint8Array.from(data)]).stream().pipeThrough(
+    new CompressionStream("deflate-raw"),
+  );
   const buffer = await new Response(stream).arrayBuffer();
   return new Uint8Array(buffer);
 }
@@ -1388,7 +1591,9 @@ async function dropboxArchiveLogs(
   const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
   const archiveCutoff = Date.now() - archiveDays * 24 * 60 * 60 * 1000;
   const archiveFolder = `${folder}/archive`;
-  const listFolder = async (path: string): Promise<Array<Record<string, unknown>>> => {
+  const listFolder = async (
+    path: string,
+  ): Promise<Array<Record<string, unknown>>> => {
     let payload: Record<string, unknown> = { path };
     const entries: Array<Record<string, unknown>> = [];
     while (true) {
@@ -1438,7 +1643,8 @@ async function dropboxArchiveLogs(
     }
     const archiveName = `${name}.zip`;
     const archivePath = `${archiveFolder}/${archiveName}`;
-    const folderPath = asNonEmptyString(entry?.path_lower) ?? asNonEmptyString(entry?.path_display);
+    const folderPath = asNonEmptyString(entry?.path_lower) ??
+      asNonEmptyString(entry?.path_display);
     if (!folderPath) {
       continue;
     }
@@ -1462,7 +1668,8 @@ async function dropboxArchiveLogs(
     if (!Number.isFinite(archiveDate) || archiveDate >= archiveCutoff) {
       continue;
     }
-    const path = asNonEmptyString(entry?.path_lower) ?? asNonEmptyString(entry?.path_display);
+    const path = asNonEmptyString(entry?.path_lower) ??
+      asNonEmptyString(entry?.path_display);
     if (!path) {
       continue;
     }
@@ -1470,7 +1677,10 @@ async function dropboxArchiveLogs(
   }
 }
 
-async function dropboxDownloadZip(accessToken: string, path: string): Promise<Uint8Array> {
+async function dropboxDownloadZip(
+  accessToken: string,
+  path: string,
+): Promise<Uint8Array> {
   const resp = await fetch(DROPBOX_DOWNLOAD_ZIP_URL, {
     method: "POST",
     headers: {
@@ -1485,7 +1695,10 @@ async function dropboxDownloadZip(accessToken: string, path: string): Promise<Ui
   return new Uint8Array(buffer);
 }
 
-async function dropboxDeletePath(accessToken: string, path: string): Promise<void> {
+async function dropboxDeletePath(
+  accessToken: string,
+  path: string,
+): Promise<void> {
   const resp = await fetch(DROPBOX_DELETE_URL, {
     method: "POST",
     headers: {
@@ -1537,13 +1750,41 @@ serve(async (req) => {
     ? Math.max(30, SCOMM_MAX_RUNTIME_SECONDS)
     : DEFAULT_MAX_RUNTIME_SECONDS;
   const runtimeDeadline = runStartedAt + maxRuntimeSeconds * 1000;
-  const shouldStop = () => Date.now() >= runtimeDeadline;
+  const responseBufferMs = Number.isFinite(SCOMM_RESPONSE_BUFFER_MS)
+    ? Math.max(1_000, Math.floor(SCOMM_RESPONSE_BUFFER_MS))
+    : DEFAULT_RESPONSE_BUFFER_MS;
+  const processingDeadline = runtimeDeadline - responseBufferMs;
+  const shouldStop = () => Date.now() >= processingDeadline;
   let timeBudgetHit = false;
+
+  const noteTimeBudgetHit = (phase: string) => {
+    timeBudgetHit = true;
+    log.warn(
+      "Stopping Sensor.Community poll early (runtime budget exceeded).",
+      {
+        phase,
+        max_runtime_seconds: maxRuntimeSeconds,
+        response_buffer_ms: responseBufferMs,
+        elapsed_ms: Date.now() - runStartedAt,
+      },
+    );
+  };
+
+  const guardRuntimeBudget = (phase: string): boolean => {
+    if (!shouldStop()) {
+      return true;
+    }
+    noteTimeBudgetHit(phase);
+    return false;
+  };
 
   try {
     if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
       status = 500;
-      responsePayload = { ok: false, error: "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY." };
+      responsePayload = {
+        ok: false,
+        error: "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY.",
+      };
       log.error("Missing Supabase configuration.");
     } else {
       let payload: PollRequest = {};
@@ -1557,7 +1798,10 @@ serve(async (req) => {
       requestedConnectorLabel = payload.connector_label ?? SCOMM_SERVICE_LABEL;
       requestedServiceRef = payload.service_ref ?? SCOMM_SERVICE_REF;
       requestedCountry = payload.country ?? SCOMM_COUNTRY;
-      requestedBaseUrl = (payload.base_url ?? SCOMM_BASE_URL).replace(/\/$/, "");
+      requestedBaseUrl = (payload.base_url ?? SCOMM_BASE_URL).replace(
+        /\/$/,
+        "",
+      );
       requestedNoFilter = Boolean(payload.no_filter);
 
       log.info("Poll request", {
@@ -1607,50 +1851,86 @@ serve(async (req) => {
 
         let records: Array<Record<string, unknown>> = [];
         if (status === 200 && connector) {
-          try {
-            const url = `${requestedBaseUrl}/airrohr/v1/filter/country=${encodeURIComponent(requestedCountry)}`;
-            if (rawRecorder) {
-              rawRecorder.recordEvent("context", {
-                connector_id: connector.id,
-                connector_code: connector.connector_code,
-                connector_label: connector.label,
-                country: requestedCountry,
-                no_filter: requestedNoFilter,
-              });
+          if (!guardRuntimeBudget("before_source_fetch")) {
+            responsePayload = {
+              ok: true,
+              count: 0,
+              partial: true,
+              stopped_reason: "runtime_budget_exceeded",
+              message: "Stopped before source fetch.",
+            };
+          } else {
+            try {
+              const url = `${requestedBaseUrl}/airrohr/v1/filter/country=${
+                encodeURIComponent(requestedCountry)
+              }`;
+              if (rawRecorder) {
+                rawRecorder.recordEvent("context", {
+                  connector_id: connector.id,
+                  connector_code: connector.connector_code,
+                  connector_label: connector.label,
+                  country: requestedCountry,
+                  no_filter: requestedNoFilter,
+                });
+              }
+              const raw = await fetchJsonWithRetry(
+                url,
+                3,
+                rawRecorder,
+                processingDeadline,
+              );
+              if (Array.isArray(raw)) {
+                records = raw as Array<Record<string, unknown>>;
+              }
+            } catch (err) {
+              const message = err instanceof Error ? err.message : String(err);
+              if (message.includes("Runtime budget exhausted")) {
+                noteTimeBudgetHit("during_source_fetch");
+                responsePayload = {
+                  ok: true,
+                  count: 0,
+                  partial: true,
+                  stopped_reason: "runtime_budget_exceeded",
+                  message: "Stopped during source fetch.",
+                };
+              } else {
+                status = 502;
+                responsePayload = { ok: false, error: message };
+                log.error("Sensor.Community fetch failed.", { message });
+                await errorLogger.logError({
+                  source: "edge",
+                  severity: "error",
+                  message: "Sensor.Community fetch failed.",
+                  stack: err instanceof Error ? err.stack : undefined,
+                  context: {
+                    connector_id: connector.id,
+                    connector_code: connector.connector_code,
+                    country: requestedCountry,
+                  },
+                  connector_code: connector.connector_code ??
+                    requestedConnectorCode,
+                  connector_id: connector.id,
+                });
+              }
             }
-            const raw = await fetchJsonWithRetry(url, 3, rawRecorder);
-            if (Array.isArray(raw)) {
-              records = raw as Array<Record<string, unknown>>;
-            }
-          } catch (err) {
-            status = 502;
-            responsePayload = { ok: false, error: String(err) };
-            log.error("Sensor.Community fetch failed.", { message: String(err) });
-            await errorLogger.logError({
-              source: "edge",
-              severity: "error",
-              message: "Sensor.Community fetch failed.",
-              stack: err instanceof Error ? err.stack : undefined,
-              context: {
-                connector_id: connector.id,
-                connector_code: connector.connector_code,
-                country: requestedCountry,
-              },
-              connector_code: connector.connector_code ?? requestedConnectorCode,
-              connector_id: connector.id,
-            });
           }
         }
 
         fetchedCount = records.length;
         if (status === 200 && connector) {
           if (!records.length) {
-            responsePayload = { ok: true, count: 0, message: "No records returned." };
+            responsePayload = {
+              ok: true,
+              count: 0,
+              message: "No records returned.",
+            };
             log.warn("No records returned.");
           } else {
             const filtered = requestedNoFilter
               ? records
-              : records.filter((record) => stationInBboxOrMissingCoords(stationStub(record), UK_BBOX));
+              : records.filter((record) =>
+                stationInBboxOrMissingCoords(stationStub(record), UK_BBOX)
+              );
             filteredCount = filtered.length;
 
             const processedRecords: Array<Record<string, unknown>> = [];
@@ -1658,12 +1938,17 @@ serve(async (req) => {
             const timeseriesRefSet = new Set<string>();
             const observationsByTimeseries: Map<
               string,
-              { station_ref: string; pollutant: string; value: number; observed_at: string; observed_ms: number }
+              {
+                station_ref: string;
+                pollutant: string;
+                value: number;
+                observed_at: string;
+                observed_ms: number;
+              }
             > = new Map();
 
             for (const record of filtered) {
-              if (shouldStop()) {
-                timeBudgetHit = true;
+              if (!guardRuntimeBudget("during_record_normalization")) {
                 break;
               }
               const normalized = normalizeStationPayload(record);
@@ -1673,9 +1958,12 @@ serve(async (req) => {
               processedRecords.push(record);
               const stationRef = normalized.station_ref;
               stationRefSet.add(stationRef);
-              const observedAt = parseTimestamp(record.timestamp) ?? new Date().toISOString();
+              const observedAt = parseTimestamp(record.timestamp) ??
+                new Date().toISOString();
               const observedMs = Date.parse(observedAt);
-              const sensorValues = Array.isArray(record.sensordatavalues) ? record.sensordatavalues : [];
+              const sensorValues = Array.isArray(record.sensordatavalues)
+                ? record.sensordatavalues
+                : [];
               for (const entry of sensorValues) {
                 if (!entry || typeof entry !== "object") {
                   continue;
@@ -1685,7 +1973,9 @@ serve(async (req) => {
                 if (!mapped) {
                   continue;
                 }
-                const value = coerceNumber((entry as Record<string, unknown>).value);
+                const value = coerceNumber(
+                  (entry as Record<string, unknown>).value,
+                );
                 if (value === null) {
                   continue;
                 }
@@ -1705,114 +1995,192 @@ serve(async (req) => {
               }
             }
 
-            if (timeBudgetHit) {
-              log.warn("Stopping Sensor.Community poll early (runtime budget exceeded).", {
-                max_runtime_seconds: maxRuntimeSeconds,
-              });
-            }
-
             if (!processedRecords.length) {
               responsePayload = {
                 ok: true,
                 count: 0,
                 message: "No records processed.",
                 partial: timeBudgetHit,
-                stopped_reason: timeBudgetHit ? "runtime_budget_exceeded" : null,
+                stopped_reason: timeBudgetHit
+                  ? "runtime_budget_exceeded"
+                  : null,
               };
             } else {
-              const phenomenonIds = await upsertPhenomena(connector.id);
-              await upsertStations(
-                processedRecords,
-                connector.id,
-                requestedServiceRef,
-                connector.overwrite_station_name ?? true,
-              );
               const stationRefs = Array.from(stationRefSet);
               stationsCount = stationRefs.length;
               stationsProcessed = stationsCount;
-              const stationIdMap = await fetchStationIds(connector.id, requestedServiceRef, stationRefs);
+
+              let budgetStopPhase: string | null = null;
+              const checkBudget = (phase: string): boolean => {
+                if (guardRuntimeBudget(phase)) {
+                  return true;
+                }
+                if (!budgetStopPhase) {
+                  budgetStopPhase = phase;
+                }
+                return false;
+              };
+
+              let phenomenonIds: Record<string, number> = {};
+              let stationIdMap: Record<string, number> = {};
+              let timeseriesIdMap: Record<string, number> = {};
+
+              if (checkBudget("before_upsert_phenomena")) {
+                phenomenonIds = await upsertPhenomena(connector.id);
+              }
+              if (!budgetStopPhase && checkBudget("before_upsert_stations")) {
+                await upsertStations(
+                  processedRecords,
+                  connector.id,
+                  requestedServiceRef,
+                  connector.overwrite_station_name ?? true,
+                );
+              }
+              if (!budgetStopPhase && checkBudget("before_fetch_station_ids")) {
+                stationIdMap = await fetchStationIds(
+                  connector.id,
+                  requestedServiceRef,
+                  stationRefs,
+                );
+              }
 
               const timeseriesPayload: Array<Record<string, unknown>> = [];
-              for (const entry of observationsByTimeseries.values()) {
-                const stationId = stationIdMap[entry.station_ref];
-                if (!stationId) {
-                  continue;
+              if (!budgetStopPhase) {
+                for (const entry of observationsByTimeseries.values()) {
+                  if (!checkBudget("during_timeseries_build")) {
+                    break;
+                  }
+                  const stationId = stationIdMap[entry.station_ref];
+                  if (!stationId) {
+                    continue;
+                  }
+                  const meta = Object.values(VALUE_TYPE_MAP).find((item) =>
+                    item.pollutant === entry.pollutant
+                  );
+                  const label = meta
+                    ? `${entry.station_ref} ${meta.label}`
+                    : entry.pollutant;
+                  timeseriesPayload.push({
+                    timeseries_ref: `${entry.station_ref}:${entry.pollutant}`,
+                    label,
+                    uom: meta ? meta.uom : null,
+                    station_id: stationId,
+                    connector_id: connector.id,
+                    service_ref: String(requestedServiceRef),
+                    phenomenon_id: phenomenonIds[entry.pollutant],
+                    last_value_at: entry.observed_at,
+                    last_value: entry.value,
+                  });
                 }
-                const meta = Object.values(VALUE_TYPE_MAP).find((item) => item.pollutant === entry.pollutant);
-                const label = meta ? `${entry.station_ref} ${meta.label}` : entry.pollutant;
-                timeseriesPayload.push({
-                  timeseries_ref: `${entry.station_ref}:${entry.pollutant}`,
-                  label,
-                  uom: meta ? meta.uom : null,
-                  station_id: stationId,
-                  connector_id: connector.id,
-                  service_ref: String(requestedServiceRef),
-                  phenomenon_id: phenomenonIds[entry.pollutant],
-                  last_value_at: entry.observed_at,
-                  last_value: entry.value,
-                });
               }
+
               timeseriesCount = timeseriesPayload.length;
-              await upsertTimeseries(timeseriesPayload);
-              await backfillTimeseriesPhenomena(connector.id, requestedServiceRef, phenomenonIds);
+              if (!budgetStopPhase && checkBudget("before_upsert_timeseries")) {
+                await upsertTimeseries(timeseriesPayload);
+              }
+              if (
+                !budgetStopPhase &&
+                checkBudget("before_backfill_timeseries_phenomena")
+              ) {
+                await backfillTimeseriesPhenomena(
+                  connector.id,
+                  requestedServiceRef,
+                  phenomenonIds,
+                );
+              }
 
               const timeseriesRefs = Array.from(timeseriesRefSet);
-              const timeseriesIdMap = await fetchTimeseriesIds(connector.id, requestedServiceRef, timeseriesRefs);
+              if (
+                !budgetStopPhase && checkBudget("before_fetch_timeseries_ids")
+              ) {
+                timeseriesIdMap = await fetchTimeseriesIds(
+                  connector.id,
+                  requestedServiceRef,
+                  timeseriesRefs,
+                );
+              }
 
               const observationRows: Array<Record<string, unknown>> = [];
               const historyRows: HistoryObservationRow[] = [];
-              for (const entry of observationsByTimeseries.values()) {
-                const timeseriesRef = `${entry.station_ref}:${entry.pollutant}`;
-                const timeseriesId = timeseriesIdMap[timeseriesRef];
-                if (!timeseriesId) {
-                  continue;
-                }
-                observationRows.push({
-                  connector_id: connector.id,
-                  timeseries_id: timeseriesId,
-                  observed_at: entry.observed_at,
-                  value: entry.value,
-                  status: null,
-                });
-                const historyRow = toHistoryObservationRow(
-                  observationRows[observationRows.length - 1],
-                  String(connector.connector_code ?? requestedConnectorCode),
-                  String(requestedServiceRef),
-                  timeseriesRef,
-                );
-                if (historyRow) {
-                  historyRows.push(historyRow);
+              if (!budgetStopPhase) {
+                for (const entry of observationsByTimeseries.values()) {
+                  if (!checkBudget("during_observation_build")) {
+                    break;
+                  }
+                  const timeseriesRef =
+                    `${entry.station_ref}:${entry.pollutant}`;
+                  const timeseriesId = timeseriesIdMap[timeseriesRef];
+                  if (!timeseriesId) {
+                    continue;
+                  }
+                  observationRows.push({
+                    connector_id: connector.id,
+                    timeseries_id: timeseriesId,
+                    observed_at: entry.observed_at,
+                    value: entry.value,
+                    status: null,
+                  });
+                  const historyRow = toHistoryObservationRow(
+                    observationRows[observationRows.length - 1],
+                    String(connector.connector_code ?? requestedConnectorCode),
+                    String(requestedServiceRef),
+                    timeseriesRef,
+                  );
+                  if (historyRow) {
+                    historyRows.push(historyRow);
+                  }
                 }
               }
 
-              observationsUpserted = await upsertObservations(observationRows);
-              await writeHistoryWithOutbox(publicRpcRequest, historyRows, (message) => {
-                log.warn("History dual-write warning.", {
-                  message,
-                  rows: historyRows.length,
-                });
-              });
-
-              const { error: pollUpdateError } = await postgrestRequest(
-                "PATCH",
-                "connectors",
-                { id: `eq.${connector.id}` },
-                { last_polled_at: new Date().toISOString() },
-                "return=minimal",
-              );
-              if (pollUpdateError) {
-                log.warn("Failed to update connectors.last_polled_at.", { error: pollUpdateError.message });
-                await errorLogger.logError({
-                  source: "edge",
-                  severity: "error",
-                  message: "Failed to update connectors.last_polled_at.",
-                  context: {
-                    connector_id: connector.id,
-                    error: pollUpdateError.message,
+              if (
+                !budgetStopPhase && checkBudget("before_upsert_observations")
+              ) {
+                observationsUpserted = await upsertObservations(
+                  observationRows,
+                );
+              }
+              if (!budgetStopPhase && checkBudget("before_write_history")) {
+                await writeHistoryWithOutbox(
+                  publicRpcRequest,
+                  historyRows,
+                  (message) => {
+                    log.warn("History dual-write warning.", {
+                      message,
+                      rows: historyRows.length,
+                    });
                   },
-                  connector_code: connector.connector_code ?? requestedConnectorCode,
-                  connector_id: connector.id,
-                });
+                );
+              }
+
+              if (
+                !budgetStopPhase && checkBudget("before_update_connector_poll")
+              ) {
+                const { error: pollUpdateError } = await postgrestRequest(
+                  "PATCH",
+                  "connectors",
+                  { id: `eq.${connector.id}` },
+                  { last_polled_at: new Date().toISOString() },
+                  "return=minimal",
+                );
+                if (pollUpdateError) {
+                  log.warn("Failed to update connectors.last_polled_at.", {
+                    error: pollUpdateError.message,
+                  });
+                  if (!shouldStop()) {
+                    await errorLogger.logError({
+                      source: "edge",
+                      severity: "error",
+                      message: "Failed to update connectors.last_polled_at.",
+                      context: {
+                        connector_id: connector.id,
+                        error: pollUpdateError.message,
+                      },
+                      connector_code: connector.connector_code ??
+                        requestedConnectorCode,
+                      connector_id: connector.id,
+                    });
+                  }
+                }
               }
 
               responsePayload = {
@@ -1823,13 +2191,17 @@ serve(async (req) => {
                 stations_processed: stationsProcessed,
                 timeseries: timeseriesCount,
                 observations: observationsUpserted,
-                partial: timeBudgetHit,
-                stopped_reason: timeBudgetHit ? "runtime_budget_exceeded" : null,
+                partial: timeBudgetHit || Boolean(budgetStopPhase),
+                stopped_reason: (timeBudgetHit || budgetStopPhase)
+                  ? "runtime_budget_exceeded"
+                  : null,
+                stopped_phase: budgetStopPhase,
               };
               log.info("Stations polled.", {
                 stations_selected: stationsCount,
                 stations_processed: stationsProcessed,
-                partial: timeBudgetHit,
+                partial: timeBudgetHit || Boolean(budgetStopPhase),
+                stopped_phase: budgetStopPhase,
               });
             }
           }
@@ -1841,19 +2213,23 @@ serve(async (req) => {
     status = 500;
     responsePayload = { ok: false, error: "Unhandled error", message };
     log.error("Unhandled error during poll.", { message });
-    await errorLogger.logError({
-      source: "edge",
-      severity: "error",
-      message: "Unhandled error during poll.",
-      stack: err instanceof Error ? err.stack : undefined,
-      context: {
+    if (!shouldStop()) {
+      await errorLogger.logError({
+        source: "edge",
+        severity: "error",
+        message: "Unhandled error during poll.",
+        stack: err instanceof Error ? err.stack : undefined,
+        context: {
+          connector_id: requestedConnectorId ?? null,
+          connector_code: requestedConnectorCode,
+          connector_label: requestedConnectorLabel,
+        },
+        connector_code: requestedConnectorCode ?? SCOMM_CONNECTOR_CODE,
         connector_id: requestedConnectorId ?? null,
-        connector_code: requestedConnectorCode,
-        connector_label: requestedConnectorLabel,
-      },
-      connector_code: requestedConnectorCode ?? SCOMM_CONNECTOR_CODE,
-      connector_id: requestedConnectorId ?? null,
-    });
+      });
+    } else {
+      console.warn("Skipping error logger write (runtime budget exceeded).");
+    }
   } finally {
     log.info("Poll summary", {
       connector_id: connector?.id ?? requestedConnectorId ?? null,
@@ -1863,19 +2239,28 @@ serve(async (req) => {
       timeseries: timeseriesCount,
       observations: observationsUpserted,
     });
+    const canRunDropboxUploads = !shouldStop();
+    if (!canRunDropboxUploads) {
+      log.warn("Skipping Dropbox uploads (runtime budget exceeded).", {
+        elapsed_ms: Date.now() - runStartedAt,
+        response_buffer_ms: responseBufferMs,
+      });
+    }
+
     let accessToken: string | null = null;
-    const resolvedConnectorCode = connector?.connector_code ?? requestedConnectorCode ?? SCOMM_CONNECTOR_CODE;
+    const resolvedConnectorCode = connector?.connector_code ??
+      requestedConnectorCode ?? SCOMM_CONNECTOR_CODE;
     const refreshDropbox = dropboxConfig
       ? () => dropboxRefreshAccessToken(dropboxConfig)
       : undefined;
-    if (dropboxConfig) {
+    if (dropboxConfig && canRunDropboxUploads) {
       try {
         accessToken = await dropboxRefreshAccessToken(dropboxConfig);
       } catch (err) {
         console.warn("Dropbox token request failed:", err);
       }
     }
-    if (accessToken) {
+    if (accessToken && canRunDropboxUploads) {
       accessToken = await uploadDropboxLog(
         accessToken,
         log,
@@ -1884,14 +2269,20 @@ serve(async (req) => {
         errorLogger,
         refreshDropbox,
       );
-      accessToken = await uploadDropboxRaw(
-        accessToken,
-        rawRecorder,
-        connector?.id ?? requestedConnectorId ?? null,
-        resolvedConnectorCode,
-        errorLogger,
-        refreshDropbox,
-      );
+      if (!shouldStop()) {
+        accessToken = await uploadDropboxRaw(
+          accessToken,
+          rawRecorder,
+          connector?.id ?? requestedConnectorId ?? null,
+          resolvedConnectorCode,
+          errorLogger,
+          refreshDropbox,
+        );
+      } else {
+        log.warn(
+          "Skipping Dropbox raw upload (runtime budget exceeded after log upload).",
+        );
+      }
     }
   }
 

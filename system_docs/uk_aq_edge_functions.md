@@ -113,7 +113,8 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
   - Filters to the UK bounding box by default; stations with missing coordinates are kept.
   - Sets `stations.station_exposure` to `indoor`/`outdoor` when `location.indoor` is present (0/1 or boolean).
   - Honors `connectors.overwrite_station_name` to decide when `stations.station_name` can be overwritten (false keeps existing non-null names).
-  - Enforces a runtime budget and will return partial progress with `partial=true` when exceeded.
+  - Enforces a runtime budget and returns partial progress (`partial=true`, `stopped_reason=runtime_budget_exceeded`, optional `stopped_phase`) when exceeded.
+  - Reserves a response buffer (`SCOMM_RESPONSE_BUFFER_MS`, default `10000`) and skips non-critical Dropbox uploads when the remaining budget is too low.
 - Logs:
   - Writes a log file to Dropbox `/connectors/sensorcommunity/log/YYYY-MM-DD/` (prefix `uk_aq_log_edge_scomm_`).
   - Writes raw payloads to Dropbox `/connectors/sensorcommunity/raw_data/YYYY-MM-DD/` as ZIP (prefix `uk_aq_raw_edge_scomm_`).
@@ -370,6 +371,7 @@ Optional:
 - `SCOMM_ERROR_DROPBOX_ALLOWED_SUPABASE_URL` (optional allowlist for Sensor.Community error uploads)
 - `SCOMM_INGEST_MET_FIELDS` (defaults to `false`; set `true` to ingest temperature/humidity/pressure)
 - `SCOMM_MAX_RUNTIME_SECONDS` (optional; defaults to 120)
+- `SCOMM_RESPONSE_BUFFER_MS` (optional; defaults to `10000`; reserved budget before runtime cutoff to return response cleanly)
 - `OPENAQ_BASE_URL` (optional; defaults to `https://api.openaq.org/v3`)
 - `OPENAQ_API_KEY` (required for `ingest_openaq`)
 - `OPENAQ_CONNECTOR_CODE` (optional; defaults to `openaq`)
