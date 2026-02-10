@@ -58,6 +58,7 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     batch_size = max(1, int(args.batch_size))
+    row_limit = int(args.limit) if args.limit is not None else None
 
     client = create_supabase_client()
     schemas = SupabaseSchemas.from_client(client)
@@ -96,8 +97,8 @@ def main() -> int:
     scanned = 0
     while True:
         remaining = None
-        if args.limit is not None:
-            remaining = int(args.limit) - scanned
+        if row_limit is not None:
+            remaining = row_limit - scanned
             if remaining <= 0:
                 break
         fetch_size = batch_size if remaining is None else min(batch_size, remaining)
@@ -140,7 +141,7 @@ def main() -> int:
             core.table("timeseries").update({"phenomenon_id": phenomenon_id}).in_("id", ids).execute()
             updated += len(ids)
 
-        if len(rows) < batch_size:
+        if len(rows) < fetch_size:
             break
 
     print(
