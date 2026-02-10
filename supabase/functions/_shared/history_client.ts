@@ -106,7 +106,7 @@ const HISTORY_OUTBOX_FLUSH_LIMIT = parsePositiveInt(
 
 const HISTORY_UPSERT_CHUNK_SIZE = parsePositiveInt(
   Deno.env.get("HISTORY_UPSERT_CHUNK_SIZE"),
-  500,
+  1000,
 );
 
 let historyClientCache: ReturnType<typeof createClient> | null = null;

@@ -48,8 +48,9 @@ const DEFAULT_SERVICE_LABEL = "Sensor.Community";
 const DEFAULT_COUNTRY = "GB";
 const DEFAULT_USER_AGENT = "uk-air-quality-networks";
 const DEFAULT_TIMEOUT_MS = 30_000;
-const DEFAULT_MAX_RUNTIME_SECONDS = 120;
+const DEFAULT_MAX_RUNTIME_SECONDS = 130;
 const DEFAULT_RESPONSE_BUFFER_MS = 10_000;
+const DEFAULT_OBSERVATION_UPSERT_CHUNK_SIZE = 1000;
 const MIN_FETCH_TIMEOUT_MS = 1_000;
 const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
 
@@ -124,6 +125,10 @@ const SCOMM_MAX_RUNTIME_SECONDS = Number(
 );
 const SCOMM_RESPONSE_BUFFER_MS = Number(
   Deno.env.get("SCOMM_RESPONSE_BUFFER_MS") ?? DEFAULT_RESPONSE_BUFFER_MS,
+);
+const SCOMM_OBSERVATION_UPSERT_CHUNK_SIZE = parsePositiveInt(
+  Deno.env.get("SCOMM_OBSERVATION_UPSERT_CHUNK_SIZE"),
+  DEFAULT_OBSERVATION_UPSERT_CHUNK_SIZE,
 );
 const SB_UK_AQ_CRON_SECRET = Deno.env.get("SB_UK_AQ_CRON_SECRET") ?? "";
 
@@ -228,6 +233,17 @@ function parseBool(
   }
   const normalized = value.trim().toLowerCase();
   return ["1", "true", "yes", "y", "on"].includes(normalized);
+}
+
+function parsePositiveInt(
+  value: string | null | undefined,
+  fallback: number,
+): number {
+  const parsed = Number(value ?? "");
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+  return Math.max(1, Math.trunc(parsed));
 }
 
 function postgrestHeaders(
@@ -941,67 +957,6 @@ async function upsertTimeseries(
   return rows.length;
 }
 
-async function backfillTimeseriesPhenomena(
-  connectorId: string,
-  serviceRef: string,
-  phenomenonIds: Record<string, number>,
-): Promise<number> {
-  let updated = 0;
-  let offset = 0;
-  const limit = 1000;
-  while (true) {
-    const { data } = await postgrestRequest<
-      Array<{ id: number; timeseries_ref: string | null }>
-    >(
-      "GET",
-      "timeseries",
-      {
-        select: "id,timeseries_ref",
-        connector_id: `eq.${connectorId}`,
-        service_ref: `eq.${serviceRef}`,
-        phenomenon_id: "is.null",
-        limit: String(limit),
-        offset: String(offset),
-      },
-    );
-    if (!data || data.length === 0) {
-      break;
-    }
-    const idsByPollutant: Record<string, number[]> = { pm10: [], "pm2.5": [] };
-    for (const row of data) {
-      const ref = String(row.timeseries_ref ?? "").toLowerCase();
-      let pollutant: string | null = null;
-      if (ref.endsWith(":pm10")) {
-        pollutant = "pm10";
-      } else if (ref.endsWith(":pm2.5")) {
-        pollutant = "pm2.5";
-      }
-      if (pollutant && row.id !== null && row.id !== undefined) {
-        idsByPollutant[pollutant].push(Number(row.id));
-      }
-    }
-    for (const [pollutant, ids] of Object.entries(idsByPollutant)) {
-      const phenId = phenomenonIds[pollutant];
-      if (!phenId || !ids.length) {
-        continue;
-      }
-      await postgrestRequest(
-        "PATCH",
-        "timeseries",
-        { id: postgrestIn(ids.map(String)) },
-        { phenomenon_id: phenId },
-        "return=minimal",
-      );
-      updated += ids.length;
-    }
-    if (data.length < limit) {
-      break;
-    }
-    offset += limit;
-  }
-  return updated;
-}
-
 async function fetchTimeseriesIds(
   connectorId: string,
   serviceRef: string,
@@ -1035,14 +990,23 @@ async function upsertObservations(
   if (!rows.length) {
     return 0;
   }
-  await postgrestRequest(
-    "POST",
-    "observations",
-    { on_conflict: "connector_id,timeseries_id,observed_at" },
-    rows,
-    "resolution=merge-duplicates,return=minimal",
-  );
-  return rows.length;
+  let written = 0;
+  for (
+    let idx = 0;
+    idx < rows.length;
+    idx += SCOMM_OBSERVATION_UPSERT_CHUNK_SIZE
+  ) {
+    const chunk = rows.slice(idx, idx + SCOMM_OBSERVATION_UPSERT_CHUNK_SIZE);
+    await postgrestRequest(
+      "POST",
+      "observations",
+      { on_conflict: "connector_id,timeseries_id,observed_at" },
+      chunk,
+      "resolution=merge-duplicates,return=minimal",
+    );
+    written += chunk.length;
+  }
+  return written;
 }
 
 function toHistoryObservationRow(
@@ -2078,17 +2042,6 @@ serve(async (req) => {
               if (!budgetStopPhase && checkBudget("before_upsert_timeseries")) {
                 await upsertTimeseries(timeseriesPayload);
               }
-              if (
-                !budgetStopPhase &&
-                checkBudget("before_backfill_timeseries_phenomena")
-              ) {
-                await backfillTimeseriesPhenomena(
-                  connector.id,
-                  requestedServiceRef,
-                  phenomenonIds,
-                );
-              }
-
               const timeseriesRefs = Array.from(timeseriesRefSet);
               if (
                 !budgetStopPhase && checkBudget("before_fetch_timeseries_ids")
@@ -2132,24 +2085,21 @@ serve(async (req) => {
                 }
               }
 
-              if (
-                !budgetStopPhase && checkBudget("before_upsert_observations")
-              ) {
-                observationsUpserted = await upsertObservations(
-                  observationRows,
-                );
-              }
-              if (!budgetStopPhase && checkBudget("before_write_history")) {
-                await writeHistoryWithOutbox(
-                  publicRpcRequest,
-                  historyRows,
-                  (message) => {
-                    log.warn("History dual-write warning.", {
-                      message,
-                      rows: historyRows.length,
-                    });
-                  },
-                );
+              if (!budgetStopPhase && checkBudget("before_dual_write")) {
+                const [observationWriteResult] = await Promise.all([
+                  upsertObservations(observationRows),
+                  writeHistoryWithOutbox(
+                    publicRpcRequest,
+                    historyRows,
+                    (message) => {
+                      log.warn("History dual-write warning.", {
+                        message,
+                        rows: historyRows.length,
+                      });
+                    },
+                  ),
+                ]);
+                observationsUpserted = observationWriteResult;
               }
 
               if (
