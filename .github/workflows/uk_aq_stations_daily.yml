@@ -178,6 +178,14 @@ jobs:
           python3 scripts/sensorcommunity/sensorcommunity_list_stations.py \
             --output "${SCOMM_CONNECTOR_CODE}_stations.json"
 
+
+      - name: Backfill Sensor.Community timeseries phenomena
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          python3 scripts/sensorcommunity/sensorcommunity_backfill_timeseries_phenomena.py
+
       - name: Refresh station PCON/LA from Aiven
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
