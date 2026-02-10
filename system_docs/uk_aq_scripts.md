@@ -762,6 +762,24 @@ Notes:
 - Sets `stations.station_exposure` to `indoor`/`outdoor` when `location.indoor` is present.
 - Connector upserts preserve existing `poll_enabled`; new connectors default to `poll_enabled=false`.
 
+### `scripts/sensorcommunity/sensorcommunity_backfill_timeseries_phenomena.py`
+Purpose:
+- Backfill `timeseries.phenomenon_id` for Sensor.Community rows where it is null.
+- Uses `timeseries_ref` suffix mapping (for example `:pm10`, `:pm2.5`) and connector-specific `phenomena` rows.
+- Intended for maintenance runs outside ingest hot paths.
+
+Common commands:
+```
+python3 scripts/sensorcommunity/sensorcommunity_backfill_timeseries_phenomena.py
+python3 scripts/sensorcommunity/sensorcommunity_backfill_timeseries_phenomena.py --batch-size 2000
+```
+
+Environment:
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `SCOMM_CONNECTOR_CODE` (optional; defaults to `sensorcommunity`)
+- `SCOMM_SERVICE_REF` (optional; defaults to connector code)
+
 ### `scripts/sensorcommunity/sensorcommunity_ingest.py`
 Purpose:
 - Fetch recent Sensor.Community values for `SCOMM_COUNTRY` (default `GB`).

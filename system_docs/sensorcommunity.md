@@ -14,6 +14,8 @@ This network uses Sensor.Community (formerly Luftdaten) for community air qualit
 - Phenomena rows are created for `pm10` and `pm2.5`, and `timeseries.phenomenon_id` is set accordingly.
 - Observations are inserted into `observations` with the timestamp provided by Sensor.Community payloads.
 - When `SCOMM_INGEST_MET_FIELDS=true`, temperature/humidity/pressure are ingested with their own timeseries.
+- Ingest performs dual-write to history and main observations in parallel to reduce runtime.
+- Timeseries phenomenon backfill for legacy nulls is handled by daily maintenance (`scripts/sensorcommunity/sensorcommunity_backfill_timeseries_phenomena.py`), not the ingest hot path.
 
 ## Connector creation
 - Connector rows are created by the stations sync; the ingest expects the connector to exist and does not create it.
