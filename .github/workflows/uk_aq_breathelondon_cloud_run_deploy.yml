@@ -1,0 +1,294 @@
+name: Deploy Breathe London Cloud Run Job
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "workers/uk_aq_breathelondon_cloud_run/**"
+      - "supabase/functions/ingest_breathelondon/**"
+      - "supabase/functions/_shared/cache.ts"
+      - "supabase/functions/_shared/fetch_egress_patch.ts"
+      - "supabase/functions/_shared/history_client.ts"
+      - ".github/workflows/uk_aq_breathelondon_cloud_run_deploy.yml"
+  workflow_dispatch:
+
+jobs:
+  deploy-breathelondon-job:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+      REGION: ${{ vars.GCP_REGION || 'europe-west2' }}
+      REPO: ${{ vars.GCP_ARTIFACT_REPO || 'uk-aq' }}
+      JOB_NAME: ${{ vars.GCP_BREATHELONDON_JOB_NAME || 'uk-aq-breathelondon-ingest' }}
+      JOB_SERVICE_ACCOUNT: ${{ vars.GCP_BREATHELONDON_JOB_SERVICE_ACCOUNT || '' }}
+      JOB_TIMEOUT_SECONDS: ${{ vars.GCP_BREATHELONDON_JOB_TIMEOUT_SECONDS || '900' }}
+      JOB_MAX_RETRIES: ${{ vars.GCP_BREATHELONDON_JOB_MAX_RETRIES || '0' }}
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      HISTORY_SUPABASE_URL: ${{ secrets.HISTORY_SUPABASE_URL }}
+      UK_AQ_CORE_SCHEMA: ${{ vars.UK_AQ_CORE_SCHEMA || 'uk_aq_core' }}
+      UK_AQ_RAW_SCHEMA: ${{ vars.UK_AQ_RAW_SCHEMA || 'uk_aq_raw' }}
+      HISTORY_SCHEMA: ${{ vars.HISTORY_SCHEMA || 'uk_aq_public' }}
+      BREATHELONDON_BASE_URL: ${{ vars.BREATHELONDON_BASE_URL || 'https://api.breathelondon-communities.org/api' }}
+      BREATHELONDON_CONNECTOR_CODE: ${{ vars.BREATHELONDON_CONNECTOR_CODE || 'breathelondon' }}
+      BREATHELONDON_SERVICE_REF: ${{ vars.BREATHELONDON_SERVICE_REF || 'breathelondon' }}
+      BREATHELONDON_SERVICE_LABEL: ${{ vars.BREATHELONDON_SERVICE_LABEL || 'Breathe London' }}
+      BREATHELONDON_USER_AGENT: ${{ vars.BREATHELONDON_USER_AGENT || 'uk-air-quality-networks' }}
+      BREATHELONDON_MAX_RUNTIME_SECONDS: ${{ vars.BREATHELONDON_MAX_RUNTIME_SECONDS || '300' }}
+      BREATHELONDON_RAW_DROPBOX_ALLOWED_SUPABASE_URL: ${{ secrets.BREATHELONDON_RAW_DROPBOX_ALLOWED_SUPABASE_URL }}
+      UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL: ${{ secrets.UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL }}
+      BREATHELONDON_ERROR_DROPBOX_ALLOWED_SUPABASE_URL: ${{ secrets.BREATHELONDON_ERROR_DROPBOX_ALLOWED_SUPABASE_URL }}
+      UK_AIR_ERROR_DROPBOX_ALLOWED_SUPABASE_URL: ${{ secrets.UK_AIR_ERROR_DROPBOX_ALLOWED_SUPABASE_URL }}
+      BREATHELONDON_DROPBOX_ROOT: ${{ vars.BREATHELONDON_DROPBOX_ROOT || '/CIC-Test' }}
+      UK_AQ_DROPBOX_ROOT: ${{ vars.UK_AQ_DROPBOX_ROOT || '/CIC-Test' }}
+      BREATHELONDON_ERROR_DROPBOX_FOLDER: ${{ vars.BREATHELONDON_ERROR_DROPBOX_FOLDER || 'error_log' }}
+      UK_AIR_ERROR_DROPBOX_FOLDER: ${{ vars.UK_AIR_ERROR_DROPBOX_FOLDER || 'error_log' }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      HISTORY_SERVICE_ROLE_KEY: ${{ secrets.HISTORY_SERVICE_ROLE_KEY }}
+      BREATHELONDON_API_KEY: ${{ secrets.BREATHELONDON_API_KEY }}
+      SB_UK_AQ_CRON_SECRET: ${{ secrets.SB_UK_AQ_CRON_SECRET }}
+      DROPBOX_APP_KEY: ${{ secrets.DROPBOX_APP_KEY }}
+      DROPBOX_APP_SECRET: ${{ secrets.DROPBOX_APP_SECRET }}
+      DROPBOX_REFRESH_TOKEN: ${{ secrets.DROPBOX_REFRESH_TOKEN }}
+      SUPABASE_SERVICE_ROLE_KEY_SECRET_NAME: ${{ vars.SUPABASE_SERVICE_ROLE_KEY_SECRET_NAME || 'SUPABASE_SERVICE_ROLE_KEY' }}
+      HISTORY_SERVICE_ROLE_KEY_SECRET_NAME: ${{ vars.HISTORY_SERVICE_ROLE_KEY_SECRET_NAME || 'HISTORY_SERVICE_ROLE_KEY' }}
+      BREATHELONDON_API_KEY_SECRET_NAME: ${{ vars.BREATHELONDON_API_KEY_SECRET_NAME || 'BREATHELONDON_API_KEY' }}
+      SB_UK_AQ_CRON_SECRET_SECRET_NAME: ${{ vars.SB_UK_AQ_CRON_SECRET_SECRET_NAME || 'SB_UK_AQ_CRON_SECRET' }}
+      DROPBOX_APP_KEY_SECRET_NAME: ${{ vars.DROPBOX_APP_KEY_SECRET_NAME || 'DROPBOX_APP_KEY' }}
+      DROPBOX_APP_SECRET_SECRET_NAME: ${{ vars.DROPBOX_APP_SECRET_SECRET_NAME || 'DROPBOX_APP_SECRET' }}
+      DROPBOX_REFRESH_TOKEN_SECRET_NAME: ${{ vars.DROPBOX_REFRESH_TOKEN_SECRET_NAME || 'DROPBOX_REFRESH_TOKEN' }}
+      GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+      GCP_SERVICE_ACCOUNT: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+      GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate required project config
+        run: |
+          if [ -z "${PROJECT_ID:-}" ]; then
+            echo "Missing required secret: GCP_PROJECT_ID"
+            exit 1
+          fi
+
+      - name: Validate Google auth config
+        run: |
+          if [ -n "${GCP_WORKLOAD_IDENTITY_PROVIDER:-}" ] && [ -n "${GCP_SERVICE_ACCOUNT:-}" ]; then
+            echo "Using Workload Identity Federation auth."
+          elif [ -n "${GCP_SA_KEY:-}" ]; then
+            echo "Using Service Account key auth."
+          else
+            echo "Missing Google auth config."
+            echo "Set either:"
+            echo "1) GCP_WORKLOAD_IDENTITY_PROVIDER + GCP_SERVICE_ACCOUNT"
+            echo "or"
+            echo "2) GCP_SA_KEY"
+            exit 1
+          fi
+
+      - name: Authenticate to Google Cloud (WIF)
+        if: ${{ env.GCP_WORKLOAD_IDENTITY_PROVIDER != '' && env.GCP_SERVICE_ACCOUNT != '' }}
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ env.GCP_SERVICE_ACCOUNT }}
+
+      - name: Authenticate to Google Cloud (Service Account Key fallback)
+        if: ${{ env.GCP_WORKLOAD_IDENTITY_PROVIDER == '' || env.GCP_SERVICE_ACCOUNT == '' }}
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ env.GCP_SA_KEY }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure gcloud project
+        run: |
+          gcloud config set project "${PROJECT_ID}"
+          gcloud config set run/region "${REGION}"
+
+      - name: Verify Artifact Registry repository exists
+        run: |
+          gcloud artifacts repositories describe "${REPO}" \
+            --location "${REGION}" \
+            --project "${PROJECT_ID}" >/dev/null
+
+      - name: Configure Docker auth for Artifact Registry
+        run: |
+          gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+
+      - name: Build and push Breathe London image
+        id: build
+        run: |
+          IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}/uk-aq-breathelondon:${GITHUB_SHA::12}"
+          echo "image=${IMAGE}" >> "${GITHUB_OUTPUT}"
+          docker build -f workers/uk_aq_breathelondon_cloud_run/Dockerfile -t "${IMAGE}" .
+          docker push "${IMAGE}"
+
+      - name: Validate Cloud Run job exists
+        run: |
+          gcloud run jobs describe "${JOB_NAME}" --region "${REGION}" >/dev/null
+
+      - name: Sync GitHub secrets to GCP Secret Manager
+        run: |
+          set -euo pipefail
+
+          upsert_secret() {
+            local secret_name="$1"
+            local secret_value="$2"
+            local required="${3:-0}"
+
+            if [ -z "${secret_name}" ]; then
+              if [ "${required}" = "1" ]; then
+                echo "Missing required secret name."
+                exit 1
+              fi
+              return 0
+            fi
+
+            if [ -z "${secret_value}" ]; then
+              if [ "${required}" = "1" ]; then
+                echo "Missing required secret value for ${secret_name} in GitHub Secrets."
+                exit 1
+              fi
+              echo "Skipping optional secret ${secret_name} (no GitHub secret value)."
+              return 0
+            fi
+
+            if gcloud secrets describe "${secret_name}" --project "${PROJECT_ID}" >/dev/null 2>&1; then
+              printf '%s' "${secret_value}" | gcloud secrets versions add "${secret_name}" \
+                --project "${PROJECT_ID}" \
+                --data-file=-
+              echo "Updated Secret Manager secret version: ${secret_name}"
+            else
+              printf '%s' "${secret_value}" | gcloud secrets create "${secret_name}" \
+                --project "${PROJECT_ID}" \
+                --replication-policy="automatic" \
+                --data-file=-
+              echo "Created Secret Manager secret: ${secret_name}"
+            fi
+          }
+
+          upsert_secret "${SUPABASE_SERVICE_ROLE_KEY_SECRET_NAME}" "${SUPABASE_SERVICE_ROLE_KEY}" 1
+          upsert_secret "${BREATHELONDON_API_KEY_SECRET_NAME}" "${BREATHELONDON_API_KEY}" 1
+          upsert_secret "${SB_UK_AQ_CRON_SECRET_SECRET_NAME}" "${SB_UK_AQ_CRON_SECRET}" 0
+          upsert_secret "${HISTORY_SERVICE_ROLE_KEY_SECRET_NAME}" "${HISTORY_SERVICE_ROLE_KEY}" 0
+          upsert_secret "${DROPBOX_APP_KEY_SECRET_NAME}" "${DROPBOX_APP_KEY}" 0
+          upsert_secret "${DROPBOX_APP_SECRET_SECRET_NAME}" "${DROPBOX_APP_SECRET}" 0
+          upsert_secret "${DROPBOX_REFRESH_TOKEN_SECRET_NAME}" "${DROPBOX_REFRESH_TOKEN}" 0
+
+      - name: Build Cloud Run env and secret args
+        id: cloudrun_args
+        run: |
+          set -euo pipefail
+
+          require_env() {
+            local key="$1"
+            local value="${!key:-}"
+            if [ -z "${value}" ]; then
+              echo "Missing required value for ${key}"
+              exit 1
+            fi
+          }
+
+          add_env() {
+            local key="$1"
+            local value="${!key:-}"
+            if [ -n "${value}" ]; then
+              env_updates+=("${key}=${value}")
+            fi
+          }
+
+          add_secret_binding() {
+            local env_key="$1"
+            local secret_name="$2"
+            local required="${3:-0}"
+            if [ -z "${secret_name}" ]; then
+              if [ "${required}" = "1" ]; then
+                echo "Missing secret name for required binding ${env_key}"
+                exit 1
+              fi
+              return 0
+            fi
+            if gcloud secrets describe "${secret_name}" --project "${PROJECT_ID}" >/dev/null 2>&1; then
+              secret_updates+=("${env_key}=${secret_name}:latest")
+              return 0
+            fi
+            if [ "${required}" = "1" ]; then
+              echo "Required Secret Manager secret not found: ${secret_name}"
+              exit 1
+            fi
+            echo "Optional Secret Manager secret not found, skipping: ${secret_name}"
+          }
+
+          require_env SUPABASE_URL
+
+          env_updates=()
+          add_env SUPABASE_URL
+          add_env UK_AQ_CORE_SCHEMA
+          add_env UK_AQ_RAW_SCHEMA
+          add_env BREATHELONDON_BASE_URL
+          add_env BREATHELONDON_CONNECTOR_CODE
+          add_env BREATHELONDON_SERVICE_REF
+          add_env BREATHELONDON_SERVICE_LABEL
+          add_env BREATHELONDON_USER_AGENT
+          add_env BREATHELONDON_MAX_RUNTIME_SECONDS
+          add_env BREATHELONDON_RAW_DROPBOX_ALLOWED_SUPABASE_URL
+          add_env UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL
+          add_env BREATHELONDON_ERROR_DROPBOX_ALLOWED_SUPABASE_URL
+          add_env UK_AIR_ERROR_DROPBOX_ALLOWED_SUPABASE_URL
+          add_env BREATHELONDON_DROPBOX_ROOT
+          add_env UK_AQ_DROPBOX_ROOT
+          add_env BREATHELONDON_ERROR_DROPBOX_FOLDER
+          add_env UK_AIR_ERROR_DROPBOX_FOLDER
+          if [ -n "${HISTORY_SUPABASE_URL:-}" ]; then
+            add_env HISTORY_SUPABASE_URL
+            add_env HISTORY_SCHEMA
+          fi
+
+          secret_updates=()
+          add_secret_binding "SUPABASE_SERVICE_ROLE_KEY" "${SUPABASE_SERVICE_ROLE_KEY_SECRET_NAME}" 1
+          add_secret_binding "BREATHELONDON_API_KEY" "${BREATHELONDON_API_KEY_SECRET_NAME}" 1
+          add_secret_binding "SB_UK_AQ_CRON_SECRET" "${SB_UK_AQ_CRON_SECRET_SECRET_NAME}" 0
+          add_secret_binding "HISTORY_SERVICE_ROLE_KEY" "${HISTORY_SERVICE_ROLE_KEY_SECRET_NAME}" 0
+          add_secret_binding "DROPBOX_APP_KEY" "${DROPBOX_APP_KEY_SECRET_NAME}" 0
+          add_secret_binding "DROPBOX_APP_SECRET" "${DROPBOX_APP_SECRET_SECRET_NAME}" 0
+          add_secret_binding "DROPBOX_REFRESH_TOKEN" "${DROPBOX_REFRESH_TOKEN_SECRET_NAME}" 0
+
+          env_csv="$(IFS=,; echo "${env_updates[*]}")"
+          secret_csv="$(IFS=,; echo "${secret_updates[*]}")"
+          echo "env_csv=${env_csv}" >> "${GITHUB_OUTPUT}"
+          echo "secret_csv=${secret_csv}" >> "${GITHUB_OUTPUT}"
+
+      - name: Update Cloud Run job image
+        run: |
+          set -euo pipefail
+          ENV_CSV='${{ steps.cloudrun_args.outputs.env_csv }}'
+          SECRET_CSV='${{ steps.cloudrun_args.outputs.secret_csv }}'
+
+          CMD=(
+            gcloud run jobs update "${JOB_NAME}"
+            --region "${REGION}"
+            --image "${{ steps.build.outputs.image }}"
+            --task-timeout "${JOB_TIMEOUT_SECONDS}s"
+            --max-retries "${JOB_MAX_RETRIES}"
+          )
+          if [ -n "${JOB_SERVICE_ACCOUNT}" ]; then
+            CMD+=(--service-account "${JOB_SERVICE_ACCOUNT}")
+          fi
+          if [ -n "${ENV_CSV}" ]; then
+            CMD+=(--update-env-vars "${ENV_CSV}")
+          fi
+          if [ -n "${SECRET_CSV}" ]; then
+            CMD+=(--update-secrets "${SECRET_CSV}")
+          fi
+          "${CMD[@]}"
+
+      - name: Show deployed job
+        run: |
+          gcloud run jobs describe "${JOB_NAME}" \
+            --region "${REGION}" \
+            --format="yaml(name,template.template.containers[0].image,template.template.timeoutSeconds)"
