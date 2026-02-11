@@ -70,6 +70,8 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
   - In `mode=run_queue`, queued jobs blocked by this guard are resolved with retry (`in_flight_running` or `started_within_interval`) instead of starting an overlap run.
   - When `max_runs_per_dispatch_call>1`, in-flight checks are per connector; other connectors can still dispatch.
   - Stale in-flight runs (>10 minutes) are auto-closed as `failed` with `in_flight_timeout` and a `uk_aq_ingest_runs` row is inserted.
+  - Loads latest run state via `uk_aq_rpc_latest_ingest_runs` (lookback-bounded) so dispatcher reads one row per connector instead of broad `uk_aq_ingest_runs` scans.
+  - If `uk_aq_rpc_latest_ingest_runs` is unavailable, falls back to a bounded `uk_aq_ingest_runs` read (`run_started_at >= now()-lookback`, small limit).
   - If a connector has `last_run_end` null but the latest `uk_aq_ingest_runs` row has `run_ended_at`, the connector row is reconciled as `ingest_runs_reconciled`.
   - Cloudflare worker cron runs every 1 minute (`workers/uk_aq_dispatcher/wrangler.toml`) and calls:
     - `mode=enqueue` then
@@ -365,6 +367,8 @@ Optional:
 - `DISPATCH_MIN_START_EDGE_CALL_MS` (optional; defaults to `30000`; skip starting a new child ingest call when remaining dispatcher budget is below this threshold)
 - `DISPATCH_QUEUE_CLAIM_BATCH_LIMIT` (optional; defaults to `1`; queue jobs claimed per `mode=run_queue` call)
 - `DISPATCH_QUEUE_LEASE_SECONDS` (optional; defaults to `900`; queue job lease during processing)
+- `LATEST_INGEST_RUNS_LOOKBACK_HOURS` (optional; defaults to `48`; dispatcher lookback window when loading latest ingest run state)
+- `LATEST_INGEST_RUNS_FALLBACK_LIMIT` (optional; defaults to `25`; fallback `uk_aq_ingest_runs` read cap if latest-run RPC is unavailable)
 - `UK_AQ_EGRESS_LOG_SAMPLE_RATE` (optional; defaults to `0.2`; sample rate for `2xx` endpoint metrics)
 - `UK_AQ_EGRESS_METRICS_DB_ENABLED` (optional; defaults to `true`; DB write toggle for endpoint metrics)
 - `UK_AQ_EGRESS_METRICS_CLEANUP_SAMPLE_RATE` (optional; defaults to `0.01`; chance to run retention cleanup after write)

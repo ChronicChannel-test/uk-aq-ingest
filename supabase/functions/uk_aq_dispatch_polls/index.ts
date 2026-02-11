@@ -144,6 +144,14 @@ const HISTORY_OUTBOX_DISPATCH_MAX_FLUSHES = parsePositiveInt(
   Deno.env.get("HISTORY_OUTBOX_DISPATCH_MAX_FLUSHES"),
   3,
 );
+const LATEST_INGEST_RUNS_LOOKBACK_HOURS = parsePositiveInt(
+  Deno.env.get("LATEST_INGEST_RUNS_LOOKBACK_HOURS"),
+  48,
+);
+const LATEST_INGEST_RUNS_FALLBACK_LIMIT = parsePositiveInt(
+  Deno.env.get("LATEST_INGEST_RUNS_FALLBACK_LIMIT"),
+  25,
+);
 const DISPATCH_QUEUE_CLAIM_BATCH_LIMIT = parsePositiveInt(
   Deno.env.get("DISPATCH_QUEUE_CLAIM_BATCH_LIMIT"),
   1,
@@ -1036,22 +1044,45 @@ async function loadConnectorConfigs(): Promise<ConnectorRow[]> {
 }
 
 async function loadLatestIngestRuns(): Promise<Map<string, IngestRunRow>> {
-  const { data, error } = await postgrestRequest<IngestRunRow[]>(
-    "GET",
-    "uk_aq_ingest_runs",
+  const sinceIso = new Date(
+    Date.now() - (LATEST_INGEST_RUNS_LOOKBACK_HOURS * 60 * 60 * 1000),
+  ).toISOString();
+  const latest = new Map<string, IngestRunRow>();
+
+  const rpcResult = await publicRpcRequest<IngestRunRow[] | null>(
+    "uk_aq_rpc_latest_ingest_runs",
     {
-      select:
-        "connector_id,connector_code,run_started_at,run_ended_at,run_status",
-      connector_code: postgrestIn(TARGET_CONNECTORS),
-      order: "run_started_at.desc",
-      limit: "200",
+      p_connector_codes: TARGET_CONNECTORS,
+      p_since: sinceIso,
     },
   );
-  if (error) {
-    throw new Error(`Failed to load uk_aq_ingest_runs: ${error.message}`);
+  let rows: IngestRunRow[] = [];
+  if (rpcResult.error) {
+    console.warn("uk_aq_rpc_latest_ingest_runs failed; using fallback query", {
+      error: rpcResult.error.message,
+      lookback_hours: LATEST_INGEST_RUNS_LOOKBACK_HOURS,
+      fallback_limit: LATEST_INGEST_RUNS_FALLBACK_LIMIT,
+    });
+    const { data, error } = await postgrestRequest<IngestRunRow[]>(
+      "GET",
+      "uk_aq_ingest_runs",
+      {
+        select:
+          "connector_id,connector_code,run_started_at,run_ended_at,run_status",
+        connector_code: postgrestIn(TARGET_CONNECTORS),
+        run_started_at: `gte.${sinceIso}`,
+        order: "run_started_at.desc",
+        limit: String(LATEST_INGEST_RUNS_FALLBACK_LIMIT),
+      },
+    );
+    if (error) {
+      throw new Error(`Failed to load uk_aq_ingest_runs: ${error.message}`);
+    }
+    rows = data ?? [];
+  } else {
+    rows = rpcResult.data ?? [];
   }
-  const latest = new Map<string, IngestRunRow>();
-  for (const row of data ?? []) {
+  for (const row of rows) {
     const code = row.connector_code ?? "";
     if (!code || latest.has(code)) {
       continue;
