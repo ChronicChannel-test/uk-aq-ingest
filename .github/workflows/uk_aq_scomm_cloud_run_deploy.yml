@@ -70,12 +70,23 @@ jobs:
           gcloud config set project "${PROJECT_ID}"
           gcloud config set run/region "${REGION}"
 
+      - name: Verify Artifact Registry repository exists
+        run: |
+          gcloud artifacts repositories describe "${REPO}" \
+            --location "${REGION}" \
+            --project "${PROJECT_ID}" >/dev/null
+
+      - name: Configure Docker auth for Artifact Registry
+        run: |
+          gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+
       - name: Build and push Sensor.Community image
         id: build
         run: |
           IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}/uk-aq-scomm:${GITHUB_SHA::12}"
           echo "image=${IMAGE}" >> "${GITHUB_OUTPUT}"
-          gcloud builds submit --tag "${IMAGE}" workers/uk_aq_sensorcommunity_cloud_run
+          docker build -t "${IMAGE}" workers/uk_aq_sensorcommunity_cloud_run
+          docker push "${IMAGE}"
 
       - name: Validate Cloud Run job exists
         run: |
