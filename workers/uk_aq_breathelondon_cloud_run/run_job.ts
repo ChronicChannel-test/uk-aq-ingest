@@ -1,5 +1,19 @@
 const CONNECTOR_CODE =
   (Deno.env.get("BREATHELONDON_CONNECTOR_CODE") || "breathelondon").trim();
+const SCHEDULER_BACKEND_SUPABASE_FUNCTION = "supabase_function";
+const SCHEDULER_BACKEND_GOOGLE_CLOUD_RUN = "google_cloud_run";
+const DEFAULT_INTERVAL_MINUTES = parsePositiveInt(
+  Deno.env.get("BREATHELONDON_DEFAULT_INTERVAL_MINUTES"),
+  60,
+);
+const IN_FLIGHT_TIMEOUT_MINUTES = parsePositiveInt(
+  Deno.env.get("BREATHELONDON_IN_FLIGHT_TIMEOUT_MINUTES"),
+  30,
+);
+const CLAIM_TIMEOUT_MINUTES = parsePositiveInt(
+  Deno.env.get("BREATHELONDON_CLAIM_TIMEOUT_MINUTES"),
+  30,
+);
 const PORT = parsePositiveInt(
   Deno.env.get("BREATHELONDON_LOCAL_PORT") || Deno.env.get("PORT"),
   8000,
@@ -21,6 +35,24 @@ type IngestResponse = {
   status: number;
   body: unknown;
   raw: string;
+};
+type ConnectorConfig = {
+  id: unknown;
+  connector_code: unknown;
+  poll_enabled: unknown;
+  poll_interval_minutes: unknown;
+  scheduler_backend: unknown;
+  last_polled_at: unknown;
+  last_run_start: unknown;
+  last_run_end: unknown;
+  last_run_status: unknown;
+};
+
+type DispatchClaimRow = {
+  claimed: unknown;
+  connector_id: unknown;
+  last_run_start: unknown;
+  last_run_end: unknown;
 };
 
 function requiredEnv(name: string): string {
@@ -60,6 +92,68 @@ function toIntegerOrNull(value: unknown): number | null {
     return null;
   }
   return Math.trunc(parsed);
+}
+
+function parseTimestamp(value: unknown): Date | null {
+  const text = toStringOrNull(value);
+  if (!text) {
+    return null;
+  }
+  const date = new Date(text);
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+  return date;
+}
+
+function evaluateDue(connector: ConnectorConfig | null, now: Date): {
+  due: boolean;
+  reason: string;
+  intervalMinutes: number;
+} {
+  if (!connector) {
+    return { due: false, reason: "connector_not_found", intervalMinutes: DEFAULT_INTERVAL_MINUTES };
+  }
+
+  if (connector.poll_enabled !== true) {
+    return { due: false, reason: "poll_disabled", intervalMinutes: DEFAULT_INTERVAL_MINUTES };
+  }
+
+  const schedulerBackend = toStringOrNull(connector.scheduler_backend) ||
+    SCHEDULER_BACKEND_SUPABASE_FUNCTION;
+  if (schedulerBackend !== SCHEDULER_BACKEND_GOOGLE_CLOUD_RUN) {
+    return {
+      due: false,
+      reason: "scheduler_backend_not_cloud_run",
+      intervalMinutes: DEFAULT_INTERVAL_MINUTES,
+    };
+  }
+
+  const intervalMinutes = toIntegerOrNull(connector.poll_interval_minutes) ||
+    DEFAULT_INTERVAL_MINUTES;
+
+  const runStartedAt = parseTimestamp(connector.last_run_start);
+  const runEndedAt = parseTimestamp(connector.last_run_end);
+  if (runStartedAt && !runEndedAt) {
+    const runningGuardMs =
+      Math.max(intervalMinutes, IN_FLIGHT_TIMEOUT_MINUTES) * 60 * 1000;
+    const ageMs = now.getTime() - runStartedAt.getTime();
+    if (Number.isFinite(ageMs) && ageMs >= 0 && ageMs < runningGuardMs) {
+      return { due: false, reason: "in_flight", intervalMinutes };
+    }
+  }
+
+  const anchor = runStartedAt || parseTimestamp(connector.last_polled_at);
+  if (!anchor) {
+    return { due: true, reason: "first_run", intervalMinutes };
+  }
+
+  const elapsedMs = now.getTime() - anchor.getTime();
+  if (elapsedMs < intervalMinutes * 60 * 1000) {
+    return { due: false, reason: "not_due", intervalMinutes };
+  }
+
+  return { due: true, reason: "due", intervalMinutes };
 }
 
 function postgrestHeaders(schema: string, write = false): Record<string, string> {
@@ -168,6 +262,44 @@ async function resolveConnectorId(payload: Record<string, unknown> | null): Prom
     throw new Error(`Connector not found: ${CONNECTOR_CODE}`);
   }
   return id;
+}
+
+async function loadConnector(): Promise<ConnectorConfig | null> {
+  const response = await postgrestRequest("GET", "connectors", {
+    query: {
+      select:
+        "id,connector_code,poll_enabled,poll_interval_minutes,scheduler_backend,last_polled_at,last_run_start,last_run_end,last_run_status",
+      connector_code: `eq.${CONNECTOR_CODE}`,
+      limit: "1",
+    },
+  });
+  if (!response.ok) {
+    throw new Error(
+      `Failed to load connector (${response.status}): ${response.text}`,
+    );
+  }
+  const rows = Array.isArray(response.data) ? response.data : [];
+  const row = toObject(rows[0]);
+  return row as ConnectorConfig | null;
+}
+
+async function claimConnector(runStartedAtIso: string): Promise<DispatchClaimRow | null> {
+  const response = await postgrestRequest("POST", "rpc/uk_aq_rpc_dispatch_claim", {
+    schema: "uk_aq_public",
+    body: {
+      p_connector_code: CONNECTOR_CODE,
+      p_run_started_at: runStartedAtIso,
+      p_timeout_minutes: CLAIM_TIMEOUT_MINUTES,
+    },
+  });
+  if (!response.ok) {
+    throw new Error(
+      `Dispatch claim failed (${response.status}): ${response.text}`,
+    );
+  }
+  const rows = Array.isArray(response.data) ? response.data : [];
+  const row = toObject(rows[0]);
+  return row as DispatchClaimRow | null;
 }
 
 async function updateConnectorRun(
@@ -325,6 +457,30 @@ async function runIngestOnce(): Promise<IngestResponse> {
 }
 
 async function main(): Promise<void> {
+  const now = new Date();
+  const runStartedAtIso = now.toISOString();
+  const connector = await loadConnector();
+  const due = evaluateDue(connector, now);
+  if (!due.due) {
+    logSummary("skipped", {
+      reason: due.reason,
+      interval_minutes: due.intervalMinutes,
+      poll_enabled: connector?.poll_enabled,
+      scheduler_backend:
+        toStringOrNull(connector?.scheduler_backend) || SCHEDULER_BACKEND_SUPABASE_FUNCTION,
+    });
+    return;
+  }
+
+  const claim = await claimConnector(runStartedAtIso);
+  if (!claim || claim.claimed !== true) {
+    logSummary("skipped", {
+      reason: "claim_not_acquired",
+      claim,
+    });
+    return;
+  }
+
   const server = new Deno.Command("deno", {
     args: [
       "run",
@@ -338,9 +494,9 @@ async function main(): Promise<void> {
     stderr: "inherit",
   }).spawn();
 
-  const runStartedAtIso = new Date().toISOString();
   let ingestResponse: IngestResponse | null = null;
-  let connectorId: number | null = null;
+  const claimedConnectorId = toIntegerOrNull(claim.connector_id);
+  let connectorId: number | null = claimedConnectorId ?? toIntegerOrNull(connector?.id);
 
   try {
     await waitForServer(`http://127.0.0.1:${PORT}/`);
@@ -348,7 +504,9 @@ async function main(): Promise<void> {
 
     const { runStatus, runMessage, payload } = deriveRunSummary(ingestResponse);
     const runEndedAtIso = new Date().toISOString();
-    connectorId = await resolveConnectorId(payload);
+    if (connectorId === null) {
+      connectorId = await resolveConnectorId(payload);
+    }
 
     await updateConnectorRun(
       connectorId,

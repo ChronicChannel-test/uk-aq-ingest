@@ -27,6 +27,12 @@ jobs:
       JOB_SERVICE_ACCOUNT: ${{ vars.GCP_BREATHELONDON_JOB_SERVICE_ACCOUNT || '' }}
       JOB_TIMEOUT_SECONDS: ${{ vars.GCP_BREATHELONDON_JOB_TIMEOUT_SECONDS || '900' }}
       JOB_MAX_RETRIES: ${{ vars.GCP_BREATHELONDON_JOB_MAX_RETRIES || '0' }}
+      SCHEDULER_ENABLED: ${{ vars.GCP_BREATHELONDON_SCHEDULER_ENABLED || 'true' }}
+      SCHEDULER_JOB_NAME: ${{ vars.GCP_BREATHELONDON_SCHEDULER_JOB_NAME || 'uk-aq-breathelondon-trigger' }}
+      SCHEDULER_CRON: ${{ vars.GCP_BREATHELONDON_SCHEDULER_CRON || '*/2 * * * *' }}
+      SCHEDULER_TIMEZONE: ${{ vars.GCP_BREATHELONDON_SCHEDULER_TIMEZONE || 'Etc/UTC' }}
+      SCHEDULER_MAX_RETRY_ATTEMPTS: ${{ vars.GCP_BREATHELONDON_SCHEDULER_MAX_RETRY_ATTEMPTS || '0' }}
+      SCHEDULER_SERVICE_ACCOUNT: ${{ vars.GCP_BREATHELONDON_SCHEDULER_SERVICE_ACCOUNT || '' }}
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       HISTORY_SUPABASE_URL: ${{ secrets.HISTORY_SUPABASE_URL }}
       UK_AQ_CORE_SCHEMA: ${{ vars.UK_AQ_CORE_SCHEMA || 'uk_aq_core' }}
@@ -307,6 +313,52 @@ jobs:
             CMD+=(--update-secrets "${SECRET_CSV}")
           fi
           "${CMD[@]}"
+
+      - name: Ensure Cloud Scheduler trigger exists
+        run: |
+          set -euo pipefail
+
+          enabled="$(printf '%s' "${SCHEDULER_ENABLED}" | tr '[:upper:]' '[:lower:]')"
+          if [ "${enabled}" != "true" ] && [ "${enabled}" != "1" ] && [ "${enabled}" != "yes" ]; then
+            echo "Skipping scheduler trigger management (SCHEDULER_ENABLED=${SCHEDULER_ENABLED})."
+            exit 0
+          fi
+
+          if [ -z "${SCHEDULER_JOB_NAME:-}" ]; then
+            echo "Missing scheduler job name."
+            exit 1
+          fi
+          if [ -z "${SCHEDULER_CRON:-}" ]; then
+            echo "Missing scheduler cron."
+            exit 1
+          fi
+
+          scheduler_sa="${SCHEDULER_SERVICE_ACCOUNT:-uk-aq-scheduler-invoker@${PROJECT_ID}.iam.gserviceaccount.com}"
+          run_uri="https://run.googleapis.com/v2/projects/${PROJECT_ID}/locations/${REGION}/jobs/${JOB_NAME}:run"
+
+          if gcloud scheduler jobs describe "${SCHEDULER_JOB_NAME}" --location "${REGION}" >/dev/null 2>&1; then
+            gcloud scheduler jobs update http "${SCHEDULER_JOB_NAME}" \
+              --location "${REGION}" \
+              --schedule "${SCHEDULER_CRON}" \
+              --time-zone "${SCHEDULER_TIMEZONE}" \
+              --uri "${run_uri}" \
+              --http-method POST \
+              --oauth-service-account-email "${scheduler_sa}" \
+              --oauth-token-scope "https://www.googleapis.com/auth/cloud-platform" \
+              --max-retry-attempts "${SCHEDULER_MAX_RETRY_ATTEMPTS}"
+            echo "Updated Cloud Scheduler job: ${SCHEDULER_JOB_NAME}"
+          else
+            gcloud scheduler jobs create http "${SCHEDULER_JOB_NAME}" \
+              --location "${REGION}" \
+              --schedule "${SCHEDULER_CRON}" \
+              --time-zone "${SCHEDULER_TIMEZONE}" \
+              --uri "${run_uri}" \
+              --http-method POST \
+              --oauth-service-account-email "${scheduler_sa}" \
+              --oauth-token-scope "https://www.googleapis.com/auth/cloud-platform" \
+              --max-retry-attempts "${SCHEDULER_MAX_RETRY_ATTEMPTS}"
+            echo "Created Cloud Scheduler job: ${SCHEDULER_JOB_NAME}"
+          fi
 
       - name: Show deployed job
         run: |
