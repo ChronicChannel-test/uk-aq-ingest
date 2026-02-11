@@ -20,6 +20,27 @@ jobs:
       REGION: ${{ vars.GCP_REGION || 'europe-west2' }}
       REPO: ${{ vars.GCP_ARTIFACT_REPO || 'uk-aq' }}
       JOB_NAME: ${{ vars.GCP_SCOMM_JOB_NAME || 'uk-aq-scomm-ingest' }}
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      HISTORY_SUPABASE_URL: ${{ secrets.HISTORY_SUPABASE_URL }}
+      UK_AQ_CORE_SCHEMA: ${{ vars.UK_AQ_CORE_SCHEMA || 'uk_aq_core' }}
+      UK_AQ_RAW_SCHEMA: ${{ vars.UK_AQ_RAW_SCHEMA || 'uk_aq_raw' }}
+      HISTORY_SCHEMA: ${{ vars.HISTORY_SCHEMA || 'uk_aq_public' }}
+      SCOMM_COUNTRY: ${{ vars.SCOMM_COUNTRY || 'GB' }}
+      SCOMM_BASE_URL: ${{ vars.SCOMM_BASE_URL || 'https://data.sensor.community' }}
+      SCOMM_SERVICE_REF: ${{ vars.SCOMM_SERVICE_REF || 'sensorcommunity' }}
+      SCOMM_USER_AGENT: ${{ vars.SCOMM_USER_AGENT || 'uk-air-quality-networks' }}
+      SCOMM_INGEST_MET_FIELDS: ${{ vars.SCOMM_INGEST_MET_FIELDS || 'true' }}
+      SCOMM_RAW_DROPBOX_ALLOWED_SUPABASE_URL: ${{ secrets.SCOMM_RAW_DROPBOX_ALLOWED_SUPABASE_URL }}
+      UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL: ${{ secrets.UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL }}
+      SCOMM_DROPBOX_ROOT: ${{ vars.SCOMM_DROPBOX_ROOT || '/CIC-Test' }}
+      UK_AQ_DROPBOX_ROOT: ${{ vars.UK_AQ_DROPBOX_ROOT || '/CIC-Test' }}
+      SCOMM_RAW_DROPBOX_FOLDER: ${{ vars.SCOMM_RAW_DROPBOX_FOLDER || '/connectors/sensorcommunity/raw' }}
+      UK_AIR_RAW_DROPBOX_FOLDER: ${{ vars.UK_AIR_RAW_DROPBOX_FOLDER || '/connectors/sensorcommunity/raw' }}
+      SUPABASE_SERVICE_ROLE_KEY_SECRET_NAME: ${{ vars.SUPABASE_SERVICE_ROLE_KEY_SECRET_NAME || 'SUPABASE_SERVICE_ROLE_KEY' }}
+      HISTORY_SERVICE_ROLE_KEY_SECRET_NAME: ${{ vars.HISTORY_SERVICE_ROLE_KEY_SECRET_NAME || 'HISTORY_SERVICE_ROLE_KEY' }}
+      DROPBOX_APP_KEY_SECRET_NAME: ${{ vars.DROPBOX_APP_KEY_SECRET_NAME || 'DROPBOX_APP_KEY' }}
+      DROPBOX_APP_SECRET_SECRET_NAME: ${{ vars.DROPBOX_APP_SECRET_SECRET_NAME || 'DROPBOX_APP_SECRET' }}
+      DROPBOX_REFRESH_TOKEN_SECRET_NAME: ${{ vars.DROPBOX_REFRESH_TOKEN_SECRET_NAME || 'DROPBOX_REFRESH_TOKEN' }}
       GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
       GCP_SERVICE_ACCOUNT: ${{ secrets.GCP_SERVICE_ACCOUNT }}
       GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
@@ -92,11 +113,102 @@ jobs:
         run: |
           gcloud run jobs describe "${JOB_NAME}" --region "${REGION}" >/dev/null
 
+      - name: Build Cloud Run env and secret args
+        id: cloudrun_args
+        run: |
+          set -euo pipefail
+
+          require_env() {
+            local key="$1"
+            local value="${!key:-}"
+            if [ -z "${value}" ]; then
+              echo "Missing required value for ${key}"
+              exit 1
+            fi
+          }
+
+          add_env() {
+            local key="$1"
+            local value="${!key:-}"
+            if [ -n "${value}" ]; then
+              env_updates+=("${key}=${value}")
+            fi
+          }
+
+          add_secret_binding() {
+            local env_key="$1"
+            local secret_name="$2"
+            local required="${3:-0}"
+            if [ -z "${secret_name}" ]; then
+              if [ "${required}" = "1" ]; then
+                echo "Missing secret name for required binding ${env_key}"
+                exit 1
+              fi
+              return 0
+            fi
+            if gcloud secrets describe "${secret_name}" --project "${PROJECT_ID}" >/dev/null 2>&1; then
+              secret_updates+=("${env_key}=${secret_name}:latest")
+              return 0
+            fi
+            if [ "${required}" = "1" ]; then
+              echo "Required Secret Manager secret not found: ${secret_name}"
+              exit 1
+            fi
+            echo "Optional Secret Manager secret not found, skipping: ${secret_name}"
+          }
+
+          require_env SUPABASE_URL
+
+          env_updates=()
+          add_env SUPABASE_URL
+          add_env UK_AQ_CORE_SCHEMA
+          add_env UK_AQ_RAW_SCHEMA
+          add_env SCOMM_COUNTRY
+          add_env SCOMM_BASE_URL
+          add_env SCOMM_SERVICE_REF
+          add_env SCOMM_USER_AGENT
+          add_env SCOMM_INGEST_MET_FIELDS
+          add_env SCOMM_RAW_DROPBOX_ALLOWED_SUPABASE_URL
+          add_env UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL
+          add_env SCOMM_DROPBOX_ROOT
+          add_env UK_AQ_DROPBOX_ROOT
+          add_env SCOMM_RAW_DROPBOX_FOLDER
+          add_env UK_AIR_RAW_DROPBOX_FOLDER
+          if [ -n "${HISTORY_SUPABASE_URL:-}" ]; then
+            add_env HISTORY_SUPABASE_URL
+            add_env HISTORY_SCHEMA
+          fi
+
+          secret_updates=()
+          add_secret_binding "SUPABASE_SERVICE_ROLE_KEY" "${SUPABASE_SERVICE_ROLE_KEY_SECRET_NAME}" 1
+          add_secret_binding "HISTORY_SERVICE_ROLE_KEY" "${HISTORY_SERVICE_ROLE_KEY_SECRET_NAME}" 0
+          add_secret_binding "DROPBOX_APP_KEY" "${DROPBOX_APP_KEY_SECRET_NAME}" 0
+          add_secret_binding "DROPBOX_APP_SECRET" "${DROPBOX_APP_SECRET_SECRET_NAME}" 0
+          add_secret_binding "DROPBOX_REFRESH_TOKEN" "${DROPBOX_REFRESH_TOKEN_SECRET_NAME}" 0
+
+          env_csv="$(IFS=,; echo "${env_updates[*]}")"
+          secret_csv="$(IFS=,; echo "${secret_updates[*]}")"
+          echo "env_csv=${env_csv}" >> "${GITHUB_OUTPUT}"
+          echo "secret_csv=${secret_csv}" >> "${GITHUB_OUTPUT}"
+
       - name: Update Cloud Run job image
         run: |
-          gcloud run jobs update "${JOB_NAME}" \
-            --region "${REGION}" \
+          set -euo pipefail
+          ENV_CSV='${{ steps.cloudrun_args.outputs.env_csv }}'
+          SECRET_CSV='${{ steps.cloudrun_args.outputs.secret_csv }}'
+
+          CMD=(
+            gcloud run jobs update "${JOB_NAME}"
+            --region "${REGION}"
             --image "${{ steps.build.outputs.image }}"
+          )
+          if [ -n "${ENV_CSV}" ]; then
+            CMD+=(--update-env-vars "${ENV_CSV}")
+          fi
+          if [ -n "${SECRET_CSV}" ]; then
+            CMD+=(--update-secrets "${SECRET_CSV}")
+          fi
+          "${CMD[@]}"
 
       - name: Show deployed job
         run: |
