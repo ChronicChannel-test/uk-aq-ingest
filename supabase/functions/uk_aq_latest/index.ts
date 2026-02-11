@@ -1,5 +1,6 @@
 //trigger deploy 2026-02-09 13:34
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
+import "../_shared/fetch_egress_patch.ts";
 import { cacheControlHeaders } from "../_shared/cache.ts";
 import { createWeakEtag, ifNoneMatchMatches } from "../_shared/etag.ts";
 import { logEndpointEgress } from "../_shared/egress_metrics.ts";

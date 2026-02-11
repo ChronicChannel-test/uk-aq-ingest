@@ -2,7 +2,8 @@ const DEFAULT_SAMPLE_RATE = 0.2;
 const SAMPLE_RATE_ENV = "UK_AQ_EGRESS_LOG_SAMPLE_RATE";
 const DB_ENABLED_ENV = "UK_AQ_EGRESS_METRICS_DB_ENABLED";
 const CLEANUP_SAMPLE_RATE_ENV = "UK_AQ_EGRESS_METRICS_CLEANUP_SAMPLE_RATE";
-const CLEANUP_MIN_INTERVAL_MS_ENV = "UK_AQ_EGRESS_METRICS_CLEANUP_MIN_INTERVAL_MS";
+const CLEANUP_MIN_INTERVAL_MS_ENV =
+  "UK_AQ_EGRESS_METRICS_CLEANUP_MIN_INTERVAL_MS";
 const AGG_RETENTION_DAYS_ENV = "UK_AQ_EGRESS_METRICS_AGG_RETENTION_DAYS";
 const RAW_RETENTION_DAYS_ENV = "UK_AQ_EGRESS_METRICS_RAW_RETENTION_DAYS";
 const DEFAULT_DB_ENABLED = true;
@@ -11,8 +12,9 @@ const DEFAULT_CLEANUP_MIN_INTERVAL_MS = 15 * 60 * 1000;
 const DEFAULT_AGG_RETENTION_DAYS = 30;
 const DEFAULT_RAW_RETENTION_DAYS = 7;
 const MIN_DB_WARN_INTERVAL_MS = 60_000;
+export const EGRESS_BYPASS_HEADER = "x-ukaq-egress-bypass";
 
-type MetricFields = Record<string, unknown>;
+export type MetricFields = Record<string, unknown>;
 type MetricPayload = {
   endpoint: string;
   method: string;
@@ -24,18 +26,21 @@ type MetricPayload = {
   request_meta: MetricFields;
 };
 
-const SUPABASE_URL = Deno.env.get("SUPABASE_URL")
-  ?? Deno.env.get("SB_SUPABASE_URL")
-  ?? "";
-const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")
-  ?? Deno.env.get("SB_SERVICE_ROLE_KEY")
-  ?? "";
-const UK_AQ_PUBLIC_SCHEMA = Deno.env.get("UK_AQ_PUBLIC_SCHEMA")
-  ?? "uk_aq_public";
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ??
+  Deno.env.get("SB_SUPABASE_URL") ??
+  "";
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
+  Deno.env.get("SB_SERVICE_ROLE_KEY") ??
+  "";
+const UK_AQ_PUBLIC_SCHEMA = Deno.env.get("UK_AQ_PUBLIC_SCHEMA") ??
+  "uk_aq_public";
 const REST_BASE_URL = SUPABASE_URL
   ? `${SUPABASE_URL.replace(/\/$/, "")}/rest/v1`
   : "";
-const DB_METRICS_ENABLED = parseBoolean(Deno.env.get(DB_ENABLED_ENV), DEFAULT_DB_ENABLED);
+const DB_METRICS_ENABLED = parseBoolean(
+  Deno.env.get(DB_ENABLED_ENV),
+  DEFAULT_DB_ENABLED,
+);
 const CLEANUP_SAMPLE_RATE = parseSampleRateWithFallback(
   Deno.env.get(CLEANUP_SAMPLE_RATE_ENV),
   DEFAULT_CLEANUP_SAMPLE_RATE,
@@ -61,7 +66,10 @@ function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
-function parseSampleRateWithFallback(raw: string | undefined | null, fallback: number): number {
+function parseSampleRateWithFallback(
+  raw: string | undefined | null,
+  fallback: number,
+): number {
   if (!raw) {
     return fallback;
   }
@@ -76,7 +84,10 @@ function parseSampleRate(raw: string | undefined | null): number {
   return parseSampleRateWithFallback(raw, DEFAULT_SAMPLE_RATE);
 }
 
-function parseBoolean(raw: string | undefined | null, fallback: boolean): boolean {
+function parseBoolean(
+  raw: string | undefined | null,
+  fallback: boolean,
+): boolean {
   if (!raw) {
     return fallback;
   }
@@ -93,7 +104,10 @@ function parseBoolean(raw: string | undefined | null, fallback: boolean): boolea
   return fallback;
 }
 
-function parsePositiveInt(raw: string | undefined | null, fallback: number): number {
+function parsePositiveInt(
+  raw: string | undefined | null,
+  fallback: number,
+): number {
   if (!raw) {
     return fallback;
   }
@@ -165,11 +179,14 @@ function warnDb(message: string, context: Record<string, unknown> = {}): void {
   }));
 }
 
-function postgrestHeaders(schema = UK_AQ_PUBLIC_SCHEMA): Record<string, string> {
+function postgrestHeaders(
+  schema = UK_AQ_PUBLIC_SCHEMA,
+): Record<string, string> {
   const headers: Record<string, string> = {
     apikey: SUPABASE_SERVICE_ROLE_KEY,
     Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
     "Content-Type": "application/json",
+    [EGRESS_BYPASS_HEADER]: "1",
   };
   if (schema && schema !== "public") {
     headers["Accept-Profile"] = schema;
@@ -182,7 +199,10 @@ async function postgrestRpc(fn: string, args: Record<string, unknown>): Promise<
   { ok: boolean; message?: string }
 > {
   if (!REST_BASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-    return { ok: false, message: "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY." };
+    return {
+      ok: false,
+      message: "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY.",
+    };
   }
   const url = `${REST_BASE_URL}/rpc/${fn}`;
   const resp = await fetch(url, {
@@ -197,7 +217,8 @@ async function postgrestRpc(fn: string, args: Record<string, unknown>): Promise<
   const payload = contentType.includes("application/json")
     ? await resp.json().catch(() => null)
     : await resp.text().catch(() => null);
-  const message = payload?.message || payload?.error_description || payload?.error ||
+  const message = payload?.message || payload?.error_description ||
+    payload?.error ||
     (typeof payload === "string" ? payload : resp.statusText);
   return { ok: false, message: String(message || "PostgREST RPC failed.") };
 }
@@ -252,6 +273,48 @@ async function persistMetricToDb(payload: MetricPayload): Promise<void> {
   await maybeCleanupMetrics();
 }
 
+export async function recordEgressMetric(input: {
+  endpoint: string;
+  method: string;
+  status: number;
+  durationMs: number;
+  responseBytes: number | null;
+  fields?: MetricFields;
+  sampleRate?: number;
+  force?: boolean;
+}): Promise<void> {
+  const sampleRate = clamp(
+    Number.isFinite(input.sampleRate)
+      ? Number(input.sampleRate)
+      : parseSampleRate(Deno.env.get(SAMPLE_RATE_ENV)),
+    0,
+    1,
+  );
+  const status = Number.isFinite(input.status) ? Math.floor(input.status) : 0;
+  if (!input.force && !shouldLog(status, sampleRate)) {
+    return;
+  }
+  const payload: MetricPayload = {
+    endpoint: String(input.endpoint || "").trim() || "unknown",
+    method: String(input.method || "GET").toUpperCase(),
+    status,
+    duration_ms: Math.max(0, Math.floor(input.durationMs || 0)),
+    response_bytes:
+      input.responseBytes === null || input.responseBytes === undefined
+        ? null
+        : Math.max(0, Math.floor(input.responseBytes)),
+    sample_rate: sampleRate,
+    ts: new Date().toISOString(),
+    request_meta: cleanFields(input.fields ?? {}),
+  };
+  console.log(JSON.stringify({
+    metric: "uk_aq_endpoint_egress",
+    ...payload,
+    ...payload.request_meta,
+  }));
+  await persistMetricToDb(payload);
+}
+
 export async function logEndpointEgress(
   req: Request,
   endpoint: string,
@@ -259,29 +322,13 @@ export async function logEndpointEgress(
   response: Response,
   fields: MetricFields = {},
 ): Promise<Response> {
-  const sampleRate = parseSampleRate(Deno.env.get(SAMPLE_RATE_ENV));
-  const status = response.status;
-  if (!shouldLog(status, sampleRate)) {
-    return response;
-  }
-  const durationMs = Date.now() - startedAtMs;
-  const bytes = await responseBytes(response);
-  const requestMeta = cleanFields(fields);
-  const payload: MetricPayload = {
+  await recordEgressMetric({
     endpoint,
     method: req.method,
-    status,
-    duration_ms: durationMs,
-    response_bytes: bytes,
-    sample_rate: sampleRate,
-    ts: new Date().toISOString(),
-    request_meta: requestMeta,
-  };
-  console.log(JSON.stringify({
-    metric: "uk_aq_endpoint_egress",
-    ...payload,
-    ...requestMeta,
-  }));
-  await persistMetricToDb(payload);
+    status: response.status,
+    durationMs: Date.now() - startedAtMs,
+    responseBytes: await responseBytes(response),
+    fields,
+  });
   return response;
 }
