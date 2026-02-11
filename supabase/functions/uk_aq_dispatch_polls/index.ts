@@ -13,6 +13,7 @@ type ConnectorRow = {
   poll_interval_minutes: number | null;
   poll_window_hours: number | null;
   poll_timeseries_batch_size: number | null;
+  scheduler_backend: string | null;
   last_polled_at: string | null;
   last_run_start: string | null;
   last_run_end: string | null;
@@ -107,6 +108,8 @@ const TARGET_CONNECTORS = [
   "erg_laqn",
   "openaq",
 ];
+const SCHEDULER_BACKEND_SUPABASE_FUNCTION = "supabase_function";
+const SCHEDULER_BACKEND_GOOGLE_CLOUD_RUN = "google_cloud_run";
 
 const DEFAULT_INTERVAL_MINUTES: Record<string, number> = {
   uk_air_sos: 60,
@@ -467,6 +470,18 @@ function getTimeseriesLimit(connector: ConnectorRow | null): number | null {
     return Math.floor(value);
   }
   return null;
+}
+
+function isGoogleCloudRunBacked(
+  connector: ConnectorRow | null,
+  connectorCode: string,
+): boolean {
+  if (connectorCode !== "sensorcommunity") {
+    return false;
+  }
+  const schedulerBackend = connector?.scheduler_backend ??
+    SCHEDULER_BACKEND_SUPABASE_FUNCTION;
+  return schedulerBackend === SCHEDULER_BACKEND_GOOGLE_CLOUD_RUN;
 }
 
 function isDue(
@@ -1032,7 +1047,7 @@ async function loadConnectorConfigs(): Promise<ConnectorRow[]> {
     "connectors",
     {
       select:
-        "id,connector_code,poll_enabled,poll_interval_minutes,poll_window_hours,poll_timeseries_batch_size,last_polled_at,last_run_start,last_run_end,last_run_status",
+        "id,connector_code,poll_enabled,poll_interval_minutes,poll_window_hours,poll_timeseries_batch_size,scheduler_backend,last_polled_at,last_run_start,last_run_end,last_run_status",
       connector_code: postgrestIn(TARGET_CONNECTORS),
       limit: "20",
     },
@@ -1402,6 +1417,19 @@ serve(async (req) => {
         });
         continue;
       }
+      if (isGoogleCloudRunBacked(connector, connectorCode)) {
+        missingConnectorResolutions.push({
+          id: Number(row.id),
+          ok: true,
+          error: "queue_entry_external_scheduler",
+        });
+        results.set(connectorCode, {
+          connector_code: connectorCode,
+          status: "skipped",
+          detail: "external_scheduler_google_cloud_run",
+        });
+        continue;
+      }
       selected.push({
         connectorCode,
         connector,
@@ -1448,6 +1476,14 @@ serve(async (req) => {
           connector_code: connectorCode,
           status: "skipped",
           detail: "in_flight",
+        });
+        continue;
+      }
+      if (isGoogleCloudRunBacked(connector, connectorCode)) {
+        results.set(connectorCode, {
+          connector_code: connectorCode,
+          status: "skipped",
+          detail: "external_scheduler_google_cloud_run",
         });
         continue;
       }

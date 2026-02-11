@@ -31,7 +31,7 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
 - Triggered by: External scheduler (Cloudflare Worker cron) calling the edge function directly.
 - Flow reference: `system_docs/uk_aq_dispatcher_ingest_flow.md`
 - Reads:
-  - `connectors` (`poll_enabled`, `poll_interval_minutes`, `poll_window_hours`, `poll_timeseries_batch_size`, `last_polled_at`)
+  - `connectors` (`poll_enabled`, `poll_interval_minutes`, `poll_window_hours`, `poll_timeseries_batch_size`, `scheduler_backend`, `last_polled_at`)
   - `dispatcher_settings` (`max_runs_per_dispatch_call` is the effective concurrency setting)
 - Queue tables/RPCs (from `supabase/uk_aq_polling_helpers.sql`):
   - `uk_aq_raw.dispatch_connector_queue`
@@ -81,6 +81,7 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
   - Worker sends `run_queue_claim_limit=1` with each `mode=run_queue` call to isolate each claim/call.
   - Worker fallback: if either queue-mode call fails, worker falls back to `mode=legacy` for that cron tick.
   - Disabled connectors are auto-resolved from queue in `mode=run_queue` (`queue_entry_disabled_connector`) so stale retries do not keep firing after `poll_enabled=false`.
+  - Connectors with `scheduler_backend='google_cloud_run'` are skipped in dispatcher selection and auto-resolved from queue in `mode=run_queue` (`queue_entry_external_scheduler`).
   - For `uk_air_sos`, uses `poll_timeseries_batch_size` with `uk_air_sos_select_timeseries_ids` (`uk_air_sos_timeseries_checkpoints`) and passes `timeseries_ids`/`timeseries_limit`.
   - Uses `uk_aq_public.uk_aq_rpc_dispatch_claim` to atomically claim a connector slot before dispatch.
   - Updates `connectors.last_run_start`, `last_run_end`, `last_run_status`, `last_run_message`, and `last_polled_at` for each attempted dispatch.
@@ -124,7 +125,10 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
 
 ### ingest_sensorcommunity
 - Purpose: Poll Sensor.Community recent values and write stations, timeseries, and observations.
-- Triggered by: `uk_aq_dispatch_polls` (external scheduler). Helper RPCs live in `supabase/uk_aq_polling_helpers.sql`.
+- Triggered by:
+  - `uk_aq_dispatch_polls` when `connectors.scheduler_backend='supabase_function'`.
+  - `workers/uk_aq_sensorcommunity_cloud_run` (Cloud Run job) when `connectors.scheduler_backend='google_cloud_run'`.
+- Cloud Run setup reference: `system_docs/uk_aq_sensorcommunity_cloud_run.md`.
 - Writes:
   - `connectors` (last_polled_at updates), `stations`, `phenomena`, `timeseries`, `observations`
 - Notes:

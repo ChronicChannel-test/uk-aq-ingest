@@ -34,6 +34,13 @@ EXCLUDED_CONNECTORS_BY_POLLUTANT = {
 DISPATCH_FEED_LIMIT = 30
 IN_FLIGHT_WARN_MINUTES = 5
 IN_FLIGHT_MAX_AGE_MINUTES = 180
+SCHEDULER_BACKEND_SUPABASE_FUNCTION = "supabase_function"
+SCHEDULER_BACKEND_GOOGLE_CLOUD_RUN = "google_cloud_run"
+SCHEDULER_BACKEND_ALLOWED = {
+    SCHEDULER_BACKEND_SUPABASE_FUNCTION,
+    SCHEDULER_BACKEND_GOOGLE_CLOUD_RUN,
+}
+SCHEDULER_BACKEND_CONNECTOR_ALLOWLIST = {"sensorcommunity"}
 
 CACHE_LOCK = threading.Lock()
 CACHE_STATE: Dict[str, Any] = {"data": None, "generated_at": None}
@@ -255,7 +262,7 @@ def _build_dashboard(base_url: str, service_role_key: str) -> Dict[str, Any]:
         headers,
         "connectors",
         {
-            "select": "id,connector_code,label,display_name,last_run_start,last_run_end,poll_enabled,poll_interval_minutes,poll_window_hours,poll_timeseries_batch_size",
+            "select": "id,connector_code,label,display_name,last_run_start,last_run_end,poll_enabled,poll_interval_minutes,poll_window_hours,poll_timeseries_batch_size,scheduler_backend",
             "order": "connector_code.asc",
         },
     )
@@ -506,6 +513,8 @@ def _build_dashboard(base_url: str, service_role_key: str) -> Dict[str, Any]:
                 "poll_interval_minutes": row.get("poll_interval_minutes"),
                 "poll_window_hours": row.get("poll_window_hours"),
                 "poll_timeseries_batch_size": row.get("poll_timeseries_batch_size"),
+                "scheduler_backend": row.get("scheduler_backend")
+                or SCHEDULER_BACKEND_SUPABASE_FUNCTION,
             }
             for row in connectors
             if row.get("id") is not None
@@ -616,11 +625,34 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 connector_id = entry.get("id")
                 if connector_id is None:
                     continue
+                connector_code = str(entry.get("connector_code") or "").strip()
+                scheduler_backend = entry.get("scheduler_backend")
+                if scheduler_backend is None or scheduler_backend == "":
+                    scheduler_backend = SCHEDULER_BACKEND_SUPABASE_FUNCTION
+                if scheduler_backend not in SCHEDULER_BACKEND_ALLOWED:
+                    self.send_error(
+                        HTTPStatus.BAD_REQUEST,
+                        f"Invalid scheduler_backend for connector id {connector_id}",
+                    )
+                    return
+                if (
+                    scheduler_backend == SCHEDULER_BACKEND_GOOGLE_CLOUD_RUN
+                    and connector_code not in SCHEDULER_BACKEND_CONNECTOR_ALLOWLIST
+                ):
+                    self.send_error(
+                        HTTPStatus.BAD_REQUEST,
+                        (
+                            "google_cloud_run scheduler_backend is only allowed for "
+                            f"{', '.join(sorted(SCHEDULER_BACKEND_CONNECTOR_ALLOWLIST))}"
+                        ),
+                    )
+                    return
                 payload = {
                     "poll_enabled": entry.get("poll_enabled"),
                     "poll_interval_minutes": entry.get("poll_interval_minutes"),
                     "poll_window_hours": entry.get("poll_window_hours"),
                     "poll_timeseries_batch_size": entry.get("poll_timeseries_batch_size"),
+                    "scheduler_backend": scheduler_backend,
                 }
                 _patch_json(
                     f"{base_url}/connectors?id=eq.{connector_id}",

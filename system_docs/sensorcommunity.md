@@ -22,6 +22,11 @@ This network uses Sensor.Community (formerly Luftdaten) for community air qualit
 
 ## Poll cadence
 - Intended polling cadence: every 15 minutes at **:10, :25, :40, :55** (UTC).
+- Runtime cadence is controlled by `connectors.poll_interval_minutes` in the dashboard.
+- Scheduler path is controlled by `connectors.scheduler_backend`:
+  - `supabase_function`: dispatcher runs `ingest_sensorcommunity`.
+  - `google_cloud_run`: Cloud Run job `workers/uk_aq_sensorcommunity_cloud_run` runs it.
+- Recommended setup for Cloud Run: keep scheduler frequency high (for example every 2 minutes) and let connector due-check enforce the interval.
 
 ## Logging
 - `SCOMM_LOG_LEVEL` controls script verbosity (default: `INFO`).

@@ -692,6 +692,7 @@
                 <th>Interval (min)</th>
                 <th>Window (hrs)</th>
                 <th>Batch size</th>
+                <th>Scheduler backend</th>
               </tr>
             </thead>
             <tbody>
@@ -706,8 +707,11 @@
                   const interval = row.poll_interval_minutes ?? "";
                   const windowHours = row.poll_window_hours ?? "";
                   const batchSize = row.poll_timeseries_batch_size ?? "";
+                  const connectorCode = row.connector_code || "";
+                  const schedulerBackend = row.scheduler_backend || "supabase_function";
+                  const schedulerDisabled = connectorCode === "sensorcommunity" ? "" : "disabled";
                   return `
-                    <tr data-connector-id="${row.id}">
+                    <tr data-connector-id="${row.id}" data-connector-code="${connectorCode}">
                       <td class="connector-name">${label}</td>
                       <td>
                         <select class="settings-select" data-field="poll_enabled">
@@ -725,12 +729,19 @@
                       <td>
                         <input class="settings-input" data-field="poll_timeseries_batch_size" type="number" min="0" step="1" value="${batchSize}" />
                       </td>
+                      <td>
+                        <select class="settings-select" data-field="scheduler_backend" ${schedulerDisabled}>
+                          <option value="supabase_function" ${schedulerBackend === "supabase_function" ? "selected" : ""}>supabase_function</option>
+                          <option value="google_cloud_run" ${schedulerBackend === "google_cloud_run" ? "selected" : ""}>google_cloud_run</option>
+                        </select>
+                      </td>
                     </tr>
                   `;
                 })
                 .join("")}
             </tbody>
           </table>
+          <div class="footnote">Scheduler backend toggle is currently active for Sensor.Community only.</div>
           <div class="settings-actions">
             <button class="settings-button" id="commit-settings">Commit changes</button>
           </div>
@@ -742,6 +753,7 @@
             const rows = Array.from(panel.querySelectorAll("tbody tr"));
             const updates = rows.map((rowEl) => {
               const connectorId = rowEl.getAttribute("data-connector-id");
+              const connectorCode = rowEl.getAttribute("data-connector-code");
               const getValue = (field) => {
                 const input = rowEl.querySelector(`[data-field="${field}"]`);
                 return input ? input.value : "";
@@ -754,10 +766,12 @@
               const enabled = getValue("poll_enabled");
               return {
                 id: connectorId ? Number(connectorId) : null,
+                connector_code: connectorCode || null,
                 poll_enabled: enabled === "true" ? true : enabled === "false" ? false : null,
                 poll_interval_minutes: parseOptionalNumber(getValue("poll_interval_minutes")),
                 poll_window_hours: parseOptionalNumber(getValue("poll_window_hours")),
                 poll_timeseries_batch_size: parseOptionalNumber(getValue("poll_timeseries_batch_size")),
+                scheduler_backend: getValue("scheduler_backend") || "supabase_function",
               };
             }).filter((row) => row.id !== null);
 

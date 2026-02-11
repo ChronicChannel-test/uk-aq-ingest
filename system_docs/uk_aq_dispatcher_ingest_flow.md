@@ -57,6 +57,7 @@ Queue retry behavior:
 - `next_attempt_at` uses backoff (30s, 120s, 600s, then 1800s default).
 - Claimed jobs have a lease (`lease_expires_at`) so interrupted runs can be recovered.
 - Queued jobs for disabled connectors are resolved and dropped (`queue_entry_disabled_connector`).
+- Queued jobs for connectors with `scheduler_backend='google_cloud_run'` are resolved and dropped (`queue_entry_external_scheduler`).
 - Run-overlap guard: if a connector run is still active, or started within that connector's poll interval, dispatcher does not start another run and requeues the claimed job with retry.
 
 Relevant env vars:
@@ -73,6 +74,9 @@ Relevant env vars:
 ## Operational Notes
 
 - Single concurrency dial: `dispatcher_settings.max_runs_per_dispatch_call`.
+- Scheduler backend toggle:
+  - `connectors.scheduler_backend='supabase_function'`: connector runs via dispatcher.
+  - `connectors.scheduler_backend='google_cloud_run'`: dispatcher skips it and expects external scheduling.
 - Use queue mode for normal operation; use `mode=legacy` only as fallback/debug.
 - Monitor:
   - `uk_aq_raw.dispatch_connector_queue` row count, attempts, and last_error
