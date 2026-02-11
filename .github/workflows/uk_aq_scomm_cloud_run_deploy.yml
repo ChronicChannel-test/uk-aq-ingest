@@ -34,8 +34,8 @@ jobs:
       UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL: ${{ secrets.UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL }}
       SCOMM_DROPBOX_ROOT: ${{ vars.SCOMM_DROPBOX_ROOT || '/CIC-Test' }}
       UK_AQ_DROPBOX_ROOT: ${{ vars.UK_AQ_DROPBOX_ROOT || '/CIC-Test' }}
-      SCOMM_RAW_DROPBOX_FOLDER: ${{ vars.SCOMM_RAW_DROPBOX_FOLDER || '/connectors/sensorcommunity/raw' }}
-      UK_AIR_RAW_DROPBOX_FOLDER: ${{ vars.UK_AIR_RAW_DROPBOX_FOLDER || '/connectors/sensorcommunity/raw' }}
+      SCOMM_RAW_DROPBOX_FOLDER: ${{ vars.SCOMM_RAW_DROPBOX_FOLDER || '/connectors/sensorcommunity/raw_data' }}
+      UK_AIR_RAW_DROPBOX_FOLDER: ${{ vars.UK_AIR_RAW_DROPBOX_FOLDER || '/connectors/sensorcommunity/raw_data' }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
       HISTORY_SERVICE_ROLE_KEY: ${{ secrets.HISTORY_SERVICE_ROLE_KEY }}
       DROPBOX_APP_KEY: ${{ secrets.DROPBOX_APP_KEY }}

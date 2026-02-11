@@ -76,11 +76,15 @@ const DROPBOX_ROOT_FOLDER = (() => {
     "";
   return normalizeDropboxPath(raw);
 })();
-const DROPBOX_LOG_FOLDER = dropboxWithRoot("/connectors/sensorcommunity/log");
+const DROPBOX_LOG_FOLDER = dropboxWithRoot(
+  process.env.SCOMM_LOG_DROPBOX_FOLDER ||
+    process.env.UK_AIR_LOG_DROPBOX_FOLDER ||
+    "/connectors/sensorcommunity/log",
+);
 const DROPBOX_RAW_FOLDER = dropboxWithRoot(
   process.env.SCOMM_RAW_DROPBOX_FOLDER ||
     process.env.UK_AIR_RAW_DROPBOX_FOLDER ||
-    "/connectors/sensorcommunity/raw",
+    "/connectors/sensorcommunity/raw_data",
 );
 const DROPBOX_TOKEN_URL = "https://api.dropbox.com/oauth2/token";
 const DROPBOX_UPLOAD_URL = "https://content.dropboxapi.com/2/files/upload";
@@ -1282,6 +1286,8 @@ async function uploadDropboxArtifacts(
   try {
     let accessToken = await dropboxRefreshAccessToken(dropboxConfig);
     const refreshToken = () => dropboxRefreshAccessToken(dropboxConfig);
+    let uploadedLogPath = null;
+    let uploadedRawPath = null;
 
     if (logPayload) {
       const logPath = buildDropboxLogPath(connectorCode, new Date());
@@ -1294,6 +1300,7 @@ async function uploadDropboxArtifacts(
         logBytes,
         refreshToken,
       );
+      uploadedLogPath = logPath;
     }
 
     if (rawPayload) {
@@ -1307,7 +1314,14 @@ async function uploadDropboxArtifacts(
         rawBytes,
         refreshToken,
       );
+      uploadedRawPath = rawPath;
     }
+
+    logSummary("dropbox_upload_success", {
+      connector_code: connectorCode,
+      uploaded_log_path: uploadedLogPath,
+      uploaded_raw_path: uploadedRawPath,
+    });
   } catch (error) {
     logSummary("dropbox_upload_warning", {
       connector_code: connectorCode,
