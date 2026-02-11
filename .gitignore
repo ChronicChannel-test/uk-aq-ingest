@@ -15,3 +15,4 @@ network_info/LAQN/uk_aq_londonair_site_list_active.numbers
 /archive/env files
 network_info/OpenAQ/docs.openaq.org/
 .dashboards.pids
+workers/uk_aq_sensorcommunity_cloud_run/*.json

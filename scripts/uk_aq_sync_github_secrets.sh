@@ -18,6 +18,7 @@ Options:
 Notes:
   - Each KEY=VALUE in --env-file and --supabase-env-file is uploaded as a secret named KEY.
   - The full contents of --supabase-env-file are also uploaded to SUPABASE_SECRETS_ENV.
+  - For GCP_SA_KEY, if VALUE is a path to a local file, the file contents are uploaded.
 EOF
 }
 
@@ -103,6 +104,18 @@ set_secret() {
   printf '%s\n' "${name}" >> "${SEEN_FILE}"
 }
 
+resolve_secret_value() {
+  local key="$1"
+  local value="$2"
+
+  if [[ "${key}" == "GCP_SA_KEY" && -f "${value}" ]]; then
+    cat "${value}"
+    return 0
+  fi
+
+  printf '%s' "${value}"
+}
+
 sync_env_vars() {
   local file="$1"
   if [[ ! -f "${file}" ]]; then
@@ -136,6 +149,7 @@ sync_env_vars() {
       value="${value:1:${#value}-2}"
     fi
 
+    value="$(resolve_secret_value "${key}" "${value}")"
     set_secret "${key}" "${value}"
   done < "${file}"
 }
