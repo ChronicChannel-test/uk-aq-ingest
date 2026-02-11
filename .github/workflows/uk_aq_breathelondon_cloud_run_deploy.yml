@@ -128,9 +128,25 @@ jobs:
           docker build -f workers/uk_aq_breathelondon_cloud_run/Dockerfile -t "${IMAGE}" .
           docker push "${IMAGE}"
 
-      - name: Validate Cloud Run job exists
+      - name: Ensure Cloud Run job exists
         run: |
-          gcloud run jobs describe "${JOB_NAME}" --region "${REGION}" >/dev/null
+          set -euo pipefail
+          if gcloud run jobs describe "${JOB_NAME}" --region "${REGION}" >/dev/null 2>&1; then
+            echo "Cloud Run job exists: ${JOB_NAME}"
+            exit 0
+          fi
+
+          CMD=(
+            gcloud run jobs create "${JOB_NAME}"
+            --region "${REGION}"
+            --image "${{ steps.build.outputs.image }}"
+            --task-timeout "${JOB_TIMEOUT_SECONDS}s"
+            --max-retries "${JOB_MAX_RETRIES}"
+          )
+          if [ -n "${JOB_SERVICE_ACCOUNT}" ]; then
+            CMD+=(--service-account "${JOB_SERVICE_ACCOUNT}")
+          fi
+          "${CMD[@]}"
 
       - name: Sync GitHub secrets to GCP Secret Manager
         run: |
