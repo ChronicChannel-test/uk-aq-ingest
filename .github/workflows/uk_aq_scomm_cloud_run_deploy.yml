@@ -36,6 +36,11 @@ jobs:
       UK_AQ_DROPBOX_ROOT: ${{ vars.UK_AQ_DROPBOX_ROOT || '/CIC-Test' }}
       SCOMM_RAW_DROPBOX_FOLDER: ${{ vars.SCOMM_RAW_DROPBOX_FOLDER || '/connectors/sensorcommunity/raw' }}
       UK_AIR_RAW_DROPBOX_FOLDER: ${{ vars.UK_AIR_RAW_DROPBOX_FOLDER || '/connectors/sensorcommunity/raw' }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      HISTORY_SERVICE_ROLE_KEY: ${{ secrets.HISTORY_SERVICE_ROLE_KEY }}
+      DROPBOX_APP_KEY: ${{ secrets.DROPBOX_APP_KEY }}
+      DROPBOX_APP_SECRET: ${{ secrets.DROPBOX_APP_SECRET }}
+      DROPBOX_REFRESH_TOKEN: ${{ secrets.DROPBOX_REFRESH_TOKEN }}
       SUPABASE_SERVICE_ROLE_KEY_SECRET_NAME: ${{ vars.SUPABASE_SERVICE_ROLE_KEY_SECRET_NAME || 'SUPABASE_SERVICE_ROLE_KEY' }}
       HISTORY_SERVICE_ROLE_KEY_SECRET_NAME: ${{ vars.HISTORY_SERVICE_ROLE_KEY_SECRET_NAME || 'HISTORY_SERVICE_ROLE_KEY' }}
       DROPBOX_APP_KEY_SECRET_NAME: ${{ vars.DROPBOX_APP_KEY_SECRET_NAME || 'DROPBOX_APP_KEY' }}
@@ -112,6 +117,52 @@ jobs:
       - name: Validate Cloud Run job exists
         run: |
           gcloud run jobs describe "${JOB_NAME}" --region "${REGION}" >/dev/null
+
+      - name: Sync GitHub secrets to GCP Secret Manager
+        run: |
+          set -euo pipefail
+
+          upsert_secret() {
+            local secret_name="$1"
+            local secret_value="$2"
+            local required="${3:-0}"
+
+            if [ -z "${secret_name}" ]; then
+              if [ "${required}" = "1" ]; then
+                echo "Missing required secret name."
+                exit 1
+              fi
+              return 0
+            fi
+
+            if [ -z "${secret_value}" ]; then
+              if [ "${required}" = "1" ]; then
+                echo "Missing required secret value for ${secret_name} in GitHub Secrets."
+                exit 1
+              fi
+              echo "Skipping optional secret ${secret_name} (no GitHub secret value)."
+              return 0
+            fi
+
+            if gcloud secrets describe "${secret_name}" --project "${PROJECT_ID}" >/dev/null 2>&1; then
+              printf '%s' "${secret_value}" | gcloud secrets versions add "${secret_name}" \
+                --project "${PROJECT_ID}" \
+                --data-file=-
+              echo "Updated Secret Manager secret version: ${secret_name}"
+            else
+              printf '%s' "${secret_value}" | gcloud secrets create "${secret_name}" \
+                --project "${PROJECT_ID}" \
+                --replication-policy="automatic" \
+                --data-file=-
+              echo "Created Secret Manager secret: ${secret_name}"
+            fi
+          }
+
+          upsert_secret "${SUPABASE_SERVICE_ROLE_KEY_SECRET_NAME}" "${SUPABASE_SERVICE_ROLE_KEY}" 1
+          upsert_secret "${HISTORY_SERVICE_ROLE_KEY_SECRET_NAME}" "${HISTORY_SERVICE_ROLE_KEY}" 0
+          upsert_secret "${DROPBOX_APP_KEY_SECRET_NAME}" "${DROPBOX_APP_KEY}" 0
+          upsert_secret "${DROPBOX_APP_SECRET_SECRET_NAME}" "${DROPBOX_APP_SECRET}" 0
+          upsert_secret "${DROPBOX_REFRESH_TOKEN_SECRET_NAME}" "${DROPBOX_REFRESH_TOKEN}" 0
 
       - name: Build Cloud Run env and secret args
         id: cloudrun_args
