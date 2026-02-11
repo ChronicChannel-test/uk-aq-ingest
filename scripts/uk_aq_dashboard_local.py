@@ -40,7 +40,7 @@ SCHEDULER_BACKEND_ALLOWED = {
     SCHEDULER_BACKEND_SUPABASE_FUNCTION,
     SCHEDULER_BACKEND_GOOGLE_CLOUD_RUN,
 }
-SCHEDULER_BACKEND_CONNECTOR_ALLOWLIST = {"sensorcommunity"}
+SCHEDULER_BACKEND_CONNECTOR_ALLOWLIST = {"sensorcommunity", "breathelondon"}
 
 CACHE_LOCK = threading.Lock()
 CACHE_STATE: Dict[str, Any] = {"data": None, "generated_at": None}
@@ -625,7 +625,6 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 connector_id = entry.get("id")
                 if connector_id is None:
                     continue
-                connector_code = str(entry.get("connector_code") or "").strip()
                 scheduler_backend = entry.get("scheduler_backend")
                 if scheduler_backend is None or scheduler_backend == "":
                     scheduler_backend = SCHEDULER_BACKEND_SUPABASE_FUNCTION
@@ -635,6 +634,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                         f"Invalid scheduler_backend for connector id {connector_id}",
                     )
                     return
+                connector_code = str(entry.get("connector_code") or "").strip()
                 if (
                     scheduler_backend == SCHEDULER_BACKEND_GOOGLE_CLOUD_RUN
                     and connector_code not in SCHEDULER_BACKEND_CONNECTOR_ALLOWLIST

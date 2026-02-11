@@ -110,6 +110,10 @@ const TARGET_CONNECTORS = [
 ];
 const SCHEDULER_BACKEND_SUPABASE_FUNCTION = "supabase_function";
 const SCHEDULER_BACKEND_GOOGLE_CLOUD_RUN = "google_cloud_run";
+const GOOGLE_CLOUD_RUN_CONNECTOR_ALLOWLIST = new Set([
+  "sensorcommunity",
+  "breathelondon",
+]);
 
 const DEFAULT_INTERVAL_MINUTES: Record<string, number> = {
   uk_air_sos: 60,
@@ -476,7 +480,7 @@ function isGoogleCloudRunBacked(
   connector: ConnectorRow | null,
   connectorCode: string,
 ): boolean {
-  if (connectorCode !== "sensorcommunity") {
+  if (!GOOGLE_CLOUD_RUN_CONNECTOR_ALLOWLIST.has(connectorCode)) {
     return false;
   }
   const schedulerBackend = connector?.scheduler_backend ??

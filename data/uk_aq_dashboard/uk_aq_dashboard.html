@@ -680,6 +680,7 @@
       }
 
       function renderConnectorSettingsPanel(connectors) {
+        const schedulerBackendAllowlist = new Set(["sensorcommunity", "breathelondon"]);
         const panel = document.createElement("section");
         panel.className = "panel";
         panel.innerHTML = `
@@ -709,7 +710,7 @@
                   const batchSize = row.poll_timeseries_batch_size ?? "";
                   const connectorCode = row.connector_code || "";
                   const schedulerBackend = row.scheduler_backend || "supabase_function";
-                  const schedulerDisabled = connectorCode === "sensorcommunity" ? "" : "disabled";
+                  const schedulerDisabled = schedulerBackendAllowlist.has(connectorCode) ? "" : "disabled";
                   return `
                     <tr data-connector-id="${row.id}" data-connector-code="${connectorCode}">
                       <td class="connector-name">${label}</td>
@@ -741,7 +742,7 @@
                 .join("")}
             </tbody>
           </table>
-          <div class="footnote">Scheduler backend toggle is currently active for Sensor.Community only.</div>
+          <div class="footnote">Scheduler backend toggle is currently active for Sensor.Community and Breathe London only.</div>
           <div class="settings-actions">
             <button class="settings-button" id="commit-settings">Commit changes</button>
           </div>

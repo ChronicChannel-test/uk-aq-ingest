@@ -73,6 +73,15 @@ jobs:
             echo "Missing required secret: GCP_PROJECT_ID"
             exit 1
           fi
+          if [ -z "${JOB_SERVICE_ACCOUNT:-}" ]; then
+            echo "Missing required repo variable: GCP_BREATHELONDON_JOB_SERVICE_ACCOUNT"
+            exit 1
+          fi
+          if [[ "${JOB_SERVICE_ACCOUNT}" == *"-compute@developer.gserviceaccount.com" ]]; then
+            echo "Invalid GCP_BREATHELONDON_JOB_SERVICE_ACCOUNT: default compute service account is not allowed."
+            echo "Set it to your dedicated runtime SA (e.g. uk-aq-breathelondon-job@${PROJECT_ID}.iam.gserviceaccount.com)."
+            exit 1
+          fi
 
       - name: Validate Google auth config
         run: |
@@ -142,10 +151,8 @@ jobs:
             --image "${{ steps.build.outputs.image }}"
             --task-timeout "${JOB_TIMEOUT_SECONDS}s"
             --max-retries "${JOB_MAX_RETRIES}"
+            --service-account "${JOB_SERVICE_ACCOUNT}"
           )
-          if [ -n "${JOB_SERVICE_ACCOUNT}" ]; then
-            CMD+=(--service-account "${JOB_SERVICE_ACCOUNT}")
-          fi
           "${CMD[@]}"
 
       - name: Sync GitHub secrets to GCP Secret Manager
@@ -291,10 +298,8 @@ jobs:
             --image "${{ steps.build.outputs.image }}"
             --task-timeout "${JOB_TIMEOUT_SECONDS}s"
             --max-retries "${JOB_MAX_RETRIES}"
+            --service-account "${JOB_SERVICE_ACCOUNT}"
           )
-          if [ -n "${JOB_SERVICE_ACCOUNT}" ]; then
-            CMD+=(--service-account "${JOB_SERVICE_ACCOUNT}")
-          fi
           if [ -n "${ENV_CSV}" ]; then
             CMD+=(--update-env-vars "${ENV_CSV}")
           fi
@@ -307,4 +312,4 @@ jobs:
         run: |
           gcloud run jobs describe "${JOB_NAME}" \
             --region "${REGION}" \
-            --format="yaml(name,template.template.containers[0].image,template.template.timeoutSeconds)"
+            --format="yaml(name,template.template.serviceAccount,template.template.containers[0].image,template.template.timeoutSeconds)"
