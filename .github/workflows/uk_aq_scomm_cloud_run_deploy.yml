@@ -1,0 +1,100 @@
+name: Deploy Sensor.Community Cloud Run Job
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "workers/uk_aq_sensorcommunity_cloud_run/**"
+      - ".github/workflows/uk_aq_scomm_cloud_run_deploy.yml"
+  workflow_dispatch:
+
+jobs:
+  deploy-scomm-job:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+      REGION: ${{ vars.GCP_REGION || 'europe-west2' }}
+      REPO: ${{ vars.GCP_ARTIFACT_REPO || 'uk-aq' }}
+      JOB_NAME: ${{ vars.GCP_SCOMM_JOB_NAME || 'uk-aq-scomm-ingest' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate required project config
+        run: |
+          if [ -z "${PROJECT_ID:-}" ]; then
+            echo "Missing required secret: GCP_PROJECT_ID"
+            exit 1
+          fi
+
+      - name: Validate Google auth config
+        run: |
+          if [ -n "${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}" ] && [ -n "${{ secrets.GCP_SERVICE_ACCOUNT }}" ]; then
+            echo "Using Workload Identity Federation auth."
+          elif [ -n "${{ secrets.GCP_SA_KEY }}" ]; then
+            echo "Using Service Account key auth."
+          else
+            echo "Missing Google auth config."
+            echo "Set either:"
+            echo "1) GCP_WORKLOAD_IDENTITY_PROVIDER + GCP_SERVICE_ACCOUNT"
+            echo "or"
+            echo "2) GCP_SA_KEY"
+            exit 1
+          fi
+
+      - name: Authenticate to Google Cloud (WIF)
+        if: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER != '' && secrets.GCP_SERVICE_ACCOUNT != '' }}
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Authenticate to Google Cloud (Service Account Key fallback)
+        if: ${{ !(secrets.GCP_WORKLOAD_IDENTITY_PROVIDER != '' && secrets.GCP_SERVICE_ACCOUNT != '') }}
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure gcloud project
+        run: |
+          gcloud config set project "${PROJECT_ID}"
+          gcloud config set run/region "${REGION}"
+
+      - name: Ensure Artifact Registry repository exists
+        run: |
+          if ! gcloud artifacts repositories describe "${REPO}" --location "${REGION}" >/dev/null 2>&1; then
+            gcloud artifacts repositories create "${REPO}" \
+              --location "${REGION}" \
+              --repository-format docker \
+              --description "UK AQ images"
+          fi
+
+      - name: Build and push Sensor.Community image
+        id: build
+        run: |
+          IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}/uk-aq-scomm:${GITHUB_SHA::12}"
+          echo "image=${IMAGE}" >> "${GITHUB_OUTPUT}"
+          gcloud builds submit --tag "${IMAGE}" workers/uk_aq_sensorcommunity_cloud_run
+
+      - name: Validate Cloud Run job exists
+        run: |
+          gcloud run jobs describe "${JOB_NAME}" --region "${REGION}" >/dev/null
+
+      - name: Update Cloud Run job image
+        run: |
+          gcloud run jobs update "${JOB_NAME}" \
+            --region "${REGION}" \
+            --image "${{ steps.build.outputs.image }}"
+
+      - name: Show deployed job
+        run: |
+          gcloud run jobs describe "${JOB_NAME}" \
+            --region "${REGION}" \
+            --format="yaml(name,template.template.containers[0].image,template.template.timeoutSeconds)"

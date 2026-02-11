@@ -280,8 +280,9 @@ async function invokeSensorCommunity() {
 
 function deriveRunSummary(ingestResponse) {
   const payload = toObject(ingestResponse.body);
-  const runStatus = toStringOrNull(payload?.run_status) ||
+  const rawRunStatus = toStringOrNull(payload?.run_status) ||
     (ingestResponse.ok ? "success" : "failed");
+  const runStatus = rawRunStatus === "success" ? "succeeded" : rawRunStatus;
 
   let runMessage = toStringOrNull(payload?.run_message);
   if (!runMessage) {
@@ -320,6 +321,21 @@ async function updateConnectorRun(connectorId, runEndedAtIso, runStatus, runMess
 }
 
 async function insertRunRow(connectorId, runStartedAtIso, runEndedAtIso, runStatus, runMessage, ingestResponse, payload) {
+  const stationsUpdated =
+    toIntegerOrNull(payload?.stations_updated) ??
+    toIntegerOrNull(payload?.stations) ??
+    toIntegerOrNull(payload?.stations_processed);
+  const observationsUpserted =
+    toIntegerOrNull(payload?.observations_upserted) ??
+    toIntegerOrNull(payload?.observations);
+  const timeseriesUpdated =
+    toIntegerOrNull(payload?.timeseries_updated) ??
+    toIntegerOrNull(payload?.timeseries);
+  const seriesPolled =
+    toIntegerOrNull(payload?.series_polled) ??
+    toIntegerOrNull(payload?.timeseries) ??
+    toIntegerOrNull(payload?.timeseries_updated);
+
   const row = {
     connector_id: connectorId,
     connector_code: CONNECTOR_CODE,
@@ -327,11 +343,13 @@ async function insertRunRow(connectorId, runStartedAtIso, runEndedAtIso, runStat
     run_ended_at: runEndedAtIso,
     run_status: runStatus,
     run_message: runMessage,
-    last_observed_at: toStringOrNull(payload?.last_observed_at),
-    stations_updated: toIntegerOrNull(payload?.stations_updated),
-    observations_upserted: toIntegerOrNull(payload?.observations_upserted),
-    timeseries_updated: toIntegerOrNull(payload?.timeseries_updated),
-    series_polled: toIntegerOrNull(payload?.series_polled),
+    last_observed_at:
+      toStringOrNull(payload?.last_observed_at) ??
+      toStringOrNull(payload?.last_observed),
+    stations_updated: stationsUpdated,
+    observations_upserted: observationsUpserted,
+    timeseries_updated: timeseriesUpdated,
+    series_polled: seriesPolled,
     response_status: ingestResponse.status,
   };
 
