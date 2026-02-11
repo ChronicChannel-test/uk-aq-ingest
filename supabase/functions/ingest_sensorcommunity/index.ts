@@ -2134,14 +2134,32 @@ serve(async (req) => {
                 }
               }
 
+              let lastObservedAt: string | null = null;
+              let lastObservedMs = Number.NEGATIVE_INFINITY;
+              for (const entry of observationsByTimeseries.values()) {
+                if (
+                  Number.isFinite(entry.observed_ms) &&
+                  entry.observed_ms > lastObservedMs
+                ) {
+                  lastObservedMs = entry.observed_ms;
+                  lastObservedAt = entry.observed_at;
+                }
+              }
+              const seriesPolled = observationsByTimeseries.size;
+
               responsePayload = {
                 ok: true,
                 fetched: records.length,
                 filtered: filtered.length,
                 stations: stationsCount,
                 stations_processed: stationsProcessed,
+                stations_updated: stationsProcessed,
                 timeseries: timeseriesCount,
+                timeseries_updated: timeseriesCount,
                 observations: observationsUpserted,
+                observations_upserted: observationsUpserted,
+                series_polled: seriesPolled,
+                last_observed_at: lastObservedAt,
                 partial: timeBudgetHit || Boolean(budgetStopPhase),
                 stopped_reason: (timeBudgetHit || budgetStopPhase)
                   ? "runtime_budget_exceeded"
