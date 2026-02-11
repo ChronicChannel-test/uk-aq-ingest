@@ -70,15 +70,6 @@ jobs:
           gcloud config set project "${PROJECT_ID}"
           gcloud config set run/region "${REGION}"
 
-      - name: Ensure Artifact Registry repository exists
-        run: |
-          if ! gcloud artifacts repositories describe "${REPO}" --location "${REGION}" >/dev/null 2>&1; then
-            gcloud artifacts repositories create "${REPO}" \
-              --location "${REGION}" \
-              --repository-format docker \
-              --description "UK AQ images"
-          fi
-
       - name: Build and push Sensor.Community image
         id: build
         run: |
