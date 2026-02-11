@@ -74,3 +74,5 @@ jobs:
             --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"
           supabase functions deploy uk_aq_station_snapshot \
             --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"
+          supabase functions deploy uk_aq_egress_monitor \
+            --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"

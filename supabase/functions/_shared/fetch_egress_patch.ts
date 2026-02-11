@@ -7,7 +7,7 @@ import {
 const PATCH_FLAG = "__uk_aq_postgrest_egress_patch__";
 const ENABLED_ENV = "UK_AQ_POSTGREST_EGRESS_CAPTURE_ENABLED";
 const SAMPLE_RATE_ENV = "UK_AQ_POSTGREST_EGRESS_CAPTURE_SAMPLE_RATE";
-const DEFAULT_SAMPLE_RATE = 1;
+const DEFAULT_SAMPLE_RATE = 0.05;
 const METRIC_RPC_PATHS = new Set([
   "/rest/v1/rpc/uk_aq_record_endpoint_metric",
   "/rest/v1/rpc/uk_aq_cleanup_endpoint_metrics",
@@ -191,7 +191,6 @@ function applyPatch(): void {
         responseBytes: bytes,
         fields: extractMeta(url, method),
         sampleRate,
-        force: true,
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

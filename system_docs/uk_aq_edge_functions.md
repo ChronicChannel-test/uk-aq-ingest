@@ -14,7 +14,9 @@ metrics and persist them via RPCs defined in `supabase/uk_aq_egress_metrics.sql`
 PostgREST egress capture note: all edge functions import
 `_shared/fetch_egress_patch.ts`, which instruments outgoing
 `/rest/v1/*` calls and records response size + duration metrics as
-`postgrest:<path>` endpoint rows via the same RPC.
+`postgrest:<path>` endpoint rows via the same RPC. `2xx` capture is sampled
+(`UK_AQ_POSTGREST_EGRESS_CAPTURE_SAMPLE_RATE`, default `0.05`); `304`/`4xx`/`5xx`
+remain always logged.
 
 Maintenance note (2026-02-09): removed `@ts-nocheck` from ingest/stations edge
 functions and fixed strict typing/lint issues without changing runtime behavior.
@@ -87,6 +89,19 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
   - Logs whether the cron secret is present (boolean + length) for debugging.
   - Logs each dispatched edge call with the target function name and cron secret presence (length only).
   - Writes dispatch errors to `error_logs`.
+
+### uk_aq_egress_monitor
+- Purpose: Lightweight monitor endpoint that summarizes egress metrics and raises a warning when total MB over a lookback window exceeds a threshold.
+- Triggered by: Scheduled GitHub workflow `.github/workflows/uk_aq_egress_monitor.yml` (every 5 minutes) or manual invocation.
+- Reads:
+  - `uk_aq_public.uk_aq_endpoint_egress_metrics_minute`
+- Writes:
+  - Optional `uk_aq_raw.error_logs` warning row when threshold is exceeded.
+- Auth:
+  - Requires `X-Cron-Secret` only when `SB_UK_AQ_CRON_SECRET` is set.
+- Notes:
+  - Uses `x-ukaq-egress-bypass: 1` on its own PostgREST calls so monitor traffic does not recursively inflate egress metrics.
+  - Supports query params `lookback_minutes`, `top_n`, `alert_mb`, `write_error_log`.
 
 ### ingest_uk_air_sos
 - Purpose: Poll UK-AIR SOS timeseries and write observations + last_value fields.
@@ -376,7 +391,11 @@ Optional:
 - `UK_AQ_EGRESS_METRICS_AGG_RETENTION_DAYS` (optional; defaults to `30`; minute aggregate retention)
 - `UK_AQ_EGRESS_METRICS_RAW_RETENTION_DAYS` (optional; defaults to `7`; raw `304`/error event retention)
 - `UK_AQ_POSTGREST_EGRESS_CAPTURE_ENABLED` (optional; defaults to `true`; enables `/rest/v1/*` fetch instrumentation in edge functions)
-- `UK_AQ_POSTGREST_EGRESS_CAPTURE_SAMPLE_RATE` (optional; defaults to `1`; sampling for captured PostgREST fetch metrics)
+- `UK_AQ_POSTGREST_EGRESS_CAPTURE_SAMPLE_RATE` (optional; defaults to `0.05`; sampling for captured PostgREST `2xx` fetch metrics)
+- `UK_AQ_EGRESS_MONITOR_LOOKBACK_MINUTES` (optional; defaults to `60`; monitor lookback window)
+- `UK_AQ_EGRESS_MONITOR_TOP_N` (optional; defaults to `20`; monitor top endpoint count)
+- `UK_AQ_EGRESS_MONITOR_ALERT_MB` (optional; defaults to `250`; warning threshold for MB in lookback window)
+- `UK_AQ_EGRESS_MONITOR_WRITE_ERROR_LOG` (optional; defaults to `true`; write warning rows into `error_logs` when threshold is exceeded)
 - `UK_AIR_ERROR_DROPBOX_FOLDER` (defaults to `error_log`)
 - `BREATHELONDON_ERROR_DROPBOX_FOLDER` (optional override for Breathe London)
 - `SCOMM_ERROR_DROPBOX_FOLDER` (optional override for Sensor.Community)

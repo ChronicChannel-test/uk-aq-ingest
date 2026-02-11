@@ -1,0 +1,30 @@
+name: UK-AQ Egress Monitor
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+jobs:
+  egress-monitor:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger egress monitor function
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SB_ANON_JWT: ${{ secrets.SB_ANON_JWT }}
+          SB_UK_AQ_CRON_SECRET: ${{ secrets.SB_UK_AQ_CRON_SECRET }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SUPABASE_URL:-}" ] || [ -z "${SB_ANON_JWT:-}" ]; then
+            echo "Missing SUPABASE_URL or SB_ANON_JWT secret." >&2
+            exit 1
+          fi
+          curl --silent --show-error --fail-with-body \
+            -X POST \
+            "${SUPABASE_URL%/}/functions/v1/uk_aq_egress_monitor?lookback_minutes=60&top_n=15" \
+            -H "Authorization: Bearer ${SB_ANON_JWT}" \
+            -H "apikey: ${SB_ANON_JWT}" \
+            -H "Content-Type: application/json" \
+            -H "X-Cron-Secret: ${SB_UK_AQ_CRON_SECRET:-}" \
+            -d '{}'
