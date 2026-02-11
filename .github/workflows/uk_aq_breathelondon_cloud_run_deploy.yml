@@ -24,7 +24,7 @@ jobs:
       REGION: ${{ vars.GCP_REGION || 'europe-west2' }}
       REPO: ${{ vars.GCP_ARTIFACT_REPO || 'uk-aq' }}
       JOB_NAME: ${{ vars.GCP_BREATHELONDON_JOB_NAME || 'uk-aq-breathelondon-ingest' }}
-      JOB_SERVICE_ACCOUNT: ${{ vars.GCP_BREATHELONDON_JOB_SERVICE_ACCOUNT || '' }}
+      JOB_SERVICE_ACCOUNT: ${{ vars.GCP_BREATHELONDON_JOB_SERVICE_ACCOUNT || secrets.GCP_BREATHELONDON_JOB_SERVICE_ACCOUNT || '' }}
       JOB_TIMEOUT_SECONDS: ${{ vars.GCP_BREATHELONDON_JOB_TIMEOUT_SECONDS || '900' }}
       JOB_MAX_RETRIES: ${{ vars.GCP_BREATHELONDON_JOB_MAX_RETRIES || '0' }}
       SCHEDULER_ENABLED: ${{ vars.GCP_BREATHELONDON_SCHEDULER_ENABLED || 'true' }}
@@ -80,7 +80,8 @@ jobs:
             exit 1
           fi
           if [ -z "${JOB_SERVICE_ACCOUNT:-}" ]; then
-            echo "Missing required repo variable: GCP_BREATHELONDON_JOB_SERVICE_ACCOUNT"
+            echo "Missing required service account setting."
+            echo "Set either repo variable or repo secret: GCP_BREATHELONDON_JOB_SERVICE_ACCOUNT"
             exit 1
           fi
           if [[ "${JOB_SERVICE_ACCOUNT}" == *"-compute@developer.gserviceaccount.com" ]]; then
