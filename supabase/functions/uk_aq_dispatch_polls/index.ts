@@ -1381,6 +1381,17 @@ function isDispatchBudgetRemaining(dispatchStartedAtMs: number): boolean {
     DISPATCH_MIN_START_EDGE_CALL_MS;
 }
 
+function shouldDrainHistoryOutbox(
+  dispatchMode: DispatchMode,
+  requestPayload: Record<string, unknown>,
+): boolean {
+  if (asBoolean(requestPayload.flush_history_outbox)) {
+    return true;
+  }
+  // Keep queue dispatcher paths fast/stable under strict scheduler runtime limits.
+  return dispatchMode === "legacy";
+}
+
 serve(async (req) => {
   if (req.method !== "POST") {
     return new Response("Method not allowed", { status: 405 });
@@ -1425,9 +1436,8 @@ serve(async (req) => {
 
   const dispatchStartedAtMs = Date.now();
   const now = new Date();
-  const historyOutbox = dispatchMode === "run_queue"
-    ? emptyHistoryOutboxDrainSummary()
-    : await drainHistoryOutboxFromDispatcher(
+  const historyOutbox = shouldDrainHistoryOutbox(dispatchMode, requestPayload)
+    ? await drainHistoryOutboxFromDispatcher(
       dispatchStartedAtMs,
     ).catch((
       error,
@@ -1438,7 +1448,8 @@ serve(async (req) => {
         error: summary.error,
       });
       return summary;
-    });
+    })
+    : emptyHistoryOutboxDrainSummary();
   const results = new Map<string, DispatchResult>();
   let connectors: ConnectorRow[] = [];
   let latestRuns = new Map<string, IngestRunRow>();

@@ -234,8 +234,8 @@
       }
 
       .status-pill.partial {
-        background: rgba(245, 193, 74, 0.22);
-        color: #8a5500;
+        background: rgba(47, 143, 91, 0.15);
+        color: #2f8f5b;
         text-transform: none;
         flex-direction: column;
         align-items: center;
@@ -249,6 +249,10 @@
         flex-wrap: wrap;
         align-items: center;
         gap: 6px;
+      }
+
+      .status-detail {
+        white-space: nowrap;
       }
 
       .runtime-pill {
@@ -789,7 +793,7 @@
                       <td class="connector-name">${run.connector_label || run.connector_code || "Unknown"}</td>
                       <td>
                         <div class="status-stack">
-                          <span class="status-pill ${status.className}">${status.label}${status.detail ? `<br>${status.detail}` : ""}</span>
+                          <span class="status-pill ${status.className}">${status.label}${status.detail ? `<br><span class="status-detail">${status.detail}</span>` : ""}</span>
                           ${runtimeBadge}
                         </div>
                       </td>
