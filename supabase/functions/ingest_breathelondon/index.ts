@@ -44,6 +44,8 @@ type DropboxConfig = {
 type DropboxDiagnostics = {
   enabled: boolean;
   reason: string | null;
+  raw_enabled: boolean;
+  raw_reason: string | null;
   has_app_key: boolean;
   has_app_secret: boolean;
   has_refresh_token: boolean;
@@ -178,6 +180,12 @@ const DROPBOX_ERROR_FOLDER = dropboxWithRoot(
 );
 const DROPBOX_TOKEN_URL = "https://api.dropbox.com/oauth2/token";
 const DROPBOX_UPLOAD_URL = "https://content.dropboxapi.com/2/files/upload";
+const DROPBOX_UPLOAD_SOURCE = (() => {
+  const value = (Deno.env.get("BREATHELONDON_DROPBOX_UPLOAD_SOURCE") ?? "edge")
+    .trim()
+    .toLowerCase();
+  return value === "cloud_run" ? "cloud_run" : "edge";
+})();
 
 const REST_BASE_URL = SUPABASE_URL
   ? `${SUPABASE_URL.replace(/\/$/, "")}/rest/v1`
@@ -462,6 +470,24 @@ function parseObservationTimestamp(value: unknown): string | null {
     return null;
   }
   return new Date(parsed).toISOString();
+}
+
+function maxTimestampIso(current: string | null, candidate: string | null): string | null {
+  if (!candidate) {
+    return current;
+  }
+  if (!current) {
+    return candidate;
+  }
+  const currentMs = Date.parse(current);
+  const candidateMs = Date.parse(candidate);
+  if (!Number.isFinite(currentMs)) {
+    return candidate;
+  }
+  if (!Number.isFinite(candidateMs)) {
+    return current;
+  }
+  return candidateMs > currentMs ? candidate : current;
 }
 
 function quotePostgrestValue(value: string): string {
@@ -1094,14 +1120,19 @@ function loadDropboxConfig(): DropboxConfig | null {
   if (!DROPBOX_APP_KEY || !DROPBOX_APP_SECRET || !DROPBOX_REFRESH_TOKEN) {
     return null;
   }
-  if (!DROPBOX_ALLOWED_SUPABASE_URL || DROPBOX_ALLOWED_SUPABASE_URL !== SUPABASE_URL) {
-    return null;
-  }
   return {
     appKey: DROPBOX_APP_KEY,
     appSecret: DROPBOX_APP_SECRET,
     refreshToken: DROPBOX_REFRESH_TOKEN,
   };
+}
+
+function rawDropboxUploadsEnabled(): boolean {
+  return Boolean(
+    SUPABASE_URL &&
+      DROPBOX_ALLOWED_SUPABASE_URL &&
+      DROPBOX_ALLOWED_SUPABASE_URL === SUPABASE_URL,
+  );
 }
 
 function loadErrorDropboxConfig(): DropboxConfig | null {
@@ -1145,26 +1176,36 @@ function buildDropboxDiagnostics(): DropboxDiagnostics {
   const hasAppKey = Boolean(DROPBOX_APP_KEY);
   const hasAppSecret = Boolean(DROPBOX_APP_SECRET);
   const hasRefreshToken = Boolean(DROPBOX_REFRESH_TOKEN);
+  const hasCreds = hasAppKey && hasAppSecret && hasRefreshToken;
   const supabaseUrl = SUPABASE_URL || null;
   const rawAllowed = DROPBOX_ALLOWED_SUPABASE_URL || null;
   const errorAllowed = DROPBOX_ERROR_ALLOWED_SUPABASE_URL || null;
   const rawAllowedMatch = Boolean(rawAllowed) && rawAllowed === SUPABASE_URL;
   const errorAllowedMatch = !errorAllowed || errorAllowed === SUPABASE_URL;
 
-  let reason: string | null = null;
+  let logReason: string | null = null;
+  let rawReason: string | null = null;
   if (!SUPABASE_URL) {
-    reason = "missing_supabase_url";
-  } else if (!hasAppKey || !hasAppSecret || !hasRefreshToken) {
-    reason = "missing_dropbox_credentials";
+    logReason = "missing_supabase_url";
+  } else if (!hasCreds) {
+    logReason = "missing_dropbox_credentials";
+  }
+
+  if (!SUPABASE_URL) {
+    rawReason = "missing_supabase_url";
+  } else if (!hasCreds) {
+    rawReason = "missing_dropbox_credentials";
   } else if (!rawAllowed) {
-    reason = "missing_dropbox_allowed_supabase_url";
+    rawReason = "missing_dropbox_allowed_supabase_url";
   } else if (!rawAllowedMatch) {
-    reason = "dropbox_allowed_supabase_url_mismatch";
+    rawReason = "dropbox_allowed_supabase_url_mismatch";
   }
 
   return {
-    enabled: reason === null,
-    reason,
+    enabled: logReason === null,
+    reason: logReason,
+    raw_enabled: rawReason === null,
+    raw_reason: rawReason,
     has_app_key: hasAppKey,
     has_app_secret: hasAppSecret,
     has_refresh_token: hasRefreshToken,
@@ -1190,7 +1231,7 @@ function buildDropboxLogPath(
   const stamp = formatCompactTimestamp(timestamp);
   const dateFolder = formatDateYmd(timestamp);
   const prefix = normalizeConnectorPrefix(connectorCode);
-  return `${DROPBOX_LOG_FOLDER}/${dateFolder}/uk_aq_log_edge_${prefix}_${stamp}.log`;
+  return `${DROPBOX_LOG_FOLDER}/${dateFolder}/uk_aq_log_${DROPBOX_UPLOAD_SOURCE}_${prefix}_${stamp}.log`;
 }
 
 function buildDropboxRawPath(
@@ -1200,7 +1241,7 @@ function buildDropboxRawPath(
   const stamp = formatCompactTimestamp(timestamp);
   const dateFolder = formatDateYmd(timestamp);
   const prefix = normalizeConnectorPrefix(connectorCode);
-  return `${DROPBOX_RAW_FOLDER}/${dateFolder}/uk_aq_raw_edge_${prefix}_${stamp}.zip`;
+  return `${DROPBOX_RAW_FOLDER}/${dateFolder}/uk_aq_raw_${DROPBOX_UPLOAD_SOURCE}_${prefix}_${stamp}.zip`;
 }
 
 function buildDropboxErrorPath(
@@ -1211,7 +1252,7 @@ function buildDropboxErrorPath(
   const dateFolder = createdAt.slice(0, 10);
   const stamp = formatCompactTimestamp(new Date(createdAt));
   const prefix = normalizeConnectorPrefix(connectorCode);
-  return `${DROPBOX_ERROR_FOLDER}/${dateFolder}/uk_aq_error_edge_${prefix}_${stamp}_${errorId}.json`;
+  return `${DROPBOX_ERROR_FOLDER}/${dateFolder}/uk_aq_error_${DROPBOX_UPLOAD_SOURCE}_${prefix}_${stamp}_${errorId}.json`;
 }
 
 function formatCompactTimestamp(timestamp: Date): string {
@@ -1628,7 +1669,7 @@ serve(async (req) => {
   const log = createLogBuffer();
   const dropboxConfig = loadDropboxConfig();
   const dropboxDiagnostics = buildDropboxDiagnostics();
-  const rawRecorder = dropboxConfig ? createRawRecorder() : null;
+  const rawRecorder = rawDropboxUploadsEnabled() ? createRawRecorder() : null;
   const errorLogger = createErrorLogger(
     loadErrorDropboxConfig(),
     Boolean(SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY),
@@ -1647,6 +1688,7 @@ serve(async (req) => {
   let checkpointsUpserted = 0;
   let stationsSelected = 0;
   let stationsRequested: number | null = null;
+  let runLastObservedAt: string | null = null;
   let stationFetchEnabled: boolean | null = null;
   const runStartedAt = Date.now();
   const maxRuntimeSeconds = Number.isFinite(BREATHELONDON_MAX_RUNTIME_SECONDS)
@@ -1711,7 +1753,7 @@ serve(async (req) => {
         await errorLogger.logError({
           source: "edge",
           severity: "warn",
-          message: "Dropbox log/raw uploads disabled.",
+          message: "Dropbox log uploads disabled.",
           context: {
             reason: dropboxDiagnostics.reason,
             dropbox: dropboxDiagnostics,
@@ -2090,6 +2132,7 @@ serve(async (req) => {
                 if (stationLatestObserved && (!updatedLastObserved || stationLatestObserved > updatedLastObserved)) {
                   updatedLastObserved = stationLatestObserved;
                 }
+                runLastObservedAt = maxTimestampIso(runLastObservedAt, updatedLastObserved);
 
                 if (stationHasNewObservation && updatedLastObserved) {
                   const lagSeconds = Math.max(
@@ -2139,6 +2182,7 @@ serve(async (req) => {
                 stations_requested: stationsRequested,
                 stations_selected: stationsSelected,
                 stations_processed: stationsProcessed,
+                last_observed_at: runLastObservedAt,
                 species: speciesList,
                 observations_upserted: observationsUpserted,
                 timeseries_updated: timeseriesUpdated,
@@ -2258,14 +2302,16 @@ serve(async (req) => {
         errorLogger,
         refreshDropbox,
       );
-      await uploadDropboxRaw(
-        accessToken,
-        rawRecorder,
-        connectorId,
-        rawConnectorCode,
-        errorLogger,
-        refreshDropbox,
-      );
+      if (dropboxDiagnostics.raw_enabled) {
+        await uploadDropboxRaw(
+          accessToken,
+          rawRecorder,
+          connectorId,
+          rawConnectorCode,
+          errorLogger,
+          refreshDropbox,
+        );
+      }
     }
   }
 

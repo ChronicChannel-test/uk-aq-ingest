@@ -189,7 +189,10 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
 
 ### ingest_breathelondon
 - Purpose: Poll Breathe London Communities for hourly observations with checkpointing.
-- Triggered by: `uk_aq_dispatch_polls` (external scheduler). Helper RPCs live in `supabase/uk_aq_polling_helpers.sql`.
+- Triggered by:
+  - `uk_aq_dispatch_polls` when `connectors.scheduler_backend='supabase_function'`.
+  - `workers/uk_aq_breathelondon_cloud_run` when `connectors.scheduler_backend='google_cloud_run'`.
+  - Helper RPCs live in `supabase/uk_aq_polling_helpers.sql`.
 - Writes:
   - `connectors` (last_polled_at updates), `stations`, `phenomena`, `timeseries`, `observations`
   - `breathelondon_station_checkpoints` (per-station checkpoints)
@@ -198,9 +201,12 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
   - Uses `BREATHELONDON_API_KEY` for every request.
   - Supports `skip_stations` to avoid station upserts; when set, stations are loaded from Supabase instead of `ListSensors`.
   - Supports `active_only` to limit polling to stations marked `enabled` or `site_active` in metadata.
-- Supports `station_refs` to limit polling to a specific set of station refs.
-- Uses `uk_aq_raw.breathelondon_station_checkpoints` for per-station scheduling (`next_due_at`, `ingest_lag_samples`).
-- Supports `debug=true` to include a debug block in the response (Dropbox config status, no secrets).
+  - Supports `station_refs` to limit polling to a specific set of station refs.
+  - Uses `uk_aq_raw.breathelondon_station_checkpoints` for per-station scheduling (`next_due_at`, `ingest_lag_samples`).
+  - Supports `debug=true` to include a debug block in the response (Dropbox config status, no secrets).
+  - Response includes run-level `last_observed_at` (latest observed timestamp across the run scope) for ingest run feed reporting.
+  - Cloud Run runner derives `window_hours` from `connectors.poll_window_hours` and batch limit from `connectors.poll_timeseries_batch_size` (fallback defaults apply), then fetches due station refs via `breathelondon_select_station_refs`.
+  - Cloud Run runner marks run `skipped` with `no_station_refs` when no due refs are returned.
   - Logs cron secret mismatch diagnostics (presence/length only) when authorization fails.
   - Logs incoming request auth header presence (no secrets) for debugging.
   - Response includes `stations_requested`/`stations_selected` when station refs are supplied.
@@ -208,8 +214,9 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
   - Enforces a runtime budget and will return partial progress with `partial=true` when exceeded.
   - Updates `connectors.last_polled_at` on successful non-dry runs.
 - Logs:
-  - Writes a log file to Dropbox `/connectors/breathelondon/log/YYYY-MM-DD/` (prefix `uk_aq_log_edge_breathelondon_`).
-  - Writes raw payloads to Dropbox `/connectors/breathelondon/raw_data/YYYY-MM-DD/` as ZIP (prefix `uk_aq_raw_edge_breathelondon_`).
+  - Writes a log file to Dropbox `/connectors/breathelondon/log/YYYY-MM-DD/` when Dropbox credentials are configured.
+  - Raw payload uploads are gated by `BREATHELONDON_RAW_DROPBOX_ALLOWED_SUPABASE_URL` (or `UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL`) matching `SUPABASE_URL`.
+  - Filename prefixes are runtime-specific: `uk_aq_*_edge_*` for edge runtime and `uk_aq_*_cloud_run_*` for Cloud Run runtime.
   - Writes errors to `error_logs` and `/error_log/YYYY-MM-DD/` when Dropbox error logging is configured.
   - Writes diagnostic entries to `error_logs` when Dropbox config is missing/mismatched or log/raw uploads fail.
 

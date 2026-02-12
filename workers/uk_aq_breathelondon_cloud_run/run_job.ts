@@ -14,12 +14,25 @@ const CLAIM_TIMEOUT_MINUTES = parsePositiveInt(
   Deno.env.get("BREATHELONDON_CLAIM_TIMEOUT_MINUTES"),
   30,
 );
+const DEFAULT_WINDOW_HOURS = parsePositiveInt(
+  Deno.env.get("BREATHELONDON_DEFAULT_WINDOW_HOURS"),
+  6,
+);
+const DEFAULT_BATCH_LIMIT = parsePositiveInt(
+  Deno.env.get("BREATHELONDON_DEFAULT_BATCH_LIMIT"),
+  10,
+);
+const DEFAULT_STALE_LIMIT = parsePositiveInt(
+  Deno.env.get("BREATHELONDON_STALE_LIMIT"),
+  4,
+);
 const PORT = parsePositiveInt(
   Deno.env.get("BREATHELONDON_LOCAL_PORT") || Deno.env.get("PORT"),
   8000,
 );
 const REQUEST_PAYLOAD_RAW = (Deno.env.get("BREATHELONDON_REQUEST_PAYLOAD") ||
   "{}").trim();
+const REQUEST_PAYLOAD_OVERRIDES = parseRequestPayload(REQUEST_PAYLOAD_RAW);
 const CRON_SECRET = (Deno.env.get("SB_UK_AQ_CRON_SECRET") || "").trim();
 
 const SUPABASE_URL = requiredEnv("SUPABASE_URL");
@@ -41,6 +54,8 @@ type ConnectorConfig = {
   connector_code: unknown;
   poll_enabled: unknown;
   poll_interval_minutes: unknown;
+  poll_window_hours: unknown;
+  poll_timeseries_batch_size: unknown;
   scheduler_backend: unknown;
   last_polled_at: unknown;
   last_run_start: unknown;
@@ -71,6 +86,34 @@ function parsePositiveInt(raw: string | undefined, fallback: number): number {
   return Math.trunc(value);
 }
 
+function parseBool(raw: string | undefined, fallback = false): boolean {
+  if (raw === undefined || raw === null) {
+    return fallback;
+  }
+  const value = String(raw).trim().toLowerCase();
+  if (!value) {
+    return fallback;
+  }
+  return ["1", "true", "yes", "y", "on"].includes(value);
+}
+
+function parseRequestPayload(raw: string): Record<string, unknown> {
+  if (!raw) {
+    return {};
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (_error) {
+    throw new Error("BREATHELONDON_REQUEST_PAYLOAD must be valid JSON.");
+  }
+  const payload = toObject(parsed);
+  if (!payload) {
+    throw new Error("BREATHELONDON_REQUEST_PAYLOAD must be a JSON object.");
+  }
+  return payload;
+}
+
 function toObject(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return null;
@@ -94,6 +137,14 @@ function toIntegerOrNull(value: unknown): number | null {
   return Math.trunc(parsed);
 }
 
+function toPositiveIntegerOrNull(value: unknown): number | null {
+  const parsed = toIntegerOrNull(value);
+  if (parsed === null || parsed <= 0) {
+    return null;
+  }
+  return parsed;
+}
+
 function parseTimestamp(value: unknown): Date | null {
   const text = toStringOrNull(value);
   if (!text) {
@@ -112,11 +163,19 @@ function evaluateDue(connector: ConnectorConfig | null, now: Date): {
   intervalMinutes: number;
 } {
   if (!connector) {
-    return { due: false, reason: "connector_not_found", intervalMinutes: DEFAULT_INTERVAL_MINUTES };
+    return {
+      due: false,
+      reason: "connector_not_found",
+      intervalMinutes: DEFAULT_INTERVAL_MINUTES,
+    };
   }
 
   if (connector.poll_enabled !== true) {
-    return { due: false, reason: "poll_disabled", intervalMinutes: DEFAULT_INTERVAL_MINUTES };
+    return {
+      due: false,
+      reason: "poll_disabled",
+      intervalMinutes: DEFAULT_INTERVAL_MINUTES,
+    };
   }
 
   const schedulerBackend = toStringOrNull(connector.scheduler_backend) ||
@@ -156,7 +215,26 @@ function evaluateDue(connector: ConnectorConfig | null, now: Date): {
   return { due: true, reason: "due", intervalMinutes };
 }
 
-function postgrestHeaders(schema: string, write = false): Record<string, string> {
+function getWindowHours(connector: ConnectorConfig | null): number {
+  const value = toPositiveIntegerOrNull(connector?.poll_window_hours);
+  if (value !== null) {
+    return value;
+  }
+  return DEFAULT_WINDOW_HOURS;
+}
+
+function getBatchLimit(connector: ConnectorConfig | null): number {
+  const value = toPositiveIntegerOrNull(connector?.poll_timeseries_batch_size);
+  if (value !== null) {
+    return value;
+  }
+  return DEFAULT_BATCH_LIMIT;
+}
+
+function postgrestHeaders(
+  schema: string,
+  write = false,
+): Record<string, string> {
   const headers: Record<string, string> = {
     apikey: SUPABASE_SERVICE_ROLE_KEY,
     Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
@@ -216,6 +294,84 @@ async function postgrestRequest(
   return { ok: response.ok, status: response.status, text, data };
 }
 
+async function loadStationRefs(params: {
+  batchLimit: number;
+  staleLimit?: number;
+}): Promise<string[]> {
+  const body: Record<string, unknown> = {
+    batch_limit: Math.max(1, Math.trunc(params.batchLimit)),
+  };
+  if (
+    params.staleLimit !== undefined &&
+    Number.isFinite(params.staleLimit) &&
+    params.staleLimit > 0
+  ) {
+    body.stale_limit = Math.trunc(params.staleLimit);
+  }
+  const response = await postgrestRequest(
+    "POST",
+    "rpc/breathelondon_select_station_refs",
+    {
+      body,
+      schema: UK_AQ_CORE_SCHEMA,
+    },
+  );
+  if (!response.ok) {
+    throw new Error(
+      `Failed to load station refs (${response.status}): ${response.text}`,
+    );
+  }
+  if (!Array.isArray(response.data)) {
+    return [];
+  }
+  return response.data
+    .map((value) => toStringOrNull(value))
+    .filter((value): value is string => Boolean(value));
+}
+
+async function buildIngestPayload(
+  connector: ConnectorConfig | null,
+): Promise<{
+  payload: Record<string, unknown>;
+  batchLimit: number;
+  windowHours: number;
+  stationRefs: string[];
+}> {
+  const payload: Record<string, unknown> = {
+    ...REQUEST_PAYLOAD_OVERRIDES,
+  };
+  const connectorCode = toStringOrNull(payload.connector_code) ||
+    CONNECTOR_CODE;
+  const serviceRef = toStringOrNull(payload.service_ref) || connectorCode;
+  const batchLimit = getBatchLimit(connector);
+  const windowHours = getWindowHours(connector);
+  const staleLimit = toPositiveIntegerOrNull(payload.stale_limit) ??
+    DEFAULT_STALE_LIMIT;
+  const stationRefs = await loadStationRefs({
+    batchLimit,
+    staleLimit,
+  });
+
+  payload.connector_code = connectorCode;
+  payload.service_ref = serviceRef;
+  payload.skip_stations = true;
+  payload.active_only = parseBool(
+    String(payload.active_only ?? "false"),
+    false,
+  );
+  payload.initial_days = toPositiveIntegerOrNull(payload.initial_days) ?? 2;
+  payload.window_hours = windowHours;
+  payload.batch_size = batchLimit;
+  payload.station_refs = stationRefs;
+
+  return {
+    payload,
+    batchLimit,
+    windowHours,
+    stationRefs,
+  };
+}
+
 function deriveRunSummary(ingestResponse: IngestResponse): {
   runStatus: string;
   runMessage: string;
@@ -231,14 +387,17 @@ function deriveRunSummary(ingestResponse: IngestResponse): {
     if (ingestResponse.ok) {
       runMessage = "ingest_breathelondon completed via google_cloud_run";
     } else {
-      runMessage = `ingest_breathelondon failed with status ${ingestResponse.status}`;
+      runMessage =
+        `ingest_breathelondon failed with status ${ingestResponse.status}`;
     }
   }
 
   return { runStatus, runMessage, payload };
 }
 
-async function resolveConnectorId(payload: Record<string, unknown> | null): Promise<number> {
+async function resolveConnectorId(
+  payload: Record<string, unknown> | null,
+): Promise<number> {
   const payloadConnectorId = toIntegerOrNull(payload?.connector_id);
   if (payloadConnectorId !== null) {
     return payloadConnectorId;
@@ -268,7 +427,7 @@ async function loadConnector(): Promise<ConnectorConfig | null> {
   const response = await postgrestRequest("GET", "connectors", {
     query: {
       select:
-        "id,connector_code,poll_enabled,poll_interval_minutes,scheduler_backend,last_polled_at,last_run_start,last_run_end,last_run_status",
+        "id,connector_code,poll_enabled,poll_interval_minutes,poll_window_hours,poll_timeseries_batch_size,scheduler_backend,last_polled_at,last_run_start,last_run_end,last_run_status",
       connector_code: `eq.${CONNECTOR_CODE}`,
       limit: "1",
     },
@@ -283,15 +442,21 @@ async function loadConnector(): Promise<ConnectorConfig | null> {
   return row as ConnectorConfig | null;
 }
 
-async function claimConnector(runStartedAtIso: string): Promise<DispatchClaimRow | null> {
-  const response = await postgrestRequest("POST", "rpc/uk_aq_rpc_dispatch_claim", {
-    schema: "uk_aq_public",
-    body: {
-      p_connector_code: CONNECTOR_CODE,
-      p_run_started_at: runStartedAtIso,
-      p_timeout_minutes: CLAIM_TIMEOUT_MINUTES,
+async function claimConnector(
+  runStartedAtIso: string,
+): Promise<DispatchClaimRow | null> {
+  const response = await postgrestRequest(
+    "POST",
+    "rpc/uk_aq_rpc_dispatch_claim",
+    {
+      schema: "uk_aq_public",
+      body: {
+        p_connector_code: CONNECTOR_CODE,
+        p_run_started_at: runStartedAtIso,
+        p_timeout_minutes: CLAIM_TIMEOUT_MINUTES,
+      },
     },
-  });
+  );
   if (!response.ok) {
     throw new Error(
       `Dispatch claim failed (${response.status}): ${response.text}`,
@@ -370,7 +535,10 @@ async function insertRunRow(
   }
 }
 
-async function insertErrorLog(connectorId: number, ingestResponse: IngestResponse): Promise<void> {
+async function insertErrorLog(
+  connectorId: number,
+  ingestResponse: IngestResponse,
+): Promise<void> {
   const entry = {
     id: crypto.randomUUID(),
     source: "cloud_run",
@@ -427,7 +595,9 @@ function logSummary(message: string, details: Record<string, unknown>): void {
   );
 }
 
-async function runIngestOnce(): Promise<IngestResponse> {
+async function runIngestOnce(
+  payload: Record<string, unknown>,
+): Promise<IngestResponse> {
   const headers: HeadersInit = {
     "content-type": "application/json",
   };
@@ -437,7 +607,7 @@ async function runIngestOnce(): Promise<IngestResponse> {
   const response = await fetch(`http://127.0.0.1:${PORT}/`, {
     method: "POST",
     headers,
-    body: REQUEST_PAYLOAD_RAW,
+    body: JSON.stringify(payload),
   });
   const raw = await response.text();
   let body: unknown = raw;
@@ -466,8 +636,8 @@ async function main(): Promise<void> {
       reason: due.reason,
       interval_minutes: due.intervalMinutes,
       poll_enabled: connector?.poll_enabled,
-      scheduler_backend:
-        toStringOrNull(connector?.scheduler_backend) || SCHEDULER_BACKEND_SUPABASE_FUNCTION,
+      scheduler_backend: toStringOrNull(connector?.scheduler_backend) ||
+        SCHEDULER_BACKEND_SUPABASE_FUNCTION,
     });
     return;
   }
@@ -481,6 +651,60 @@ async function main(): Promise<void> {
     return;
   }
 
+  const claimedConnectorId = toIntegerOrNull(claim.connector_id);
+  let connectorId: number | null = claimedConnectorId ??
+    toIntegerOrNull(connector?.id);
+  const payloadPlan = await buildIngestPayload(connector);
+
+  if (!payloadPlan.stationRefs.length) {
+    const runEndedAtIso = new Date().toISOString();
+    const runStatus = "skipped";
+    const runMessage = "no_station_refs";
+    const ingestResponse: IngestResponse = {
+      ok: true,
+      status: 204,
+      body: {
+        run_status: runStatus,
+        run_message: runMessage,
+        connector_code: CONNECTOR_CODE,
+      },
+      raw: "",
+    };
+    if (connectorId === null) {
+      connectorId = await resolveConnectorId(null);
+    }
+    await updateConnectorRun(
+      connectorId,
+      runStartedAtIso,
+      runEndedAtIso,
+      runStatus,
+      runMessage,
+    );
+    await insertRunRow(
+      connectorId,
+      runStartedAtIso,
+      runEndedAtIso,
+      runStatus,
+      runMessage,
+      ingestResponse,
+      toObject(ingestResponse.body),
+    );
+    logSummary("skipped", {
+      reason: runMessage,
+      connector_id: connectorId,
+      batch_limit: payloadPlan.batchLimit,
+      window_hours: payloadPlan.windowHours,
+    });
+    return;
+  }
+
+  logSummary("dispatching", {
+    connector_id: connectorId,
+    batch_limit: payloadPlan.batchLimit,
+    window_hours: payloadPlan.windowHours,
+    station_refs_count: payloadPlan.stationRefs.length,
+  });
+
   const server = new Deno.Command("deno", {
     args: [
       "run",
@@ -490,17 +714,19 @@ async function main(): Promise<void> {
       "--allow-write",
       "/app/runtime/ingest_breathelondon/index.ts",
     ],
+    env: {
+      ...Deno.env.toObject(),
+      BREATHELONDON_DROPBOX_UPLOAD_SOURCE: "cloud_run",
+    },
     stdout: "inherit",
     stderr: "inherit",
   }).spawn();
 
   let ingestResponse: IngestResponse | null = null;
-  const claimedConnectorId = toIntegerOrNull(claim.connector_id);
-  let connectorId: number | null = claimedConnectorId ?? toIntegerOrNull(connector?.id);
 
   try {
     await waitForServer(`http://127.0.0.1:${PORT}/`);
-    ingestResponse = await runIngestOnce();
+    ingestResponse = await runIngestOnce(payloadPlan.payload);
 
     const { runStatus, runMessage, payload } = deriveRunSummary(ingestResponse);
     const runEndedAtIso = new Date().toISOString();

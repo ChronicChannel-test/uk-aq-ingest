@@ -15,9 +15,19 @@ It keeps behavior aligned with the Edge function path:
 ## How it works
 
 1. Starts the BL ingest handler locally inside the container.
-2. Sends one local POST request (with `x-cron-secret` when configured).
-3. Parses response and writes run telemetry into main DB.
-4. Exits non-zero if ingest failed.
+2. Builds payload from connector settings (`poll_window_hours`, `poll_timeseries_batch_size`)
+   plus fresh station refs from `uk_aq_core.breathelondon_select_station_refs`.
+3. Sends one local POST request (with `x-cron-secret` when configured).
+4. Parses response and writes run telemetry into main DB.
+5. Exits non-zero if ingest failed.
+
+If no station refs are due, the run is recorded as `skipped` (`no_station_refs`)
+and no local ingest call is made.
+
+Dropbox behavior in Cloud Run:
+- Log uploads are always attempted when Dropbox credentials are present.
+- Raw uploads are gated by `BREATHELONDON_RAW_DROPBOX_ALLOWED_SUPABASE_URL` (or `UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL`) matching `SUPABASE_URL`.
+- File prefixes are `uk_aq_log_cloud_run_*` and `uk_aq_raw_cloud_run_*`.
 
 ## Build and push
 
@@ -55,5 +65,6 @@ gcloud run jobs update uk-aq-breathelondon-ingest \
 - `DROPBOX_APP_KEY`
 - `DROPBOX_APP_SECRET`
 - `DROPBOX_REFRESH_TOKEN`
-- `BREATHELONDON_RAW_DROPBOX_ALLOWED_SUPABASE_URL` or `UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL`
+- `BREATHELONDON_RAW_DROPBOX_ALLOWED_SUPABASE_URL` or `UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL` (raw upload gate only)
 - `SB_UK_AQ_CRON_SECRET`
+- `BREATHELONDON_REQUEST_PAYLOAD` (JSON object overrides; dynamic connector-derived station/window/batch still apply)
