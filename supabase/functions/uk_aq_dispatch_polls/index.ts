@@ -1490,6 +1490,40 @@ serve(async (req) => {
     }
 
     if (!queueClaimRows.length) {
+      const dueWithoutQueue = TARGET_CONNECTORS.filter((connectorCode) => {
+        const connector = connectorMap.get(connectorCode) ?? null;
+        const latestRun = latestRuns.get(connectorCode) ?? null;
+        if (isGoogleCloudRunBacked(connector, connectorCode)) {
+          return false;
+        }
+        if (isConnectorInFlight(connector, latestRun, now)) {
+          return false;
+        }
+        return isDue(connector, connectorCode, now);
+      });
+      if (dueWithoutQueue.length > 0) {
+        await logError({
+          severity: "warn",
+          message:
+            "Dispatcher run_queue was called with an empty queue while due connectors exist.",
+          context: {
+            component: "uk_aq_dispatch_polls",
+            step: "run_queue_empty_with_due_connectors",
+            due_connectors: dueWithoutQueue,
+          },
+        });
+        return jsonResponse({
+          error: "queue_empty_with_due_connectors",
+          message:
+            "run_queue was called with no queued jobs, but due connectors exist. Ensure scheduler calls enqueue before run_queue, or use mode=legacy.",
+          checked_at: now.toISOString(),
+          dispatch_mode: dispatchMode,
+          due_connectors: dueWithoutQueue,
+          dispatcher_settings: settings,
+          history_outbox: historyOutbox,
+          queue: { claimed: 0, enqueued: 0, resolved: 0 },
+        }, 409);
+      }
       for (const connectorCode of TARGET_CONNECTORS) {
         results.set(connectorCode, {
           connector_code: connectorCode,

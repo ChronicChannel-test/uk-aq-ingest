@@ -42,9 +42,10 @@ Queue RPCs:
 ## Dispatcher Modes
 
 `uk_aq_dispatch_polls` supports:
-- `mode=enqueue` (default)
+- `mode=legacy` (default when mode is omitted)
+- `mode=enqueue`
 - `mode=run_queue`
-- `mode=legacy` (direct dispatch path kept as fallback)
+- `mode=legacy` (direct dispatch path kept as fallback/debug path)
 
 Worker behavior:
 - Calls `mode=enqueue`, reads `dispatcher_settings.max_runs_per_dispatch_call`, then calls `mode=run_queue` that many times in parallel.

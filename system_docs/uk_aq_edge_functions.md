@@ -74,6 +74,7 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
     - If `last_run_end` is null and `last_run_start` is recent, do not enqueue/dispatch again.
     - If a run started within the connector interval, do not dispatch again yet.
   - `mode=run_queue` claims queued jobs using per-request `run_queue_claim_limit` (or `DISPATCH_QUEUE_CLAIM_BATCH_LIMIT` default) and then uses `uk_aq_rpc_dispatch_claim` for per-connector in-flight safety.
+  - Safety guard: when `mode=run_queue` finds an empty queue but connectors are currently due, dispatcher returns `409 queue_empty_with_due_connectors` and writes a warning to `error_logs` (prevents silent stalls from run_queue-only scheduling).
   - In `mode=run_queue`, queued jobs blocked by this guard are resolved with retry (`in_flight_running` or `started_within_interval`) instead of starting an overlap run.
   - When `max_runs_per_dispatch_call>1`, in-flight checks are per connector; other connectors can still dispatch.
   - Stale in-flight runs (>10 minutes) are auto-closed as `failed` with `in_flight_timeout` and a `uk_aq_ingest_runs` row is inserted.

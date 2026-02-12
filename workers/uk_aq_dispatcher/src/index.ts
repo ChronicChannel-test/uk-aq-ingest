@@ -51,22 +51,28 @@ async function invokeDispatch(
   if (cronSecret) {
     headers["X-Cron-Secret"] = cronSecret;
   }
-  const resp = await fetch(url, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({ source: "cloudflare", mode, ...payload }),
-  });
-  if (!resp.ok) {
-    const body = await resp.text().catch(() => "");
-    console.error("uk_aq_dispatch_polls failed", { mode, status: resp.status, body });
-    return { ok: false, status: resp.status, body };
+  try {
+    const resp = await fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ source: "cloudflare", mode, ...payload }),
+    });
+    if (!resp.ok) {
+      const body = await resp.text().catch(() => "");
+      console.error("uk_aq_dispatch_polls failed", { mode, status: resp.status, body });
+      return { ok: false, status: resp.status, body };
+    }
+    const contentType = (resp.headers.get("content-type") ?? "").toLowerCase();
+    const body = contentType.includes("application/json")
+      ? await resp.json().catch(() => null)
+      : await resp.text().catch(() => "");
+    console.log("uk_aq_dispatch_polls succeeded", { mode, body });
+    return { ok: true, status: resp.status, body };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error ?? "unknown_error");
+    console.error("uk_aq_dispatch_polls failed", { mode, status: 0, body: message });
+    return { ok: false, status: 0, body: message };
   }
-  const contentType = (resp.headers.get("content-type") ?? "").toLowerCase();
-  const body = contentType.includes("application/json")
-    ? await resp.json().catch(() => null)
-    : await resp.text().catch(() => "");
-  console.log("uk_aq_dispatch_polls succeeded", { mode, body });
-  return { ok: true, status: resp.status, body };
 }
 
 function parsePositiveInt(
@@ -91,14 +97,43 @@ function resolveRunQueueFanout(enqueueBody: unknown): number {
   const root = asRecord(enqueueBody);
   const settings = asRecord(root?.dispatcher_settings);
   const maxRuns = parsePositiveInt(settings?.max_runs_per_dispatch_call, 1);
-  return Math.max(1, maxRuns);
+  // Prevent accidental fanout explosions from config or malformed payloads.
+  return Math.max(1, Math.min(maxRuns, 8));
+}
+
+function shouldFallbackToLegacy(result: { status: number; body: unknown }): boolean {
+  const bodyText = typeof result.body === "string" ? result.body.toLowerCase() : "";
+
+  // Infra/transient failures should not trigger extra legacy calls.
+  if (result.status >= 500 || result.status === 0) {
+    return false;
+  }
+  if (bodyText.includes("worker_limit") || bodyText.includes("bad gateway") || bodyText.includes("timeout")) {
+    return false;
+  }
+
+  // Legacy fallback is only for queue-mode compatibility issues.
+  return (
+    result.status === 400 ||
+    result.status === 404 ||
+    bodyText.includes("dispatch_mode") ||
+    bodyText.includes("run_queue") ||
+    bodyText.includes("unsupported")
+  );
 }
 
 export default {
   async scheduled(_event: unknown, env: Env, _ctx: unknown): Promise<void> {
     const enqueueResult = await invokeDispatch(env, "enqueue");
     if (!enqueueResult.ok) {
-      await invokeDispatch(env, "legacy");
+      if (shouldFallbackToLegacy(enqueueResult)) {
+        await invokeDispatch(env, "legacy");
+      } else {
+        console.warn("skipping_legacy_fallback_after_enqueue_failure", {
+          status: enqueueResult.status,
+          body: enqueueResult.body,
+        });
+      }
       return;
     }
     const fanout = resolveRunQueueFanout(enqueueResult.body);
@@ -113,7 +148,15 @@ export default {
       ),
     );
     if (runQueueResults.every((result) => !result.ok)) {
-      await invokeDispatch(env, "legacy");
+      const firstFailure = runQueueResults[0] ?? { status: 0, body: "unknown" };
+      if (shouldFallbackToLegacy(firstFailure)) {
+        await invokeDispatch(env, "legacy");
+      } else {
+        console.warn("skipping_legacy_fallback_after_run_queue_failures", {
+          fanout,
+          failures: runQueueResults.map((result) => ({ status: result.status, body: result.body })),
+        });
+      }
     }
   },
 };
