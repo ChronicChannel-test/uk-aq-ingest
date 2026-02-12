@@ -304,25 +304,22 @@ async function loadLatest(
 
     return {
       id: row.id ?? null,
-      updated_at: row.updated_at ?? null,
       last_value: row.last_value ?? null,
       last_value_at: row.last_value_at ?? null,
       connector_code: connector?.connector_code ?? null,
       connector_label: connector?.display_name ?? connector?.label ?? null,
       station_id: station?.id ?? null,
-      station_ref: station?.station_ref ?? null,
       station_label: stationLabel,
-      station_name: station?.station_name ?? null,
       display_name: formatDisplayName(
         connector?.station_display_name_template,
         station?.station_name,
         stationLabel,
         station?.station_ref,
+        station?.id,
       ),
       pcon_code: station?.pcon_code ?? null,
       la_code: station?.la_code ?? null,
       station_network_memberships: stationMemberships,
-      pollutant_notation: row.phenomenon?.notation ?? null,
       phenomenon_label: pollutantLabel,
       pollutant_label: pollutantLabel,
       uom_display: formatUnit(row.uom),
@@ -497,9 +494,10 @@ function formatDisplayName(
   stationName: string | null | undefined,
   stationLabel: string | null | undefined,
   stationRef: string | number,
+  stationId: string | number | null | undefined,
 ): string | null {
-  const refText = stationRef !== null && stationRef !== undefined ? String(stationRef) : "";
-  const fallback = formatFallbackDisplayName(stationName, stationLabel, refText);
+  const refText = normalizeNonEmptyText(stationRef !== null && stationRef !== undefined ? String(stationRef) : null);
+  const fallback = formatFallbackDisplayName(stationName, stationLabel, refText, stationId);
   const effectiveTemplate = template?.trim();
   if (!effectiveTemplate) {
     return fallback;
@@ -507,7 +505,7 @@ function formatDisplayName(
   const rendered = renderDisplayTemplate(effectiveTemplate, {
     station_name: stationName ?? "",
     station_label: stationLabel ?? "",
-    station_ref: refText,
+    station_ref: refText ?? "",
   });
   if (rendered) {
     return rendered;
@@ -518,20 +516,28 @@ function formatDisplayName(
 function formatFallbackDisplayName(
   stationName: string | null | undefined,
   stationLabel: string | null | undefined,
-  stationRef: string,
+  stationRef: string | null,
+  stationId: string | number | null | undefined,
 ): string | null {
-  const base = stationName ?? stationLabel ?? null;
+  const normalizedName = normalizeNonEmptyText(stationName);
+  const normalizedLabel = normalizeNonEmptyText(stationLabel);
+  const normalizedRef = normalizeNonEmptyText(stationRef);
+  const normalizedId = normalizeNonEmptyText(stationId !== null && stationId !== undefined ? String(stationId) : null);
+  const base = normalizedName ?? normalizedLabel ?? null;
   if (!base) {
-    return stationRef || null;
+    if (normalizedRef) {
+      return normalizedRef;
+    }
+    return normalizedId ? `Station ${normalizedId}` : null;
   }
-  if (!stationName) {
+  if (!normalizedName) {
     return base;
   }
   const normalizedBase = base.toLowerCase();
-  if (stationRef && normalizedBase.includes(stationRef.toLowerCase())) {
+  if (normalizedRef && normalizedBase.includes(normalizedRef.toLowerCase())) {
     return base;
   }
-  return stationRef ? `${base} - ${stationRef}` : base;
+  return normalizedRef ? `${base} - ${normalizedRef}` : base;
 }
 
 function renderDisplayTemplate(
@@ -676,10 +682,15 @@ function resolveStationLabel(
   stationRef: string | null | undefined,
   seriesLabel: string | null,
 ): string | null {
-  return stationLabel
-    ?? deriveStationLabel(seriesLabel)
-    ?? stationRef
-    ?? null;
+  const normalizedStationLabel = normalizeNonEmptyText(stationLabel);
+  if (normalizedStationLabel) {
+    return normalizedStationLabel;
+  }
+  const derived = normalizeNonEmptyText(deriveStationLabel(seriesLabel));
+  if (derived) {
+    return derived;
+  }
+  return normalizeNonEmptyText(stationRef);
 }
 
 function resolvePhenomenonLabel(
@@ -727,6 +738,14 @@ function formatUnit(unit: string | null): string | null {
     return "µg/m³";
   }
   return trimmed;
+}
+
+function normalizeNonEmptyText(value: string | null | undefined): string | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  const trimmed = String(value).trim();
+  return trimmed ? trimmed : null;
 }
 
 function passesOutlierThreshold(row: any): boolean {

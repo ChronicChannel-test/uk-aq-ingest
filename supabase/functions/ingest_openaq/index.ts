@@ -121,7 +121,12 @@ type OpenAQTimeseriesCheckpoint = {
   next_due_at: string | null;
   last_observed_at: string | null;
   ingest_lag_samples: number[] | null;
-  last_polled_at: string | null;
+};
+
+type OpenAQTimeseriesCheckpointSnapshot = {
+  station_id: number;
+  timeseries_id: number;
+  last_observed_at: string | null;
 };
 
 type OpenAQHourlyRecord = {
@@ -163,6 +168,8 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
   "";
 const UK_AQ_CORE_SCHEMA = Deno.env.get("UK_AQ_CORE_SCHEMA") ??
   "uk_aq_core";
+const UK_AQ_RAW_SCHEMA = Deno.env.get("UK_AQ_RAW_SCHEMA") ??
+  "uk_aq_raw";
 const SB_UK_AQ_CRON_SECRET = Deno.env.get("SB_UK_AQ_CRON_SECRET") ?? "";
 
 const OPENAQ_BASE_URL = (Deno.env.get("OPENAQ_BASE_URL") ?? DEFAULT_BASE_URL)
@@ -451,30 +458,80 @@ async function upsertOpenaqStationCheckpoints(
 }
 
 type OpenAQTimeseriesCheckpointMaps = {
-  byTimeseriesId: Record<number, OpenAQTimeseriesCheckpoint>;
-  byStationId: Record<number, OpenAQTimeseriesCheckpoint[]>;
+  byTimeseriesId: Record<number, OpenAQTimeseriesCheckpointSnapshot>;
+  byStationId: Record<number, OpenAQTimeseriesCheckpointSnapshot[]>;
 };
 
-async function fetchOpenaqTimeseriesCheckpoints(
+function postgrestNumericIn(values: number[]): string {
+  const cleaned = values
+    .map((value) => Number(value))
+    .filter((value) => Number.isFinite(value))
+    .map((value) => String(Math.trunc(value)));
+  if (!cleaned.length) {
+    return "in.(-1)";
+  }
+  return `in.(${cleaned.join(",")})`;
+}
+
+async function fetchOpenaqTimeseriesCheckpointRows<T>(
+  filterColumn: "station_id" | "timeseries_id",
+  ids: number[],
+  select: string,
+): Promise<T[]> {
+  if (!ids.length) {
+    return [];
+  }
+  const rows: T[] = [];
+  const chunkSize = 200;
+  const pageSize = 1000;
+  for (let idx = 0; idx < ids.length; idx += chunkSize) {
+    const chunk = ids.slice(idx, idx + chunkSize);
+    let offset = 0;
+    while (true) {
+      const { data, error } = await postgrestRequest<T[]>(
+        "GET",
+        "openaq_timeseries_checkpoints",
+        {
+          select,
+          [filterColumn]: postgrestNumericIn(chunk),
+          limit: String(pageSize),
+          offset: String(offset),
+        },
+        undefined,
+        UK_AQ_RAW_SCHEMA,
+      );
+      if (error) {
+        throw new Error(
+          `OpenAQ timeseries checkpoints fetch failed: ${error.message}`,
+        );
+      }
+      const batch = data ?? [];
+      rows.push(...batch);
+      if (batch.length < pageSize) {
+        break;
+      }
+      offset += pageSize;
+    }
+  }
+  return rows;
+}
+
+async function fetchOpenaqTimeseriesCheckpointSnapshots(
   stationIds: number[],
 ): Promise<OpenAQTimeseriesCheckpointMaps> {
   if (!stationIds.length) {
     return { byTimeseriesId: {}, byStationId: {} };
   }
-  const { data, error } = await rpcRequest<OpenAQTimeseriesCheckpoint[]>(
-    "uk_aq_rpc_openaq_timeseries_checkpoints_select",
-    {
-      station_ids: stationIds,
-    },
+  const rows = await fetchOpenaqTimeseriesCheckpointRows<
+    OpenAQTimeseriesCheckpointSnapshot
+  >(
+    "station_id",
+    stationIds,
+    "station_id,timeseries_id,last_observed_at",
   );
-  if (error) {
-    throw new Error(
-      `OpenAQ timeseries checkpoints fetch failed: ${error.message}`,
-    );
-  }
-  const byTimeseriesId: Record<number, OpenAQTimeseriesCheckpoint> = {};
-  const byStationId: Record<number, OpenAQTimeseriesCheckpoint[]> = {};
-  for (const row of data ?? []) {
+  const byTimeseriesId: Record<number, OpenAQTimeseriesCheckpointSnapshot> = {};
+  const byStationId: Record<number, OpenAQTimeseriesCheckpointSnapshot[]> = {};
+  for (const row of rows) {
     const timeseriesId = Number(row.timeseries_id);
     const stationId = Number(row.station_id);
     if (Number.isFinite(timeseriesId)) {
@@ -490,6 +547,27 @@ async function fetchOpenaqTimeseriesCheckpoints(
     }
   }
   return { byTimeseriesId, byStationId };
+}
+
+async function fetchOpenaqTimeseriesCheckpointDetails(
+  timeseriesIds: number[],
+): Promise<Record<number, OpenAQTimeseriesCheckpoint>> {
+  if (!timeseriesIds.length) {
+    return {};
+  }
+  const rows = await fetchOpenaqTimeseriesCheckpointRows<OpenAQTimeseriesCheckpoint>(
+    "timeseries_id",
+    timeseriesIds,
+    "station_id,timeseries_id,next_due_at,last_observed_at,ingest_lag_samples",
+  );
+  const byTimeseriesId: Record<number, OpenAQTimeseriesCheckpoint> = {};
+  for (const row of rows) {
+    const timeseriesId = Number(row.timeseries_id);
+    if (Number.isFinite(timeseriesId)) {
+      byTimeseriesId[timeseriesId] = row;
+    }
+  }
+  return byTimeseriesId;
 }
 
 async function fetchOpenaqTimeseriesRefsByStationIds(
@@ -2430,14 +2508,18 @@ serve(async (req) => {
     });
   }
 
-  let timeseriesCheckpointById: Record<number, OpenAQTimeseriesCheckpoint> = {};
+  let timeseriesCheckpointById: Record<
+    number,
+    OpenAQTimeseriesCheckpointSnapshot
+  > = {};
   let timeseriesCheckpointsByStationId: Record<
     number,
-    OpenAQTimeseriesCheckpoint[]
+    OpenAQTimeseriesCheckpointSnapshot[]
   > = {};
   if (stationIds.length) {
     try {
-      const timeseriesCheckpointMaps = await fetchOpenaqTimeseriesCheckpoints(
+      const timeseriesCheckpointMaps =
+        await fetchOpenaqTimeseriesCheckpointSnapshots(
         stationIds,
       );
       timeseriesCheckpointById = timeseriesCheckpointMaps.byTimeseriesId;
@@ -3292,6 +3374,40 @@ serve(async (req) => {
     }
 
     if (latestByTimeseries.size) {
+      const checkpointTimeseriesIds = Array.from(
+        new Set(
+          Array.from(latestByTimeseries.keys())
+            .map((timeseriesRef) => timeseriesIdByRef[timeseriesRef])
+            .filter((timeseriesId): timeseriesId is number =>
+              Number.isFinite(Number(timeseriesId))
+            )
+            .map((timeseriesId) => Number(timeseriesId)),
+        ),
+      );
+      let timeseriesCheckpointDetailsById: Record<
+        number,
+        OpenAQTimeseriesCheckpoint
+      > = {};
+      if (checkpointTimeseriesIds.length) {
+        try {
+          timeseriesCheckpointDetailsById =
+            await fetchOpenaqTimeseriesCheckpointDetails(
+              checkpointTimeseriesIds,
+            );
+          logLine("INFO", "OpenAQ timeseries checkpoint details fetched", {
+            requested_timeseries_ids: checkpointTimeseriesIds.length,
+            checkpoints: Object.keys(timeseriesCheckpointDetailsById).length,
+          });
+        } catch (err) {
+          await logError({
+            severity: "warn",
+            message: "OpenAQ timeseries checkpoint details fetch failed",
+            connector_id: connector.id,
+            context: { error: String(err) },
+          });
+          timeseriesCheckpointDetailsById = {};
+        }
+      }
       const timeseriesCheckpointRows: Array<Record<string, unknown>> = [];
       const timeseriesCheckpointStats = {
         latest_timeseries: latestByTimeseries.size,
@@ -3332,7 +3448,7 @@ serve(async (req) => {
           }
           continue;
         }
-        const checkpoint = timeseriesCheckpointById[timeseriesId];
+        const checkpoint = timeseriesCheckpointDetailsById[timeseriesId];
         if (checkpoint) {
           timeseriesCheckpointStats.existing_checkpoints += 1;
         } else {
