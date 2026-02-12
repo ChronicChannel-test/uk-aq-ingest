@@ -97,22 +97,12 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
   - Logs each dispatched edge call with the target function name and cron secret presence (length only).
   - Writes dispatch errors to `error_logs`.
 
-### uk_aq_flush_history_outbox
+### History Outbox Flusher (Cloud Run)
 - Purpose: Flush history dual-write outbox rows in bounded batches.
-- Triggered by:
-  - `workers/uk_aq_history_outbox_flusher` Cloudflare Worker cron (`*/10 * * * *`).
-  - Manual authenticated POST calls (for troubleshooting/backfill).
-- Reads/Writes:
-  - Uses `uk_aq_rpc_history_outbox_claim` + `uk_aq_rpc_history_outbox_resolve` via shared history client.
-  - Delivers to history DB via configured history upsert RPC.
+- Triggered by: Cloud Scheduler -> Cloud Run job (`workers/uk_aq_history_outbox_cloud_run`).
 - Notes:
-  - Requires `X-Cron-Secret` when `SB_UK_AQ_CRON_SECRET` is set.
-  - Uses its own runtime budget guard:
-    - `HISTORY_OUTBOX_FLUSH_TIME_BUDGET_MS` (default `120000`)
-    - `HISTORY_OUTBOX_FLUSH_SHUTDOWN_BUFFER_MS` (default `5000`)
-  - Runs up to `HISTORY_OUTBOX_FLUSH_MAX_BATCHES` per call (default `1`).
-  - Supports request payload overrides: `max_batches`, `claim_batch_limit`.
-  - Backward-compatible env fallback: if `HISTORY_OUTBOX_FLUSH_MAX_BATCHES` is unset, uses `HISTORY_OUTBOX_DISPATCH_MAX_FLUSHES`.
+  - This is no longer run by an edge function.
+  - Archived edge/cloudflare implementation is under `archive/2026-02-12_history_outbox_migration/`.
 
 ### uk_aq_egress_monitor
 - Purpose: Lightweight monitor endpoint that summarizes egress metrics and raises a warning when total MB over a lookback window exceeds a threshold.
@@ -418,8 +408,11 @@ Dropbox folders:
 Optional:
 - `UK_AQ_CORE_SCHEMA` (defaults to `uk_aq_core`; used for PostgREST profile headers)
 - `UK_AQ_RAW_SCHEMA` (defaults to `uk_aq_raw`; used for raw tables like `error_logs` and checkpoint tables)
-- `HISTORY_OUTBOX_FLUSH_MAX_BATCHES` (optional; defaults to `1`; `uk_aq_flush_history_outbox` batches per call)
-- `HISTORY_OUTBOX_DISPATCH_MAX_FLUSHES` (optional legacy fallback; used only when `HISTORY_OUTBOX_FLUSH_MAX_BATCHES` is unset)
+- `HISTORY_OUTBOX_CLOUD_RUN_MAX_BATCHES` (optional; defaults to `30`; Cloud Run outbox batches per run)
+- `HISTORY_OUTBOX_CLOUD_RUN_CLAIM_BATCH_LIMIT` (optional; defaults to `2`; outbox claim size per batch in Cloud Run)
+- `HISTORY_OUTBOX_CLOUD_RUN_BUDGET_SECONDS` (optional; defaults to `540`; Cloud Run runtime budget)
+- `HISTORY_OUTBOX_CLOUD_RUN_SHUTDOWN_BUFFER_SECONDS` (optional; defaults to `20`; reserved buffer before timeout)
+- `HISTORY_OUTBOX_CLOUD_RUN_RPC_RETRIES` (optional; defaults to `3`; main RPC retry count)
 - `DISPATCH_TIME_BUDGET_MS` (optional; defaults to `150000`; dispatcher per-request runtime budget)
 - `DISPATCH_SHUTDOWN_BUFFER_MS` (optional; defaults to `10000`; reserved time before budget to return cleanly)
 - `DISPATCH_EDGE_CALL_TIMEOUT_MS` (optional; defaults to `140000`; per-child ingest timeout within dispatcher)

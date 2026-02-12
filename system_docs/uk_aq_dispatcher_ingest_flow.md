@@ -81,4 +81,4 @@ Relevant env vars:
 - Monitor:
   - `uk_aq_raw.dispatch_connector_queue` row count, attempts, and last_error
   - `uk_aq_core.uk_aq_ingest_runs` for per-connector outcomes
-  - `uk_aq_raw.history_observation_outbox` via dedicated flusher (`uk_aq_flush_history_outbox`) and worker cron (`workers/uk_aq_history_outbox_flusher`)
+  - `uk_aq_raw.history_observation_outbox` via dedicated Cloud Run flusher job (`workers/uk_aq_history_outbox_cloud_run`) on a 10-minute schedule

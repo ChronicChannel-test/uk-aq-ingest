@@ -12,6 +12,23 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function summarizeBody(body: unknown, maxLen = 240): string {
+  let text: string;
+  if (typeof body === "string") {
+    text = body;
+  } else {
+    try {
+      text = JSON.stringify(body);
+    } catch {
+      text = String(body ?? "");
+    }
+  }
+  if (text.length <= maxLen) {
+    return text;
+  }
+  return `${text.slice(0, maxLen)}...`;
+}
+
 async function readSecret(value: unknown): Promise<string> {
   if (typeof value === "string") {
     return value;
@@ -103,7 +120,9 @@ async function runScheduled(env: Env): Promise<void> {
       status: result.status,
       body: result.body,
     });
-    throw new Error("uk_aq_flush_history_outbox_failed");
+    throw new Error(
+      `uk_aq_flush_history_outbox_failed status=${result.status} body=${summarizeBody(result.body)}`,
+    );
   }
   console.log("uk_aq_flush_history_outbox succeeded", {
     status: result.status,
