@@ -236,6 +236,12 @@
       .status-pill.partial {
         background: rgba(245, 193, 74, 0.22);
         color: #8a5500;
+        text-transform: none;
+        flex-direction: column;
+        align-items: center;
+        gap: 1px;
+        line-height: 1.1;
+        text-align: center;
       }
 
       .status-stack {
@@ -546,10 +552,10 @@
 
       function statusMeta(run) {
         if (isPartialBudgetRun(run)) {
-          return { className: "partial", label: "Partial Run" };
+          return { className: "partial", label: "Partial Run", detail: "Budget Limit" };
         }
         const raw = (run && run.run_status) || "unknown";
-        return { className: String(raw).toLowerCase(), label: raw };
+        return { className: String(raw).toLowerCase(), label: raw, detail: null };
       }
 
       function hasNoNewData(run) {
@@ -752,7 +758,7 @@
                       <td class="connector-name">${run.connector_label || run.connector_code || "Unknown"}</td>
                       <td>
                         <div class="status-stack">
-                          <span class="status-pill ${status.className}">${status.label}</span>
+                          <span class="status-pill ${status.className}">${status.label}${status.detail ? `<br>${status.detail}` : ""}</span>
                           ${runtimeBadge}
                         </div>
                       </td>
