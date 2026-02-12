@@ -2,6 +2,7 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import "../_shared/fetch_egress_patch.ts";
 import { cacheControlHeaders } from "../_shared/cache.ts";
+import { createWeakEtag, ifNoneMatchMatches } from "../_shared/etag.ts";
 import { logEndpointEgress } from "../_shared/egress_metrics.ts";
 
 const DEFAULT_LIMIT = 10000;
@@ -20,8 +21,9 @@ const UK_AQ_PUBLIC_SCHEMA = Deno.env.get("UK_AQ_PUBLIC_SCHEMA")
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, if-none-match",
   "Access-Control-Allow-Methods": "GET, OPTIONS",
+  "Access-Control-Expose-Headers": "ETag",
 };
 
 const REST_BASE_URL = SUPABASE_URL
@@ -488,10 +490,12 @@ serve(async (req) => {
   const laVersion = normalizeText(url.searchParams.get("la_version"));
   const region = normalizeText(url.searchParams.get("region"));
   const limit = parseLimit(url.searchParams.get("limit"), DEFAULT_LIMIT);
+  const ifNoneMatch = req.headers.get("if-none-match");
   const requestFields = {
     has_la_version: Boolean(laVersion),
     has_region: Boolean(region),
     limit,
+    has_if_none_match: Boolean(ifNoneMatch),
   };
 
   try {
@@ -500,13 +504,26 @@ serve(async (req) => {
       new Set(rows.map((row) => row.la_version).filter(Boolean)),
     ).sort();
     const lastUpdated = maxTimestamp(rows.map((row) => row.latest_value_at));
-    return await finish(json({
+    const payload = {
       metric_default: "median",
       count: rows.length,
       la_versions: versions,
       last_updated: lastUpdated,
       data: rows,
-    }), { ...requestFields, row_count: rows.length });
+    };
+    const etag = await createWeakEtag({
+      endpoint: "uk_aq_la_hex",
+      version: 1,
+      payload,
+    });
+    if (ifNoneMatchMatches(ifNoneMatch, etag)) {
+      return await finish(notModified(etag), { ...requestFields, result: "not_modified" });
+    }
+    return await finish(json(payload, 200, { ETag: etag }), {
+      ...requestFields,
+      result: "ok",
+      row_count: rows.length,
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return await finish(json({ error: message }, 500), { ...requestFields, error_type: "runtime" });
@@ -662,13 +679,25 @@ function parseLaCodes(value: string[] | string | null | undefined): string[] {
   return [];
 }
 
-function json(payload: unknown, status = 200): Response {
+function json(payload: unknown, status = 200, extraHeaders: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(payload), {
     status,
     headers: {
       "Content-Type": "application/json",
       ...CORS_HEADERS,
       ...cacheControlHeaders(status),
+      ...extraHeaders,
+    },
+  });
+}
+
+function notModified(etag: string): Response {
+  return new Response(null, {
+    status: 304,
+    headers: {
+      ...CORS_HEADERS,
+      ...cacheControlHeaders(200),
+      ETag: etag,
     },
   });
 }
