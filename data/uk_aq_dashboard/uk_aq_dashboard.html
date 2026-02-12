@@ -569,6 +569,14 @@
         if (isPartialBudgetRun(run)) {
           return { className: "partial", label: "Partial Run", detail: "Budget Limit" };
         }
+        const message = String(run && run.run_message || "").toLowerCase();
+        if (
+          message === "runtime_budget_exceeded" ||
+          message === "request_budget_limited" ||
+          message === "rate_limit_guard"
+        ) {
+          return { className: "partial", label: "Partial Run", detail: "Budget Limit" };
+        }
         const raw = (run && run.run_status) || "unknown";
         return { className: String(raw).toLowerCase(), label: raw, detail: null };
       }

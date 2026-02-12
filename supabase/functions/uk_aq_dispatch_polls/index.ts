@@ -390,16 +390,42 @@ function compactRunResponsePayload(payload: unknown): Record<string, unknown> | 
   return Object.keys(compact).length ? compact : null;
 }
 
-function isPartialBudgetPayload(payload: unknown): boolean {
+function getPartialBudgetReason(payload: unknown): string | null {
   const data = asPayloadObject(payload);
   if (!data) {
-    return false;
+    return null;
   }
   if (asBoolean(data.partial)) {
-    return true;
+    const explicitReason = String(data.stopped_reason ?? "").trim().toLowerCase();
+    return explicitReason || "runtime_budget_exceeded";
   }
   const stoppedReason = String(data.stopped_reason ?? "").toLowerCase();
-  return stoppedReason === "runtime_budget_exceeded";
+  if (stoppedReason === "runtime_budget_exceeded") {
+    return "runtime_budget_exceeded";
+  }
+  if (asBoolean(data.rate_limit_stop)) {
+    const rateLimitReason = String(data.rate_limit_stop_reason ?? "").trim().toLowerCase();
+    return rateLimitReason || "rate_limit_guard";
+  }
+  const gapRequestsSkippedBudget = asNumber(data.gap_requests_skipped_budget);
+  if (gapRequestsSkippedBudget !== null && gapRequestsSkippedBudget > 0) {
+    return "request_budget_limited";
+  }
+  const requestsTotal = asNumber(data.requests_total);
+  const maxRequestsPerRun = asNumber(data.max_requests_per_run);
+  if (
+    requestsTotal !== null &&
+    maxRequestsPerRun !== null &&
+    maxRequestsPerRun > 0 &&
+    requestsTotal >= maxRequestsPerRun
+  ) {
+    return "request_budget_limited";
+  }
+  return null;
+}
+
+function isPartialBudgetPayload(payload: unknown): boolean {
+  return getPartialBudgetReason(payload) !== null;
 }
 
 async function loadStationIdsByRefs(
@@ -2086,13 +2112,11 @@ serve(async (req) => {
       });
     } finally {
       const runEnd = new Date();
-      if (
-        runStatus === "succeeded" &&
-        isPartialBudgetPayload(lastResponse?.body ?? null)
-      ) {
+      const partialBudgetReason = getPartialBudgetReason(lastResponse?.body ?? null);
+      if (runStatus === "succeeded" && partialBudgetReason) {
         runStatus = "partial";
         if (!runMessage || runMessage === "dispatched") {
-          runMessage = "runtime_budget_exceeded";
+          runMessage = partialBudgetReason;
         }
       }
       await updateConnectorRun(connector?.id ?? null, {
