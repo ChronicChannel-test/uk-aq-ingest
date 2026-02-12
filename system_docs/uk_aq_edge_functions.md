@@ -102,7 +102,9 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
   - Requires `X-Cron-Secret` only when `SB_UK_AQ_CRON_SECRET` is set.
 - Notes:
   - Uses `x-ukaq-egress-bypass: 1` on its own PostgREST calls so monitor traffic does not recursively inflate egress metrics.
-  - Supports query params `lookback_minutes`, `top_n`, `alert_mb`, `write_error_log`.
+  - Paginates through `uk_aq_endpoint_egress_metrics_minute` for the lookback window (not capped to a single page).
+  - Returns both observed sampled totals and sampling-adjusted estimated totals; alert threshold uses `estimated_mb`.
+  - Supports query params `lookback_minutes`, `top_n`, `alert_mb`, `write_error_log`, `page_size`, `max_rows`.
 
 ### ingest_uk_air_sos
 - Purpose: Poll UK-AIR SOS timeseries and write observations + last_value fields.
@@ -410,6 +412,8 @@ Optional:
 - `UK_AQ_EGRESS_MONITOR_TOP_N` (optional; defaults to `20`; monitor top endpoint count)
 - `UK_AQ_EGRESS_MONITOR_ALERT_MB` (optional; defaults to `250`; warning threshold for MB in lookback window)
 - `UK_AQ_EGRESS_MONITOR_WRITE_ERROR_LOG` (optional; defaults to `true`; write warning rows into `error_logs` when threshold is exceeded)
+- `UK_AQ_EGRESS_MONITOR_PAGE_SIZE` (optional; defaults to `1000`; page size used by egress monitor pagination)
+- `UK_AQ_EGRESS_MONITOR_MAX_ROWS` (optional; defaults to `100000`; safety cap for monitor row scan)
 - `UK_AIR_ERROR_DROPBOX_FOLDER` (defaults to `error_log`)
 - `BREATHELONDON_ERROR_DROPBOX_FOLDER` (optional override for Breathe London)
 - `SCOMM_ERROR_DROPBOX_FOLDER` (optional override for Sensor.Community)

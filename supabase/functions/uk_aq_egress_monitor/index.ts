@@ -5,6 +5,7 @@ type EgressMinuteRow = {
   endpoint: string | null;
   response_bytes_sum: number | null;
   observed_requests: number | null;
+  estimated_requests: number | null;
   bucket_minute: string | null;
 };
 
@@ -25,6 +26,8 @@ const DEFAULT_LOOKBACK_MINUTES = 60;
 const DEFAULT_TOP_N = 20;
 const DEFAULT_ALERT_MB = 250;
 const DEFAULT_WRITE_ERROR_LOG = true;
+const DEFAULT_PAGE_SIZE = 1000;
+const DEFAULT_MAX_ROWS = 100_000;
 const EGRESS_BYPASS_HEADER = "x-ukaq-egress-bypass";
 
 function parsePositiveInt(
@@ -133,6 +136,60 @@ function toMiB(bytes: number): number {
   return bytes / (1024 * 1024);
 }
 
+function estimateBytes(row: EgressMinuteRow, observedBytes: number): number {
+  const observedRequests = Math.max(0, Number(row.observed_requests ?? 0));
+  const estimatedRequests = Math.max(
+    0,
+    Number(row.estimated_requests ?? observedRequests),
+  );
+  if (observedRequests <= 0) {
+    return observedBytes;
+  }
+  const ratio = estimatedRequests / observedRequests;
+  if (!Number.isFinite(ratio) || ratio <= 0) {
+    return observedBytes;
+  }
+  return observedBytes * ratio;
+}
+
+async function fetchEgressRowsSince(
+  sinceIso: string,
+  pageSize: number,
+  maxRows: number,
+): Promise<{ rows: EgressMinuteRow[]; pages: number; truncated: boolean }> {
+  const rows: EgressMinuteRow[] = [];
+  let pages = 0;
+  let offset = 0;
+  while (rows.length < maxRows) {
+    const limit = Math.min(pageSize, maxRows - rows.length);
+    const { data, error } = await postgrestRequest<EgressMinuteRow[]>(
+      "GET",
+      "uk_aq_endpoint_egress_metrics_minute",
+      {
+        select:
+          "endpoint,response_bytes_sum,observed_requests,estimated_requests,bucket_minute",
+        bucket_minute: `gte.${sinceIso}`,
+        order: "bucket_minute.asc",
+        limit: String(limit),
+        offset: String(offset),
+      },
+      undefined,
+      UK_AQ_PUBLIC_SCHEMA,
+    );
+    if (error) {
+      throw new Error(`Failed to load egress metrics: ${error.message}`);
+    }
+    const batch = data ?? [];
+    rows.push(...batch);
+    pages += 1;
+    if (batch.length < limit) {
+      return { rows, pages, truncated: false };
+    }
+    offset += limit;
+  }
+  return { rows, pages, truncated: true };
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 204 });
@@ -169,57 +226,98 @@ serve(async (req) => {
         Deno.env.get("UK_AQ_EGRESS_MONITOR_WRITE_ERROR_LOG"),
       DEFAULT_WRITE_ERROR_LOG,
     );
+    const pageSize = parsePositiveInt(
+      url.searchParams.get("page_size") ??
+        Deno.env.get("UK_AQ_EGRESS_MONITOR_PAGE_SIZE"),
+      DEFAULT_PAGE_SIZE,
+      100,
+      10_000,
+    );
+    const maxRows = parsePositiveInt(
+      url.searchParams.get("max_rows") ??
+        Deno.env.get("UK_AQ_EGRESS_MONITOR_MAX_ROWS"),
+      DEFAULT_MAX_ROWS,
+      1_000,
+      1_000_000,
+    );
 
     const sinceIso = new Date(Date.now() - (lookbackMinutes * 60 * 1000))
       .toISOString();
-    const { data, error } = await postgrestRequest<EgressMinuteRow[]>(
-      "GET",
-      "uk_aq_endpoint_egress_metrics_minute",
-      {
-        select: "endpoint,response_bytes_sum,observed_requests,bucket_minute",
-        bucket_minute: `gte.${sinceIso}`,
-        limit: "10000",
-      },
-      undefined,
-      UK_AQ_PUBLIC_SCHEMA,
-    );
-    if (error) {
-      throw new Error(`Failed to load egress metrics: ${error.message}`);
-    }
+    const fetchResult = await fetchEgressRowsSince(sinceIso, pageSize, maxRows);
+    const data = fetchResult.rows;
 
-    const totals = new Map<string, { bytes: number; requests: number }>();
-    let totalBytes = 0;
-    let totalRequests = 0;
+    const totals = new Map<
+      string,
+      {
+        observedBytes: number;
+        estimatedBytes: number;
+        observedRequests: number;
+        estimatedRequests: number;
+      }
+    >();
+    let totalObservedBytes = 0;
+    let totalEstimatedBytes = 0;
+    let totalObservedRequests = 0;
+    let totalEstimatedRequests = 0;
     for (const row of data ?? []) {
       const endpoint = String(row.endpoint ?? "").trim() || "unknown";
-      const bytes = Math.max(0, Number(row.response_bytes_sum ?? 0));
-      const requests = Math.max(0, Number(row.observed_requests ?? 0));
-      totalBytes += bytes;
-      totalRequests += requests;
-      const existing = totals.get(endpoint) ?? { bytes: 0, requests: 0 };
-      existing.bytes += bytes;
-      existing.requests += requests;
+      const observedBytes = Math.max(0, Number(row.response_bytes_sum ?? 0));
+      const estimatedBytes = Math.max(0, estimateBytes(row, observedBytes));
+      const observedRequests = Math.max(0, Number(row.observed_requests ?? 0));
+      const estimatedRequests = Math.max(
+        0,
+        Number(row.estimated_requests ?? observedRequests),
+      );
+      totalObservedBytes += observedBytes;
+      totalEstimatedBytes += estimatedBytes;
+      totalObservedRequests += observedRequests;
+      totalEstimatedRequests += estimatedRequests;
+      const existing = totals.get(endpoint) ?? {
+        observedBytes: 0,
+        estimatedBytes: 0,
+        observedRequests: 0,
+        estimatedRequests: 0,
+      };
+      existing.observedBytes += observedBytes;
+      existing.estimatedBytes += estimatedBytes;
+      existing.observedRequests += observedRequests;
+      existing.estimatedRequests += estimatedRequests;
       totals.set(endpoint, existing);
     }
 
-    const topEndpoints = Array.from(totals.entries())
+    const topEndpointsObserved = Array.from(totals.entries())
       .map(([endpoint, value]) => ({
         endpoint,
-        mb: Number(toMiB(value.bytes).toFixed(3)),
-        requests: value.requests,
+        mb: Number(toMiB(value.observedBytes).toFixed(3)),
+        estimated_mb: Number(toMiB(value.estimatedBytes).toFixed(3)),
+        requests: Math.round(value.observedRequests),
+        estimated_requests: Math.round(value.estimatedRequests),
       }))
       .sort((a, b) => b.mb - a.mb)
       .slice(0, topN);
 
-    const totalMb = Number(toMiB(totalBytes).toFixed(3));
-    const thresholdExceeded = totalMb >= alertMb;
+    const topEndpointsEstimated = Array.from(totals.entries())
+      .map(([endpoint, value]) => ({
+        endpoint,
+        mb: Number(toMiB(value.estimatedBytes).toFixed(3)),
+        observed_mb: Number(toMiB(value.observedBytes).toFixed(3)),
+        requests: Math.round(value.estimatedRequests),
+        observed_requests: Math.round(value.observedRequests),
+      }))
+      .sort((a, b) => b.mb - a.mb)
+      .slice(0, topN);
+
+    const totalObservedMb = Number(toMiB(totalObservedBytes).toFixed(3));
+    const totalEstimatedMb = Number(toMiB(totalEstimatedBytes).toFixed(3));
+    const thresholdExceeded = totalEstimatedMb >= alertMb;
 
     if (thresholdExceeded) {
       console.warn("uk_aq_egress_monitor_threshold_exceeded", {
-        total_mb: totalMb,
+        total_observed_mb: totalObservedMb,
+        total_estimated_mb: totalEstimatedMb,
         alert_mb: alertMb,
         lookback_minutes: lookbackMinutes,
-        top_endpoint: topEndpoints[0]?.endpoint ?? null,
+        top_endpoint: topEndpointsEstimated[0]?.endpoint ?? null,
       });
       if (writeErrorLog) {
         const { error: logError } = await postgrestRequest(
@@ -232,10 +330,11 @@ serve(async (req) => {
             message: "uk_aq_egress_monitor threshold exceeded",
             stack: null,
             context: {
-              total_mb: totalMb,
+              total_observed_mb: totalObservedMb,
+              total_estimated_mb: totalEstimatedMb,
               alert_mb: alertMb,
               lookback_minutes: lookbackMinutes,
-              top_endpoints: topEndpoints.slice(0, 5),
+              top_endpoints_estimated: topEndpointsEstimated.slice(0, 5),
             },
             connector_id: null,
             station_id: null,
@@ -255,12 +354,22 @@ serve(async (req) => {
       JSON.stringify({
         checked_at: new Date().toISOString(),
         lookback_minutes: lookbackMinutes,
-        rows_scanned: data?.length ?? 0,
-        total_mb: totalMb,
-        total_requests: totalRequests,
+        rows_scanned: data.length,
+        pages_scanned: fetchResult.pages,
+        rows_truncated: fetchResult.truncated,
+        page_size: pageSize,
+        max_rows: maxRows,
+        total_observed_mb: totalObservedMb,
+        total_estimated_mb: totalEstimatedMb,
+        total_observed_requests: Math.round(totalObservedRequests),
+        total_estimated_requests: Math.round(totalEstimatedRequests),
+        threshold_basis: "estimated_mb",
+        total_mb: totalObservedMb,
+        total_requests: Math.round(totalObservedRequests),
         alert_threshold_mb: alertMb,
         threshold_exceeded: thresholdExceeded,
-        top_endpoints: topEndpoints,
+        top_endpoints: topEndpointsObserved,
+        top_endpoints_estimated: topEndpointsEstimated,
       }, null, 2),
       { status: 200, headers: { "Content-Type": "application/json" } },
     );
