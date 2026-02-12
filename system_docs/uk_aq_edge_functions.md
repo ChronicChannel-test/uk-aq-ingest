@@ -32,6 +32,7 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
   - `mode=enqueue` selects due connectors and enqueues them.
   - `mode=run_queue` claims queued work and executes ingest for queued connectors.
   - `mode=legacy` keeps the previous direct-dispatch behavior.
+  - If `mode` is omitted, defaults to `legacy` for backward compatibility with single-call schedulers.
 - Triggered by: External scheduler (Cloudflare Worker cron) calling the edge function directly.
 - Flow reference: `system_docs/uk_aq_dispatcher_ingest_flow.md`
 - Reads:

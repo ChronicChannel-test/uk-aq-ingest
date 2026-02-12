@@ -1370,7 +1370,7 @@ serve(async (req) => {
     requestPayload = {};
   }
   const dispatchModeRaw = String(
-    requestPayload.mode ?? requestPayload.dispatch_mode ?? "enqueue",
+    requestPayload.mode ?? requestPayload.dispatch_mode ?? "legacy",
   ).trim().toLowerCase();
   const dispatchMode: DispatchMode = dispatchModeRaw === "run_queue"
     ? "run_queue"
