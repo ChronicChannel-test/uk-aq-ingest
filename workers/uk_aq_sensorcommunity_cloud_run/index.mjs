@@ -1,3 +1,5 @@
+import { deflateRawSync } from "node:zlib";
+
 const CONNECTOR_CODE = "sensorcommunity";
 const SCHEDULER_BACKEND_SUPABASE_FUNCTION = "supabase_function";
 const SCHEDULER_BACKEND_GOOGLE_CLOUD_RUN = "google_cloud_run";
@@ -1185,7 +1187,7 @@ function buildDropboxRawPath(connectorCode, timestamp) {
   const stamp = formatCompactTimestamp(timestamp);
   const dateFolder = formatDateYmd(timestamp);
   const prefix = normalizeConnectorPrefix(connectorCode);
-  return `${DROPBOX_RAW_FOLDER}/${dateFolder}/uk_aq_raw_cloud_run_${prefix}_${stamp}.json`;
+  return `${DROPBOX_RAW_FOLDER}/${dateFolder}/uk_aq_raw_cloud_run_${prefix}_${stamp}.zip`;
 }
 
 function loadDropboxConfig() {
@@ -1273,6 +1275,95 @@ async function dropboxUploadFileWithRetry(
   }
 }
 
+const CRC_TABLE = (() => {
+  const table = new Uint32Array(256);
+  for (let i = 0; i < table.length; i += 1) {
+    let c = i;
+    for (let k = 0; k < 8; k += 1) {
+      c = (c & 1) ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    }
+    table[i] = c >>> 0;
+  }
+  return table;
+})();
+
+function crc32(data) {
+  let crc = 0xffffffff;
+  for (const byte of data) {
+    const idx = (crc ^ byte) & 0xff;
+    crc = CRC_TABLE[idx] ^ (crc >>> 8);
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function toDosDateTime(date) {
+  const year = Math.max(1980, date.getUTCFullYear());
+  const month = date.getUTCMonth() + 1;
+  const day = date.getUTCDate();
+  const hour = date.getUTCHours();
+  const minute = date.getUTCMinutes();
+  const second = date.getUTCSeconds();
+  const dosTime = (hour << 11) | (minute << 5) | Math.floor(second / 2);
+  const dosDate = ((year - 1980) << 9) | (month << 5) | day;
+  return { dosTime, dosDate };
+}
+
+function zipTextCompressed(filename, content) {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(content);
+  const nameBytes = encoder.encode(filename);
+  const compressed = deflateRawSync(data);
+  const checksum = crc32(data);
+  const { dosTime, dosDate } = toDosDateTime(new Date());
+
+  const localHeader = Buffer.alloc(30 + nameBytes.length);
+  localHeader.writeUInt32LE(0x04034b50, 0);
+  localHeader.writeUInt16LE(20, 4);
+  localHeader.writeUInt16LE(0, 6);
+  localHeader.writeUInt16LE(8, 8);
+  localHeader.writeUInt16LE(dosTime, 10);
+  localHeader.writeUInt16LE(dosDate, 12);
+  localHeader.writeUInt32LE(checksum, 14);
+  localHeader.writeUInt32LE(compressed.length, 18);
+  localHeader.writeUInt32LE(data.length, 22);
+  localHeader.writeUInt16LE(nameBytes.length, 26);
+  localHeader.writeUInt16LE(0, 28);
+  Buffer.from(nameBytes).copy(localHeader, 30);
+
+  const centralHeader = Buffer.alloc(46 + nameBytes.length);
+  centralHeader.writeUInt32LE(0x02014b50, 0);
+  centralHeader.writeUInt16LE(20, 4);
+  centralHeader.writeUInt16LE(20, 6);
+  centralHeader.writeUInt16LE(0, 8);
+  centralHeader.writeUInt16LE(8, 10);
+  centralHeader.writeUInt16LE(dosTime, 12);
+  centralHeader.writeUInt16LE(dosDate, 14);
+  centralHeader.writeUInt32LE(checksum, 16);
+  centralHeader.writeUInt32LE(compressed.length, 20);
+  centralHeader.writeUInt32LE(data.length, 24);
+  centralHeader.writeUInt16LE(nameBytes.length, 28);
+  centralHeader.writeUInt16LE(0, 30);
+  centralHeader.writeUInt16LE(0, 32);
+  centralHeader.writeUInt16LE(0, 34);
+  centralHeader.writeUInt16LE(0, 36);
+  centralHeader.writeUInt32LE(0, 38);
+  centralHeader.writeUInt32LE(0, 42);
+  Buffer.from(nameBytes).copy(centralHeader, 46);
+
+  const centralOffset = localHeader.length + compressed.length;
+  const endHeader = Buffer.alloc(22);
+  endHeader.writeUInt32LE(0x06054b50, 0);
+  endHeader.writeUInt16LE(0, 4);
+  endHeader.writeUInt16LE(0, 6);
+  endHeader.writeUInt16LE(1, 8);
+  endHeader.writeUInt16LE(1, 10);
+  endHeader.writeUInt32LE(centralHeader.length, 12);
+  endHeader.writeUInt32LE(centralOffset, 16);
+  endHeader.writeUInt16LE(0, 20);
+
+  return Buffer.concat([localHeader, compressed, centralHeader, endHeader]);
+}
+
 async function uploadDropboxArtifacts(
   connectorCode,
   logPayload,
@@ -1304,10 +1395,13 @@ async function uploadDropboxArtifacts(
     }
 
     if (rawPayload) {
-      const rawPath = buildDropboxRawPath(connectorCode, new Date());
-      const rawBytes = new TextEncoder().encode(
-        `${JSON.stringify(rawPayload)}\n`,
-      );
+      const timestamp = new Date();
+      const rawPath = buildDropboxRawPath(connectorCode, timestamp);
+      const rawText = `${JSON.stringify(rawPayload)}\n`;
+      const entryName = `uk_aq_raw_cloud_run_${
+        normalizeConnectorPrefix(connectorCode)
+      }_${formatCompactTimestamp(timestamp)}.json`;
+      const rawBytes = zipTextCompressed(entryName, rawText);
       await dropboxUploadFileWithRetry(
         accessToken,
         rawPath,

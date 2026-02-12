@@ -233,6 +233,11 @@
         color: var(--accent-2);
       }
 
+      .status-pill.partial {
+        background: rgba(245, 193, 74, 0.22);
+        color: #8a5500;
+      }
+
       .status-stack {
         display: flex;
         flex-wrap: wrap;
@@ -252,6 +257,13 @@
       .runtime-pill.overdue {
         background: rgba(211, 74, 63, 0.16);
         color: #b0322a;
+      }
+
+      .metric-note {
+        display: inline-block;
+        max-width: 88px;
+        line-height: 1.2;
+        color: var(--ink-soft);
       }
 
       .settings-actions {
@@ -478,14 +490,100 @@
         return Number(value).toLocaleString();
       }
 
+      function asNumber(value) {
+        if (value === null || value === undefined) return null;
+        const parsed = Number(value);
+        return Number.isFinite(parsed) ? parsed : null;
+      }
+
+      function asObject(value) {
+        return value && typeof value === "object" && !Array.isArray(value) ? value : null;
+      }
+
+      function payloadNumber(payload, keys) {
+        if (!payload) return null;
+        for (const key of keys) {
+          if (Object.prototype.hasOwnProperty.call(payload, key)) {
+            const value = asNumber(payload[key]);
+            if (value !== null) return value;
+          }
+        }
+        return null;
+      }
+
+      function isNoStationRefsRun(run) {
+        return (run && String(run.run_message || "").toLowerCase() === "no_station_refs");
+      }
+
+      function resolveStationCount(run) {
+        if (isNoStationRefsRun(run)) {
+          return 0;
+        }
+        const direct = asNumber(run && run.stations_updated);
+        if (direct !== null) {
+          return direct;
+        }
+        const payload = asObject(run && run.response_payload);
+        return payloadNumber(payload, [
+          "stations_polled",
+          "stations_processed",
+          "stations_selected",
+          "stations_requested",
+          "stations_updated",
+          "stations",
+        ]);
+      }
+
+      function isPartialBudgetRun(run) {
+        const payload = asObject(run && run.response_payload);
+        if (!payload) {
+          return false;
+        }
+        const partial = payload.partial === true;
+        const stoppedReason = String(payload.stopped_reason || "").toLowerCase();
+        return partial || stoppedReason === "runtime_budget_exceeded";
+      }
+
+      function statusMeta(run) {
+        if (isPartialBudgetRun(run)) {
+          return { className: "partial", label: "Partial Run" };
+        }
+        const raw = (run && run.run_status) || "unknown";
+        return { className: String(raw).toLowerCase(), label: raw };
+      }
+
+      function hasNoNewData(run) {
+        if (String(run && run.run_status || "").toLowerCase() !== "succeeded") {
+          return false;
+        }
+        if (isNoStationRefsRun(run)) {
+          return false;
+        }
+        const stationCount = resolveStationCount(run);
+        if (stationCount === null || stationCount <= 0) {
+          return false;
+        }
+        const observations = asNumber(run && run.observations_upserted);
+        const series = asNumber(run && run.series_polled) ?? asNumber(run && run.timeseries_updated);
+        return observations === 0 && series === 0;
+      }
+
       function formatStations(run) {
-        if (run.stations_updated !== null && run.stations_updated !== undefined) {
-          return formatCount(run.stations_updated);
+        const stationCount = resolveStationCount(run);
+        if (stationCount !== null) {
+          return formatCount(stationCount);
         }
         if (run.series_polled !== null && run.series_polled !== undefined) {
           return `${formatCount(run.series_polled)} series`;
         }
         return "n/a";
+      }
+
+      function formatObservations(run) {
+        if (hasNoNewData(run)) {
+          return `<span class="metric-note">No new data</span>`;
+        }
+        return formatCount(run.observations_upserted);
       }
 
       function formatSeries(run) {
@@ -496,10 +594,6 @@
           return formatCount(run.timeseries_updated);
         }
         return "n/a";
-      }
-
-      function statusClass(status) {
-        return (status || "unknown").toLowerCase();
       }
 
       function formatMinutes(value) {
@@ -643,7 +737,7 @@
             <tbody>
               ${runs
                 .map((run) => {
-                  const status = statusClass(run.run_status);
+                  const status = statusMeta(run);
                   const timestamp = run.run_timestamp || run.run_ended_at || run.run_started_at;
                   const minutes = formatMinutes(run.in_flight_minutes);
                   const durationMinutes = calcDurationMinutes(run);
@@ -658,7 +752,7 @@
                       <td class="connector-name">${run.connector_label || run.connector_code || "Unknown"}</td>
                       <td>
                         <div class="status-stack">
-                          <span class="status-pill ${status}">${run.run_status || "unknown"}</span>
+                          <span class="status-pill ${status.className}">${status.label}</span>
                           ${runtimeBadge}
                         </div>
                       </td>
@@ -666,7 +760,7 @@
                       <td>${formatTime(timestamp)}</td>
                       <td>${formatTime(run.last_observed_at)}</td>
                       <td>${formatStations(run)}</td>
-                      <td>${formatCount(run.observations_upserted)}</td>
+                      <td>${formatObservations(run)}</td>
                       <td>${formatSeries(run)}</td>
                     </tr>
                   `;

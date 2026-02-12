@@ -15,6 +15,8 @@ This worker now runs Sensor.Community ingest directly in Cloud Run Jobs
 - Upserts stations, phenomena, timeseries, and observations directly via PostgREST.
 - Dual-writes observations to history DB (with main DB outbox fallback) when history env is configured.
 - Uploads run log + raw payload snapshot to Dropbox when Dropbox env/secrets are configured and allowed for the active Supabase URL.
+  - Log artifact: `uk_aq_log_cloud_run_scomm_<timestamp>.json`
+  - Raw artifact: `uk_aq_raw_cloud_run_scomm_<timestamp>.zip`
 - Writes run status back to `connectors` and inserts `uk_aq_ingest_runs` row.
 - Inserts `error_logs` row on ingest failure.
 
@@ -54,7 +56,7 @@ The previous proxy worker (Cloud Run -> Supabase Edge function) is archived at:
 - `HISTORY_UPSERT_CHUNK_SIZE` (default `1000`)
 - `SCOMM_DROPBOX_ROOT` or `UK_AQ_DROPBOX_ROOT` (default `/CIC-Test`)
 - `SCOMM_RAW_DROPBOX_FOLDER` or `UK_AIR_RAW_DROPBOX_FOLDER`
-  (default `/connectors/sensorcommunity/raw`)
+  (default `/connectors/sensorcommunity/raw_data`)
 
 ## Build image
 
