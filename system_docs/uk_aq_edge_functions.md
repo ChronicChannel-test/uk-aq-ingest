@@ -55,9 +55,6 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
   - Requires `X-Cron-Secret` when `SB_UK_AQ_CRON_SECRET` is set.
   - Uses the Supabase service role key to read connector settings.
   - Uses `SB_ANON_JWT` (falls back to service role) to call ingest functions.
-  - Runs history outbox draining in `mode=enqueue` before selection.
-  - Skips history outbox draining in `mode=run_queue` to maximize job execution time.
-  - Outbox drain repeats up to `HISTORY_OUTBOX_DISPATCH_MAX_FLUSHES` batches per dispatcher run (default `3`).
   - Uses a runtime budget guard to avoid platform timeout overruns:
     - `DISPATCH_TIME_BUDGET_MS` (default `150000`)
     - `DISPATCH_SHUTDOWN_BUFFER_MS` (default `10000`)
@@ -99,6 +96,22 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
   - Logs whether the cron secret is present (boolean + length) for debugging.
   - Logs each dispatched edge call with the target function name and cron secret presence (length only).
   - Writes dispatch errors to `error_logs`.
+
+### uk_aq_flush_history_outbox
+- Purpose: Flush history dual-write outbox rows in bounded batches.
+- Triggered by:
+  - `workers/uk_aq_history_outbox_flusher` Cloudflare Worker cron (`*/10 * * * *`).
+  - Manual authenticated POST calls (for troubleshooting/backfill).
+- Reads/Writes:
+  - Uses `uk_aq_rpc_history_outbox_claim` + `uk_aq_rpc_history_outbox_resolve` via shared history client.
+  - Delivers to history DB via configured history upsert RPC.
+- Notes:
+  - Requires `X-Cron-Secret` when `SB_UK_AQ_CRON_SECRET` is set.
+  - Uses its own runtime budget guard:
+    - `HISTORY_OUTBOX_FLUSH_TIME_BUDGET_MS` (default `120000`)
+    - `HISTORY_OUTBOX_FLUSH_SHUTDOWN_BUFFER_MS` (default `5000`)
+  - Runs up to `HISTORY_OUTBOX_FLUSH_MAX_BATCHES` per call (default `3`).
+  - Backward-compatible env fallback: if `HISTORY_OUTBOX_FLUSH_MAX_BATCHES` is unset, uses `HISTORY_OUTBOX_DISPATCH_MAX_FLUSHES`.
 
 ### uk_aq_egress_monitor
 - Purpose: Lightweight monitor endpoint that summarizes egress metrics and raises a warning when total MB over a lookback window exceeds a threshold.
@@ -404,7 +417,8 @@ Dropbox folders:
 Optional:
 - `UK_AQ_CORE_SCHEMA` (defaults to `uk_aq_core`; used for PostgREST profile headers)
 - `UK_AQ_RAW_SCHEMA` (defaults to `uk_aq_raw`; used for raw tables like `error_logs` and checkpoint tables)
-- `HISTORY_OUTBOX_DISPATCH_MAX_FLUSHES` (optional; defaults to `3`; dispatcher outbox batches per run)
+- `HISTORY_OUTBOX_FLUSH_MAX_BATCHES` (optional; defaults to `3`; `uk_aq_flush_history_outbox` batches per call)
+- `HISTORY_OUTBOX_DISPATCH_MAX_FLUSHES` (optional legacy fallback; used only when `HISTORY_OUTBOX_FLUSH_MAX_BATCHES` is unset)
 - `DISPATCH_TIME_BUDGET_MS` (optional; defaults to `150000`; dispatcher per-request runtime budget)
 - `DISPATCH_SHUTDOWN_BUFFER_MS` (optional; defaults to `10000`; reserved time before budget to return cleanly)
 - `DISPATCH_EDGE_CALL_TIMEOUT_MS` (optional; defaults to `140000`; per-child ingest timeout within dispatcher)

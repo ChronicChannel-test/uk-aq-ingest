@@ -1,10 +1,6 @@
 // Dispatch connector polls based on connectors table settings.
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import "../_shared/fetch_egress_patch.ts";
-import {
-  flushHistoryOutbox,
-  type HistoryOutboxFlushStats,
-} from "../_shared/history_client.ts";
 
 type ConnectorRow = {
   id: string;
@@ -40,7 +36,10 @@ type DispatchResult = {
   response_status?: number;
 };
 
-type DispatchMode = "enqueue" | "run_queue" | "legacy";
+type DispatchMode =
+  | "enqueue"
+  | "run_queue"
+  | "legacy";
 
 type DispatchCandidate = {
   connectorCode: string;
@@ -75,7 +74,12 @@ type ErrorLogEntry = {
   connector_id?: string | number | null;
 };
 
-type HistoryOutboxDrainSummary = HistoryOutboxFlushStats & {
+type HistoryOutboxDrainSummary = {
+  claimed: number;
+  delivered: number;
+  failed: number;
+  receipts_upserted: number;
+  rows_resolved: number;
   batches: number;
   warnings: string[];
   max_batches: number;
@@ -147,10 +151,6 @@ const DEFAULT_MAX_RUNS_PER_DISPATCH_CALL = 1;
 const MIN_EDGE_CALL_TIMEOUT_MS = 5000;
 const MIN_DISPATCH_TIME_BUDGET_MS = MIN_EDGE_CALL_TIMEOUT_MS + 1000;
 const MIN_DISPATCH_SHUTDOWN_BUFFER_MS = 1000;
-const HISTORY_OUTBOX_DISPATCH_MAX_FLUSHES = parsePositiveInt(
-  Deno.env.get("HISTORY_OUTBOX_DISPATCH_MAX_FLUSHES"),
-  3,
-);
 const LATEST_INGEST_RUNS_LOOKBACK_HOURS = parsePositiveInt(
   Deno.env.get("LATEST_INGEST_RUNS_LOOKBACK_HOURS"),
   48,
@@ -1130,7 +1130,7 @@ async function publicRpcRequest<T>(
 function emptyHistoryOutboxDrainSummary(): HistoryOutboxDrainSummary {
   return {
     batches: 0,
-    max_batches: HISTORY_OUTBOX_DISPATCH_MAX_FLUSHES,
+    max_batches: 0,
     claimed: 0,
     delivered: 0,
     failed: 0,
@@ -1138,43 +1138,6 @@ function emptyHistoryOutboxDrainSummary(): HistoryOutboxDrainSummary {
     rows_resolved: 0,
     warnings: [],
   };
-}
-
-async function drainHistoryOutboxFromDispatcher(
-  dispatchStartedAtMs: number,
-): Promise<
-  HistoryOutboxDrainSummary
-> {
-  const summary = emptyHistoryOutboxDrainSummary();
-  for (let idx = 0; idx < HISTORY_OUTBOX_DISPATCH_MAX_FLUSHES; idx += 1) {
-    if (!isDispatchBudgetRemaining(dispatchStartedAtMs)) {
-      summary.stopped_early = true;
-      summary.stop_reason = "dispatch_time_budget";
-      break;
-    }
-    const batchWarnings: string[] = [];
-    const stats = await flushHistoryOutbox(publicRpcRequest, (message) => {
-      batchWarnings.push(message);
-      console.warn("history_outbox_flush_warning", { message });
-    });
-    summary.batches += 1;
-    summary.claimed += stats.claimed;
-    summary.delivered += stats.delivered;
-    summary.failed += stats.failed;
-    summary.receipts_upserted += stats.receipts_upserted;
-    summary.rows_resolved += stats.rows_resolved;
-    if (batchWarnings.length) {
-      summary.warnings.push(...batchWarnings);
-    }
-    if (stats.claimed === 0) {
-      break;
-    }
-    // Avoid repeatedly hammering the same failing payloads in a single run.
-    if (stats.failed > 0 && stats.delivered === 0) {
-      break;
-    }
-  }
-  return summary;
 }
 
 async function loadConnectorConfigs(): Promise<ConnectorRow[]> {
@@ -1381,17 +1344,6 @@ function isDispatchBudgetRemaining(dispatchStartedAtMs: number): boolean {
     DISPATCH_MIN_START_EDGE_CALL_MS;
 }
 
-function shouldDrainHistoryOutbox(
-  dispatchMode: DispatchMode,
-  requestPayload: Record<string, unknown>,
-): boolean {
-  if (asBoolean(requestPayload.flush_history_outbox)) {
-    return true;
-  }
-  // Keep queue dispatcher paths fast/stable under strict scheduler runtime limits.
-  return dispatchMode === "legacy";
-}
-
 serve(async (req) => {
   if (req.method !== "POST") {
     return new Response("Method not allowed", { status: 405 });
@@ -1436,20 +1388,7 @@ serve(async (req) => {
 
   const dispatchStartedAtMs = Date.now();
   const now = new Date();
-  const historyOutbox = shouldDrainHistoryOutbox(dispatchMode, requestPayload)
-    ? await drainHistoryOutboxFromDispatcher(
-      dispatchStartedAtMs,
-    ).catch((
-      error,
-    ) => {
-      const summary = emptyHistoryOutboxDrainSummary();
-      summary.error = error instanceof Error ? error.message : String(error);
-      console.warn("history_outbox_flush_failed", {
-        error: summary.error,
-      });
-      return summary;
-    })
-    : emptyHistoryOutboxDrainSummary();
+  const historyOutbox = emptyHistoryOutboxDrainSummary();
   const results = new Map<string, DispatchResult>();
   let connectors: ConnectorRow[] = [];
   let latestRuns = new Map<string, IngestRunRow>();

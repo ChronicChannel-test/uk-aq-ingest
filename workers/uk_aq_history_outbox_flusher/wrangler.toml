@@ -1,0 +1,9 @@
+name = "uk-aq-history-outbox-flusher"
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+
+[triggers]
+crons = ["*/10 * * * *"]
+
+[observability]
+enabled = true

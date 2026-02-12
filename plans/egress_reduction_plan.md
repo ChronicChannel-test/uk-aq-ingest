@@ -12,7 +12,7 @@ Status markers:
 
 Current state snapshot (Monday, February 9, 2026):
 - History outbox backlog is actively reducing again (from ~4,585 rows at 12:07 UTC to ~4,516 rows at 12:54 UTC).
-- Dispatcher now includes automatic outbox draining logic (`uk_aq_dispatch_polls`) before connector dispatch.
+- History outbox draining now runs via dedicated endpoint (`uk_aq_flush_history_outbox`) and Cloudflare worker cron.
 - Highest remaining egress pressure is still front-end map polling (`uk_aq_latest` with `limit=10000`) and repeated high-frequency requests.
 
 ---
@@ -20,10 +20,10 @@ Current state snapshot (Monday, February 9, 2026):
 ## Immediate Next (execution order)
 
 1) 🎯 Complete deploy and runtime verification for outbox auto-drain
-- Deploy updated `uk_aq_dispatch_polls` and verify `history_outbox` stats in responses/logs.
+- Deploy `uk_aq_flush_history_outbox` and verify `history_outbox` stats in flusher responses/logs.
 - Confirm queue continues to trend down over at least 2-4 hours on Monday, February 9, 2026.
 - If drain rate is too low, tune:
-  - `HISTORY_OUTBOX_DISPATCH_MAX_FLUSHES` (dispatcher-side batches/run)
+  - `HISTORY_OUTBOX_FLUSH_MAX_BATCHES` (flusher batches/run)
   - `HISTORY_OUTBOX_FLUSH_LIMIT` (rows/claim batch)
 
 2) 🎯 Prevent new bad backlog from old bundles

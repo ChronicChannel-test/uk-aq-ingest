@@ -14,7 +14,8 @@ This repo uses GitHub Actions for scheduled syncs and deployments.
 - Trigger: push to `main` affecting `supabase/functions/**`, or manual dispatch.
 - Purpose: inject Supabase project ref into the web page, set Supabase secrets, deploy edge functions.
 - Deployed functions: `ingest_uk_air_sos`, `ingest_breathelondon`, `ingest_sensorcommunity`,
-  `uk_aq_latest`, `uk_aq_bristol_latest`, `uk_aq_la_hex`, `uk_aq_pcon_hex`,
+  `uk_aq_dispatch_polls`, `uk_aq_flush_history_outbox`, `uk_aq_latest`,
+  `uk_aq_bristol_latest`, `uk_aq_la_hex`, `uk_aq_pcon_hex`,
   `uk_aq_stations`, `uk_aq_timeseries`.
 - Secrets: `SUPABASE_PROJECT_REF`, `SB_PUBLISHABLE_DEFAULT_KEY`, `SUPABASE_ACCESS_TOKEN`,
   `SUPABASE_SECRETS_ENV` (newline-delimited env file contents).
@@ -86,6 +87,17 @@ SB_UK_AQ_CRON_SECRET=...
   3. Deploy again (`Deploy Worker`) so code + updated secrets are active together.
 - Why bulk secrets: avoids Cloudflare Worker Versions failure seen with multiple sequential
   `wrangler secret put` calls in one run.
+
+### `uk_aq_history_outbox_flusher_deploy.yml`
+- Trigger: push to `main` affecting `workers/uk_aq_history_outbox_flusher/**`, or manual dispatch.
+- Purpose: deploy the dedicated Cloudflare worker that flushes history outbox on a 10-minute cron.
+- Worker: `workers/uk_aq_history_outbox_flusher`.
+- Secrets: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`,
+  `SUPABASE_URL`, `SB_ANON_JWT`, `SB_UK_AQ_CRON_SECRET`.
+- Deploy sequence:
+  1. Deploy current worker code (`Deploy Worker (base)`).
+  2. Apply all three Supabase/cron secrets in one `wrangler secret bulk` call (with retry).
+  3. Deploy again (`Deploy Worker`) so code + updated secrets are active together.
 
 ### `uk_air_sos_site_register_monthly.yml`
 - Schedule: monthly on day 1 at 04:15 UTC.
