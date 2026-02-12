@@ -4,11 +4,9 @@ ENV DENO_DIR=/deno-dir
 
 WORKDIR /app
 
-COPY deno.lock /app/deno.lock
-
 COPY workers/uk_aq_history_outbox_cloud_run/run_job.ts /app/workers/uk_aq_history_outbox_cloud_run/run_job.ts
 COPY supabase/functions/_shared/history_client.ts /app/supabase/functions/_shared/history_client.ts
 
-RUN deno cache --lock=/app/deno.lock /app/workers/uk_aq_history_outbox_cloud_run/run_job.ts
+RUN deno cache /app/workers/uk_aq_history_outbox_cloud_run/run_job.ts
 
 CMD ["deno", "run", "--cached-only", "--allow-env", "--allow-net", "/app/workers/uk_aq_history_outbox_cloud_run/run_job.ts"]
