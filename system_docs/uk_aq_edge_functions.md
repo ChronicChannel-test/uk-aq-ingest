@@ -17,6 +17,10 @@ PostgREST egress capture note: all edge functions import
 `postgrest:<path>` endpoint rows via the same RPC. `2xx` capture is sampled
 (`UK_AQ_POSTGREST_EGRESS_CAPTURE_SAMPLE_RATE`, default `0.05`); `304`/`4xx`/`5xx`
 remain always logged.
+Caller attribution note: PostgREST metric endpoints now include caller tags
+when available (`postgrest:<path>|caller=<function_name>`), and outgoing
+PostgREST requests from major edge functions set `x-ukaq-egress-caller` so
+egress can be attributed by function.
 
 Maintenance note (2026-02-09): removed `@ts-nocheck` from ingest/stations edge
 functions and fixed strict typing/lint issues without changing runtime behavior.
@@ -107,6 +111,7 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
   - Uses `x-ukaq-egress-bypass: 1` on its own PostgREST calls so monitor traffic does not recursively inflate egress metrics.
   - Paginates through `uk_aq_endpoint_egress_metrics_minute` for the lookback window (not capped to a single page).
   - Returns both observed sampled totals and sampling-adjusted estimated totals; alert threshold uses `estimated_mb`.
+  - Aggregates endpoint totals with caller tags normalized back to base endpoint names, and also returns `top_endpoint_callers_estimated` for endpoint+caller attribution.
   - Supports query params `lookback_minutes`, `top_n`, `alert_mb`, `write_error_log`, `page_size`, `max_rows`.
 
 ### ingest_uk_air_sos

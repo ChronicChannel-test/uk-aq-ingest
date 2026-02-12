@@ -110,6 +110,7 @@ function postgrestHeaders(prefer?: string, schema = UK_AQ_CORE_SCHEMA): Record<s
     apikey: SUPABASE_SERVICE_ROLE_KEY,
     Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
     "Content-Type": "application/json",
+    "x-ukaq-egress-caller": "ingest_uk_air_sos",
   };
   if (prefer) {
     headers.Prefer = prefer;
@@ -650,7 +651,7 @@ async function readJson(req: Request): Promise<PollRequest | null> {
 }
 
 function json(payload: unknown, status = 200): Response {
-  return new Response(JSON.stringify(payload, null, 2), {
+  return new Response(JSON.stringify(payload), {
     status,
     headers: {
       "Content-Type": "application/json",

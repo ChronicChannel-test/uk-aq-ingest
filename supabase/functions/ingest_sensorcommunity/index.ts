@@ -255,6 +255,7 @@ function postgrestHeaders(
     apikey: SUPABASE_SERVICE_ROLE_KEY,
     Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
     "Content-Type": "application/json",
+    "x-ukaq-egress-caller": "ingest_sensorcommunity",
   };
   if (prefer) {
     headers.Prefer = prefer;

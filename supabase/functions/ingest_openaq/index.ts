@@ -260,6 +260,7 @@ function postgrestHeaders(
     apikey: SUPABASE_SERVICE_ROLE_KEY,
     Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
     "Content-Type": "application/json",
+    "x-ukaq-egress-caller": "ingest_openaq",
   };
   if (prefer) {
     headers.Prefer = prefer;
@@ -294,7 +295,7 @@ function requireCronSecret(req: Request): Response | null {
 }
 
 function jsonResponse(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body, null, 2), {
+  return new Response(JSON.stringify(body), {
     status,
     headers: {
       "Content-Type": "application/json",

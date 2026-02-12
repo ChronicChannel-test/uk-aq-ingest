@@ -8,6 +8,7 @@ const PATCH_FLAG = "__uk_aq_postgrest_egress_patch__";
 const ENABLED_ENV = "UK_AQ_POSTGREST_EGRESS_CAPTURE_ENABLED";
 const SAMPLE_RATE_ENV = "UK_AQ_POSTGREST_EGRESS_CAPTURE_SAMPLE_RATE";
 const DEFAULT_SAMPLE_RATE = 0.05;
+const CALLER_HEADER = "x-ukaq-egress-caller";
 const METRIC_RPC_PATHS = new Set([
   "/rest/v1/rpc/uk_aq_record_endpoint_metric",
   "/rest/v1/rpc/uk_aq_cleanup_endpoint_metrics",
@@ -93,7 +94,7 @@ function readHeader(
   return "";
 }
 
-function endpointForUrl(url: URL): string | null {
+function endpointForUrl(url: URL, caller: string | null): string | null {
   if (!SUPABASE_URL) {
     return null;
   }
@@ -113,7 +114,11 @@ function endpointForUrl(url: URL): string | null {
     return null;
   }
   const trimmed = url.pathname.replace(/^\/rest\/v1\/?/, "");
-  return `postgrest:${trimmed || "root"}`;
+  const base = `postgrest:${trimmed || "root"}`;
+  if (!caller) {
+    return base;
+  }
+  return `${base}|caller=${caller}`;
 }
 
 async function responseBytes(response: Response): Promise<number | null> {
@@ -146,6 +151,44 @@ function extractMeta(url: URL, method: string): MetricFields {
   };
 }
 
+function sanitizeCaller(value: string | null): string | null {
+  if (!value) {
+    return null;
+  }
+  const normalized = value.trim().toLowerCase().replace(/[^a-z0-9._-]/g, "_");
+  if (!normalized) {
+    return null;
+  }
+  return normalized.slice(0, 64);
+}
+
+function callerFromHeader(
+  input: Request | URL | string,
+  init?: RequestInit,
+): string | null {
+  return sanitizeCaller(readHeader(input, init, CALLER_HEADER));
+}
+
+function callerFromStack(): string | null {
+  const stack = new Error().stack ?? "";
+  if (!stack) {
+    return null;
+  }
+  const lines = stack.split("\n");
+  for (const line of lines) {
+    const match = line.match(/\/functions\/([^\/]+)\//i);
+    if (!match) {
+      continue;
+    }
+    const caller = sanitizeCaller(match[1]);
+    if (!caller || caller === "_shared") {
+      continue;
+    }
+    return caller;
+  }
+  return null;
+}
+
 function shouldSkipBypassHeader(
   input: Request | URL | string,
   init?: RequestInit,
@@ -172,7 +215,8 @@ function applyPatch(): void {
     init?: RequestInit,
   ): Promise<Response> => {
     const url = parseUrl(input);
-    const endpoint = url ? endpointForUrl(url) : null;
+    const caller = callerFromHeader(input, init) ?? callerFromStack();
+    const endpoint = url ? endpointForUrl(url, caller) : null;
     const track = Boolean(endpoint) && !shouldSkipBypassHeader(input, init);
     const method = normalizeMethod(input, init);
     const startedAt = track ? Date.now() : 0;
@@ -189,7 +233,10 @@ function applyPatch(): void {
         status: response.status,
         durationMs,
         responseBytes: bytes,
-        fields: extractMeta(url, method),
+        fields: {
+          ...extractMeta(url, method),
+          caller,
+        },
         sampleRate,
       });
     } catch (error) {

@@ -224,6 +224,7 @@ function postgrestHeaders(
     apikey: SUPABASE_SERVICE_ROLE_KEY,
     Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
     "Content-Type": "application/json",
+    "x-ukaq-egress-caller": "uk_aq_dispatch_polls",
   };
   if (options?.preferMinimal) {
     headers["Prefer"] = "return=minimal";

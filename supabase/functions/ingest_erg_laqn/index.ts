@@ -159,6 +159,7 @@ function postgrestHeaders(prefer?: string, schema = UK_AQ_CORE_SCHEMA): Record<s
     apikey: SUPABASE_SERVICE_ROLE_KEY,
     Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
     "Content-Type": "application/json",
+    "x-ukaq-egress-caller": "ingest_erg_laqn",
   };
   if (prefer) {
     headers.Prefer = prefer;
@@ -2184,7 +2185,7 @@ serve(async (req) => {
     }
   }
 
-  return new Response(JSON.stringify(responsePayload, null, 2), {
+  return new Response(JSON.stringify(responsePayload), {
     status,
     headers: {
       "Content-Type": "application/json",

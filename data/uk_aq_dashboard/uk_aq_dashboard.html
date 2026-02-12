@@ -540,6 +540,18 @@
         ]);
       }
 
+      function resolveObservationCount(run) {
+        const direct = asNumber(run && run.observations_upserted);
+        if (direct !== null) {
+          return direct;
+        }
+        const payload = asObject(run && run.response_payload);
+        return payloadNumber(payload, [
+          "observations_upserted",
+          "observations",
+        ]);
+      }
+
       function isPartialBudgetRun(run) {
         const payload = asObject(run && run.response_payload);
         if (!payload) {
@@ -572,9 +584,16 @@
         if (stationCount === null || stationCount <= 0) {
           return false;
         }
-        const observations = asNumber(run && run.observations_upserted);
+        const observations = resolveObservationCount(run);
         const series = asNumber(run && run.series_polled) ?? asNumber(run && run.timeseries_updated);
-        return observations === 0 && series === 0;
+        if (observations === 0 && series === 0) {
+          return true;
+        }
+        const connectorCode = String(run && run.connector_code || "").toLowerCase();
+        if (connectorCode === "breathelondon" && observations === null && series === 0) {
+          return true;
+        }
+        return false;
       }
 
       function formatStations(run) {
@@ -592,7 +611,8 @@
         if (hasNoNewData(run)) {
           return `<span class="metric-note">No new data</span>`;
         }
-        return formatCount(run.observations_upserted);
+        const observations = resolveObservationCount(run);
+        return formatCount(observations);
       }
 
       function formatSeries(run) {

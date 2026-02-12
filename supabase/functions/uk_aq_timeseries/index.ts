@@ -39,6 +39,7 @@ function postgrestHeaders(schema = UK_AQ_CORE_SCHEMA): Record<string, string> {
     apikey: SUPABASE_SERVICE_ROLE_KEY,
     Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
     "Content-Type": "application/json",
+    "x-ukaq-egress-caller": "uk_aq_timeseries",
   };
   if (schema && schema !== "public") {
     headers["Accept-Profile"] = schema;
@@ -236,7 +237,7 @@ function maxObservedTimestamp(rows: any[], fallback: string | null): string | nu
 }
 
 function json(payload: unknown, status = 200): Response {
-  return new Response(JSON.stringify(payload, null, 2), {
+  return new Response(JSON.stringify(payload), {
     status,
     headers: {
       "Content-Type": "application/json",

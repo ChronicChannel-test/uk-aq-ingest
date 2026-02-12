@@ -88,6 +88,7 @@ function postgrestHeaders(schema = UK_AQ_PUBLIC_SCHEMA): Record<string, string> 
     Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
     "Content-Type": "application/json",
     [EGRESS_BYPASS_HEADER]: "1",
+    "x-ukaq-egress-caller": "uk_aq_egress_monitor",
   };
   if (schema && schema !== "public") {
     headers["Accept-Profile"] = schema;
@@ -150,6 +151,21 @@ function estimateBytes(row: EgressMinuteRow, observedBytes: number): number {
     return observedBytes;
   }
   return observedBytes * ratio;
+}
+
+function splitEndpointCaller(rawEndpoint: string): {
+  endpoint: string;
+  caller: string | null;
+} {
+  const marker = "|caller=";
+  const markerIndex = rawEndpoint.indexOf(marker);
+  if (markerIndex < 0) {
+    return { endpoint: rawEndpoint, caller: null };
+  }
+  const endpoint = rawEndpoint.slice(0, markerIndex) || "unknown";
+  const callerRaw = rawEndpoint.slice(markerIndex + marker.length).trim();
+  const caller = callerRaw || null;
+  return { endpoint, caller };
 }
 
 async function fetchEgressRowsSince(
@@ -246,9 +262,20 @@ serve(async (req) => {
     const fetchResult = await fetchEgressRowsSince(sinceIso, pageSize, maxRows);
     const data = fetchResult.rows;
 
-    const totals = new Map<
+    const totalsByEndpoint = new Map<
       string,
       {
+        observedBytes: number;
+        estimatedBytes: number;
+        observedRequests: number;
+        estimatedRequests: number;
+      }
+    >();
+    const totalsByEndpointCaller = new Map<
+      string,
+      {
+        endpoint: string;
+        caller: string | null;
         observedBytes: number;
         estimatedBytes: number;
         observedRequests: number;
@@ -260,7 +287,9 @@ serve(async (req) => {
     let totalObservedRequests = 0;
     let totalEstimatedRequests = 0;
     for (const row of data ?? []) {
-      const endpoint = String(row.endpoint ?? "").trim() || "unknown";
+      const rawEndpoint = String(row.endpoint ?? "").trim() || "unknown";
+      const split = splitEndpointCaller(rawEndpoint);
+      const endpoint = split.endpoint;
       const observedBytes = Math.max(0, Number(row.response_bytes_sum ?? 0));
       const estimatedBytes = Math.max(0, estimateBytes(row, observedBytes));
       const observedRequests = Math.max(0, Number(row.observed_requests ?? 0));
@@ -272,7 +301,7 @@ serve(async (req) => {
       totalEstimatedBytes += estimatedBytes;
       totalObservedRequests += observedRequests;
       totalEstimatedRequests += estimatedRequests;
-      const existing = totals.get(endpoint) ?? {
+      const existing = totalsByEndpoint.get(endpoint) ?? {
         observedBytes: 0,
         estimatedBytes: 0,
         observedRequests: 0,
@@ -282,10 +311,25 @@ serve(async (req) => {
       existing.estimatedBytes += estimatedBytes;
       existing.observedRequests += observedRequests;
       existing.estimatedRequests += estimatedRequests;
-      totals.set(endpoint, existing);
+      totalsByEndpoint.set(endpoint, existing);
+
+      const endpointCallerKey = `${endpoint}|caller=${split.caller ?? "unknown"}`;
+      const existingEndpointCaller = totalsByEndpointCaller.get(endpointCallerKey) ?? {
+        endpoint,
+        caller: split.caller,
+        observedBytes: 0,
+        estimatedBytes: 0,
+        observedRequests: 0,
+        estimatedRequests: 0,
+      };
+      existingEndpointCaller.observedBytes += observedBytes;
+      existingEndpointCaller.estimatedBytes += estimatedBytes;
+      existingEndpointCaller.observedRequests += observedRequests;
+      existingEndpointCaller.estimatedRequests += estimatedRequests;
+      totalsByEndpointCaller.set(endpointCallerKey, existingEndpointCaller);
     }
 
-    const topEndpointsObserved = Array.from(totals.entries())
+    const topEndpointsObserved = Array.from(totalsByEndpoint.entries())
       .map(([endpoint, value]) => ({
         endpoint,
         mb: Number(toMiB(value.observedBytes).toFixed(3)),
@@ -296,9 +340,20 @@ serve(async (req) => {
       .sort((a, b) => b.mb - a.mb)
       .slice(0, topN);
 
-    const topEndpointsEstimated = Array.from(totals.entries())
+    const topEndpointsEstimated = Array.from(totalsByEndpoint.entries())
       .map(([endpoint, value]) => ({
         endpoint,
+        mb: Number(toMiB(value.estimatedBytes).toFixed(3)),
+        observed_mb: Number(toMiB(value.observedBytes).toFixed(3)),
+        requests: Math.round(value.estimatedRequests),
+        observed_requests: Math.round(value.observedRequests),
+      }))
+      .sort((a, b) => b.mb - a.mb)
+      .slice(0, topN);
+    const topEndpointCallersEstimated = Array.from(totalsByEndpointCaller.values())
+      .map((value) => ({
+        endpoint: value.endpoint,
+        caller: value.caller,
         mb: Number(toMiB(value.estimatedBytes).toFixed(3)),
         observed_mb: Number(toMiB(value.observedBytes).toFixed(3)),
         requests: Math.round(value.estimatedRequests),
@@ -370,12 +425,13 @@ serve(async (req) => {
         threshold_exceeded: thresholdExceeded,
         top_endpoints: topEndpointsObserved,
         top_endpoints_estimated: topEndpointsEstimated,
-      }, null, 2),
+        top_endpoint_callers_estimated: topEndpointCallersEstimated,
+      }),
       { status: 200, headers: { "Content-Type": "application/json" } },
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    return new Response(JSON.stringify({ error: message }, null, 2), {
+    return new Response(JSON.stringify({ error: message }), {
       status: 500,
       headers: { "Content-Type": "application/json" },
     });

@@ -24,7 +24,7 @@ const CORS_HEADERS = {
 type SnapshotWindow = "6h" | "24h" | "7d";
 
 function jsonResponse(payload: unknown, status = 200): Response {
-  return new Response(JSON.stringify(payload, null, 2), {
+  return new Response(JSON.stringify(payload), {
     status,
     headers: {
       "Content-Type": "application/json",
