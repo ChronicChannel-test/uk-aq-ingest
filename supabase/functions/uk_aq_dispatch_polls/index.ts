@@ -1019,6 +1019,35 @@ async function claimDispatchQueueJobs(
   return Array.isArray(data) ? data : [];
 }
 
+async function hasActiveQueueLeasesForConnectors(
+  connectorCodes: string[],
+  now: Date,
+): Promise<boolean> {
+  if (!connectorCodes.length) {
+    return false;
+  }
+  const { data, error } = await postgrestRequest<Array<{ connector_code: string }>>(
+    "GET",
+    "dispatch_connector_queue",
+    {
+      select: "connector_code",
+      connector_code: postgrestIn(connectorCodes),
+      lease_expires_at: `gt.${now.toISOString()}`,
+      limit: "1",
+    },
+    undefined,
+    UK_AQ_RAW_SCHEMA,
+  );
+  if (error) {
+    console.warn("dispatch queue lease probe failed", {
+      error: error.message,
+      connector_codes: connectorCodes,
+    });
+    return false;
+  }
+  return Array.isArray(data) && data.length > 0;
+}
+
 async function resolveDispatchQueueJobs(
   resolutions: Array<{
     id: number;
@@ -1478,6 +1507,30 @@ serve(async (req) => {
         return isDue(connector, connectorCode, now);
       });
       if (dueWithoutQueue.length > 0) {
+        const hasLeasedDueConnector = await hasActiveQueueLeasesForConnectors(
+          dueWithoutQueue,
+          now,
+        );
+        if (hasLeasedDueConnector) {
+          for (const connectorCode of TARGET_CONNECTORS) {
+            results.set(connectorCode, {
+              connector_code: connectorCode,
+              status: "skipped",
+              detail: "queue_claimed_by_peer",
+            });
+          }
+          return jsonResponse({
+            checked_at: now.toISOString(),
+            dispatch_mode: dispatchMode,
+            dispatcher_settings: settings,
+            message:
+              "Queue currently leased by another run_queue worker; no additional jobs claimed in this call.",
+            due_connectors: dueWithoutQueue,
+            history_outbox: historyOutbox,
+            queue: { claimed: 0, enqueued: 0, resolved: 0 },
+            results: TARGET_CONNECTORS.map((code) => results.get(code)),
+          });
+        }
         await logError({
           severity: "warn",
           message:
