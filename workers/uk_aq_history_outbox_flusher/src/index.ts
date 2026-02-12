@@ -8,6 +8,10 @@ function normalizeBaseUrl(value: string): string {
   return value.replace(/\/$/, "");
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function readSecret(value: unknown): Promise<string> {
   if (typeof value === "string") {
     return value;
@@ -55,23 +59,41 @@ async function invokeFlush(env: Env): Promise<{
     headers["X-Cron-Secret"] = cronSecret;
   }
 
-  try {
-    const resp = await fetch(url, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ source: "cloudflare" }),
-    });
-    const contentType = (resp.headers.get("content-type") ?? "").toLowerCase();
-    const body = contentType.includes("application/json")
-      ? await resp.json().catch(() => null)
-      : await resp.text().catch(() => "");
-    return { ok: resp.ok, status: resp.status, body };
-  } catch (error) {
-    const message = error instanceof Error
-      ? error.message
-      : String(error ?? "unknown_error");
-    return { ok: false, status: 0, body: message };
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    try {
+      const resp = await fetch(url, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          source: "cloudflare",
+          max_batches: 1,
+          claim_batch_limit: 2,
+        }),
+      });
+      const contentType = (resp.headers.get("content-type") ?? "").toLowerCase();
+      const body = contentType.includes("application/json")
+        ? await resp.json().catch(() => null)
+        : await resp.text().catch(() => "");
+      if (resp.ok) {
+        return { ok: true, status: resp.status, body };
+      }
+      if (attempt < 2 && resp.status === 546) {
+        await sleep(1500);
+        continue;
+      }
+      return { ok: false, status: resp.status, body };
+    } catch (error) {
+      const message = error instanceof Error
+        ? error.message
+        : String(error ?? "unknown_error");
+      if (attempt < 2) {
+        await sleep(1500);
+        continue;
+      }
+      return { ok: false, status: 0, body: message };
+    }
   }
+  return { ok: false, status: 0, body: "unknown_error" };
 }
 
 async function runScheduled(env: Env): Promise<void> {

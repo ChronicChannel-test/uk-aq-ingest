@@ -110,7 +110,8 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
   - Uses its own runtime budget guard:
     - `HISTORY_OUTBOX_FLUSH_TIME_BUDGET_MS` (default `120000`)
     - `HISTORY_OUTBOX_FLUSH_SHUTDOWN_BUFFER_MS` (default `5000`)
-  - Runs up to `HISTORY_OUTBOX_FLUSH_MAX_BATCHES` per call (default `3`).
+  - Runs up to `HISTORY_OUTBOX_FLUSH_MAX_BATCHES` per call (default `1`).
+  - Supports request payload overrides: `max_batches`, `claim_batch_limit`.
   - Backward-compatible env fallback: if `HISTORY_OUTBOX_FLUSH_MAX_BATCHES` is unset, uses `HISTORY_OUTBOX_DISPATCH_MAX_FLUSHES`.
 
 ### uk_aq_egress_monitor
@@ -417,7 +418,7 @@ Dropbox folders:
 Optional:
 - `UK_AQ_CORE_SCHEMA` (defaults to `uk_aq_core`; used for PostgREST profile headers)
 - `UK_AQ_RAW_SCHEMA` (defaults to `uk_aq_raw`; used for raw tables like `error_logs` and checkpoint tables)
-- `HISTORY_OUTBOX_FLUSH_MAX_BATCHES` (optional; defaults to `3`; `uk_aq_flush_history_outbox` batches per call)
+- `HISTORY_OUTBOX_FLUSH_MAX_BATCHES` (optional; defaults to `1`; `uk_aq_flush_history_outbox` batches per call)
 - `HISTORY_OUTBOX_DISPATCH_MAX_FLUSHES` (optional legacy fallback; used only when `HISTORY_OUTBOX_FLUSH_MAX_BATCHES` is unset)
 - `DISPATCH_TIME_BUDGET_MS` (optional; defaults to `150000`; dispatcher per-request runtime budget)
 - `DISPATCH_SHUTDOWN_BUFFER_MS` (optional; defaults to `10000`; reserved time before budget to return cleanly)

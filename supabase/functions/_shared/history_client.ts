@@ -67,6 +67,10 @@ export type HistoryWriteStats = {
   enqueued: number;
 };
 
+export type HistoryOutboxFlushOptions = {
+  claim_batch_limit?: number;
+};
+
 const HISTORY_SUPABASE_URL = (
   Deno.env.get("HISTORY_SUPABASE_URL") ?? ""
 ).trim();
@@ -101,7 +105,7 @@ const HISTORY_UPSERT_RPC = (Deno.env.get("HISTORY_UPSERT_RPC") ||
 
 const HISTORY_OUTBOX_FLUSH_LIMIT = parsePositiveInt(
   Deno.env.get("HISTORY_OUTBOX_FLUSH_LIMIT"),
-  10,
+  3,
 );
 
 const HISTORY_UPSERT_CHUNK_SIZE = parsePositiveInt(
@@ -327,6 +331,7 @@ export async function writeHistoryWithOutbox(
 export async function flushHistoryOutbox(
   mainRpc: MainRpcCaller,
   onWarning?: (message: string) => void,
+  options: HistoryOutboxFlushOptions = {},
 ): Promise<HistoryOutboxFlushStats> {
   const stats: HistoryOutboxFlushStats = {
     claimed: 0,
@@ -342,7 +347,15 @@ export async function flushHistoryOutbox(
 
   const claimResult = await mainRpc<HistoryOutboxClaimRow[]>(
     "uk_aq_rpc_history_outbox_claim",
-    { batch_limit: HISTORY_OUTBOX_FLUSH_LIMIT },
+    {
+      batch_limit: (() => {
+        const candidate = Number(options.claim_batch_limit);
+        if (Number.isFinite(candidate) && candidate > 0) {
+          return Math.max(1, Math.trunc(candidate));
+        }
+        return HISTORY_OUTBOX_FLUSH_LIMIT;
+      })(),
+    },
   );
 
   if (claimResult.error) {

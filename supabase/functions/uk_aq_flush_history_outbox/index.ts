@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import "../_shared/fetch_egress_patch.ts";
 import {
   flushHistoryOutbox,
+  type HistoryOutboxFlushOptions,
   type HistoryOutboxFlushStats,
 } from "../_shared/history_client.ts";
 
@@ -30,7 +31,7 @@ const REST_BASE_URL = SUPABASE_URL
 const HISTORY_OUTBOX_FLUSH_MAX_BATCHES = parsePositiveInt(
   Deno.env.get("HISTORY_OUTBOX_FLUSH_MAX_BATCHES") ??
     Deno.env.get("HISTORY_OUTBOX_DISPATCH_MAX_FLUSHES"),
-  3,
+  1,
 );
 const MIN_FLUSH_BUDGET_MS = 5000;
 const FLUSH_TIME_BUDGET_MS = parseMillisecondsSetting(
@@ -70,6 +71,14 @@ function parseMillisecondsSetting(
     return fallback;
   }
   return normalized;
+}
+
+function parsePositiveIntFromUnknown(value: unknown): number | null {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric < 1) {
+    return null;
+  }
+  return Math.max(1, Math.trunc(numeric));
 }
 
 function postgrestHeaders(schema = UK_AQ_CORE_SCHEMA): Record<string, string> {
@@ -120,11 +129,21 @@ async function postgrestRequest<T>(
     };
   }
   const url = `${REST_BASE_URL}/${table}`;
-  const resp = await fetch(url, {
-    method,
-    headers: postgrestHeaders(schema),
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  let resp: Response;
+  try {
+    resp = await fetch(url, {
+      method,
+      headers: postgrestHeaders(schema),
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  } catch (error) {
+    return {
+      data: null,
+      error: {
+        message: error instanceof Error ? error.message : String(error),
+      },
+    };
+  }
   const contentType = resp.headers.get("content-type") ?? "";
   const payload = contentType.includes("application/json")
     ? await resp.json().catch(() => null)
@@ -176,19 +195,26 @@ function emptyHistoryOutboxDrainSummary(): HistoryOutboxDrainSummary {
 
 async function drainHistoryOutbox(
   flushStartedAtMs: number,
+  maxBatches: number,
+  flushOptions: HistoryOutboxFlushOptions,
 ): Promise<HistoryOutboxDrainSummary> {
   const summary = emptyHistoryOutboxDrainSummary();
-  for (let idx = 0; idx < HISTORY_OUTBOX_FLUSH_MAX_BATCHES; idx += 1) {
+  summary.max_batches = maxBatches;
+  for (let idx = 0; idx < maxBatches; idx += 1) {
     if (!isFlushBudgetRemaining(flushStartedAtMs)) {
       summary.stopped_early = true;
       summary.stop_reason = "flush_time_budget";
       break;
     }
     const batchWarnings: string[] = [];
-    const stats = await flushHistoryOutbox(publicRpcRequest, (message) => {
-      batchWarnings.push(message);
-      console.warn("history_outbox_flush_warning", { message });
-    });
+    const stats = await flushHistoryOutbox(
+      publicRpcRequest,
+      (message) => {
+        batchWarnings.push(message);
+        console.warn("history_outbox_flush_warning", { message });
+      },
+      flushOptions,
+    );
     summary.batches += 1;
     summary.claimed += stats.claimed;
     summary.delivered += stats.delivered;
@@ -222,10 +248,30 @@ serve(async (req) => {
     }, 500);
   }
 
+  let requestPayload: Record<string, unknown> = {};
+  try {
+    requestPayload = await req.json();
+  } catch {
+    requestPayload = {};
+  }
+  const maxBatchesOverride = parsePositiveIntFromUnknown(
+    requestPayload.max_batches,
+  );
+  const maxBatches = Math.max(
+    1,
+    Math.min(maxBatchesOverride ?? HISTORY_OUTBOX_FLUSH_MAX_BATCHES, 10),
+  );
+  const claimBatchLimit = parsePositiveIntFromUnknown(
+    requestPayload.claim_batch_limit,
+  );
+
   const flushStartedAtMs = Date.now();
   const now = new Date();
-  const summary = await drainHistoryOutbox(flushStartedAtMs).catch((error) => {
+  const summary = await drainHistoryOutbox(flushStartedAtMs, maxBatches, {
+    claim_batch_limit: claimBatchLimit ?? undefined,
+  }).catch((error) => {
     const fallback = emptyHistoryOutboxDrainSummary();
+    fallback.max_batches = maxBatches;
     fallback.error = error instanceof Error ? error.message : String(error);
     console.warn("history_outbox_flush_failed", {
       error: fallback.error,

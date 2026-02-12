@@ -113,9 +113,9 @@ Use this flow when creating fresh MAIN + HISTORY projects.
    - `HISTORY_SERVICE_ROLE_KEY`
    - Optional overrides:
      - `HISTORY_UPSERT_RPC` (default `uk_aq_rpc_history_observations_upsert`)
-     - `HISTORY_OUTBOX_FLUSH_LIMIT` (default `10`)
+     - `HISTORY_OUTBOX_FLUSH_LIMIT` (default `3`)
      - `HISTORY_UPSERT_CHUNK_SIZE` (default `500`)
-     - `HISTORY_OUTBOX_FLUSH_MAX_BATCHES` (default `3`, `uk_aq_flush_history_outbox` batches per call)
+     - `HISTORY_OUTBOX_FLUSH_MAX_BATCHES` (default `1`, `uk_aq_flush_history_outbox` batches per call)
      - `HISTORY_OUTBOX_DISPATCH_MAX_FLUSHES` (legacy fallback name)
 4. Operational notes:
    - Outbox retries history delivery without backfill exports.
