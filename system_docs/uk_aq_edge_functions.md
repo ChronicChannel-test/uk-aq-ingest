@@ -86,6 +86,9 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
   - Uses `uk_aq_public.uk_aq_rpc_dispatch_claim` to atomically claim a connector slot before dispatch.
   - Updates `connectors.last_run_start`, `last_run_end`, `last_run_status`, `last_run_message`, and `last_polled_at` for each attempted dispatch.
   - Inserts per-run summaries into `uk_aq_ingest_runs` (status, counts, last_observed_at, response payload) for dashboard feeds.
+  - Dispatcher write calls to PostgREST (`connectors`, `uk_aq_ingest_runs`, `error_logs`) now use `Prefer: return=minimal` to reduce PostgREST egress.
+  - Stored `uk_aq_ingest_runs.response_payload` is compacted to dashboard-relevant summary keys (counts/partial flags/rate-limit summary/error message) instead of full child ingest responses.
+  - When a child ingest returns `partial=true` or `stopped_reason=runtime_budget_exceeded`, dispatcher records run status as `partial` (and `runtime_budget_exceeded` message) for consistent dashboard status pills.
   - Stores `series_polled` from ingest responses when available (used by OpenAQ and Breathe London).
   - Logs whether the cron secret is present (boolean + length) for debugging.
   - Logs each dispatched edge call with the target function name and cron secret presence (length only).

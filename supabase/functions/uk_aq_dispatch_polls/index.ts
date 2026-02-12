@@ -216,12 +216,18 @@ function parseMillisecondsSetting(
   return normalized;
 }
 
-function postgrestHeaders(schema = UK_AQ_CORE_SCHEMA): Record<string, string> {
+function postgrestHeaders(
+  schema = UK_AQ_CORE_SCHEMA,
+  options?: { preferMinimal?: boolean },
+): Record<string, string> {
   const headers: Record<string, string> = {
     apikey: SUPABASE_SERVICE_ROLE_KEY,
     Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
     "Content-Type": "application/json",
   };
+  if (options?.preferMinimal) {
+    headers["Prefer"] = "return=minimal";
+  }
   if (schema && schema !== "public") {
     headers["Accept-Profile"] = schema;
     headers["Content-Profile"] = schema;
@@ -238,6 +244,21 @@ function asNumber(value: unknown): number | null {
     return Number.isFinite(parsed) ? parsed : null;
   }
   return null;
+}
+
+function asBoolean(value: unknown): boolean {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    return normalized === "true" || normalized === "1" ||
+      normalized === "yes";
+  }
+  if (typeof value === "number") {
+    return value === 1;
+  }
+  return false;
 }
 
 function asPayloadObject(payload: unknown): Record<string, unknown> | null {
@@ -300,6 +321,84 @@ function extractRunMetrics(
     timeseries_updated: timeseries,
     series_polled: seriesPolled,
   };
+}
+
+const STORED_RESPONSE_PAYLOAD_KEYS = [
+  "ok",
+  "status",
+  "partial",
+  "stopped_reason",
+  "stopped_phase",
+  "dry_run",
+  "window_hours",
+  "fetched",
+  "filtered",
+  "stations",
+  "stations_requested",
+  "stations_selected",
+  "stations_polled",
+  "stations_processed",
+  "stations_updated",
+  "timeseries",
+  "timeseries_updated",
+  "observations",
+  "observations_upserted",
+  "series_polled",
+  "last_observed_at",
+  "rate_limit_remaining",
+  "rate_limit_limit",
+  "rate_limit_stop",
+  "rate_limit_stop_reason",
+  "requests_total",
+  "max_requests_per_run",
+] as const;
+
+function truncateString(value: string, maxLen = 500): string {
+  if (value.length <= maxLen) {
+    return value;
+  }
+  return `${value.slice(0, maxLen)}...`;
+}
+
+function compactRunResponsePayload(payload: unknown): Record<string, unknown> | null {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    if (typeof payload === "string") {
+      return { message: truncateString(payload) };
+    }
+    return null;
+  }
+  const source = payload as Record<string, unknown>;
+  const compact: Record<string, unknown> = {};
+  for (const key of STORED_RESPONSE_PAYLOAD_KEYS) {
+    if (!Object.prototype.hasOwnProperty.call(source, key)) {
+      continue;
+    }
+    const value = source[key];
+    if (value !== undefined) {
+      compact[key] = value;
+    }
+  }
+  const rawError = source.error;
+  if (typeof rawError === "string" && rawError.trim()) {
+    compact.error = truncateString(rawError.trim());
+  }
+  const rawMessage = source.message;
+  if (typeof rawMessage === "string" && rawMessage.trim()) {
+    compact.message = truncateString(rawMessage.trim());
+  }
+  return Object.keys(compact).length ? compact : null;
+}
+
+function isPartialBudgetPayload(payload: unknown): boolean {
+  const data = asPayloadObject(payload);
+  if (!data) {
+    return false;
+  }
+  if (asBoolean(data.partial)) {
+    return true;
+  }
+  const stoppedReason = String(data.stopped_reason ?? "").toLowerCase();
+  return stoppedReason === "runtime_budget_exceeded";
 }
 
 async function loadStationIdsByRefs(
@@ -792,6 +891,7 @@ async function postgrestRequest<T>(
   params?: Record<string, string>,
   body?: unknown,
   schema?: string,
+  options?: { preferMinimal?: boolean },
 ): Promise<{ data: T | null; error: { message: string } | null }> {
   if (!REST_BASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
     return {
@@ -807,7 +907,7 @@ async function postgrestRequest<T>(
   }
   const resp = await fetch(url.toString(), {
     method,
-    headers: postgrestHeaders(schema),
+    headers: postgrestHeaders(schema, options),
     body: body ? JSON.stringify(body) : undefined,
   });
   const contentType = resp.headers.get("content-type") ?? "";
@@ -927,6 +1027,8 @@ async function updateConnectorRun(
     "connectors",
     { id: `eq.${connectorId}` },
     payload,
+    undefined,
+    { preferMinimal: true },
   );
   if (error) {
     console.warn("connectors update failed:", error.message);
@@ -939,6 +1041,8 @@ async function insertIngestRun(row: Record<string, unknown>): Promise<void> {
     "uk_aq_ingest_runs",
     undefined,
     row,
+    undefined,
+    { preferMinimal: true },
   );
   if (error) {
     console.warn("uk_aq_ingest_runs insert failed:", error.message);
@@ -963,6 +1067,7 @@ async function logError(entry: ErrorLogEntry): Promise<void> {
     undefined,
     row,
     UK_AQ_RAW_SCHEMA,
+    { preferMinimal: true },
   );
   if (error) {
     console.warn("error_logs insert failed:", error.message);
@@ -1946,6 +2051,15 @@ serve(async (req) => {
       });
     } finally {
       const runEnd = new Date();
+      if (
+        runStatus === "succeeded" &&
+        isPartialBudgetPayload(lastResponse?.body ?? null)
+      ) {
+        runStatus = "partial";
+        if (!runMessage || runMessage === "dispatched") {
+          runMessage = "runtime_budget_exceeded";
+        }
+      }
       await updateConnectorRun(connector?.id ?? null, {
         last_run_start: runStart.toISOString(),
         last_run_end: runEnd.toISOString(),
@@ -1972,6 +2086,7 @@ serve(async (req) => {
           connectorCode,
           lastResponse?.body ?? null,
         );
+        const compactPayload = compactRunResponsePayload(lastResponse?.body ?? null);
         await insertIngestRun({
           connector_id: connector?.id ?? null,
           connector_code: connectorCode,
@@ -1985,7 +2100,7 @@ serve(async (req) => {
           timeseries_updated: metrics.timeseries_updated,
           series_polled: metrics.series_polled,
           response_status: lastResponse?.status ?? null,
-          response_payload: lastResponse?.body ?? null,
+          response_payload: compactPayload,
         });
       }
       if (queueJobId !== undefined) {

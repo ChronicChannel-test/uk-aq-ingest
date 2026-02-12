@@ -551,6 +551,9 @@
       }
 
       function statusMeta(run) {
+        if (String(run && run.run_status || "").toLowerCase() === "partial") {
+          return { className: "partial", label: "Partial Run", detail: "Budget Limit" };
+        }
         if (isPartialBudgetRun(run)) {
           return { className: "partial", label: "Partial Run", detail: "Budget Limit" };
         }
