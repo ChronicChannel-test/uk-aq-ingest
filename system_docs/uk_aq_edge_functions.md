@@ -211,7 +211,10 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
   - Logs incoming request auth header presence (no secrets) for debugging.
   - Response includes `stations_requested`/`stations_selected` when station refs are supplied.
   - Response includes `series_polled` (timeseries with last-value updates during the run).
-  - Enforces a runtime budget and will return partial progress with `partial=true` when exceeded.
+  - Runtime budget behavior:
+    - Edge runtime (`BREATHELONDON_DROPBOX_UPLOAD_SOURCE=edge`): budget enabled; returns partial progress with `partial=true` when exceeded.
+    - Cloud Run runtime (`BREATHELONDON_DROPBOX_UPLOAD_SOURCE=cloud_run`): budget disabled by default (run length controlled by Cloud Run task timeout).
+    - Override with `BREATHELONDON_ENFORCE_RUNTIME_BUDGET=true|false`.
   - Updates `connectors.last_polled_at` on successful non-dry runs.
 - Logs:
   - Writes a log file to Dropbox `/connectors/breathelondon/log/YYYY-MM-DD/` when Dropbox credentials are configured.
@@ -436,7 +439,8 @@ Optional:
 - `BREATHELONDON_CONNECTOR_CODE` / `BREATHELONDON_SERVICE_REF` (optional override)
 - `BREATHELONDON_SERVICE_LABEL` (optional override)
 - `BREATHELONDON_USER_AGENT` (optional override)
-- `BREATHELONDON_MAX_RUNTIME_SECONDS` (optional; defaults to 120)
+- `BREATHELONDON_MAX_RUNTIME_SECONDS` (optional; defaults to 120; used when BL runtime budget is enabled)
+- `BREATHELONDON_ENFORCE_RUNTIME_BUDGET` (optional; defaults to `true` on edge and `false` on Cloud Run)
 - `LAQN_BASE_URL` (optional override for ERG LAQN API base URL)
 - `LAQN_CONNECTOR_CODE` / `LAQN_SERVICE_REF` (optional override)
 - `LAQN_CONNECTOR_LABEL` (optional override, `LAQN_SERVICE_LABEL` also accepted)

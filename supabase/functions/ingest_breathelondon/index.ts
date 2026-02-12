@@ -186,6 +186,13 @@ const DROPBOX_UPLOAD_SOURCE = (() => {
     .toLowerCase();
   return value === "cloud_run" ? "cloud_run" : "edge";
 })();
+const BREATHELONDON_ENFORCE_RUNTIME_BUDGET = (() => {
+  const configured = asBoolean(Deno.env.get("BREATHELONDON_ENFORCE_RUNTIME_BUDGET"));
+  if (configured !== undefined) {
+    return configured;
+  }
+  return DROPBOX_UPLOAD_SOURCE !== "cloud_run";
+})();
 
 const REST_BASE_URL = SUPABASE_URL
   ? `${SUPABASE_URL.replace(/\/$/, "")}/rest/v1`
@@ -1694,8 +1701,11 @@ serve(async (req) => {
   const maxRuntimeSeconds = Number.isFinite(BREATHELONDON_MAX_RUNTIME_SECONDS)
     ? Math.max(30, BREATHELONDON_MAX_RUNTIME_SECONDS)
     : DEFAULT_MAX_RUNTIME_SECONDS;
-  const runtimeDeadline = runStartedAt + maxRuntimeSeconds * 1000;
-  const shouldStop = () => Date.now() >= runtimeDeadline;
+  const runtimeDeadline = BREATHELONDON_ENFORCE_RUNTIME_BUDGET
+    ? runStartedAt + maxRuntimeSeconds * 1000
+    : Number.POSITIVE_INFINITY;
+  const shouldStop = () =>
+    BREATHELONDON_ENFORCE_RUNTIME_BUDGET && Date.now() >= runtimeDeadline;
 
   try {
     if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
@@ -1747,6 +1757,8 @@ serve(async (req) => {
         initial_days: initialDays,
         start_date: startDateOverride ? startDateOverride.toISOString() : null,
         dry_run: dryRun,
+        runtime_budget_enabled: BREATHELONDON_ENFORCE_RUNTIME_BUDGET,
+        max_runtime_seconds: BREATHELONDON_ENFORCE_RUNTIME_BUDGET ? maxRuntimeSeconds : null,
         debug,
       });
       if (!dropboxConfig && dropboxDiagnostics.reason) {

@@ -28,6 +28,8 @@ Dropbox behavior in Cloud Run:
 - Log uploads are always attempted when Dropbox credentials are present.
 - Raw uploads are gated by `BREATHELONDON_RAW_DROPBOX_ALLOWED_SUPABASE_URL` (or `UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL`) matching `SUPABASE_URL`.
 - File prefixes are `uk_aq_log_cloud_run_*` and `uk_aq_raw_cloud_run_*`.
+- Runtime budget in `ingest_breathelondon` is disabled by default in Cloud Run (`BREATHELONDON_DROPBOX_UPLOAD_SOURCE=cloud_run`).
+  - Set `BREATHELONDON_ENFORCE_RUNTIME_BUDGET=true` to re-enable the edge-style cutoff.
 
 ## Build and push
 
@@ -47,7 +49,7 @@ docker push "${IMAGE}"
 gcloud run jobs update uk-aq-breathelondon-ingest \
   --region europe-west2 \
   --image "${IMAGE}" \
-  --task-timeout 900s \
+  --task-timeout 600s \
   --max-retries 0
 ```
 
@@ -68,3 +70,4 @@ gcloud run jobs update uk-aq-breathelondon-ingest \
 - `BREATHELONDON_RAW_DROPBOX_ALLOWED_SUPABASE_URL` or `UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL` (raw upload gate only)
 - `SB_UK_AQ_CRON_SECRET`
 - `BREATHELONDON_REQUEST_PAYLOAD` (JSON object overrides; dynamic connector-derived station/window/batch still apply)
+- `BREATHELONDON_ENFORCE_RUNTIME_BUDGET` (optional; defaults to `false` in Cloud Run)

@@ -81,7 +81,7 @@ IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/uk-aq/uk-aq-scomm:latest"
 gcloud run jobs create uk-aq-scomm-ingest \
   --region "${REGION}" \
   --image "${IMAGE}" \
-  --task-timeout 900s \
+  --task-timeout 600s \
   --max-retries 0 \
   --set-env-vars "SUPABASE_URL=https://<project-ref>.supabase.co,UK_AQ_CORE_SCHEMA=uk_aq_core,UK_AQ_RAW_SCHEMA=uk_aq_raw,SCOMM_COUNTRY=GB,HISTORY_SUPABASE_URL=https://<history-project-ref>.supabase.co,HISTORY_SCHEMA=uk_aq_public"
 
@@ -89,7 +89,7 @@ gcloud run jobs create uk-aq-scomm-ingest \
 gcloud run jobs update uk-aq-scomm-ingest \
   --region "${REGION}" \
   --image "${IMAGE}" \
-  --task-timeout 900s \
+  --task-timeout 600s \
   --max-retries 0
 ```
 
