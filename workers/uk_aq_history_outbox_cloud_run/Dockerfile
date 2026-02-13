@@ -1,4 +1,4 @@
-FROM denoland/deno:2.1
+FROM denoland/deno:2.1.4
 
 ENV DENO_DIR=/deno-dir
 ENV DENO_NET_ALLOW=dhkpqsjibdnizkulfujv.supabase.co,rpstqrzmpbbukejmcsdj.supabase.co
