@@ -63,3 +63,25 @@ Connector rows are created/updated by station list scripts. Run the relevant scr
 5. `scripts/sensorcommunity/sensorcommunity_list_stations.py`
 
 During runtime, connector rows are also updated by dispatcher/ingest workers (`last_polled_at`, `last_run_start`, `last_run_end`, statuses).
+
+## 4. Sensor.Community first-run order (fresh DB)
+
+Run these in order before expecting Sensor.Community to appear on the hex map.
+
+1. Confirm script schema profile is core (not public view):
+   - `UK_AQ_CORE_SCHEMA=uk_aq_core`
+2. Upsert Sensor.Community stations + connector row:
+   - `python3 scripts/sensorcommunity/sensorcommunity_list_stations.py --to-supabase`
+3. Assign PCON/LA codes to stations (required for map inclusion):
+   - `python3 scripts/uk_aq_refresh_station_geo_aiven.py`
+4. Run Sensor.Community ingest to populate timeseries/observations:
+   - `python3 scripts/sensorcommunity/sensorcommunity_ingest.py --refresh-recent`
+5. Backfill Sensor.Community timeseries phenomena:
+   - `python3 scripts/sensorcommunity/sensorcommunity_backfill_timeseries_phenomena.py`
+6. Run station geo refresh again to catch any newly inserted stations:
+   - `python3 scripts/uk_aq_refresh_station_geo_aiven.py`
+
+Notes:
+
+1. `uk_aq_latest` excludes rows with no `pcon_code` and no `la_code`, so Sensor.Community can be missing from map filters until station geo refresh is done.
+2. If you see `403 permission denied for view stations` when running geo refresh, `UK_AQ_CORE_SCHEMA` is set incorrectly (usually `uk_aq_public` instead of `uk_aq_core`).

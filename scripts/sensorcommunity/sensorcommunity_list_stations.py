@@ -209,6 +209,7 @@ class SupabaseWriter:
                 "station_ref": station_ref_value,
                 "service_ref": str(service_ref),
                 "label": payload.get("label") or f"Sensor.Community {station_ref_value}",
+                "station_name": station_name,
                 "station_type": payload.get("station_type"),
                 "station_exposure": payload.get("station_exposure"),
                 "geometry": (
@@ -220,8 +221,6 @@ class SupabaseWriter:
                 "last_seen_at": utcnow().isoformat(),
                 "removed_at": None,
             }
-            if station_name:
-                candidate["station_name"] = station_name
             existing = rows_by_ref.get(station_ref_value)
             if existing is None:
                 rows_by_ref[station_ref_value] = candidate
@@ -239,8 +238,9 @@ class SupabaseWriter:
                 existing_name = existing_names.get(str(station_ref_value))
                 if isinstance(existing_name, str) and not existing_name.strip():
                     existing_name = None
-                if existing_name is not None and "station_name" in row:
-                    row.pop("station_name", None)
+                # Preserve previously curated names when overwrite_station_name is false.
+                if existing_name is not None:
+                    row["station_name"] = existing_name
         if rows:
             self.core.table("stations").upsert(
                 rows, on_conflict="connector_id,service_ref,station_ref"

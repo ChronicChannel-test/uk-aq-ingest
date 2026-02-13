@@ -16,3 +16,4 @@ network_info/LAQN/uk_aq_londonair_site_list_active.numbers
 network_info/OpenAQ/docs.openaq.org/
 .dashboards.pids
 workers/uk_aq_sensorcommunity_cloud_run/*.json
+data/gpkg/OS/os_open_names_gpkg/Data/opname_gb.gpkg
