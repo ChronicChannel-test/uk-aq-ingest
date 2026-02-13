@@ -96,6 +96,7 @@ const DEFAULT_INITIAL_DAYS = 7;
 const DEFAULT_WINDOW_HOURS = 24;
 const DEFAULT_SLEEP_SECONDS = 0.2;
 const DEFAULT_BATCH_SIZE = 500;
+const DEFAULT_HISTORY_BUFFER_FLUSH_ROWS = 5000;
 const DEFAULT_TIMEOUT_MS = 30_000;
 const DEFAULT_MAX_RUNTIME_SECONDS = 120;
 const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
@@ -1694,6 +1695,10 @@ serve(async (req) => {
   let seriesPolled = 0;
   let timeseriesUpdated = 0;
   let checkpointsUpserted = 0;
+  let historyWritten = 0;
+  let historyReceiptsUpserted = 0;
+  let historyEnqueued = 0;
+  let historyFlushes = 0;
   let stationsSelected = 0;
   let stationsRequested: number | null = null;
   let runLastObservedAt: string | null = null;
@@ -1735,6 +1740,15 @@ serve(async (req) => {
       const windowHours = asNumber(request.window_hours, DEFAULT_WINDOW_HOURS) ?? DEFAULT_WINDOW_HOURS;
       const sleepSeconds = asNumber(request.sleep_seconds, DEFAULT_SLEEP_SECONDS) ?? DEFAULT_SLEEP_SECONDS;
       const batchSize = asNumber(request.batch_size, DEFAULT_BATCH_SIZE) ?? DEFAULT_BATCH_SIZE;
+      const historyBufferFlushRows = Math.max(
+        1,
+        Math.trunc(
+          asNumber(
+            Deno.env.get("HISTORY_BUFFER_FLUSH_ROWS"),
+            DEFAULT_HISTORY_BUFFER_FLUSH_ROWS,
+          ) ?? DEFAULT_HISTORY_BUFFER_FLUSH_ROWS,
+        ),
+      );
       const limit = asNumber(request.limit);
       const skipStations = asBoolean(request.skip_stations, false) ?? false;
       const activeOnly = asBoolean(request.active_only, false) ?? false;
@@ -1949,6 +1963,45 @@ serve(async (req) => {
               const phenomenonIds = dryRun
                 ? await fetchPhenomenaIds(connector.id, speciesList)
                 : await upsertPhenomena(connector.id, speciesList);
+              const historyRowsPending: HistoryObservationRow[] = [];
+              const flushPendingHistoryRows = async (
+                force = false,
+                reason = "threshold",
+              ) => {
+                if (!historyRowsPending.length) {
+                  return;
+                }
+                if (!force && historyRowsPending.length < historyBufferFlushRows) {
+                  return;
+                }
+                const rows = historyRowsPending.splice(0, historyRowsPending.length);
+                try {
+                  const stats = await writeHistoryWithOutbox(
+                    publicRpcRequest,
+                    rows,
+                    (message) => {
+                      log.warn("History dual-write warning.", {
+                        message,
+                        rows: rows.length,
+                        reason,
+                      });
+                      errors.push(`history_dual_write: ${message}`);
+                    },
+                  );
+                  historyFlushes += 1;
+                  historyWritten += stats.written;
+                  historyReceiptsUpserted += stats.receipts_upserted;
+                  historyEnqueued += stats.enqueued;
+                } catch (error) {
+                  const message = error instanceof Error ? error.message : String(error);
+                  log.warn("History dual-write flush failed.", {
+                    message,
+                    rows: rows.length,
+                    reason,
+                  });
+                  errors.push(`history_dual_write_flush: ${message}`);
+                }
+              };
 
               const timeseriesRows: Record<string, unknown>[] = [];
               for (const row of stationRows) {
@@ -2085,9 +2138,8 @@ serve(async (req) => {
                         if (!dryRun) {
                           for (const batch of chunk(freshRows, batchSize)) {
                             observationsUpserted += await upsertObservations(batch);
-                            await writeHistoryWithOutbox(
-                              publicRpcRequest,
-                              toHistoryObservationRows(
+                            historyRowsPending.push(
+                              ...toHistoryObservationRows(
                                 batch,
                                 String(connector.connector_code ?? connectorCode),
                                 serviceRef,
@@ -2095,14 +2147,8 @@ serve(async (req) => {
                                 Number(connector.id),
                                 timeseriesId,
                               ),
-                              (message) => {
-                                log.warn("History dual-write warning.", {
-                                  timeseries_ref: timeseriesRef,
-                                  message,
-                                });
-                                errors.push(`history_dual_write: ${message}`);
-                              },
                             );
+                            await flushPendingHistoryRows(false, "batch_threshold");
                           }
                         }
                       }
@@ -2187,6 +2233,7 @@ serve(async (req) => {
                 }
               }
 
+              await flushPendingHistoryRows(true, "run_complete");
               await flushUpdates();
 
               responsePayload = {
@@ -2198,6 +2245,10 @@ serve(async (req) => {
                 last_observed_at: runLastObservedAt,
                 species: speciesList,
                 observations_upserted: observationsUpserted,
+                history_written: historyWritten,
+                history_receipts_upserted: historyReceiptsUpserted,
+                history_enqueued: historyEnqueued,
+                history_flushes: historyFlushes,
                 timeseries_updated: timeseriesUpdated,
                 series_polled: seriesPolled,
                 checkpoints_upserted: checkpointsUpserted,
@@ -2262,6 +2313,10 @@ serve(async (req) => {
     connector_id: connector?.id ?? null,
     stations_selected: stationsSelected,
     observations_upserted: observationsUpserted,
+    history_written: historyWritten,
+    history_receipts_upserted: historyReceiptsUpserted,
+    history_enqueued: historyEnqueued,
+    history_flushes: historyFlushes,
     timeseries_updated: timeseriesUpdated,
     series_polled: seriesPolled,
     checkpoints_upserted: checkpointsUpserted,

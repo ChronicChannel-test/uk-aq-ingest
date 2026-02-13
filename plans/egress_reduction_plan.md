@@ -2,7 +2,7 @@
 
 Date: 2026-02-02
 Scope: Analysis and plan only; no code changes performed.
-Status update: 2026-02-09 (tracked against current repos and live queue behavior).
+Status update: 2026-02-13 (tracked against current repos and live queue behavior, including history-project parity actions).
 
 Status markers:
 - ✅ Done
@@ -52,6 +52,12 @@ Current state snapshot (Monday, February 9, 2026):
 5) ⏳ Roll out ETag/If-None-Match across remaining public endpoints
 - `uk_aq_latest` already supports ETag/304.
 - Extend same pattern to `uk_aq_pcon_hex`, `uk_aq_la_hex`, and `uk_aq_timeseries`.
+
+6) 🎯 History DB parity pass (same optimization intent as main DB)
+- Reduce history RPC call count by batching writes per ingest run (avoid per-timeseries/per-window history RPC calls where possible).
+- Tune history outbox drain batch sizes for fewer RPC round-trips per scheduler run.
+- Verify history table/index footprint and remove duplicate index patterns that do not improve lookup performance.
+- Add history-specific request-count/egress tracking to weekly runbook.
 
 This plan is based on the authoritative cross-repo READMEs and a scan of all five repos for Supabase-related network calls, polling patterns, and large payload risks.
 
@@ -364,6 +370,40 @@ One row per Supabase-related call site (active code + notable test/demo scripts)
 
 ---
 
+### K) History DB parity (write-path egress + storage)
+**What we found**
+- History egress is dominated by very high REST request count, mainly history RPC calls from ingest flows and outbox draining.
+- History rows are not physically "smaller" than main observations rows in the current schema:
+  - main observations key uses bigint IDs (`connector_id`, `timeseries_id`).
+  - history observations key uses text natural keys (`connector_code`, `service_ref`, `timeseries_ref`).
+- The history bootstrap SQL creates an additional btree index on the exact primary key columns, which can duplicate index storage.
+
+**Options**
+1) **Batch history writes at run scope (not inner loops)**
+   - Pros: largest reduction in request count and per-call overhead.
+   - Cons: larger in-memory buffers while collecting rows.
+   - Risk: med; Impact: high.
+2) **Tune outbox drain to reduce round-trips**
+   - Increase claim and/or chunk sizes where runtime budget allows.
+   - Pros: fewer History + main RPC calls per flush cycle.
+   - Cons: larger retry batches on failure.
+   - Risk: low/med; Impact: med/high.
+3) **Remove duplicate history index pattern**
+   - Keep PK index and BRIN-on-time; drop duplicate btree on same PK columns if present.
+   - Pros: lowers storage footprint and write amplification.
+   - Cons: requires migration + verify query plans.
+   - Risk: low; Impact: med.
+4) **Track history API request count as first-class KPI**
+   - Monitor Management API `usage.api-requests-count` and `usage.api-counts` for history project alongside main project.
+   - Pros: catches request explosions early.
+   - Cons: needs scheduled reporting.
+   - Risk: low; Impact: med.
+
+**Recommendation**
+- Execute (1) + (2) first for immediate egress relief, then (3) for storage cleanup, and keep (4) as ongoing guardrail.
+
+---
+
 ## STEP 4 — Best Path (Phased Plan)
 
 ### Phase 1 (quick wins, minimal risk)
@@ -373,16 +413,20 @@ One row per Supabase-related call site (active code + notable test/demo scripts)
 4) ✅ Reduce `uk_aq_latest` response fields to those actually used in UI.
 5) ✅ Move hex-map time-window filtering server-side (`uk_aq_latest`) instead of client-side `last_value_at` filtering.
 6) ✅ Add visibility gating for map polling (UK and C&R tabs): poll only when the tab panel and document are visible; pause when hidden and refresh once on re-visibility.
+7) ⏳ Refactor ingest flows to batch history dual-write calls at run scope (avoid repeated `writeHistoryWithOutbox` in tight loops).
+8) ⏳ Increase history outbox throughput knobs to reduce per-run RPC churn (`HISTORY_OUTBOX_CLOUD_RUN_CLAIM_BATCH_LIMIT`, `HISTORY_OUTBOX_FLUSH_LIMIT`, `HISTORY_UPSERT_CHUNK_SIZE`) and validate against runtime budget.
 
 ### Phase 2 (medium effort)
 1) ⏳ Add ETag/If-None-Match support for Edge Function responses.
 2) ⏳ Add server-side downsampling / aggregation for timeseries.
 3) ✅ Introduce “since” incremental fetch for `uk_aq_latest` and `uk_aq_timeseries`.
 4) ⏳ Remove row-level `updated_at` from `uk_aq_latest` public payloads (keep server-side cursoring and `next_since` / `next_since_id`).
+5) ⏳ Apply history schema migration to remove duplicate PK-like btree index where present; keep BRIN time index for scan efficiency.
 
 ### Phase 3 (structural)
 1) ⏳ Materialized views for “latest per station/pollutant” and key aggregates.
 2) ⏳ Cloudflare caching/proxy in front of public endpoints.
+3) ⏳ Add weekly history-vs-main request/egress budget alerts using Management API counts.
 
 ### Top 5 actions (order)
 1) ✅ Cache-Control headers on public Edge Functions.

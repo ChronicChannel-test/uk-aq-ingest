@@ -69,6 +69,7 @@ const DEFAULT_GROUP = "London";
 const DEFAULT_SPECIES = ["NO2", "PM10", "PM25", "O3"];
 const DEFAULT_DAYS = 1;
 const DEFAULT_BATCH_SIZE = 500;
+const DEFAULT_HISTORY_BUFFER_FLUSH_ROWS = 5000;
 const DEFAULT_SLEEP_SECONDS = 0.2;
 const DEFAULT_MAX_RUNTIME_SECONDS = 120;
 const DEFAULT_TIMEOUT_MS = 30_000;
@@ -1716,6 +1717,10 @@ serve(async (req) => {
   let connectorId: string | null = null;
   let connectorCodeForLog = LAQN_CONNECTOR_CODE;
   let skippedHttp400 = 0;
+  let historyWritten = 0;
+  let historyReceiptsUpserted = 0;
+  let historyEnqueued = 0;
+  let historyFlushes = 0;
   const runStartedAt = Date.now();
   const maxRuntimeSeconds = Number.isFinite(LAQN_MAX_RUNTIME_SECONDS)
     ? Math.max(30, LAQN_MAX_RUNTIME_SECONDS)
@@ -1740,6 +1745,13 @@ serve(async (req) => {
   const speciesList = parseSpeciesList(payload.species);
   const days = payload.days ?? DEFAULT_DAYS;
   const batchSize = payload.batch_size ?? DEFAULT_BATCH_SIZE;
+  const historyBufferFlushRows = (() => {
+    const parsed = Number(Deno.env.get("HISTORY_BUFFER_FLUSH_ROWS") ?? "");
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      return DEFAULT_HISTORY_BUFFER_FLUSH_ROWS;
+    }
+    return Math.max(1, Math.trunc(parsed));
+  })();
   const sleepSeconds = payload.sleep_seconds ?? DEFAULT_SLEEP_SECONDS;
   const dryRun = Boolean(payload.dry_run);
   const startFromLatest = Boolean(payload.start_from_latest);
@@ -1883,12 +1895,49 @@ serve(async (req) => {
         let observationsUpserted = 0;
         const latestObservedSummary: Record<string, Record<string, string | null>> = {};
         const timeseriesUpdates: Array<{ id: number; last_value: number; last_value_at: string }> = [];
+        const historyRowsPending: HistoryObservationRow[] = [];
         const pollTimestamp = new Date().toISOString();
         const checkpointRows: Array<{ station_id: number; last_polled_at: string; updated_at: string }> = [];
         let backfillSeries = 0;
         let backfillEarliest: Date | null = null;
         let timeBudgetHit = false;
         let stationsProcessed = 0;
+        const flushPendingHistoryRows = async (
+          force = false,
+          reason = "threshold",
+        ) => {
+          if (!historyRowsPending.length || dryRun) {
+            return;
+          }
+          if (!force && historyRowsPending.length < historyBufferFlushRows) {
+            return;
+          }
+          const rows = historyRowsPending.splice(0, historyRowsPending.length);
+          try {
+            const stats = await writeHistoryWithOutbox(
+              publicRpcRequest,
+              rows,
+              (message) => {
+                log.warn("History dual-write warning.", {
+                  message,
+                  rows: rows.length,
+                  reason,
+                });
+              },
+            );
+            historyFlushes += 1;
+            historyWritten += stats.written;
+            historyReceiptsUpserted += stats.receipts_upserted;
+            historyEnqueued += stats.enqueued;
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            log.warn("History dual-write flush failed.", {
+              message,
+              rows: rows.length,
+              reason,
+            });
+          }
+        };
 
         for (const row of stationRows) {
           if (shouldStop()) {
@@ -2002,9 +2051,8 @@ serve(async (req) => {
             if (observations.length && !dryRun) {
               for (const batch of chunk(observations, batchSize)) {
                 observationsUpserted += await upsertObservations(batch);
-                await writeHistoryWithOutbox(
-                  publicRpcRequest,
-                  toHistoryObservationRows(
+                historyRowsPending.push(
+                  ...toHistoryObservationRows(
                     batch,
                     connectorCodeForLog,
                     serviceRef,
@@ -2012,13 +2060,8 @@ serve(async (req) => {
                     Number(connectorId),
                     timeseriesId,
                   ),
-                  (message) => {
-                    log.warn("History dual-write warning.", {
-                      timeseries_ref: timeseriesRef,
-                      message,
-                    });
-                  },
                 );
+                await flushPendingHistoryRows(false, "batch_threshold");
               }
             }
             if (lastObserved && lastValue !== null) {
@@ -2057,6 +2100,7 @@ serve(async (req) => {
             max_runtime_seconds: maxRuntimeSeconds,
           });
         }
+        await flushPendingHistoryRows(true, "run_complete");
 
         let timeseriesUpdated = 0;
         let checkpointsUpserted = 0;
@@ -2078,6 +2122,10 @@ serve(async (req) => {
           stations_processed: stationsProcessed,
           species: speciesList,
           observations_upserted: observationsUpserted,
+          history_written: historyWritten,
+          history_receipts_upserted: historyReceiptsUpserted,
+          history_enqueued: historyEnqueued,
+          history_flushes: historyFlushes,
           timeseries_updated: timeseriesUpdated,
           checkpoints_upserted: checkpointsUpserted,
           skipped_http_400: skippedHttp400,
@@ -2100,6 +2148,10 @@ serve(async (req) => {
           connector_id: connectorId,
           stations: stationRows.length,
           observations_upserted: observationsUpserted,
+          history_written: historyWritten,
+          history_receipts_upserted: historyReceiptsUpserted,
+          history_enqueued: historyEnqueued,
+          history_flushes: historyFlushes,
           timeseries_updated: timeseriesUpdated,
           skipped_http_400: skippedHttp400,
           start_from_latest: startFromLatest,

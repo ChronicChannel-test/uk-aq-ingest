@@ -130,6 +130,8 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
   - Skips timeseries with missing `last_value_at` or `last_value_at` older than the poll window.
   - Enforces a runtime budget and will return partial progress with `partial=true` when exceeded.
   - Dedupes observations by `observed_at` per timeseries before upsert to avoid duplicate conflict errors.
+  - History dual-write rows are buffered and flushed in batches to reduce History RPC request count (`HISTORY_BUFFER_FLUSH_ROWS`, default `5000`).
+  - Response payload includes history write counters: `history_written`, `history_receipts_upserted`, `history_enqueued`, `history_flushes`.
 - Writes:
   - `observations` (upsert by connector_id + timeseries_id + observed_at)
   - `timeseries.last_value` and `timeseries.last_value_at` (update by id)
@@ -232,6 +234,9 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
     - Edge runtime (`BREATHELONDON_DROPBOX_UPLOAD_SOURCE=edge`): budget enabled; returns partial progress with `partial=true` when exceeded.
     - Cloud Run runtime (`BREATHELONDON_DROPBOX_UPLOAD_SOURCE=cloud_run`): budget disabled by default (run length controlled by Cloud Run task timeout).
     - Override with `BREATHELONDON_ENFORCE_RUNTIME_BUDGET=true|false`.
+  - History dual-write rows are buffered and flushed in batches to reduce History RPC request count (`HISTORY_BUFFER_FLUSH_ROWS`, default `5000`).
+    - This applies to both Edge and Cloud Run because Cloud Run reuses `ingest_breathelondon/index.ts`.
+  - Response payload includes history write counters: `history_written`, `history_receipts_upserted`, `history_enqueued`, `history_flushes`.
   - Updates `connectors.last_polled_at` on successful non-dry runs.
 - Logs:
   - Writes a log file to Dropbox `/connectors/breathelondon/log/YYYY-MM-DD/` when Dropbox credentials are configured.
@@ -260,6 +265,8 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
   - Logs a warning when a site/species fetch returns data older than UTC midnight for the current day.
   - When CSV settings are configured, uploads a daily CSV per pollutant to Dropbox using a fixed station (see env vars).
   - Enforces a runtime budget and will return partial progress with `partial=true` when exceeded.
+  - History dual-write rows are buffered and flushed in batches to reduce History RPC request count (`HISTORY_BUFFER_FLUSH_ROWS`, default `5000`).
+  - Response payload includes history write counters: `history_written`, `history_receipts_upserted`, `history_enqueued`, `history_flushes`.
 - Logs:
   - Writes a log file to Dropbox `/connectors/erg_laqn/log/YYYY-MM-DD/` (prefix `uk_aq_log_edge_erg_laqn_`).
   - Writes raw payloads to Dropbox `/connectors/erg_laqn/raw_data/YYYY-MM-DD/` as ZIP (prefix `uk_aq_raw_edge_erg_laqn_`).

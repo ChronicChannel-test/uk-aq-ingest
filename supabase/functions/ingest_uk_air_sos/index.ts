@@ -2,7 +2,10 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import "../_shared/fetch_egress_patch.ts";
 import { cacheControlHeaders } from "../_shared/cache.ts";
-import { writeHistoryWithOutbox } from "../_shared/history_client.ts";
+import {
+  type HistoryObservationRow,
+  writeHistoryWithOutbox,
+} from "../_shared/history_client.ts";
 
 type PollRequest = {
   connector_id?: string;
@@ -49,6 +52,7 @@ const DEFAULT_WINDOW_HOURS = 6;
 const DEFAULT_MAX_RUNTIME_SECONDS = 120;
 const DEFAULT_TIMEOUT_MS = 30_000;
 const DEFAULT_BOOTSTRAP_NULL_LAST_VALUE_BATCH = 50;
+const DEFAULT_HISTORY_BUFFER_FLUSH_ROWS = 5000;
 const PAGE_SIZE = 1000;
 const CONCURRENCY_LIMIT = 5;
 
@@ -313,6 +317,67 @@ serve(async (req) => {
         responsePayload = { status: "poll_disabled", connector_id: connector.id };
         log.info("Polling disabled for connector.", { connector_id: connector.id });
       } else {
+        const historyBufferFlushRows = clampPositiveInt(
+          Number(Deno.env.get("HISTORY_BUFFER_FLUSH_ROWS") ?? ""),
+          DEFAULT_HISTORY_BUFFER_FLUSH_ROWS,
+        );
+        const historyRowsPending: HistoryObservationRow[] = [];
+        let historyFlushes = 0;
+        let historyWritten = 0;
+        let historyReceiptsUpserted = 0;
+        let historyEnqueued = 0;
+        const flushPendingHistoryRows = async (
+          reason: string,
+          force = false,
+        ) => {
+          if (!historyRowsPending.length) {
+            return;
+          }
+          if (!force && historyRowsPending.length < historyBufferFlushRows) {
+            return;
+          }
+          const rows = historyRowsPending.splice(0, historyRowsPending.length);
+          try {
+            const stats = await writeHistoryWithOutbox(
+              publicRpcRequest,
+              rows,
+              (message) => {
+                log.warn("History dual-write warning", {
+                  message,
+                  rows: rows.length,
+                  reason,
+                });
+              },
+            );
+            historyFlushes += 1;
+            historyWritten += stats.written;
+            historyReceiptsUpserted += stats.receipts_upserted;
+            historyEnqueued += stats.enqueued;
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            errors.push(`history_flush_failed: ${message}`);
+            log.warn("History dual-write flush failed.", {
+              message,
+              rows: rows.length,
+              reason,
+            });
+            await errorLogger.logError({
+              source: "edge",
+              severity: "error",
+              message: "History dual-write flush failed.",
+              context: {
+                connector_id: connector?.id ?? requestedConnectorId ?? null,
+                rows: rows.length,
+                reason,
+                error: message,
+              },
+              connector_code: connector?.connector_code ??
+                requestedConnectorCode ?? UK_AIR_SOS_CONNECTOR_CODE,
+              connector_id: connector?.id ?? requestedConnectorId ?? null,
+            });
+          }
+        };
+
         let shouldPoll = true;
         const pollWindow = requestedWindowHours ?? connector.poll_window_hours ?? DEFAULT_WINDOW_HOURS;
         const effectiveLimit = requestedLimit ?? connector.poll_timeseries_batch_size ?? undefined;
@@ -486,14 +551,9 @@ serve(async (req) => {
                     status: point.status == null ? null : String(point.status),
                     connector_id: Number(point.connector_id),
                     timeseries_id: Number(point.timeseries_id),
-                  };
+                  } satisfies HistoryObservationRow;
                 });
-                await writeHistoryWithOutbox(publicRpcRequest, historyRows, (message) => {
-                  log.warn("History dual-write warning", {
-                    timeseries_id: row.id,
-                    message,
-                  });
-                });
+                historyRowsPending.push(...historyRows);
               }
               await upsertLastValue(
                 row.id,
@@ -530,6 +590,7 @@ serve(async (req) => {
               max_runtime_seconds: maxRuntimeSeconds,
             });
           }
+          await flushPendingHistoryRows("run_complete", true);
 
           if (checkpointCandidates.length) {
             await upsertUkAirSosTimeseriesCheckpoints(
@@ -569,6 +630,10 @@ serve(async (req) => {
             connector_id: connector.id,
             series_polled: polled,
             observations_upserted: observationsUpserted,
+            history_written: historyWritten,
+            history_receipts_upserted: historyReceiptsUpserted,
+            history_enqueued: historyEnqueued,
+            history_flushes: historyFlushes,
             errors,
             partial: timeBudgetHit,
             stopped_reason: timeBudgetHit ? "runtime_budget_exceeded" : null,
