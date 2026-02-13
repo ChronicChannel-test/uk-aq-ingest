@@ -67,6 +67,25 @@ Environment:
 - `SB_PUBLISHABLE_DEFAULT_KEY`
 - `SB_ANON_JWT`
 
+### `scripts/uk_aq_check_env.sh`
+Purpose:
+- Run one-pass validation for local Supabase env variables used by Ingest + History.
+- Check variable presence, project-ref alignment, masked secret previews, legacy JWT claims, and optional live HTTP checks.
+
+Common commands:
+```
+./scripts/uk_aq_check_env.sh
+./scripts/uk_aq_check_env.sh --no-network
+./scripts/uk_aq_check_env.sh --env-file .env.supabase
+```
+
+Notes:
+- Exit code `0` = pass (warnings allowed); exit code `1` = one or more failures.
+- Network mode validates:
+  - `SUPABASE_ACCESS_TOKEN` against Supabase Management API.
+  - Main/history REST root access with `SB_ANON_JWT`, `SUPABASE_SERVICE_ROLE_KEY`, and `HISTORY_SERVICE_ROLE_KEY`.
+- Secret values are masked in output.
+
 ### `scripts/uk_aq_export_connectors_snapshot.py`
 Purpose:
 - Export connector polling settings and station/timeseries counts to a CSV for spreadsheet review.

@@ -103,21 +103,33 @@ serve(async (req) => {
   const url = new URL(req.url);
   const pconVersion = normalizeText(url.searchParams.get("pcon_version"));
   const limit = parseLimit(url.searchParams.get("limit"), DEFAULT_LIMIT);
+  const rawSince = url.searchParams.get("since");
+  const since = rawSince === null ? null : normalizeTimestamp(rawSince);
+  if (rawSince !== null && since === null) {
+    return await finish(
+      json({ error: "Invalid since timestamp. Provide ISO-8601 datetime (e.g. 2026-02-07T10:30:00Z)." }, 400),
+      { error_type: "invalid_since" },
+    );
+  }
   const ifNoneMatch = req.headers.get("if-none-match");
   const requestFields = {
     has_pcon_version: Boolean(pconVersion),
     limit,
+    has_since: Boolean(since),
     has_if_none_match: Boolean(ifNoneMatch),
   };
 
   try {
-    const rows = await loadLatest({ pconVersion, limit });
+    const rows = await loadLatest({ pconVersion, limit, since });
     const versions = Array.from(
       new Set(rows.map((row) => row.pcon_version).filter(Boolean)),
     ).sort();
     const lastUpdated = maxTimestamp(rows.map((row) => row.latest_value_at));
+    const nextSince = lastUpdated ?? since;
     const payload = {
       metric_default: "median",
+      since,
+      next_since: nextSince,
       count: rows.length,
       pcon_versions: versions,
       last_updated: lastUpdated,
@@ -145,6 +157,7 @@ serve(async (req) => {
 type LoadOptions = {
   pconVersion: string | null;
   limit: number;
+  since: string | null;
 };
 
 type PconRow = {
@@ -158,8 +171,49 @@ type PconRow = {
   latest_value_at: string | null;
 };
 
-async function loadLatest({ pconVersion, limit }: LoadOptions): Promise<PconRow[]> {
-  const { data, error } = await postgrestRequest<PconRow[]>(
+async function loadLatest({ pconVersion, limit, since }: LoadOptions): Promise<PconRow[]> {
+  const { data, error } = await callPconHexRpc({
+    pconVersion,
+    limit,
+    since,
+  });
+  if (error) {
+    throw new Error(error.message);
+  }
+  const rows = (data ?? []).filter((row) =>
+    !since || isTimestampAfter(row?.latest_value_at, since)
+  );
+  return rows.filter((row) =>
+    typeof row?.pcon_code === "string" && row.pcon_code.trim().length > 0
+  );
+}
+
+type PconRpcCallOptions = {
+  pconVersion: string | null;
+  limit: number;
+  since: string | null;
+};
+
+async function callPconHexRpc(options: PconRpcCallOptions) {
+  const { pconVersion, limit, since } = options;
+  const cursorAttempt = await postgrestRequest<PconRow[]>(
+    "POST",
+    "rpc/uk_aq_pcon_hex_rpc",
+    undefined,
+    UK_AQ_PUBLIC_SCHEMA,
+    {
+      pcon_version: pconVersion,
+      limit_rows: limit,
+      since_ts: since,
+    },
+  );
+  if (!cursorAttempt.error) {
+    return cursorAttempt;
+  }
+  if (!looksLikeSinceSignatureMismatch(cursorAttempt.error.message)) {
+    return cursorAttempt;
+  }
+  return await postgrestRequest<PconRow[]>(
     "POST",
     "rpc/uk_aq_pcon_hex_rpc",
     undefined,
@@ -169,13 +223,12 @@ async function loadLatest({ pconVersion, limit }: LoadOptions): Promise<PconRow[
       limit_rows: limit,
     },
   );
-  if (error) {
-    throw new Error(error.message);
-  }
-  const rows = data ?? [];
-  return rows.filter((row) =>
-    typeof row?.pcon_code === "string" && row.pcon_code.trim().length > 0
-  );
+}
+
+function looksLikeSinceSignatureMismatch(message: string): boolean {
+  const normalized = String(message || "").toLowerCase();
+  return normalized.includes("could not find the function") &&
+    normalized.includes("uk_aq_pcon_hex_rpc");
 }
 
 function normalizeText(value: string | null): string | null {
@@ -184,6 +237,14 @@ function normalizeText(value: string | null): string | null {
   }
   const trimmed = value.trim();
   return trimmed ? trimmed : null;
+}
+
+function normalizeTimestamp(value: string): string | null {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+  return parsed.toISOString();
 }
 
 function parseLimit(value: string | null, fallback: number): number {
@@ -195,6 +256,18 @@ function parseLimit(value: string | null, fallback: number): number {
     return fallback;
   }
   return Math.max(1, Math.min(MAX_LIMIT, Math.floor(parsed)));
+}
+
+function isTimestampAfter(candidate: string | null | undefined, since: string): boolean {
+  if (!candidate) {
+    return false;
+  }
+  const candidateDate = new Date(candidate);
+  const sinceDate = new Date(since);
+  if (Number.isNaN(candidateDate.getTime()) || Number.isNaN(sinceDate.getTime())) {
+    return false;
+  }
+  return candidateDate.getTime() > sinceDate.getTime();
 }
 
 function maxTimestamp(values: Array<string | null | undefined>): string | null {

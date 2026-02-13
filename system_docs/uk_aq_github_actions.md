@@ -15,7 +15,7 @@ This repo uses GitHub Actions for scheduled syncs and deployments.
 - Purpose: inject Supabase project ref into the web page, set Supabase secrets, deploy edge functions.
 - Deployed functions: `ingest_uk_air_sos`, `ingest_breathelondon`, `ingest_sensorcommunity`,
   `uk_aq_dispatch_polls`, `uk_aq_latest`,
-  `uk_aq_bristol_latest`, `uk_aq_la_hex`, `uk_aq_pcon_hex`,
+  `uk_aq_stations_chart`, `uk_aq_la_hex`, `uk_aq_pcon_hex`,
   `uk_aq_stations`, `uk_aq_timeseries`.
 - Secrets: `SUPABASE_PROJECT_REF`, `SB_PUBLISHABLE_DEFAULT_KEY`, `SUPABASE_ACCESS_TOKEN`,
   `SUPABASE_SECRETS_ENV` (newline-delimited env file contents).

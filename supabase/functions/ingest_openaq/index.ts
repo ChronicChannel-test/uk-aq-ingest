@@ -3072,9 +3072,6 @@ serve(async (req) => {
   if (!dryRun) {
     const observationRows: Array<Record<string, unknown>> = [];
     const historyRows: HistoryObservationRow[] = [];
-    const historyConnectorCode = String(
-      connector.connector_code ?? connectorCode,
-    );
     for (
       const [timeseriesRef, observations] of observationsByTimeseries.entries()
     ) {
@@ -3091,14 +3088,11 @@ serve(async (req) => {
           status: null,
         });
         historyRows.push({
-          connector_code: historyConnectorCode,
-          service_ref: OPENAQ_SERVICE_REF,
-          timeseries_ref: timeseriesRef,
+          connector_id: Number(connectorId),
+          timeseries_id: timeseriesId,
           observed_at: observedAt,
           value,
           status: null,
-          connector_id: Number(connectorId),
-          timeseries_id: timeseriesId,
         });
       }
     }

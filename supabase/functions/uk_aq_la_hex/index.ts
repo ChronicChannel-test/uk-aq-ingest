@@ -490,22 +490,34 @@ serve(async (req) => {
   const laVersion = normalizeText(url.searchParams.get("la_version"));
   const region = normalizeText(url.searchParams.get("region"));
   const limit = parseLimit(url.searchParams.get("limit"), DEFAULT_LIMIT);
+  const rawSince = url.searchParams.get("since");
+  const since = rawSince === null ? null : normalizeTimestamp(rawSince);
+  if (rawSince !== null && since === null) {
+    return await finish(
+      json({ error: "Invalid since timestamp. Provide ISO-8601 datetime (e.g. 2026-02-07T10:30:00Z)." }, 400),
+      { error_type: "invalid_since" },
+    );
+  }
   const ifNoneMatch = req.headers.get("if-none-match");
   const requestFields = {
     has_la_version: Boolean(laVersion),
     has_region: Boolean(region),
     limit,
+    has_since: Boolean(since),
     has_if_none_match: Boolean(ifNoneMatch),
   };
 
   try {
-    const rows = await loadLatest({ laVersion, region, limit });
+    const rows = await loadLatest({ laVersion, region, limit, since });
     const versions = Array.from(
       new Set(rows.map((row) => row.la_version).filter(Boolean)),
     ).sort();
     const lastUpdated = maxTimestamp(rows.map((row) => row.latest_value_at));
+    const nextSince = lastUpdated ?? since;
     const payload = {
       metric_default: "median",
+      since,
+      next_since: nextSince,
       count: rows.length,
       la_versions: versions,
       last_updated: lastUpdated,
@@ -534,6 +546,7 @@ type LoadOptions = {
   laVersion: string | null;
   region: string | null;
   limit: number;
+  since: string | null;
 };
 
 type LaRow = {
@@ -548,12 +561,54 @@ type LaRow = {
   latest_value_at: string | null;
 };
 
-async function loadLatest({ laVersion, region, limit }: LoadOptions): Promise<LaRow[]> {
+async function loadLatest({ laVersion, region, limit, since }: LoadOptions): Promise<LaRow[]> {
   const regionCodes = resolveRegionCodes(region);
   if (region && !regionCodes) {
     return [];
   }
-  const { data, error } = await postgrestRequest<LaRow[]>(
+  const { data, error } = await callLaHexRpc({
+    regionCodes,
+    laVersion,
+    limit,
+    since,
+  });
+  if (error) {
+    throw new Error(error.message);
+  }
+  const rows = (data ?? []).filter((row) =>
+    !since || isTimestampAfter(row?.latest_value_at, since)
+  );
+  return normalizeLaRows(rows, regionCodes);
+}
+
+type LaRpcCallOptions = {
+  regionCodes: string[] | null;
+  laVersion: string | null;
+  limit: number;
+  since: string | null;
+};
+
+async function callLaHexRpc(options: LaRpcCallOptions) {
+  const { regionCodes, laVersion, limit, since } = options;
+  const cursorAttempt = await postgrestRequest<LaRow[]>(
+    "POST",
+    "rpc/uk_aq_la_hex_rpc",
+    undefined,
+    UK_AQ_PUBLIC_SCHEMA,
+    {
+      region: regionCodes,
+      la_version: laVersion,
+      limit_rows: limit,
+      since_ts: since,
+    },
+  );
+  if (!cursorAttempt.error) {
+    return cursorAttempt;
+  }
+  if (!looksLikeSinceSignatureMismatch(cursorAttempt.error.message)) {
+    return cursorAttempt;
+  }
+  return await postgrestRequest<LaRow[]>(
     "POST",
     "rpc/uk_aq_la_hex_rpc",
     undefined,
@@ -564,10 +619,12 @@ async function loadLatest({ laVersion, region, limit }: LoadOptions): Promise<La
       limit_rows: limit,
     },
   );
-  if (error) {
-    throw new Error(error.message);
-  }
-  return normalizeLaRows(data ?? [], regionCodes);
+}
+
+function looksLikeSinceSignatureMismatch(message: string): boolean {
+  const normalized = String(message || "").toLowerCase();
+  return normalized.includes("could not find the function") &&
+    normalized.includes("uk_aq_la_hex_rpc");
 }
 
 function normalizeText(value: string | null): string | null {
@@ -576,6 +633,14 @@ function normalizeText(value: string | null): string | null {
   }
   const trimmed = value.trim();
   return trimmed ? trimmed : null;
+}
+
+function normalizeTimestamp(value: string): string | null {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+  return parsed.toISOString();
 }
 
 function resolveRegionCodes(region: string | null): string[] | null {
@@ -598,6 +663,18 @@ function parseLimit(value: string | null, fallback: number): number {
     return fallback;
   }
   return Math.max(1, Math.min(MAX_LIMIT, Math.floor(parsed)));
+}
+
+function isTimestampAfter(candidate: string | null | undefined, since: string): boolean {
+  if (!candidate) {
+    return false;
+  }
+  const candidateDate = new Date(candidate);
+  const sinceDate = new Date(since);
+  if (Number.isNaN(candidateDate.getTime()) || Number.isNaN(sinceDate.getTime())) {
+    return false;
+  }
+  return candidateDate.getTime() > sinceDate.getTime();
 }
 
 function maxTimestamp(values: Array<string | null | undefined>): string | null {

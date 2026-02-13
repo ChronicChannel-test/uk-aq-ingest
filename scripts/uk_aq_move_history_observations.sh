@@ -73,22 +73,18 @@ while true; do
 DROP TABLE IF EXISTS tmp_obs;
 CREATE TEMP TABLE tmp_obs AS
 SELECT
+  o.connector_id,
   o.timeseries_id,
   o.observed_at,
   o.value,
-  o.status,
-  t.service_ref,
-  t.timeseries_ref,
-  c.connector_code
+  o.status
 FROM observations o
-JOIN timeseries t ON t.id = o.timeseries_id
-JOIN connectors c ON c.id = t.connector_id
 WHERE o.observed_at < (now() - interval '${CUTOFF_DAYS} days')
-ORDER BY o.observed_at, o.timeseries_id
+ORDER BY o.observed_at, o.connector_id, o.timeseries_id
 LIMIT ${BATCH_SIZE};
 
-\copy (SELECT connector_code, service_ref, timeseries_ref, observed_at, value, status FROM tmp_obs) TO '${CSV_HIST}' WITH (FORMAT csv);
-\copy (SELECT timeseries_id, observed_at FROM tmp_obs) TO '${CSV_KEYS}' WITH (FORMAT csv);
+\copy (SELECT connector_id, timeseries_id, observed_at, value, status FROM tmp_obs) TO '${CSV_HIST}' WITH (FORMAT csv);
+\copy (SELECT connector_id, timeseries_id, observed_at FROM tmp_obs) TO '${CSV_KEYS}' WITH (FORMAT csv);
 SQL
 
   if [ ! -s "$CSV_KEYS" ]; then
@@ -102,9 +98,8 @@ SQL
   INSERTED=$(psql "$SBASE_HISTORY_DB_URL" -v ON_ERROR_STOP=1 -q -t -A <<SQL
 DROP TABLE IF EXISTS tmp_hist;
 CREATE TEMP TABLE tmp_hist (
-  connector_code text,
-  service_ref text,
-  timeseries_ref text,
+  connector_id bigint,
+  timeseries_id bigint,
   observed_at timestamptz,
   value double precision,
   status text
@@ -112,14 +107,13 @@ CREATE TEMP TABLE tmp_hist (
 \copy tmp_hist FROM '${CSV_HIST}' WITH (FORMAT csv);
 WITH ins AS (
   INSERT INTO uk_aq_history.observations (
-    connector_code,
-    service_ref,
-    timeseries_ref,
+    connector_id,
+    timeseries_id,
     observed_at,
     value,
     status
   )
-  SELECT connector_code, service_ref, timeseries_ref, observed_at, value, status
+  SELECT connector_id, timeseries_id, observed_at, value, status
   FROM tmp_hist
   ON CONFLICT DO NOTHING
   RETURNING 1
@@ -135,6 +129,7 @@ SQL
   DELETED=$(psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -q -t -A <<SQL
 DROP TABLE IF EXISTS tmp_del;
 CREATE TEMP TABLE tmp_del (
+  connector_id bigint,
   timeseries_id bigint,
   observed_at timestamptz
 );
@@ -142,7 +137,8 @@ CREATE TEMP TABLE tmp_del (
 WITH del AS (
   DELETE FROM observations o
   USING tmp_del d
-  WHERE o.timeseries_id = d.timeseries_id
+  WHERE o.connector_id = d.connector_id
+    AND o.timeseries_id = d.timeseries_id
     AND o.observed_at = d.observed_at
   RETURNING 1
 )

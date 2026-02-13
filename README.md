@@ -112,15 +112,16 @@ Use this flow when creating fresh MAIN + HISTORY projects.
    - In the schema repo (`../CIC-Test-UK-AQ-Schema/uk-aq-schema/schemas/history_db`), run/paste:
      - `uk_aq_history_schema.sql`
      - `history_db_dualwrite_bootstrap.sql`
+   - History observations are keyed by `(connector_id, timeseries_id, observed_at)` with `created_at`.
 3. Set MAIN runtime secrets:
    - `HISTORY_SUPABASE_URL`
    - `HISTORY_SERVICE_ROLE_KEY`
    - Optional overrides:
      - `HISTORY_UPSERT_RPC` (default `uk_aq_rpc_history_observations_upsert`)
-     - `HISTORY_OUTBOX_FLUSH_LIMIT` (default `20`)
-     - `HISTORY_UPSERT_CHUNK_SIZE` (default `2000`)
+     - `HISTORY_OUTBOX_FLUSH_LIMIT` (default `40`)
+     - `HISTORY_UPSERT_CHUNK_SIZE` (default `5000`)
      - `HISTORY_OUTBOX_CLOUD_RUN_MAX_BATCHES` (Cloud Run outbox batches per run; default `30`)
-     - `HISTORY_OUTBOX_CLOUD_RUN_CLAIM_BATCH_LIMIT` (Cloud Run claim size per batch; default `10`)
+     - `HISTORY_OUTBOX_CLOUD_RUN_CLAIM_BATCH_LIMIT` (Cloud Run claim size per batch; default `20`)
      - `HISTORY_OUTBOX_CLOUD_RUN_BUDGET_SECONDS` (Cloud Run per-run budget; default `540`)
 4. Operational notes:
    - Outbox retries history delivery without backfill exports.

@@ -1,0 +1,279 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ENV_FILE=".env"
+NO_NETWORK=0
+
+usage() {
+  cat <<'EOF'
+Usage:
+  ./scripts/uk_aq_check_env.sh [--env-file <path>] [--no-network]
+
+Options:
+  --env-file <path>  Load variables from this env file (default: .env)
+  --no-network       Skip live HTTP checks and run local validation only
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --env-file)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for --env-file" >&2
+        exit 2
+      fi
+      ENV_FILE="$2"
+      shift 2
+      ;;
+    --no-network)
+      NO_NETWORK=1
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown argument: $1" >&2
+      usage
+      exit 2
+      ;;
+  esac
+done
+
+if [[ ! -f "$ENV_FILE" ]]; then
+  echo "Env file not found: $ENV_FILE" >&2
+  exit 2
+fi
+
+set -a
+# shellcheck disable=SC1090
+source "$ENV_FILE"
+set +a
+
+main_vars=(
+  SUPABASE_URL
+  SUPABASE_PROJECT_REF
+  SUPABASE_DB_URL
+  SB_PUBLISHABLE_DEFAULT_KEY
+  SUPABASE_SERVICE_ROLE_KEY
+  SUPABASE_ACCESS_TOKEN
+  SB_ANON_JWT
+  UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL
+  SB_UK_AQ_CRON_SECRET
+  UK_AQ_CORE_SCHEMA
+  SUPABASE_SECRETS_ENV
+)
+
+history_vars=(
+  HISTORY_SUPABASE_URL
+  HISTORY_SUPABASE_PROJECT_REF
+  HISTORY_SERVICE_ROLE_KEY
+  HISTORY_SCHEMA
+)
+
+failures=0
+warnings=0
+
+ok() {
+  printf "OK    %s\n" "$1"
+}
+
+warn() {
+  printf "WARN  %s\n" "$1"
+  warnings=$((warnings + 1))
+}
+
+fail() {
+  printf "FAIL  %s\n" "$1"
+  failures=$((failures + 1))
+}
+
+mask_value() {
+  local value="$1"
+  local len="${#value}"
+  if (( len == 0 )); then
+    printf "<empty>"
+    return
+  fi
+  if (( len <= 14 )); then
+    printf "%s" "$value"
+    return
+  fi
+  local head="${value:0:8}"
+  local tail="${value: -6}"
+  printf "%s...%s" "$head" "$tail"
+}
+
+extract_ref_from_url() {
+  local url="${1:-}"
+  printf "%s" "$url" | sed -E 's#https?://([^.]+)\.supabase\.co/?#\1#'
+}
+
+extract_ref_from_db_url() {
+  python3 - <<'PY'
+import os
+import urllib.parse
+db_url = os.environ.get("SUPABASE_DB_URL", "")
+parsed = urllib.parse.urlparse(db_url)
+username = parsed.username or ""
+if username.startswith("postgres."):
+    print(username.split(".", 1)[1])
+else:
+    print("")
+PY
+}
+
+http_code() {
+  local code
+  code="$(curl -sS -o /dev/null -w '%{http_code}' "$@")"
+  printf "%s" "$code"
+}
+
+check_presence_group() {
+  local group="$1"
+  shift
+  local var
+  echo
+  echo "[$group] Presence"
+  for var in "$@"; do
+    if [[ -n "${!var:-}" ]]; then
+      ok "$var is set"
+    else
+      fail "$var is missing"
+    fi
+  done
+}
+
+echo "UK-AQ env check"
+echo "Env file: $ENV_FILE"
+
+check_presence_group "Main" "${main_vars[@]}"
+check_presence_group "History" "${history_vars[@]}"
+
+echo
+echo "[Secrets] Masked preview"
+for var in \
+  SB_PUBLISHABLE_DEFAULT_KEY \
+  SUPABASE_SERVICE_ROLE_KEY \
+  SUPABASE_ACCESS_TOKEN \
+  SB_ANON_JWT \
+  SB_UK_AQ_CRON_SECRET \
+  HISTORY_SERVICE_ROLE_KEY; do
+  value="${!var:-}"
+  printf "%-32s len=%-4s value=%s\n" "$var" "${#value}" "$(mask_value "$value")"
+done
+
+echo
+echo "[Refs] Project alignment"
+main_ref_url="$(extract_ref_from_url "${SUPABASE_URL:-}")"
+main_ref_env="${SUPABASE_PROJECT_REF:-}"
+main_ref_db="$(extract_ref_from_db_url)"
+history_ref_url="$(extract_ref_from_url "${HISTORY_SUPABASE_URL:-}")"
+history_ref_env="${HISTORY_SUPABASE_PROJECT_REF:-}"
+
+if [[ -n "$main_ref_url" && -n "$main_ref_env" && "$main_ref_url" == "$main_ref_env" ]]; then
+  ok "SUPABASE_URL ref matches SUPABASE_PROJECT_REF ($main_ref_env)"
+else
+  fail "SUPABASE_URL ref ($main_ref_url) does not match SUPABASE_PROJECT_REF ($main_ref_env)"
+fi
+
+if [[ -n "$main_ref_db" && -n "$main_ref_env" && "$main_ref_db" == "$main_ref_env" ]]; then
+  ok "SUPABASE_DB_URL ref matches SUPABASE_PROJECT_REF ($main_ref_env)"
+else
+  fail "SUPABASE_DB_URL ref ($main_ref_db) does not match SUPABASE_PROJECT_REF ($main_ref_env)"
+fi
+
+if [[ -n "$history_ref_url" && -n "$history_ref_env" && "$history_ref_url" == "$history_ref_env" ]]; then
+  ok "HISTORY_SUPABASE_URL ref matches HISTORY_SUPABASE_PROJECT_REF ($history_ref_env)"
+else
+  fail "HISTORY_SUPABASE_URL ref ($history_ref_url) does not match HISTORY_SUPABASE_PROJECT_REF ($history_ref_env)"
+fi
+
+if [[ "${UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL:-}" == "${SUPABASE_URL:-}" ]]; then
+  ok "UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL matches SUPABASE_URL"
+else
+  warn "UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL does not match SUPABASE_URL"
+fi
+
+if [[ -n "${SUPABASE_SECRETS_ENV:-}" ]]; then
+  if [[ -f "${SUPABASE_SECRETS_ENV}" ]]; then
+    ok "SUPABASE_SECRETS_ENV file exists (${SUPABASE_SECRETS_ENV})"
+  else
+    warn "SUPABASE_SECRETS_ENV file not found (${SUPABASE_SECRETS_ENV})"
+  fi
+fi
+
+echo
+echo "[JWT] Legacy token claims"
+python3 - <<'PY'
+import base64
+import json
+import os
+
+def decode_payload(token: str):
+    parts = token.split(".")
+    if len(parts) != 3:
+        return None
+    payload = parts[1]
+    payload += "=" * (-len(payload) % 4)
+    try:
+        return json.loads(base64.urlsafe_b64decode(payload.encode("utf-8")).decode("utf-8"))
+    except Exception:
+        return None
+
+for key in ("SUPABASE_SERVICE_ROLE_KEY", "SB_ANON_JWT", "HISTORY_SERVICE_ROLE_KEY"):
+    token = (os.environ.get(key, "") or "").strip()
+    payload = decode_payload(token)
+    if not payload:
+      print(f"WARN  {key} is not a JWT payload (or invalid)")
+      continue
+    role = payload.get("role")
+    ref = payload.get("ref")
+    print(f"OK    {key} role={role} ref={ref}")
+PY
+
+if (( NO_NETWORK == 0 )); then
+  echo
+  echo "[Network] Live checks"
+
+  code="$(http_code -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN:-}" https://api.supabase.com/v1/projects)"
+  if [[ "$code" == "200" ]]; then
+    ok "SUPABASE_ACCESS_TOKEN can list projects (200)"
+  else
+    fail "SUPABASE_ACCESS_TOKEN projects check returned HTTP $code"
+  fi
+
+  code="$(http_code -H "apikey: ${SB_ANON_JWT:-}" -H "Authorization: Bearer ${SB_ANON_JWT:-}" "${SUPABASE_URL:-}/rest/v1/")"
+  if [[ "$code" == "200" ]]; then
+    ok "SB_ANON_JWT can access main /rest/v1/ (200)"
+  else
+    fail "SB_ANON_JWT main /rest/v1/ check returned HTTP $code"
+  fi
+
+  code="$(http_code -H "apikey: ${SUPABASE_SERVICE_ROLE_KEY:-}" "${SUPABASE_URL:-}/rest/v1/")"
+  if [[ "$code" == "200" ]]; then
+    ok "SUPABASE_SERVICE_ROLE_KEY can access main /rest/v1/ (200)"
+  else
+    fail "SUPABASE_SERVICE_ROLE_KEY main /rest/v1/ check returned HTTP $code"
+  fi
+
+  code="$(http_code -H "apikey: ${HISTORY_SERVICE_ROLE_KEY:-}" "${HISTORY_SUPABASE_URL:-}/rest/v1/")"
+  if [[ "$code" == "200" ]]; then
+    ok "HISTORY_SERVICE_ROLE_KEY can access history /rest/v1/ (200)"
+  else
+    fail "HISTORY_SERVICE_ROLE_KEY history /rest/v1/ check returned HTTP $code"
+  fi
+else
+  echo
+  echo "[Network] Skipped (--no-network)"
+fi
+
+echo
+if (( failures > 0 )); then
+  echo "Result: FAIL (failures=$failures warnings=$warnings)"
+  exit 1
+fi
+
+echo "Result: PASS (warnings=$warnings)"
+

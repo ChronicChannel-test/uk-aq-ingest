@@ -156,12 +156,13 @@ jobs:
         run: |
           python3 scripts/breathelondon/breathelondon_list_stations.py --to-supabase
 
-      - name: Sync LAQN stations
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-        run: |
-          python3 scripts/erg_laqn/erg_laqn_list_stations.py --to-supabase
+      # Script needs updating before LAQN can start polling
+      # - name: Sync LAQN stations
+      #   env:
+      #     SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      #     SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      #   run: |
+      #     python3 scripts/erg_laqn/erg_laqn_list_stations.py --to-supabase
 
       - name: Sync OpenAQ stations
         env:

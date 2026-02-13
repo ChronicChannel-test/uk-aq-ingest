@@ -15,14 +15,11 @@ export type MainRpcCaller = <T>(
 ) => Promise<RpcResult<T>>;
 
 export type HistoryObservationRow = {
-  connector_code: string;
-  service_ref: string;
-  timeseries_ref: string;
+  connector_id: number;
+  timeseries_id: number;
   observed_at: string;
   value: number | null;
   status: string | null;
-  connector_id?: number;
-  timeseries_id?: number;
 };
 
 type HistoryOutboxClaimRow = {
@@ -105,12 +102,12 @@ const HISTORY_UPSERT_RPC = (Deno.env.get("HISTORY_UPSERT_RPC") ||
 
 const HISTORY_OUTBOX_FLUSH_LIMIT = parsePositiveInt(
   Deno.env.get("HISTORY_OUTBOX_FLUSH_LIMIT"),
-  20,
+  40,
 );
 
 const HISTORY_UPSERT_CHUNK_SIZE = parsePositiveInt(
   Deno.env.get("HISTORY_UPSERT_CHUNK_SIZE"),
-  2000,
+  5000,
 );
 
 let historyClientCache: ReturnType<typeof createClient> | null = null;
@@ -134,6 +131,67 @@ function chunkRows<T>(rows: T[], chunkSize: number): T[][] {
 function asFiniteNumber(value: unknown): number | null {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function asPositiveInt(value: unknown): number | null {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return null;
+  }
+  const intValue = Math.trunc(parsed);
+  return intValue > 0 ? intValue : null;
+}
+
+function toObservedAt(value: unknown): string | null {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return null;
+    }
+    const parsed = new Date(trimmed);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed.toISOString();
+    }
+  }
+  const parsed = new Date(String(value));
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+  return parsed.toISOString();
+}
+
+function normalizeStatus(value: unknown): string | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  const status = String(value).trim();
+  return status ? status : null;
+}
+
+function prepareHistoryRows(
+  historyRows: HistoryObservationRow[],
+): HistoryObservationRow[] {
+  if (!historyRows.length) {
+    return [];
+  }
+  const dedup = new Map<string, HistoryObservationRow>();
+  for (const row of historyRows) {
+    const connectorId = asPositiveInt(row.connector_id);
+    const timeseriesId = asPositiveInt(row.timeseries_id);
+    const observedAt = toObservedAt(row.observed_at);
+    if (connectorId === null || timeseriesId === null || !observedAt) {
+      continue;
+    }
+    const key = `${connectorId}:${timeseriesId}:${observedAt}`;
+    dedup.set(key, {
+      connector_id: connectorId,
+      timeseries_id: timeseriesId,
+      observed_at: observedAt,
+      value: asFiniteNumber(row.value),
+      status: normalizeStatus(row.status),
+    });
+  }
+  return Array.from(dedup.values());
 }
 
 function toObservedDay(value: unknown): string | null {
@@ -199,14 +257,15 @@ export function createSupabaseHistoryClient(): ReturnType<typeof createClient> {
 export async function historyUpsertObservations(
   historyRows: HistoryObservationRow[],
 ): Promise<number> {
-  if (!historyRows.length) {
+  const preparedRows = prepareHistoryRows(historyRows);
+  if (!preparedRows.length) {
     return 0;
   }
 
   const history = createSupabaseHistoryClient();
   let written = 0;
 
-  for (const chunk of chunkRows(historyRows, HISTORY_UPSERT_CHUNK_SIZE)) {
+  for (const chunk of chunkRows(preparedRows, HISTORY_UPSERT_CHUNK_SIZE)) {
     const { data, error } = await history.rpc(HISTORY_UPSERT_RPC, {
       rows: chunk,
     });
@@ -276,13 +335,14 @@ export async function enqueueHistoryOutbox(
   mainRpc: MainRpcCaller,
   historyRows: HistoryObservationRow[],
 ): Promise<number> {
-  if (!historyRows.length) {
+  const preparedRows = prepareHistoryRows(historyRows);
+  if (!preparedRows.length) {
     return 0;
   }
   const { data, error } = await mainRpc<HistoryOutboxEnqueueRow[]>(
     "uk_aq_rpc_history_outbox_enqueue",
     {
-      entries: [{ payload: historyRows }],
+      entries: [{ payload: preparedRows }],
     },
   );
   if (error) {
@@ -300,7 +360,8 @@ export async function writeHistoryWithOutbox(
   historyRows: HistoryObservationRow[],
   onWarning?: (message: string) => void,
 ): Promise<HistoryWriteStats> {
-  if (!historyRows.length) {
+  const preparedRows = prepareHistoryRows(historyRows);
+  if (!preparedRows.length) {
     return { written: 0, receipts_upserted: 0, enqueued: 0 };
   }
   if (!historyConfigured()) {
@@ -309,8 +370,8 @@ export async function writeHistoryWithOutbox(
   }
 
   try {
-    const written = await historyUpsertObservations(historyRows);
-    const receipts = buildHistorySyncReceipts(historyRows);
+    const written = await historyUpsertObservations(preparedRows);
+    const receipts = buildHistorySyncReceipts(preparedRows);
     const receiptsUpserted = await upsertHistorySyncReceipts(mainRpc, receipts);
     return {
       written,
@@ -318,7 +379,7 @@ export async function writeHistoryWithOutbox(
       enqueued: 0,
     };
   } catch (error) {
-    const enqueued = await enqueueHistoryOutbox(mainRpc, historyRows);
+    const enqueued = await enqueueHistoryOutbox(mainRpc, preparedRows);
     onWarning?.(`History write failed, queued to outbox: ${shortError(error)}`);
     return {
       written: 0,
@@ -379,16 +440,17 @@ export async function flushHistoryOutbox(
     const payloadRows = Array.isArray(row.payload)
       ? row.payload as HistoryObservationRow[]
       : [];
+    const preparedRows = prepareHistoryRows(payloadRows);
 
-    if (!payloadRows.length) {
+    if (!preparedRows.length) {
       resolutions.push({ id: row.id, ok: true });
       continue;
     }
 
     try {
-      const delivered = await historyUpsertObservations(payloadRows);
+      const delivered = await historyUpsertObservations(preparedRows);
       stats.delivered += delivered;
-      const receipts = buildHistorySyncReceipts(payloadRows);
+      const receipts = buildHistorySyncReceipts(preparedRows);
       stats.receipts_upserted += await upsertHistorySyncReceipts(
         mainRpc,
         receipts,

@@ -1013,9 +1013,6 @@ async function upsertObservations(
 
 function toHistoryObservationRow(
   observationRow: Record<string, unknown>,
-  connectorCode: string,
-  serviceRef: string,
-  timeseriesRef: string,
 ): HistoryObservationRow | null {
   const observedAt = String(observationRow.observed_at ?? "").trim();
   if (!observedAt) {
@@ -1023,16 +1020,13 @@ function toHistoryObservationRow(
   }
   const numericValue = Number(observationRow.value);
   return {
-    connector_code: connectorCode,
-    service_ref: serviceRef,
-    timeseries_ref: timeseriesRef,
+    connector_id: Number(observationRow.connector_id),
+    timeseries_id: Number(observationRow.timeseries_id),
     observed_at: observedAt,
     value: Number.isFinite(numericValue) ? numericValue : null,
     status: observationRow.status == null
       ? null
       : String(observationRow.status),
-    connector_id: Number(observationRow.connector_id),
-    timeseries_id: Number(observationRow.timeseries_id),
   };
 }
 
@@ -2077,9 +2071,6 @@ serve(async (req) => {
                   });
                   const historyRow = toHistoryObservationRow(
                     observationRows[observationRows.length - 1],
-                    String(connector.connector_code ?? requestedConnectorCode),
-                    String(requestedServiceRef),
-                    timeseriesRef,
                   );
                   if (historyRow) {
                     historyRows.push(historyRow);

@@ -536,21 +536,11 @@ serve(async (req) => {
                 const historyRows = observationRows.map((point) => {
                   const numericValue = Number(point.value);
                   return {
-                    connector_code: String(
-                      connector?.connector_code ?? requestedConnectorCode ?? UK_AIR_SOS_CONNECTOR_CODE,
-                    ),
-                    service_ref: String(
-                      row.service_ref ??
-                        connector?.connector_code ??
-                        requestedConnectorCode ??
-                        UK_AIR_SOS_CONNECTOR_CODE,
-                    ),
-                    timeseries_ref: String(row.timeseries_ref || row.id),
+                    connector_id: Number(point.connector_id),
+                    timeseries_id: Number(point.timeseries_id),
                     observed_at: String(point.observed_at),
                     value: Number.isFinite(numericValue) ? numericValue : null,
                     status: point.status == null ? null : String(point.status),
-                    connector_id: Number(point.connector_id),
-                    timeseries_id: Number(point.timeseries_id),
                   } satisfies HistoryObservationRow;
                 });
                 historyRowsPending.push(...historyRows);

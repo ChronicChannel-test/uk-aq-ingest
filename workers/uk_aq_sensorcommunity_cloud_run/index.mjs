@@ -58,7 +58,7 @@ const HISTORY_UPSERT_RPC = (
 ).trim();
 const HISTORY_UPSERT_CHUNK_SIZE = parsePositiveInt(
   process.env.HISTORY_UPSERT_CHUNK_SIZE,
-  2000,
+  5000,
 );
 const HISTORY_REST_BASE_URL = HISTORY_SUPABASE_URL
   ? buildRestBaseUrl(HISTORY_SUPABASE_URL)
@@ -993,9 +993,6 @@ function shortError(error) {
 
 function toHistoryObservationRow(
   observationRow,
-  connectorCode,
-  serviceRef,
-  timeseriesRef,
 ) {
   const observedAt = String(observationRow?.observed_at || "").trim();
   if (!observedAt) {
@@ -1003,15 +1000,57 @@ function toHistoryObservationRow(
   }
   const numericValue = Number(observationRow?.value);
   return {
-    connector_code: connectorCode,
-    service_ref: serviceRef,
-    timeseries_ref: timeseriesRef,
+    connector_id: Number(observationRow?.connector_id),
+    timeseries_id: Number(observationRow?.timeseries_id),
     observed_at: observedAt,
     value: Number.isFinite(numericValue) ? numericValue : null,
     status: observationRow?.status == null ? null : String(observationRow.status),
-    connector_id: Number(observationRow?.connector_id),
-    timeseries_id: Number(observationRow?.timeseries_id),
   };
+}
+
+function normalizeHistoryStatus(value) {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  const status = String(value).trim();
+  return status ? status : null;
+}
+
+function normalizeObservedAtIso(value) {
+  const parsed = new Date(String(value || ""));
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+  return parsed.toISOString();
+}
+
+function prepareHistoryRows(historyRows) {
+  if (!Array.isArray(historyRows) || historyRows.length === 0) {
+    return [];
+  }
+  const dedup = new Map();
+  for (const row of historyRows) {
+    const connectorId = toIntegerOrNull(row?.connector_id);
+    const timeseriesId = toIntegerOrNull(row?.timeseries_id);
+    const observedAt = normalizeObservedAtIso(row?.observed_at);
+    if (
+      connectorId === null || connectorId <= 0 ||
+      timeseriesId === null || timeseriesId <= 0 ||
+      !observedAt
+    ) {
+      continue;
+    }
+    const numericValue = Number(row?.value);
+    const key = `${connectorId}:${timeseriesId}:${observedAt}`;
+    dedup.set(key, {
+      connector_id: connectorId,
+      timeseries_id: timeseriesId,
+      observed_at: observedAt,
+      value: Number.isFinite(numericValue) ? numericValue : null,
+      status: normalizeHistoryStatus(row?.status),
+    });
+  }
+  return Array.from(dedup.values());
 }
 
 function buildHistorySyncReceipts(rows) {
@@ -1034,12 +1073,13 @@ function buildHistorySyncReceipts(rows) {
 }
 
 async function historyUpsertObservations(historyRows) {
-  if (!historyRows.length) {
+  const preparedRows = prepareHistoryRows(historyRows);
+  if (!preparedRows.length) {
     return 0;
   }
 
   let written = 0;
-  for (const rowsChunk of chunk(historyRows, HISTORY_UPSERT_CHUNK_SIZE)) {
+  for (const rowsChunk of chunk(preparedRows, HISTORY_UPSERT_CHUNK_SIZE)) {
     const response = await historyPostgrestRequest(
       "POST",
       `rpc/${HISTORY_UPSERT_RPC}`,
@@ -1080,11 +1120,12 @@ async function upsertHistorySyncReceipts(rows) {
 }
 
 async function enqueueHistoryOutbox(historyRows) {
-  if (!historyRows.length) {
+  const preparedRows = prepareHistoryRows(historyRows);
+  if (!preparedRows.length) {
     return 0;
   }
   const response = await mainRpcRequest("uk_aq_rpc_history_outbox_enqueue", {
-    entries: [{ payload: historyRows }],
+    entries: [{ payload: preparedRows }],
   });
   if (!response.ok) {
     throw new Error(
@@ -1099,7 +1140,8 @@ async function enqueueHistoryOutbox(historyRows) {
 }
 
 async function writeHistoryWithOutbox(historyRows) {
-  if (!historyRows.length) {
+  const preparedRows = prepareHistoryRows(historyRows);
+  if (!preparedRows.length) {
     return { written: 0, receipts_upserted: 0, enqueued: 0 };
   }
   if (!historyConfigured()) {
@@ -1107,8 +1149,8 @@ async function writeHistoryWithOutbox(historyRows) {
   }
 
   try {
-    const written = await historyUpsertObservations(historyRows);
-    const receipts = buildHistorySyncReceipts(historyRows);
+    const written = await historyUpsertObservations(preparedRows);
+    const receipts = buildHistorySyncReceipts(preparedRows);
     const receiptsUpserted = await upsertHistorySyncReceipts(receipts);
     return {
       written,
@@ -1116,9 +1158,9 @@ async function writeHistoryWithOutbox(historyRows) {
       enqueued: 0,
     };
   } catch (error) {
-    const enqueued = await enqueueHistoryOutbox(historyRows);
+    const enqueued = await enqueueHistoryOutbox(preparedRows);
     logSummary("history_dual_write_warning", {
-      rows: historyRows.length,
+      rows: preparedRows.length,
       message: shortError(error),
       enqueued,
     });
@@ -1524,9 +1566,6 @@ async function runDirectIngest(connectorId, overwriteStationName, dropboxCapture
     });
     const historyRow = toHistoryObservationRow(
       observationRows[observationRows.length - 1],
-      CONNECTOR_CODE,
-      String(SCOMM_SERVICE_REF),
-      timeseriesRef,
     );
     if (historyRow) {
       historyRows.push(historyRow);

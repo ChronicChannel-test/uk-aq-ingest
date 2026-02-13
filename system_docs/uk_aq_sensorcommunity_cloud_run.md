@@ -39,6 +39,7 @@ Per run, worker updates:
 - `uk_aq_core.connectors` (`last_run_*`, and `last_polled_at` on success)
 - `uk_aq_core.uk_aq_ingest_runs` (dashboard run feed)
 - `uk_aq_raw.error_logs` on ingest failure
+- History dual-write rows are normalized and deduplicated by `(connector_id, timeseries_id, observed_at)` before history upsert/outbox enqueue.
 - Dropbox artifacts (when configured):
   - log JSON under `/connectors/sensorcommunity/log/YYYY-MM-DD/` with `uk_aq_log_cloud_run_*`
   - raw ZIP under `/connectors/sensorcommunity/raw_data/YYYY-MM-DD/` with `uk_aq_raw_cloud_run_*`

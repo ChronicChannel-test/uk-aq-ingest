@@ -977,9 +977,6 @@ async function upsertObservations(rows: Record<string, unknown>[]): Promise<numb
 
 function toHistoryObservationRows(
   rows: Record<string, unknown>[],
-  connectorCode: string,
-  serviceRef: string,
-  timeseriesRef: string,
   connectorId: number,
   timeseriesId: number,
 ): HistoryObservationRow[] {
@@ -991,14 +988,11 @@ function toHistoryObservationRows(
     }
     const numericValue = Number(row.value);
     historyRows.push({
-      connector_code: connectorCode,
-      service_ref: serviceRef,
-      timeseries_ref: timeseriesRef,
+      connector_id: connectorId,
+      timeseries_id: timeseriesId,
       observed_at: observedAt,
       value: Number.isFinite(numericValue) ? numericValue : null,
       status: asString(row.status) ?? null,
-      connector_id: connectorId,
-      timeseries_id: timeseriesId,
     });
   }
   return historyRows;
@@ -2141,9 +2135,6 @@ serve(async (req) => {
                             historyRowsPending.push(
                               ...toHistoryObservationRows(
                                 batch,
-                                String(connector.connector_code ?? connectorCode),
-                                serviceRef,
-                                timeseriesRef,
                                 Number(connector.id),
                                 timeseriesId,
                               ),

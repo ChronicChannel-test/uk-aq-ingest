@@ -7,6 +7,9 @@ Settings -> Functions -> Environment Variables). They do not read the local .env
 History dual-write note: shared history writes normalize `HISTORY_SCHEMA` /
 `HISTORY_DB_SCHEMA` values `uk_aq_history` and `public` to `uk_aq_public` for
 RPC calls, because history RPCs are exposed from `uk_aq_public`.
+History dual-write write-path note: rows are normalized and deduplicated on
+`(connector_id, timeseries_id, observed_at)` before history upsert and outbox
+enqueue to reduce duplicate payload bytes, write churn, and request overhead.
 
 Endpoint egress observability note: public read endpoints emit sampled egress
 metrics and persist them via RPCs defined in `supabase/uk_aq_egress_metrics.sql`
@@ -294,28 +297,17 @@ Curl test example:
 curl "https://YOUR_PROJECT.supabase.co/functions/v1/uk_aq_latest?region=London&pollutant=pm2.5&limit=100"
 ```
 
-### uk_aq_bristol_latest
-- Purpose: Serve the latest values with a Bristol station default for local dashboards.
+### uk_aq_stations_chart
+- Purpose: Serve latest values for station-search chart pages (for example Bristol/Surbiton queries) with one shared endpoint.
 - Triggered by: Web requests (read-only, no writes).
-- Returns: timeseries rows with station + phenomenon metadata, `display_name`, and latest values.
+- Params: `station_like` (or `q`) required, `pollutant`, `connector_id`, `window` (`3h|6h|1d|7d|all`, default `all`), `limit`, optional incremental cursor (`since`, `since_id`).
+- Returns: flattened latest rows for chart pages with cursor fields (`next_since`, `next_since_id`) and map-compatible labels.
 - `display_name` logic matches `uk_aq_latest`.
-- Cache-Control: success responses use `public, max-age=60, s-maxage=180, stale-while-revalidate=300, stale-if-error=86400`; errors use `no-store`.
-- Egress observability: sampled success responses plus all `304`/`4xx`/`5xx`
-  are recorded via `_shared/egress_metrics.ts`.
-- Notes:
-  - Explicitly embeds `connectors` via `timeseries_connector_id_fkey` to avoid ambiguous PostgREST relationships after observations gained `connector_id`.
-
-### uk_aq_surbiton_latest
-- Purpose: Serve the latest values with a Surbiton station default for local dashboards.
-- Triggered by: Web requests (read-only, no writes).
-- Returns: timeseries rows with station + phenomenon metadata, `display_name`, and latest values.
-- `display_name` logic matches `uk_aq_latest`.
+- Conditional requests: supports `If-None-Match`; returns `304 Not Modified` with `ETag` when payload is unchanged.
 - Cache-Control: success responses use `public, max-age=60, s-maxage=300, stale-while-revalidate=300, stale-if-error=86400`; errors use `no-store`.
 - Egress observability: sampled success responses plus all `304`/`4xx`/`5xx`
   are recorded via `_shared/egress_metrics.ts`.
-- RPC backing: `uk_aq_surbiton_latest_rpc` via `/rest/v1/rpc/uk_aq_surbiton_latest_rpc`.
-- Notes:
-  - Explicitly embeds `connectors` via `timeseries_connector_id_fkey` to avoid ambiguous PostgREST relationships after observations gained `connector_id`.
+- RPC backing: `uk_aq_latest_rpc` via `/rest/v1/rpc/uk_aq_latest_rpc`.
 
 ### uk_aq_stations
 - Purpose: Serve station geometry for the hex map (bypasses RLS via service role).
@@ -331,7 +323,7 @@ curl "https://YOUR_PROJECT.supabase.co/functions/v1/uk_aq_latest?region=London&p
 - Purpose: Serve LA-level latest PM2.5 summaries (median + mean) for the hex cartogram.
 - Triggered by: Web requests (read-only, no writes).
 - Returns: rows keyed by `la_code` with `station_count`, `single_site`, `median_value`, `mean_value`, `latest_value_at` (expands `la_codes` arrays into per-code rows when present).
-- Params: `region`, `la_version`, `limit`.
+- Params: `region`, `la_version`, `limit`, optional `since` (ISO-8601 timestamp; returns changed LA rows only).
 - RPC backing: `uk_aq_la_hex_rpc` via `/rest/v1/rpc/uk_aq_la_hex_rpc`.
 - Conditional requests: supports `If-None-Match`; returns `304 Not Modified` with `ETag` when payload is unchanged.
 - Cache-Control: success responses use `public, max-age=60, s-maxage=180, stale-while-revalidate=300, stale-if-error=86400`; errors use `no-store`.
@@ -342,7 +334,7 @@ curl "https://YOUR_PROJECT.supabase.co/functions/v1/uk_aq_latest?region=London&p
 - Purpose: Serve constituency-level latest PM2.5 summaries (median + mean) for the hex cartogram.
 - Triggered by: Web requests (read-only, no writes).
 - Returns: rows keyed by `pcon_code` with `station_count`, `single_site`, `median_value`, `mean_value`, `latest_value_at`.
-- Params: `pcon_version`, `limit`.
+- Params: `pcon_version`, `limit`, optional `since` (ISO-8601 timestamp; returns changed PCON rows only).
 - RPC backing: `uk_aq_pcon_hex_rpc` via `/rest/v1/rpc/uk_aq_pcon_hex_rpc`.
 - Conditional requests: supports `If-None-Match`; returns `304 Not Modified` with `ETag` when payload is unchanged.
 - Cache-Control: success responses use `public, max-age=60, s-maxage=300, stale-while-revalidate=300, stale-if-error=86400`; errors use `no-store`.
@@ -352,10 +344,14 @@ curl "https://YOUR_PROJECT.supabase.co/functions/v1/uk_aq_latest?region=London&p
 ### uk_aq_timeseries
 - Purpose: Serve raw observation points for a single timeseries.
 - Triggered by: Web requests (read-only, no writes).
-- Params: `timeseries_id` (required), `window` (`12h|24h|7d|30d`, default `24h`), optional `limit` (positive integer).
-- Returns: `observed_at`, `value`, `status` rows ordered oldest → newest, plus optional `guideline` (AQG_2021 24h) if found.
+- Params: `timeseries_id` (required), `window` (`12h|24h|7d|30d`, default `24h`), optional `limit` (positive integer), optional `since` (ISO-8601 timestamp for incremental fetch), optional `include_status` (`true|false`, default `true`), optional `format` (`objects|compact`, default `objects`).
+- Returns:
+  - `data_format=objects`: row objects (`observed_at`, `value`, optional `status`)
+  - `data_format=compact`: positional arrays with `columns` metadata (for lower payload size)
+  - plus optional `guideline` (AQG_2021 24h) if found
 - Notes: when `limit` is omitted, all rows in the requested window are returned (no default cap).
 - RPC backing: `uk_aq_timeseries_rpc` via `/rest/v1/rpc/uk_aq_timeseries_rpc`.
+- Conditional requests: supports `If-None-Match`; returns `304 Not Modified` with `ETag` when payload is unchanged.
 - Cache-Control: success responses use `public, max-age=60, s-maxage=300, stale-while-revalidate=300, stale-if-error=86400`; errors use `no-store`.
 - Egress observability: sampled success responses plus all `304`/`4xx`/`5xx`
   are recorded via `_shared/egress_metrics.ts`.
@@ -416,7 +412,7 @@ Optional:
 - `UK_AQ_CORE_SCHEMA` (defaults to `uk_aq_core`; used for PostgREST profile headers)
 - `UK_AQ_RAW_SCHEMA` (defaults to `uk_aq_raw`; used for raw tables like `error_logs` and checkpoint tables)
 - `HISTORY_OUTBOX_CLOUD_RUN_MAX_BATCHES` (optional; defaults to `30`; Cloud Run outbox batches per run)
-- `HISTORY_OUTBOX_CLOUD_RUN_CLAIM_BATCH_LIMIT` (optional; defaults to `10`; outbox claim size per batch in Cloud Run)
+- `HISTORY_OUTBOX_CLOUD_RUN_CLAIM_BATCH_LIMIT` (optional; defaults to `20`; outbox claim size per batch in Cloud Run)
 - `HISTORY_OUTBOX_CLOUD_RUN_BUDGET_SECONDS` (optional; defaults to `540`; Cloud Run runtime budget)
 - `HISTORY_OUTBOX_CLOUD_RUN_SHUTDOWN_BUFFER_SECONDS` (optional; defaults to `20`; reserved buffer before timeout)
 - `HISTORY_OUTBOX_CLOUD_RUN_RPC_RETRIES` (optional; defaults to `3`; main RPC retry count)

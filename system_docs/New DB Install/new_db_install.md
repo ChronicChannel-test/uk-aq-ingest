@@ -22,10 +22,10 @@ Then set MAIN project runtime secrets:
 1. `HISTORY_SUPABASE_URL`
 2. `HISTORY_SERVICE_ROLE_KEY`
 3. Optional: `HISTORY_UPSERT_RPC` (default `uk_aq_rpc_history_observations_upsert`)
-4. Optional: `HISTORY_OUTBOX_FLUSH_LIMIT` (default `20`)
-5. Optional: `HISTORY_UPSERT_CHUNK_SIZE` (default `2000`)
+4. Optional: `HISTORY_OUTBOX_FLUSH_LIMIT` (default `40`)
+5. Optional: `HISTORY_UPSERT_CHUNK_SIZE` (default `5000`)
 6. Optional: `HISTORY_OUTBOX_CLOUD_RUN_MAX_BATCHES` (default `30`)
-7. Optional: `HISTORY_OUTBOX_CLOUD_RUN_CLAIM_BATCH_LIMIT` (default `10`)
+7. Optional: `HISTORY_OUTBOX_CLOUD_RUN_CLAIM_BATCH_LIMIT` (default `20`)
 8. Optional: `HISTORY_OUTBOX_CLOUD_RUN_BUDGET_SECONDS` (default `540`)
 
 ## 2. HISTORY DB install
@@ -37,8 +37,8 @@ Run SQL in this order.
 
 Notes:
 
-1. History observations column is `created_at` (not `moved_at`).
-2. Bootstrap includes compatibility logic that renames legacy `moved_at` to `created_at` if needed.
+1. History observations uses ID keys: `(connector_id, timeseries_id, observed_at)`.
+2. History observations column is `created_at`.
 3. History upsert RPC: `uk_aq_public.uk_aq_rpc_history_observations_upsert`.
 
 ## 3. Connector setup actions after install
