@@ -101,9 +101,13 @@ Use this flow when creating fresh MAIN + HISTORY projects.
    - In the schema repo (`../CIC-Test-UK-AQ-Schema/uk-aq-schema/schemas/main_db`), run/paste:
      - `uk_aq_core_schema.sql`
      - `uk_aq_raw_schema.sql`
+     - `uk_aq_pop_schema.sql`
      - `uk_aq_rpc.sql`
+     - `uk_aq_public_views.sql`
      - `uk_aq_security.sql`
      - `main_db_dualwrite_bootstrap.sql`
+   - In this repo, run/paste:
+     - `supabase/uk_aq_polling_helpers.sql`
 2. HISTORY DB project:
    - In the schema repo (`../CIC-Test-UK-AQ-Schema/uk-aq-schema/schemas/history_db`), run/paste:
      - `uk_aq_history_schema.sql`
@@ -113,10 +117,10 @@ Use this flow when creating fresh MAIN + HISTORY projects.
    - `HISTORY_SERVICE_ROLE_KEY`
    - Optional overrides:
      - `HISTORY_UPSERT_RPC` (default `uk_aq_rpc_history_observations_upsert`)
-     - `HISTORY_OUTBOX_FLUSH_LIMIT` (default `3`)
-     - `HISTORY_UPSERT_CHUNK_SIZE` (default `500`)
+     - `HISTORY_OUTBOX_FLUSH_LIMIT` (default `20`)
+     - `HISTORY_UPSERT_CHUNK_SIZE` (default `2000`)
      - `HISTORY_OUTBOX_CLOUD_RUN_MAX_BATCHES` (Cloud Run outbox batches per run; default `30`)
-     - `HISTORY_OUTBOX_CLOUD_RUN_CLAIM_BATCH_LIMIT` (Cloud Run claim size per batch; default `2`)
+     - `HISTORY_OUTBOX_CLOUD_RUN_CLAIM_BATCH_LIMIT` (Cloud Run claim size per batch; default `10`)
      - `HISTORY_OUTBOX_CLOUD_RUN_BUDGET_SECONDS` (Cloud Run per-run budget; default `540`)
 4. Operational notes:
    - Outbox retries history delivery without backfill exports.

@@ -105,12 +105,12 @@ const HISTORY_UPSERT_RPC = (Deno.env.get("HISTORY_UPSERT_RPC") ||
 
 const HISTORY_OUTBOX_FLUSH_LIMIT = parsePositiveInt(
   Deno.env.get("HISTORY_OUTBOX_FLUSH_LIMIT"),
-  3,
+  20,
 );
 
 const HISTORY_UPSERT_CHUNK_SIZE = parsePositiveInt(
   Deno.env.get("HISTORY_UPSERT_CHUNK_SIZE"),
-  1000,
+  2000,
 );
 
 let historyClientCache: ReturnType<typeof createClient> | null = null;

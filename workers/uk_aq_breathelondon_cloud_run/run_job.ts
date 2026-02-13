@@ -486,6 +486,7 @@ async function updateConnectorRun(
   const response = await postgrestRequest("PATCH", "connectors", {
     query: { id: `eq.${connectorId}` },
     body,
+    prefer: "return=minimal",
   });
   if (!response.ok) {
     throw new Error(
@@ -527,6 +528,7 @@ async function insertRunRow(
 
   const response = await postgrestRequest("POST", "uk_aq_ingest_runs", {
     body: row,
+    prefer: "return=minimal",
   });
   if (!response.ok) {
     throw new Error(
@@ -559,6 +561,7 @@ async function insertErrorLog(
   const response = await postgrestRequest("POST", "error_logs", {
     schema: UK_AQ_RAW_SCHEMA,
     body: entry,
+    prefer: "return=minimal",
   });
   if (!response.ok) {
     throw new Error(

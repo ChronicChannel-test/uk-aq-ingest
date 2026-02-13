@@ -22,9 +22,9 @@ Use this file as the working checklist. Keep `plans/egress_reduction_plan.md` as
 - [ ] If needed, add `ETag`/`If-None-Match` to `uk_aq_timeseries`.
 - [ ] If needed, increase map polling interval from 60s to 120s.
 - [ ] Measure history project API request baseline (`usage.api-requests-count`, `usage.api-counts`) and record daily deltas.
-- [ ] Refactor high-churn ingestors to batch history writes per run (reduce `writeHistoryWithOutbox` calls inside tight loops).
-- [ ] Tune outbox drain knobs (`HISTORY_OUTBOX_CLOUD_RUN_CLAIM_BATCH_LIMIT`, `HISTORY_OUTBOX_FLUSH_LIMIT`, `HISTORY_UPSERT_CHUNK_SIZE`) and verify queue drain + runtime budget.
-- [ ] Validate history index footprint and remove duplicate PK-like btree index if present.
+- [x] Refactor high-churn ingestors to batch history writes per run (reduce `writeHistoryWithOutbox` calls inside tight loops).
+- [ ] Tune outbox drain knobs (`HISTORY_OUTBOX_CLOUD_RUN_CLAIM_BATCH_LIMIT`, `HISTORY_OUTBOX_FLUSH_LIMIT`, `HISTORY_UPSERT_CHUNK_SIZE`) and verify queue drain + runtime budget (defaults now tuned in code; runtime verification still required).
+- [x] Validate history index footprint and remove duplicate PK-like btree index if present.
 
 ## Validation Queries
 

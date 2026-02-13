@@ -46,7 +46,7 @@ const MAIN_RPC_RETRIES = parsePositiveInt(
 );
 const CLAIM_BATCH_LIMIT = parsePositiveInt(
   Deno.env.get("HISTORY_OUTBOX_CLOUD_RUN_CLAIM_BATCH_LIMIT"),
-  2,
+  10,
 );
 const MIN_BATCH_BUDGET_MS = 4000;
 const REST_BASE_URL = `${SUPABASE_URL.replace(/\/$/, "")}/rest/v1`;

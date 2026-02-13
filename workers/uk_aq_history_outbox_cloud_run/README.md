@@ -4,7 +4,7 @@ This Cloud Run job flushes `uk_aq_raw.history_observation_outbox` directly,
 without going through Cloudflare Worker + Supabase edge-function chaining.
 
 Design choices:
-- small claims per batch (default `2`)
+- moderate claims per batch (default `10`)
 - bounded batch count per run (default `30`)
 - bounded runtime budget (default `540s` with `20s` shutdown buffer)
 - retry-aware main RPC calls to reduce transient network reset failures
@@ -21,10 +21,10 @@ Design choices:
 - `UK_AQ_PUBLIC_SCHEMA` (default `uk_aq_public`)
 - `HISTORY_SCHEMA` (default `uk_aq_public`)
 - `HISTORY_UPSERT_RPC` (default `uk_aq_rpc_history_observations_upsert`)
-- `HISTORY_OUTBOX_FLUSH_LIMIT` (default `3`)
-- `HISTORY_UPSERT_CHUNK_SIZE` (default `1000`)
+- `HISTORY_OUTBOX_FLUSH_LIMIT` (default `20`)
+- `HISTORY_UPSERT_CHUNK_SIZE` (default `2000`)
 - `HISTORY_OUTBOX_CLOUD_RUN_MAX_BATCHES` (default `30`)
-- `HISTORY_OUTBOX_CLOUD_RUN_CLAIM_BATCH_LIMIT` (default `2`)
+- `HISTORY_OUTBOX_CLOUD_RUN_CLAIM_BATCH_LIMIT` (default `10`)
 - `HISTORY_OUTBOX_CLOUD_RUN_BUDGET_SECONDS` (default `540`)
 - `HISTORY_OUTBOX_CLOUD_RUN_SHUTDOWN_BUFFER_SECONDS` (default `20`)
 - `HISTORY_OUTBOX_CLOUD_RUN_RPC_RETRIES` (default `3`)

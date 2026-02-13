@@ -416,7 +416,7 @@ Optional:
 - `UK_AQ_CORE_SCHEMA` (defaults to `uk_aq_core`; used for PostgREST profile headers)
 - `UK_AQ_RAW_SCHEMA` (defaults to `uk_aq_raw`; used for raw tables like `error_logs` and checkpoint tables)
 - `HISTORY_OUTBOX_CLOUD_RUN_MAX_BATCHES` (optional; defaults to `30`; Cloud Run outbox batches per run)
-- `HISTORY_OUTBOX_CLOUD_RUN_CLAIM_BATCH_LIMIT` (optional; defaults to `2`; outbox claim size per batch in Cloud Run)
+- `HISTORY_OUTBOX_CLOUD_RUN_CLAIM_BATCH_LIMIT` (optional; defaults to `10`; outbox claim size per batch in Cloud Run)
 - `HISTORY_OUTBOX_CLOUD_RUN_BUDGET_SECONDS` (optional; defaults to `540`; Cloud Run runtime budget)
 - `HISTORY_OUTBOX_CLOUD_RUN_SHUTDOWN_BUFFER_SECONDS` (optional; defaults to `20`; reserved buffer before timeout)
 - `HISTORY_OUTBOX_CLOUD_RUN_RPC_RETRIES` (optional; defaults to `3`; main RPC retry count)
