@@ -113,6 +113,39 @@ resolve_secret_value() {
     return 0
   fi
 
+  if [[ "${key}" == "SUPABASE_DB_URL" ]]; then
+    python3 - "${value}" <<'PY'
+import sys
+from urllib.parse import quote, urlsplit, urlunsplit
+
+raw = sys.argv[1]
+try:
+    parsed = urlsplit(raw)
+except Exception:
+    print(raw)
+    raise SystemExit(0)
+
+if not parsed.scheme or not parsed.netloc or parsed.password is None:
+    print(raw)
+    raise SystemExit(0)
+
+username = parsed.username or ""
+password = parsed.password or ""
+hostname = parsed.hostname or ""
+host = f"[{hostname}]" if ":" in hostname and not hostname.startswith("[") else hostname
+port = f":{parsed.port}" if parsed.port else ""
+
+userinfo = username
+if parsed.password is not None:
+    userinfo = f"{username}:{quote(password, safe='')}"
+
+netloc = f"{userinfo}@{host}{port}"
+encoded = urlunsplit((parsed.scheme, netloc, parsed.path, parsed.query, parsed.fragment))
+print(encoded)
+PY
+    return 0
+  fi
+
   printf '%s' "${value}"
 }
 

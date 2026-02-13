@@ -17,6 +17,17 @@ Run SQL in this order.
 7. `../CIC-Test-UK-AQ-Schema/uk-aq-schema/schemas/main_db/main_db_dualwrite_bootstrap.sql`
 8. `supabase/uk_aq_polling_helpers.sql`
 
+Then configure Supabase Data API exposed schemas for the MAIN project:
+
+1. Open Supabase Dashboard -> Settings -> Data API.
+2. Ensure exposed schemas include: `public`, `uk_aq_core`, `uk_aq_raw`, `uk_aq_public`.
+3. Save changes before running workflows/scripts that use PostgREST.
+
+Notes:
+
+1. Exposed schemas is a Supabase project setting (dashboard/API), not a SQL migration.
+2. If `uk_aq_core`/`uk_aq_raw` are not exposed, PostgREST calls can fail with `406 PGRST106` errors.
+
 Then set MAIN project runtime secrets:
 
 1. `HISTORY_SUPABASE_URL`
