@@ -796,8 +796,8 @@ async function upsertStations(records, connectorId, serviceRef, overwriteStation
         continue;
       }
       const existingName = existingNames[stationRef];
-      if (existingName && row.station_name) {
-        delete row.station_name;
+      if (existingName) {
+        row.station_name = existingName;
       }
     }
   }

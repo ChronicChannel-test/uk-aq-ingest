@@ -544,10 +544,33 @@ function renderDisplayTemplate(
   template: string,
   tokens: Record<string, string>,
 ): string | null {
+  const normalizedStationName = normalizeNonEmptyText(tokens.station_name ?? null);
+  const normalizedStationRef = normalizeNonEmptyText(tokens.station_ref ?? null);
+  const hasStationNameToken = /\{station_name\}/i.test(template);
+  const hasStationRefToken = /\{station_ref\}/i.test(template);
+  const safeTokens = { ...tokens };
+  // Avoid duplicate refs for templates like "{station_name} - {station_ref}"
+  // when station_name already includes the station_ref.
+  if (
+    hasStationNameToken &&
+    hasStationRefToken &&
+    normalizedStationName &&
+    normalizedStationRef &&
+    normalizedStationName.toLowerCase().includes(normalizedStationRef.toLowerCase())
+  ) {
+    safeTokens.station_ref = "";
+  }
   const rendered = template.replace(/\{(station_name|station_label|station_ref)\}/g, (_, key) => {
-    return tokens[key] ?? "";
+    return safeTokens[key] ?? "";
   });
-  const cleaned = rendered.replace(/\s+-\s+/g, " - ").replace(/\s+/g, " ").trim();
+  const cleaned = rendered
+    .replace(/\(\s*\)/g, "")
+    .replace(/\[\s*\]/g, "")
+    .replace(/\s+-\s+/g, " - ")
+    .replace(/\s+/g, " ")
+    .replace(/(?:\s*[-,:;|/]\s*)+$/g, "")
+    .replace(/^(?:\s*[-,:;|/]\s*)+/g, "")
+    .trim();
   return cleaned ? cleaned : null;
 }
 
