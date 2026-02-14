@@ -370,7 +370,7 @@ jobs:
           for kv in "${env_updates[@]}"; do
             key="${kv%%=*}"
             value="${kv#*=}"
-            python3 -c 'import json,sys; open(sys.argv[1], "a", encoding="utf-8").write(f"{sys.argv[2]}: {json.dumps(sys.argv[3])}\\n")' \
+            python3 -c 'import json,sys; f=open(sys.argv[1], "a", encoding="utf-8"); print(f"{sys.argv[2]}: {json.dumps(sys.argv[3])}", file=f); f.close()' \
               "${env_file}" "${key}" "${value}"
           done
 
