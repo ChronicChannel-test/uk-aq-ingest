@@ -100,6 +100,23 @@ SB_UK_AQ_CRON_SECRET=...
   - `HISTORY_SUPABASE_URL`, `HISTORY_SERVICE_ROLE_KEY`,
   - GCP deploy/auth secrets as in other Cloud Run workflows.
 
+### `uk_aq_uk_air_sos_cloud_run_deploy.yml`
+- Trigger: push to `main` affecting `workers/uk_aq_uk_air_sos_cloud_run/**` or SOS ingest runtime files, or manual dispatch.
+- Purpose: deploy the UK-AIR SOS Cloud Run job + optional Cloud Scheduler trigger.
+- Default job name: `uk-aq-sos-ingest`.
+- Worker: `workers/uk_aq_uk_air_sos_cloud_run`.
+- Scheduler:
+  - Uses Google Cloud Scheduler -> Cloud Run Jobs API (`:run`).
+  - Frequency is configurable (`GCP_UK_AIR_SOS_SCHEDULER_CRON`), while effective poll cadence still comes from connector interval checks in the worker.
+- Required secrets/vars:
+  - `GCP_PROJECT_ID`, Google auth secrets (`GCP_WORKLOAD_IDENTITY_PROVIDER` + `GCP_SERVICE_ACCOUNT` or `GCP_SA_KEY`)
+  - `GCP_UK_AIR_SOS_JOB_SERVICE_ACCOUNT` (repo var or secret)
+  - `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`
+- Optional:
+  - `HISTORY_SUPABASE_URL`, `HISTORY_SERVICE_ROLE_KEY`
+  - `SB_UK_AQ_CRON_SECRET`
+  - Dropbox secrets (`DROPBOX_*`) and raw-upload allowlist env (`UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL`).
+
 ### `uk_air_sos_site_register_monthly.yml`
 - Schedule: monthly on day 1 at 04:15 UTC.
 - Purpose: download the UK-AIR monitoring sites CSV via the search page.

@@ -837,7 +837,7 @@
       }
 
       function renderConnectorSettingsPanel(connectors) {
-        const schedulerBackendAllowlist = new Set(["sensorcommunity", "breathelondon"]);
+        const schedulerBackendAllowlist = new Set(["uk_air_sos", "sensorcommunity", "breathelondon"]);
         const panel = document.createElement("section");
         panel.className = "panel";
         panel.innerHTML = `
@@ -899,7 +899,7 @@
                 .join("")}
             </tbody>
           </table>
-          <div class="footnote">Scheduler backend toggle is currently active for Sensor.Community and Breathe London only.</div>
+          <div class="footnote">Scheduler backend toggle is currently active for UK-AIR SOS, Sensor.Community, and Breathe London.</div>
           <div class="settings-actions">
             <button class="settings-button" id="commit-settings">Commit changes</button>
           </div>

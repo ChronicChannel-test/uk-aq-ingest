@@ -115,6 +115,7 @@ const TARGET_CONNECTORS = [
 const SCHEDULER_BACKEND_SUPABASE_FUNCTION = "supabase_function";
 const SCHEDULER_BACKEND_GOOGLE_CLOUD_RUN = "google_cloud_run";
 const GOOGLE_CLOUD_RUN_CONNECTOR_ALLOWLIST = new Set([
+  "uk_air_sos",
   "sensorcommunity",
   "breathelondon",
 ]);
@@ -422,10 +423,6 @@ function getPartialBudgetReason(payload: unknown): string | null {
     return "request_budget_limited";
   }
   return null;
-}
-
-function isPartialBudgetPayload(payload: unknown): boolean {
-  return getPartialBudgetReason(payload) !== null;
 }
 
 async function loadStationIdsByRefs(

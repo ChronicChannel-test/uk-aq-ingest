@@ -1,0 +1,374 @@
+name: Deploy UK-AIR SOS Cloud Run Job
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "workers/uk_aq_uk_air_sos_cloud_run/**"
+      - "supabase/functions/ingest_uk_air_sos/**"
+      - "supabase/functions/_shared/cache.ts"
+      - "supabase/functions/_shared/fetch_egress_patch.ts"
+      - "supabase/functions/_shared/egress_metrics.ts"
+      - "supabase/functions/_shared/history_client.ts"
+      - ".github/workflows/uk_aq_uk_air_sos_cloud_run_deploy.yml"
+  workflow_dispatch:
+
+jobs:
+  deploy-uk-air-sos-job:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+      REGION: ${{ vars.GCP_REGION || 'europe-west2' }}
+      REPO: ${{ vars.GCP_ARTIFACT_REPO || 'uk-aq' }}
+      JOB_NAME: ${{ vars.GCP_UK_AIR_SOS_JOB_NAME || 'uk-aq-sos-ingest' }}
+      JOB_SERVICE_ACCOUNT: ${{ vars.GCP_UK_AIR_SOS_JOB_SERVICE_ACCOUNT || secrets.GCP_UK_AIR_SOS_JOB_SERVICE_ACCOUNT || '' }}
+      JOB_TIMEOUT_SECONDS: ${{ vars.GCP_UK_AIR_SOS_JOB_TIMEOUT_SECONDS || '900' }}
+      JOB_MAX_RETRIES: ${{ vars.GCP_UK_AIR_SOS_JOB_MAX_RETRIES || '0' }}
+      SCHEDULER_ENABLED: ${{ vars.GCP_UK_AIR_SOS_SCHEDULER_ENABLED || 'true' }}
+      SCHEDULER_JOB_NAME: ${{ vars.GCP_UK_AIR_SOS_SCHEDULER_JOB_NAME || 'uk-aq-sos-trigger' }}
+      SCHEDULER_CRON: ${{ vars.GCP_UK_AIR_SOS_SCHEDULER_CRON || '*/2 * * * *' }}
+      SCHEDULER_TIMEZONE: ${{ vars.GCP_UK_AIR_SOS_SCHEDULER_TIMEZONE || 'Etc/UTC' }}
+      SCHEDULER_MAX_RETRY_ATTEMPTS: ${{ vars.GCP_UK_AIR_SOS_SCHEDULER_MAX_RETRY_ATTEMPTS || '0' }}
+      SCHEDULER_SERVICE_ACCOUNT: ${{ vars.GCP_UK_AIR_SOS_SCHEDULER_SERVICE_ACCOUNT || '' }}
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      HISTORY_SUPABASE_URL: ${{ secrets.HISTORY_SUPABASE_URL }}
+      UK_AQ_CORE_SCHEMA: ${{ vars.UK_AQ_CORE_SCHEMA || 'uk_aq_core' }}
+      UK_AQ_RAW_SCHEMA: ${{ vars.UK_AQ_RAW_SCHEMA || 'uk_aq_raw' }}
+      HISTORY_SCHEMA: ${{ vars.HISTORY_SCHEMA || 'uk_aq_public' }}
+      UK_AIR_SOS_BASE_URL: ${{ vars.UK_AIR_SOS_BASE_URL || 'https://uk-air.defra.gov.uk/sos-ukair/api/v1' }}
+      UK_AIR_SOS_SERVICE_LABEL: ${{ vars.UK_AIR_SOS_SERVICE_LABEL || 'UK-AIR-SOS' }}
+      UK_AIR_SOS_CONNECTOR_CODE: ${{ vars.UK_AIR_SOS_CONNECTOR_CODE || 'uk_air_sos' }}
+      UK_AIR_SOS_DEFAULT_INTERVAL_MINUTES: ${{ vars.UK_AIR_SOS_DEFAULT_INTERVAL_MINUTES || '60' }}
+      UK_AIR_SOS_IN_FLIGHT_TIMEOUT_MINUTES: ${{ vars.UK_AIR_SOS_IN_FLIGHT_TIMEOUT_MINUTES || '30' }}
+      UK_AIR_SOS_CLAIM_TIMEOUT_MINUTES: ${{ vars.UK_AIR_SOS_CLAIM_TIMEOUT_MINUTES || '30' }}
+      UK_AIR_SOS_DEFAULT_WINDOW_HOURS: ${{ vars.UK_AIR_SOS_DEFAULT_WINDOW_HOURS || '6' }}
+      UK_AIR_SOS_DEFAULT_TIMESERIES_LIMIT: ${{ vars.UK_AIR_SOS_DEFAULT_TIMESERIES_LIMIT || '100' }}
+      UK_AIR_SOS_STATION_BATCH_LIMIT: ${{ vars.UK_AIR_SOS_STATION_BATCH_LIMIT || '100' }}
+      UK_AIR_SOS_STALE_LIMIT: ${{ vars.UK_AIR_SOS_STALE_LIMIT || '4' }}
+      UK_AIR_SOS_MAX_RUNTIME_SECONDS: ${{ vars.UK_AIR_SOS_MAX_RUNTIME_SECONDS || '120' }}
+      UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL: ${{ secrets.UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL }}
+      UK_AQ_DROPBOX_ROOT: ${{ vars.UK_AQ_DROPBOX_ROOT || '/CIC-Test' }}
+      UK_AIR_RAW_DROPBOX_FOLDER: ${{ vars.UK_AIR_RAW_DROPBOX_FOLDER || '/connectors/uk_air_sos/raw_data' }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      HISTORY_SERVICE_ROLE_KEY: ${{ secrets.HISTORY_SERVICE_ROLE_KEY }}
+      SB_UK_AQ_CRON_SECRET: ${{ secrets.SB_UK_AQ_CRON_SECRET }}
+      DROPBOX_APP_KEY: ${{ secrets.DROPBOX_APP_KEY }}
+      DROPBOX_APP_SECRET: ${{ secrets.DROPBOX_APP_SECRET }}
+      DROPBOX_REFRESH_TOKEN: ${{ secrets.DROPBOX_REFRESH_TOKEN }}
+      SUPABASE_SERVICE_ROLE_KEY_SECRET_NAME: ${{ vars.SUPABASE_SERVICE_ROLE_KEY_SECRET_NAME || 'SUPABASE_SERVICE_ROLE_KEY' }}
+      HISTORY_SERVICE_ROLE_KEY_SECRET_NAME: ${{ vars.HISTORY_SERVICE_ROLE_KEY_SECRET_NAME || 'HISTORY_SERVICE_ROLE_KEY' }}
+      SB_UK_AQ_CRON_SECRET_SECRET_NAME: ${{ vars.SB_UK_AQ_CRON_SECRET_SECRET_NAME || 'SB_UK_AQ_CRON_SECRET' }}
+      DROPBOX_APP_KEY_SECRET_NAME: ${{ vars.DROPBOX_APP_KEY_SECRET_NAME || 'DROPBOX_APP_KEY' }}
+      DROPBOX_APP_SECRET_SECRET_NAME: ${{ vars.DROPBOX_APP_SECRET_SECRET_NAME || 'DROPBOX_APP_SECRET' }}
+      DROPBOX_REFRESH_TOKEN_SECRET_NAME: ${{ vars.DROPBOX_REFRESH_TOKEN_SECRET_NAME || 'DROPBOX_REFRESH_TOKEN' }}
+      GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+      GCP_SERVICE_ACCOUNT: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+      GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate required project config
+        run: |
+          if [ -z "${PROJECT_ID:-}" ]; then
+            echo "Missing required secret: GCP_PROJECT_ID"
+            exit 1
+          fi
+          if [ -z "${JOB_SERVICE_ACCOUNT:-}" ]; then
+            echo "Missing required service account setting."
+            echo "Set either repo variable or repo secret: GCP_UK_AIR_SOS_JOB_SERVICE_ACCOUNT"
+            exit 1
+          fi
+          if [[ "${JOB_SERVICE_ACCOUNT}" == *"-compute@developer.gserviceaccount.com" ]]; then
+            echo "Invalid GCP_UK_AIR_SOS_JOB_SERVICE_ACCOUNT: default compute service account is not allowed."
+            echo "Set it to your dedicated runtime SA (for example uk-aq-sos-job@${PROJECT_ID}.iam.gserviceaccount.com)."
+            exit 1
+          fi
+          if [ -z "${SUPABASE_URL:-}" ]; then
+            echo "Missing required secret: SUPABASE_URL"
+            exit 1
+          fi
+
+      - name: Validate Google auth config
+        run: |
+          if [ -n "${GCP_WORKLOAD_IDENTITY_PROVIDER:-}" ] && [ -n "${GCP_SERVICE_ACCOUNT:-}" ]; then
+            echo "Using Workload Identity Federation auth."
+          elif [ -n "${GCP_SA_KEY:-}" ]; then
+            echo "Using Service Account key auth."
+          else
+            echo "Missing Google auth config."
+            echo "Set either:"
+            echo "1) GCP_WORKLOAD_IDENTITY_PROVIDER + GCP_SERVICE_ACCOUNT"
+            echo "or"
+            echo "2) GCP_SA_KEY"
+            exit 1
+          fi
+
+      - name: Authenticate to Google Cloud (WIF)
+        if: ${{ env.GCP_WORKLOAD_IDENTITY_PROVIDER != '' && env.GCP_SERVICE_ACCOUNT != '' }}
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ env.GCP_SERVICE_ACCOUNT }}
+
+      - name: Authenticate to Google Cloud (Service Account Key fallback)
+        if: ${{ env.GCP_WORKLOAD_IDENTITY_PROVIDER == '' || env.GCP_SERVICE_ACCOUNT == '' }}
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ env.GCP_SA_KEY }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure gcloud project
+        run: |
+          gcloud config set project "${PROJECT_ID}"
+          gcloud config set run/region "${REGION}"
+
+      - name: Verify Artifact Registry repository exists
+        run: |
+          gcloud artifacts repositories describe "${REPO}" \
+            --location "${REGION}" \
+            --project "${PROJECT_ID}" >/dev/null
+
+      - name: Configure Docker auth for Artifact Registry
+        run: |
+          gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+
+      - name: Build and push UK-AIR SOS image
+        id: build
+        run: |
+          IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}/uk-aq-sos:${GITHUB_SHA::12}"
+          echo "image=${IMAGE}" >> "${GITHUB_OUTPUT}"
+          docker build -f workers/uk_aq_uk_air_sos_cloud_run/Dockerfile -t "${IMAGE}" .
+          docker push "${IMAGE}"
+
+      - name: Ensure Cloud Run job exists
+        run: |
+          set -euo pipefail
+          if gcloud run jobs describe "${JOB_NAME}" --region "${REGION}" >/dev/null 2>&1; then
+            echo "Cloud Run job exists: ${JOB_NAME}"
+            exit 0
+          fi
+
+          CMD=(
+            gcloud run jobs create "${JOB_NAME}"
+            --region "${REGION}"
+            --image "${{ steps.build.outputs.image }}"
+            --task-timeout "${JOB_TIMEOUT_SECONDS}s"
+            --max-retries "${JOB_MAX_RETRIES}"
+            --service-account "${JOB_SERVICE_ACCOUNT}"
+          )
+          "${CMD[@]}"
+
+      - name: Sync GitHub secrets to GCP Secret Manager
+        run: |
+          set -euo pipefail
+
+          upsert_secret() {
+            local secret_name="$1"
+            local secret_value="$2"
+            local required="${3:-0}"
+
+            if [ -z "${secret_name}" ]; then
+              if [ "${required}" = "1" ]; then
+                echo "Missing required secret name."
+                exit 1
+              fi
+              return 0
+            fi
+
+            if [ -z "${secret_value}" ]; then
+              if [ "${required}" = "1" ]; then
+                echo "Missing required secret value for ${secret_name} in GitHub Secrets."
+                exit 1
+              fi
+              echo "Skipping optional secret ${secret_name} (no GitHub secret value)."
+              return 0
+            fi
+
+            if gcloud secrets describe "${secret_name}" --project "${PROJECT_ID}" >/dev/null 2>&1; then
+              printf '%s' "${secret_value}" | gcloud secrets versions add "${secret_name}" \
+                --project "${PROJECT_ID}" \
+                --data-file=-
+              echo "Updated Secret Manager secret version: ${secret_name}"
+            else
+              printf '%s' "${secret_value}" | gcloud secrets create "${secret_name}" \
+                --project "${PROJECT_ID}" \
+                --replication-policy="automatic" \
+                --data-file=-
+              echo "Created Secret Manager secret: ${secret_name}"
+            fi
+          }
+
+          upsert_secret "${SUPABASE_SERVICE_ROLE_KEY_SECRET_NAME}" "${SUPABASE_SERVICE_ROLE_KEY}" 1
+          upsert_secret "${SB_UK_AQ_CRON_SECRET_SECRET_NAME}" "${SB_UK_AQ_CRON_SECRET}" 0
+          upsert_secret "${HISTORY_SERVICE_ROLE_KEY_SECRET_NAME}" "${HISTORY_SERVICE_ROLE_KEY}" 0
+          upsert_secret "${DROPBOX_APP_KEY_SECRET_NAME}" "${DROPBOX_APP_KEY}" 0
+          upsert_secret "${DROPBOX_APP_SECRET_SECRET_NAME}" "${DROPBOX_APP_SECRET}" 0
+          upsert_secret "${DROPBOX_REFRESH_TOKEN_SECRET_NAME}" "${DROPBOX_REFRESH_TOKEN}" 0
+
+      - name: Build Cloud Run env and secret args
+        id: cloudrun_args
+        run: |
+          set -euo pipefail
+
+          require_env() {
+            local key="$1"
+            local value="${!key:-}"
+            if [ -z "${value}" ]; then
+              echo "Missing required value for ${key}"
+              exit 1
+            fi
+          }
+
+          add_env() {
+            local key="$1"
+            local value="${!key:-}"
+            if [ -n "${value}" ]; then
+              env_updates+=("${key}=${value}")
+            fi
+          }
+
+          add_secret_binding() {
+            local env_key="$1"
+            local secret_name="$2"
+            local required="${3:-0}"
+            if [ -z "${secret_name}" ]; then
+              if [ "${required}" = "1" ]; then
+                echo "Missing secret name for required binding ${env_key}"
+                exit 1
+              fi
+              return 0
+            fi
+            if gcloud secrets describe "${secret_name}" --project "${PROJECT_ID}" >/dev/null 2>&1; then
+              secret_updates+=("${env_key}=${secret_name}:latest")
+              return 0
+            fi
+            if [ "${required}" = "1" ]; then
+              echo "Required Secret Manager secret not found: ${secret_name}"
+              exit 1
+            fi
+            echo "Optional Secret Manager secret not found, skipping: ${secret_name}"
+          }
+
+          require_env SUPABASE_URL
+
+          env_updates=()
+          add_env SUPABASE_URL
+          add_env UK_AQ_CORE_SCHEMA
+          add_env UK_AQ_RAW_SCHEMA
+          add_env UK_AIR_SOS_BASE_URL
+          add_env UK_AIR_SOS_SERVICE_LABEL
+          add_env UK_AIR_SOS_CONNECTOR_CODE
+          add_env UK_AIR_SOS_DEFAULT_INTERVAL_MINUTES
+          add_env UK_AIR_SOS_IN_FLIGHT_TIMEOUT_MINUTES
+          add_env UK_AIR_SOS_CLAIM_TIMEOUT_MINUTES
+          add_env UK_AIR_SOS_DEFAULT_WINDOW_HOURS
+          add_env UK_AIR_SOS_DEFAULT_TIMESERIES_LIMIT
+          add_env UK_AIR_SOS_STATION_BATCH_LIMIT
+          add_env UK_AIR_SOS_STALE_LIMIT
+          add_env UK_AIR_SOS_MAX_RUNTIME_SECONDS
+          add_env UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL
+          add_env UK_AQ_DROPBOX_ROOT
+          add_env UK_AIR_RAW_DROPBOX_FOLDER
+          if [ -n "${HISTORY_SUPABASE_URL:-}" ]; then
+            add_env HISTORY_SUPABASE_URL
+            add_env HISTORY_SCHEMA
+          fi
+
+          secret_updates=()
+          add_secret_binding "SUPABASE_SERVICE_ROLE_KEY" "${SUPABASE_SERVICE_ROLE_KEY_SECRET_NAME}" 1
+          add_secret_binding "SB_UK_AQ_CRON_SECRET" "${SB_UK_AQ_CRON_SECRET_SECRET_NAME}" 0
+          add_secret_binding "HISTORY_SERVICE_ROLE_KEY" "${HISTORY_SERVICE_ROLE_KEY_SECRET_NAME}" 0
+          add_secret_binding "DROPBOX_APP_KEY" "${DROPBOX_APP_KEY_SECRET_NAME}" 0
+          add_secret_binding "DROPBOX_APP_SECRET" "${DROPBOX_APP_SECRET_SECRET_NAME}" 0
+          add_secret_binding "DROPBOX_REFRESH_TOKEN" "${DROPBOX_REFRESH_TOKEN_SECRET_NAME}" 0
+
+          env_csv="$(IFS=,; echo "${env_updates[*]}")"
+          secret_csv="$(IFS=,; echo "${secret_updates[*]}")"
+          echo "env_csv=${env_csv}" >> "${GITHUB_OUTPUT}"
+          echo "secret_csv=${secret_csv}" >> "${GITHUB_OUTPUT}"
+
+      - name: Update Cloud Run job image
+        run: |
+          set -euo pipefail
+          ENV_CSV='${{ steps.cloudrun_args.outputs.env_csv }}'
+          SECRET_CSV='${{ steps.cloudrun_args.outputs.secret_csv }}'
+
+          CMD=(
+            gcloud run jobs update "${JOB_NAME}"
+            --region "${REGION}"
+            --image "${{ steps.build.outputs.image }}"
+            --task-timeout "${JOB_TIMEOUT_SECONDS}s"
+            --max-retries "${JOB_MAX_RETRIES}"
+            --service-account "${JOB_SERVICE_ACCOUNT}"
+          )
+          if [ -n "${ENV_CSV}" ]; then
+            CMD+=(--update-env-vars "${ENV_CSV}")
+          fi
+          if [ -n "${SECRET_CSV}" ]; then
+            CMD+=(--update-secrets "${SECRET_CSV}")
+          fi
+          "${CMD[@]}"
+
+      - name: Ensure Cloud Scheduler trigger exists
+        run: |
+          set -euo pipefail
+
+          enabled="$(printf '%s' "${SCHEDULER_ENABLED}" | tr '[:upper:]' '[:lower:]')"
+          if [ "${enabled}" != "true" ] && [ "${enabled}" != "1" ] && [ "${enabled}" != "yes" ]; then
+            echo "Skipping scheduler trigger management (SCHEDULER_ENABLED=${SCHEDULER_ENABLED})."
+            exit 0
+          fi
+
+          if [ -z "${SCHEDULER_JOB_NAME:-}" ]; then
+            echo "Missing scheduler job name."
+            exit 1
+          fi
+          if [ -z "${SCHEDULER_CRON:-}" ]; then
+            echo "Missing scheduler cron."
+            exit 1
+          fi
+
+          scheduler_sa="${SCHEDULER_SERVICE_ACCOUNT:-uk-aq-scheduler-invoker@${PROJECT_ID}.iam.gserviceaccount.com}"
+          run_uri="https://run.googleapis.com/v2/projects/${PROJECT_ID}/locations/${REGION}/jobs/${JOB_NAME}:run"
+
+          gcloud run jobs add-iam-policy-binding "${JOB_NAME}" \
+            --region "${REGION}" \
+            --member "serviceAccount:${scheduler_sa}" \
+            --role "roles/run.invoker" >/dev/null
+
+          if gcloud scheduler jobs describe "${SCHEDULER_JOB_NAME}" --location "${REGION}" >/dev/null 2>&1; then
+            gcloud scheduler jobs update http "${SCHEDULER_JOB_NAME}" \
+              --location "${REGION}" \
+              --schedule "${SCHEDULER_CRON}" \
+              --time-zone "${SCHEDULER_TIMEZONE}" \
+              --uri "${run_uri}" \
+              --http-method POST \
+              --oauth-service-account-email "${scheduler_sa}" \
+              --oauth-token-scope "https://www.googleapis.com/auth/cloud-platform" \
+              --max-retry-attempts "${SCHEDULER_MAX_RETRY_ATTEMPTS}"
+            echo "Updated Cloud Scheduler job: ${SCHEDULER_JOB_NAME}"
+          else
+            gcloud scheduler jobs create http "${SCHEDULER_JOB_NAME}" \
+              --location "${REGION}" \
+              --schedule "${SCHEDULER_CRON}" \
+              --time-zone "${SCHEDULER_TIMEZONE}" \
+              --uri "${run_uri}" \
+              --http-method POST \
+              --oauth-service-account-email "${scheduler_sa}" \
+              --oauth-token-scope "https://www.googleapis.com/auth/cloud-platform" \
+              --max-retry-attempts "${SCHEDULER_MAX_RETRY_ATTEMPTS}"
+            echo "Created Cloud Scheduler job: ${SCHEDULER_JOB_NAME}"
+          fi
+
+      - name: Show deployed job
+        run: |
+          gcloud run jobs describe "${JOB_NAME}" \
+            --region "${REGION}" \
+            --format="yaml(name,template.template.serviceAccount,template.template.containers[0].image,template.template.timeoutSeconds)"

@@ -80,6 +80,15 @@ The Edge Function `ingest_uk_air_sos` polls recent observations using the existi
 It does not update `stations.station_name` (station metadata comes from the ingest/list scripts).
 `uk_air_sos_timeseries_checkpoints` tracks the last poll attempt per timeseries so the dispatcher can rotate batches.
 
+## Cloud Run polling
+- Cloud Run worker: `workers/uk_aq_uk_air_sos_cloud_run/run_job.ts`
+- Triggered when `connectors.scheduler_backend='google_cloud_run'`.
+- Uses station-level checkpointing:
+  - selector RPC: `uk_aq_core.uk_air_sos_select_station_refs(batch_limit, stale_limit)`
+  - table: `uk_aq_raw.uk_air_sos_station_checkpoints`
+- Flow: select due stations -> resolve scoped timeseries ids -> call `ingest_uk_air_sos` once with `timeseries_ids`.
+- Edge behavior stays unchanged; the edge path still uses `uk_air_sos_timeseries_checkpoints`.
+
 Environment variables (Supabase secrets):
 - `SB_SUPABASE_URL`
 - `SB_SERVICE_ROLE_KEY`

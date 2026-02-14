@@ -35,7 +35,8 @@ This page summarizes how SOS data lands in tables and how stations map to multip
 ## Polling Flow (Observations)
 - 15-minute polling uses `timeseries_ref` to resolve `timeseries.id`.
 - Each sample is stored in `observations` keyed by `connector_id` + `timeseries_id` + `observed_at`.
-- `uk_air_sos_timeseries_checkpoints` records `last_polled_at` so the dispatcher rotates batches even if stations go stale.
+- Edge path: `uk_air_sos_timeseries_checkpoints` records `last_polled_at` so the dispatcher rotates timeseries batches.
+- Cloud Run path: `uk_air_sos_station_checkpoints` records station due-state and lag samples; station refs are selected first, then scoped timeseries are polled.
 
 ## Why Coordinate Matching Exists
 - UK-AIR register is keyed by `uk_air_id`, but SOS metadata does not always include it.

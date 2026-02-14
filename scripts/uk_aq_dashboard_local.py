@@ -40,7 +40,7 @@ SCHEDULER_BACKEND_ALLOWED = {
     SCHEDULER_BACKEND_SUPABASE_FUNCTION,
     SCHEDULER_BACKEND_GOOGLE_CLOUD_RUN,
 }
-SCHEDULER_BACKEND_CONNECTOR_ALLOWLIST = {"sensorcommunity", "breathelondon"}
+SCHEDULER_BACKEND_CONNECTOR_ALLOWLIST = {"uk_air_sos", "sensorcommunity", "breathelondon"}
 
 CACHE_LOCK = threading.Lock()
 CACHE_STATE: Dict[str, Any] = {"data": None, "generated_at": None}
