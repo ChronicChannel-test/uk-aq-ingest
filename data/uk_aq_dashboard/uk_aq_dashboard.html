@@ -483,7 +483,7 @@
       const refreshNowBtn = document.getElementById("refresh-now");
       let refreshTimer = null;
       let refreshSeconds = 300;
-      let wasHidden = document.hidden;
+      let wasInactive = document.hidden || !document.hasFocus();
 
       const bucketOrder = ["0-3 Hours", "3-6 Hours", "6-24 Hours", "1 - 7 Days", "Older than 7 Days"];
 
@@ -690,17 +690,39 @@
         }
       }
 
+      function isPageActive() {
+        return !document.hidden && document.hasFocus();
+      }
+
       function startRefreshTimer() {
         clearRefreshTimer();
-        if (document.hidden) {
+        if (!isPageActive()) {
           return;
         }
-        refreshTimer = setInterval(loadDashboard, refreshSeconds * 1000);
+        refreshTimer = setInterval(() => {
+          if (!isPageActive()) {
+            return;
+          }
+          loadDashboard();
+        }, refreshSeconds * 1000);
       }
 
       function setRefreshInterval(seconds) {
         refreshSeconds = seconds;
         startRefreshTimer();
+      }
+
+      function handleActivityChange() {
+        if (!isPageActive()) {
+          clearRefreshTimer();
+          wasInactive = true;
+          return;
+        }
+        startRefreshTimer();
+        if (wasInactive) {
+          loadDashboard();
+          wasInactive = false;
+        }
       }
 
       function renderPanel(pollutant) {
@@ -1045,21 +1067,14 @@
         loadDashboard();
       });
 
-      document.addEventListener("visibilitychange", () => {
-        if (document.hidden) {
-          clearRefreshTimer();
-          wasHidden = true;
-          return;
-        }
-        startRefreshTimer();
-        if (wasHidden) {
-          loadDashboard();
-          wasHidden = false;
-        }
-      });
+      document.addEventListener("visibilitychange", handleActivityChange);
+      window.addEventListener("focus", handleActivityChange);
+      window.addEventListener("blur", handleActivityChange);
 
       setRefreshInterval(refreshSeconds);
-      loadDashboard();
+      if (isPageActive()) {
+        loadDashboard();
+      }
     </script>
   </body>
 </html>
