@@ -77,6 +77,8 @@ Relevant env vars:
 - Scheduler backend toggle:
   - `connectors.scheduler_backend='supabase_function'`: connector runs via dispatcher.
   - `connectors.scheduler_backend='google_cloud_run'`: dispatcher skips it and expects external scheduling.
+  - Current Cloud Run connectors: `uk_air_sos`, `sensorcommunity`, `breathelondon`, `openaq`.
+  - OpenAQ Cloud Run scheduling is due-driven (one-off Cloud Tasks based on `openaq_station_checkpoints.next_due_at`) with a 15-minute safety cron.
 - Use queue mode for normal operation; use `mode=legacy` only as fallback/debug.
 - Monitor:
   - `uk_aq_raw.dispatch_connector_queue` row count, attempts, and last_error

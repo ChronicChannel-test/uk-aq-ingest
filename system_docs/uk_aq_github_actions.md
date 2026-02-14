@@ -117,6 +117,25 @@ SB_UK_AQ_CRON_SECRET=...
   - `SB_UK_AQ_CRON_SECRET`
   - Dropbox secrets (`DROPBOX_*`) and raw-upload allowlist env (`UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL`).
 
+### `uk_aq_openaq_cloud_run_deploy.yml`
+- Trigger: push to `main` affecting `workers/uk_aq_openaq_cloud_run/**` or OpenAQ ingest runtime files, or manual dispatch.
+- Purpose: deploy the OpenAQ Cloud Run job + due-driven Cloud Tasks trigger + 15-minute safety Cloud Scheduler trigger.
+- Default job name: `uk-aq-openaq-ingest`.
+- Worker: `workers/uk_aq_openaq_cloud_run`.
+- Trigger model:
+  - Primary: one-off Cloud Tasks created by the OpenAQ Cloud Run worker based on earliest due `openaq_station_checkpoints.next_due_at`.
+  - Safety: Cloud Scheduler cron (default `*/15 * * * *`) to recover from missed task creation.
+- Required secrets/vars:
+  - `GCP_PROJECT_ID`, Google auth secrets (`GCP_WORKLOAD_IDENTITY_PROVIDER` + `GCP_SERVICE_ACCOUNT` or `GCP_SA_KEY`)
+  - `GCP_OPENAQ_JOB_SERVICE_ACCOUNT` (repo var or secret)
+  - `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`
+  - `OPENAQ_API_KEY`
+- Optional:
+  - `HISTORY_SUPABASE_URL`, `HISTORY_SERVICE_ROLE_KEY`
+  - `SB_UK_AQ_CRON_SECRET`
+  - Dropbox secrets (`DROPBOX_*`) and raw-upload allowlist env (`OPENAQ_RAW_DROPBOX_ALLOWED_SUPABASE_URL`)
+  - `GCP_OPENAQ_TASK_QUEUE_ID`, `GCP_OPENAQ_TASK_INVOKER_SERVICE_ACCOUNT`, `GCP_OPENAQ_SCHEDULER_SERVICE_ACCOUNT`.
+
 ### `uk_air_sos_site_register_monthly.yml`
 - Schedule: monthly on day 1 at 04:15 UTC.
 - Purpose: download the UK-AIR monitoring sites CSV via the search page.

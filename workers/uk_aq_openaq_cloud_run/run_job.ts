@@ -1,0 +1,1073 @@
+const CONNECTOR_CODE =
+  (Deno.env.get("OPENAQ_CONNECTOR_CODE") || "openaq").trim();
+const OPENAQ_SERVICE_REF =
+  (Deno.env.get("OPENAQ_SERVICE_REF") || CONNECTOR_CODE).trim();
+const SCHEDULER_BACKEND_SUPABASE_FUNCTION = "supabase_function";
+const SCHEDULER_BACKEND_GOOGLE_CLOUD_RUN = "google_cloud_run";
+
+const IN_FLIGHT_TIMEOUT_MINUTES = parsePositiveInt(
+  Deno.env.get("OPENAQ_IN_FLIGHT_TIMEOUT_MINUTES"),
+  30,
+);
+const CLAIM_TIMEOUT_MINUTES = parsePositiveInt(
+  Deno.env.get("OPENAQ_CLAIM_TIMEOUT_MINUTES"),
+  30,
+);
+const DEFAULT_WINDOW_HOURS = parsePositiveInt(
+  Deno.env.get("OPENAQ_DEFAULT_WINDOW_HOURS"),
+  6,
+);
+const DEFAULT_BATCH_LIMIT = parsePositiveInt(
+  Deno.env.get("OPENAQ_DEFAULT_BATCH_LIMIT"),
+  56,
+);
+const DEFAULT_STALE_LIMIT = parsePositiveInt(
+  Deno.env.get("OPENAQ_STALE_LIMIT"),
+  4,
+);
+const PORT = parsePositiveInt(
+  Deno.env.get("OPENAQ_LOCAL_PORT") || Deno.env.get("PORT"),
+  8000,
+);
+const REQUEST_PAYLOAD_RAW = (Deno.env.get("OPENAQ_REQUEST_PAYLOAD") || "{}")
+  .trim();
+const REQUEST_PAYLOAD_OVERRIDES = parseRequestPayload(REQUEST_PAYLOAD_RAW);
+const CRON_SECRET = (Deno.env.get("SB_UK_AQ_CRON_SECRET") || "").trim();
+
+const OPENAQ_TASKS_ENABLED = parseBool(
+  Deno.env.get("OPENAQ_TASKS_ENABLED"),
+  true,
+);
+const OPENAQ_NEXT_CHECK_MIN_SECONDS = parsePositiveInt(
+  Deno.env.get("OPENAQ_NEXT_CHECK_MIN_SECONDS"),
+  60,
+);
+const OPENAQ_FAILURE_RETRY_SECONDS = parsePositiveInt(
+  Deno.env.get("OPENAQ_FAILURE_RETRY_SECONDS"),
+  120,
+);
+const OPENAQ_TASK_NAME_PREFIX =
+  (Deno.env.get("OPENAQ_TASK_NAME_PREFIX") || "uk-aq-openaq-next").trim();
+const OPENAQ_GCP_PROJECT_ID = (
+  Deno.env.get("OPENAQ_GCP_PROJECT_ID") ||
+  Deno.env.get("GCP_PROJECT_ID") ||
+  Deno.env.get("GOOGLE_CLOUD_PROJECT") ||
+  ""
+).trim();
+const OPENAQ_GCP_REGION = (
+  Deno.env.get("OPENAQ_GCP_REGION") ||
+  Deno.env.get("GCP_REGION") ||
+  "europe-west2"
+).trim();
+const OPENAQ_CLOUD_RUN_JOB_NAME = (
+  Deno.env.get("OPENAQ_CLOUD_RUN_JOB_NAME") ||
+  Deno.env.get("GCP_OPENAQ_JOB_NAME") ||
+  "uk-aq-openaq-ingest"
+).trim();
+const OPENAQ_TASK_QUEUE_ID = (
+  Deno.env.get("OPENAQ_TASK_QUEUE_ID") ||
+  Deno.env.get("GCP_OPENAQ_TASK_QUEUE_ID") ||
+  "uk-aq-openaq-trigger-queue"
+).trim();
+const OPENAQ_TASK_INVOKER_SERVICE_ACCOUNT = (
+  Deno.env.get("OPENAQ_TASK_INVOKER_SERVICE_ACCOUNT") ||
+  Deno.env.get("GCP_OPENAQ_TASK_INVOKER_SERVICE_ACCOUNT") ||
+  Deno.env.get("GCP_OPENAQ_SCHEDULER_SERVICE_ACCOUNT") ||
+  ""
+).trim();
+
+const SUPABASE_URL = requiredEnv("SUPABASE_URL");
+const SUPABASE_SERVICE_ROLE_KEY = requiredEnv("SUPABASE_SERVICE_ROLE_KEY");
+const UK_AQ_CORE_SCHEMA = (Deno.env.get("UK_AQ_CORE_SCHEMA") || "uk_aq_core")
+  .trim();
+const UK_AQ_RAW_SCHEMA = (Deno.env.get("UK_AQ_RAW_SCHEMA") || "uk_aq_raw")
+  .trim();
+const REST_BASE_URL = `${SUPABASE_URL.replace(/\/$/, "")}/rest/v1`;
+
+type IngestResponse = {
+  ok: boolean;
+  status: number;
+  body: unknown;
+  raw: string;
+};
+
+type ConnectorConfig = {
+  id: unknown;
+  connector_code: unknown;
+  poll_enabled: unknown;
+  poll_interval_minutes: unknown;
+  poll_window_hours: unknown;
+  poll_timeseries_batch_size: unknown;
+  scheduler_backend: unknown;
+  last_polled_at: unknown;
+  last_run_start: unknown;
+  last_run_end: unknown;
+  last_run_status: unknown;
+};
+
+type DispatchClaimRow = {
+  claimed: unknown;
+  connector_id: unknown;
+  last_run_start: unknown;
+  last_run_end: unknown;
+};
+
+type OpenAQStationRefRow = {
+  station_ref: unknown;
+  station_id: unknown;
+};
+
+function requiredEnv(name: string): string {
+  const value = (Deno.env.get(name) || "").trim();
+  if (!value) {
+    throw new Error(`Missing required environment variable: ${name}`);
+  }
+  return value;
+}
+
+function parsePositiveInt(raw: string | undefined, fallback: number): number {
+  const value = Number(raw || "");
+  if (!Number.isFinite(value) || value <= 0) {
+    return fallback;
+  }
+  return Math.trunc(value);
+}
+
+function parseBool(raw: string | undefined, fallback = false): boolean {
+  if (raw === undefined || raw === null) {
+    return fallback;
+  }
+  const value = String(raw).trim().toLowerCase();
+  if (!value) {
+    return fallback;
+  }
+  return ["1", "true", "yes", "y", "on"].includes(value);
+}
+
+function parseRequestPayload(raw: string): Record<string, unknown> {
+  if (!raw) {
+    return {};
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error("OPENAQ_REQUEST_PAYLOAD must be valid JSON.");
+  }
+  const payload = toObject(parsed);
+  if (!payload) {
+    throw new Error("OPENAQ_REQUEST_PAYLOAD must be a JSON object.");
+  }
+  return payload;
+}
+
+function toObject(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  return value as Record<string, unknown>;
+}
+
+function toStringOrNull(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
+}
+
+function toIntegerOrNull(value: unknown): number | null {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return null;
+  }
+  return Math.trunc(parsed);
+}
+
+function toPositiveIntegerOrNull(value: unknown): number | null {
+  const parsed = toIntegerOrNull(value);
+  if (parsed === null || parsed <= 0) {
+    return null;
+  }
+  return parsed;
+}
+
+function parseTimestamp(value: unknown): Date | null {
+  const text = toStringOrNull(value);
+  if (!text) {
+    return null;
+  }
+  const date = new Date(text);
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+  return date;
+}
+
+function evaluateEligibility(connector: ConnectorConfig | null, now: Date): {
+  eligible: boolean;
+  reason: string;
+} {
+  if (!connector) {
+    return { eligible: false, reason: "connector_not_found" };
+  }
+  if (connector.poll_enabled !== true) {
+    return { eligible: false, reason: "poll_disabled" };
+  }
+  const schedulerBackend = toStringOrNull(connector.scheduler_backend) ||
+    SCHEDULER_BACKEND_SUPABASE_FUNCTION;
+  if (schedulerBackend !== SCHEDULER_BACKEND_GOOGLE_CLOUD_RUN) {
+    return { eligible: false, reason: "scheduler_backend_not_cloud_run" };
+  }
+  const runStartedAt = parseTimestamp(connector.last_run_start);
+  const runEndedAt = parseTimestamp(connector.last_run_end);
+  if (runStartedAt && !runEndedAt) {
+    const runningGuardMs = IN_FLIGHT_TIMEOUT_MINUTES * 60 * 1000;
+    const ageMs = now.getTime() - runStartedAt.getTime();
+    if (Number.isFinite(ageMs) && ageMs >= 0 && ageMs < runningGuardMs) {
+      return { eligible: false, reason: "in_flight" };
+    }
+  }
+  return { eligible: true, reason: "eligible" };
+}
+
+function getWindowHours(connector: ConnectorConfig | null): number {
+  const value = toPositiveIntegerOrNull(connector?.poll_window_hours);
+  if (value !== null) {
+    return value;
+  }
+  return DEFAULT_WINDOW_HOURS;
+}
+
+function getBatchLimit(connector: ConnectorConfig | null): number {
+  const value = toPositiveIntegerOrNull(connector?.poll_timeseries_batch_size);
+  if (value !== null) {
+    return value;
+  }
+  return DEFAULT_BATCH_LIMIT;
+}
+
+function postgrestHeaders(
+  schema: string,
+  write = false,
+): Record<string, string> {
+  const headers: Record<string, string> = {
+    apikey: SUPABASE_SERVICE_ROLE_KEY,
+    Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+    Accept: "application/json",
+    "Accept-Profile": schema,
+  };
+  if (write) {
+    headers["Content-Type"] = "application/json";
+    headers["Content-Profile"] = schema;
+  }
+  return headers;
+}
+
+function withQuery(path: string, query?: Record<string, string>): string {
+  const url = new URL(`${REST_BASE_URL}/${path}`);
+  if (query) {
+    for (const [key, value] of Object.entries(query)) {
+      if (!value) {
+        continue;
+      }
+      url.searchParams.set(key, value);
+    }
+  }
+  return url.toString();
+}
+
+async function postgrestRequest(
+  method: string,
+  path: string,
+  options: {
+    schema?: string;
+    query?: Record<string, string>;
+    body?: unknown;
+    prefer?: string;
+  } = {},
+): Promise<{ ok: boolean; status: number; text: string; data: unknown }> {
+  const schema = options.schema || UK_AQ_CORE_SCHEMA;
+  const write = method !== "GET";
+  const headers = postgrestHeaders(schema, write);
+  if (options.prefer) {
+    headers.Prefer = options.prefer;
+  }
+  const response = await fetch(withQuery(path, options.query), {
+    method,
+    headers,
+    body: options.body === undefined ? undefined : JSON.stringify(options.body),
+  });
+  const text = await response.text();
+  let data: unknown = null;
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = text;
+    }
+  }
+  return { ok: response.ok, status: response.status, text, data };
+}
+
+async function loadStationRefs(params: {
+  tieredLimit: number;
+  staleLimit: number;
+}): Promise<Array<{ station_ref: string; station_id: number | null }>> {
+  const body = {
+    batch_limit: Math.max(0, Math.trunc(params.tieredLimit)),
+    stale_limit: Math.max(0, Math.trunc(params.staleLimit)),
+  };
+  const response = await postgrestRequest(
+    "POST",
+    "rpc/uk_aq_rpc_openaq_select_station_refs",
+    {
+      schema: "uk_aq_public",
+      body,
+    },
+  );
+  if (!response.ok) {
+    throw new Error(
+      `Failed to load OpenAQ station refs (${response.status}): ${response.text}`,
+    );
+  }
+  const rows = Array.isArray(response.data) ? response.data : [];
+  return rows
+    .map((row) => {
+      const obj = toObject(row) as OpenAQStationRefRow | null;
+      const stationRef = toStringOrNull(obj?.station_ref);
+      const stationId = toIntegerOrNull(obj?.station_id);
+      if (!stationRef) {
+        return null;
+      }
+      return {
+        station_ref: stationRef,
+        station_id: stationId,
+      };
+    })
+    .filter((row): row is { station_ref: string; station_id: number | null } =>
+      row !== null
+    );
+}
+
+async function loadEarliestNextDueAt(connectorId: number): Promise<string | null> {
+  const primary = await postgrestRequest(
+    "GET",
+    "openaq_station_checkpoints",
+    {
+      schema: UK_AQ_RAW_SCHEMA,
+      query: {
+        select: "next_due_at,station_id,stations!inner(connector_id,service_ref,removed_at)",
+        "stations.connector_id": `eq.${connectorId}`,
+        "stations.service_ref": `eq.${OPENAQ_SERVICE_REF}`,
+        "stations.removed_at": "is.null",
+        next_due_at: "not.is.null",
+        order: "next_due_at.asc",
+        limit: "1",
+      },
+    },
+  );
+  if (primary.ok) {
+    const rows = Array.isArray(primary.data) ? primary.data : [];
+    const first = toObject(rows[0]);
+    const nextDueAt = toStringOrNull(first?.next_due_at);
+    if (nextDueAt) {
+      return nextDueAt;
+    }
+  }
+
+  const fallback = await postgrestRequest(
+    "GET",
+    "openaq_station_checkpoints",
+    {
+      schema: UK_AQ_RAW_SCHEMA,
+      query: {
+        select: "next_due_at",
+        next_due_at: "not.is.null",
+        order: "next_due_at.asc",
+        limit: "1",
+      },
+    },
+  );
+  if (!fallback.ok) {
+    throw new Error(
+      `Failed to load OpenAQ next_due_at (${fallback.status}): ${fallback.text}`,
+    );
+  }
+  const rows = Array.isArray(fallback.data) ? fallback.data : [];
+  return toStringOrNull(toObject(rows[0])?.next_due_at);
+}
+
+async function buildIngestPayload(
+  connector: ConnectorConfig | null,
+): Promise<{
+  payload: Record<string, unknown>;
+  batchLimit: number;
+  windowHours: number;
+  staleLimit: number;
+  tieredLimit: number;
+  stationRows: Array<{ station_ref: string; station_id: number | null }>;
+}> {
+  const payload: Record<string, unknown> = {
+    ...REQUEST_PAYLOAD_OVERRIDES,
+  };
+  const connectorCode = toStringOrNull(payload.connector_code) ||
+    CONNECTOR_CODE;
+  const windowHours = getWindowHours(connector);
+  const batchLimit = getBatchLimit(connector);
+  const staleLimitConfigured =
+    toPositiveIntegerOrNull(payload.stale_limit) ?? DEFAULT_STALE_LIMIT;
+  const staleLimit = Math.min(staleLimitConfigured, Math.max(0, batchLimit));
+  const tieredLimit = Math.max(0, batchLimit - staleLimit);
+  const stationRows = await loadStationRefs({
+    tieredLimit,
+    staleLimit,
+  });
+
+  payload.connector_code = connectorCode;
+  payload.window_hours = windowHours;
+  payload.batch_size = batchLimit;
+  payload.station_refs = stationRows.map((row) => row.station_ref);
+
+  return {
+    payload,
+    batchLimit,
+    windowHours,
+    staleLimit,
+    tieredLimit,
+    stationRows,
+  };
+}
+
+function deriveRunSummary(ingestResponse: IngestResponse): {
+  runStatus: string;
+  runMessage: string;
+  payload: Record<string, unknown> | null;
+} {
+  const payload = toObject(ingestResponse.body);
+  if (!ingestResponse.ok) {
+    return {
+      runStatus: "failed",
+      runMessage: `HTTP ${ingestResponse.status}`,
+      payload,
+    };
+  }
+
+  const partial = payload?.partial === true;
+  const stoppedReason = toStringOrNull(payload?.stopped_reason);
+  if (partial) {
+    return {
+      runStatus: "partial",
+      runMessage: stoppedReason || "partial_run",
+      payload,
+    };
+  }
+
+  return {
+    runStatus: "succeeded",
+    runMessage: "ingest_openaq completed via google_cloud_run",
+    payload,
+  };
+}
+
+async function resolveConnectorId(
+  payload: Record<string, unknown> | null,
+): Promise<number> {
+  const payloadConnectorId = toIntegerOrNull(payload?.connector_id);
+  if (payloadConnectorId !== null) {
+    return payloadConnectorId;
+  }
+
+  const response = await postgrestRequest("GET", "connectors", {
+    query: {
+      connector_code: `eq.${CONNECTOR_CODE}`,
+      select: "id",
+      limit: "1",
+    },
+  });
+  if (!response.ok) {
+    throw new Error(
+      `Failed to resolve connector id (${response.status}): ${response.text}`,
+    );
+  }
+  const rows = Array.isArray(response.data) ? response.data : [];
+  const id = toIntegerOrNull(toObject(rows[0])?.id);
+  if (id === null) {
+    throw new Error(`Connector not found: ${CONNECTOR_CODE}`);
+  }
+  return id;
+}
+
+async function loadConnector(): Promise<ConnectorConfig | null> {
+  const response = await postgrestRequest("GET", "connectors", {
+    query: {
+      select:
+        "id,connector_code,poll_enabled,poll_interval_minutes,poll_window_hours,poll_timeseries_batch_size,scheduler_backend,last_polled_at,last_run_start,last_run_end,last_run_status",
+      connector_code: `eq.${CONNECTOR_CODE}`,
+      limit: "1",
+    },
+  });
+  if (!response.ok) {
+    throw new Error(
+      `Failed to load connector (${response.status}): ${response.text}`,
+    );
+  }
+  const rows = Array.isArray(response.data) ? response.data : [];
+  const row = toObject(rows[0]);
+  return row as ConnectorConfig | null;
+}
+
+async function claimConnector(
+  runStartedAtIso: string,
+): Promise<DispatchClaimRow | null> {
+  const response = await postgrestRequest(
+    "POST",
+    "rpc/uk_aq_rpc_dispatch_claim",
+    {
+      schema: "uk_aq_public",
+      body: {
+        p_connector_code: CONNECTOR_CODE,
+        p_run_started_at: runStartedAtIso,
+        p_timeout_minutes: CLAIM_TIMEOUT_MINUTES,
+      },
+    },
+  );
+  if (!response.ok) {
+    throw new Error(
+      `Dispatch claim failed (${response.status}): ${response.text}`,
+    );
+  }
+  const rows = Array.isArray(response.data) ? response.data : [];
+  const row = toObject(rows[0]);
+  return row as DispatchClaimRow | null;
+}
+
+async function updateConnectorRun(
+  connectorId: number,
+  runStartedAtIso: string,
+  runEndedAtIso: string,
+  runStatus: string,
+  runMessage: string,
+): Promise<void> {
+  const body: Record<string, unknown> = {
+    last_run_start: runStartedAtIso,
+    last_run_end: runEndedAtIso,
+    last_run_status: runStatus,
+    last_run_message: runMessage,
+  };
+  if (
+    runStatus === "succeeded" ||
+    runStatus === "success" ||
+    runStatus === "partial"
+  ) {
+    body.last_polled_at = runStartedAtIso;
+  }
+  const response = await postgrestRequest("PATCH", "connectors", {
+    query: { id: `eq.${connectorId}` },
+    body,
+    prefer: "return=minimal",
+  });
+  if (!response.ok) {
+    throw new Error(
+      `Failed to update connector run (${response.status}): ${response.text}`,
+    );
+  }
+}
+
+async function insertRunRow(
+  connectorId: number,
+  runStartedAtIso: string,
+  runEndedAtIso: string,
+  runStatus: string,
+  runMessage: string,
+  ingestResponse: IngestResponse,
+  payload: Record<string, unknown> | null,
+  stationRowsCount: number | null,
+): Promise<void> {
+  const row = {
+    connector_id: connectorId,
+    connector_code: CONNECTOR_CODE,
+    run_started_at: runStartedAtIso,
+    run_ended_at: runEndedAtIso,
+    run_status: runStatus,
+    run_message: runMessage,
+    last_observed_at: toStringOrNull(payload?.last_observed_at) ||
+      toStringOrNull(payload?.last_observed),
+    stations_updated: toIntegerOrNull(payload?.stations_updated) ??
+      toIntegerOrNull(payload?.stations_selected) ??
+      toIntegerOrNull(payload?.stations) ??
+      stationRowsCount,
+    observations_upserted: toIntegerOrNull(payload?.observations_upserted) ??
+      toIntegerOrNull(payload?.observations),
+    timeseries_updated: toIntegerOrNull(payload?.timeseries_updated) ??
+      toIntegerOrNull(payload?.timeseries),
+    series_polled: toIntegerOrNull(payload?.series_polled) ??
+      toIntegerOrNull(payload?.timeseries) ??
+      toIntegerOrNull(payload?.timeseries_updated),
+    response_status: ingestResponse.status,
+  };
+
+  const response = await postgrestRequest("POST", "uk_aq_ingest_runs", {
+    body: row,
+    prefer: "return=minimal",
+  });
+  if (!response.ok) {
+    throw new Error(
+      `Failed to insert uk_aq_ingest_runs row (${response.status}): ${response.text}`,
+    );
+  }
+}
+
+async function insertErrorLog(
+  connectorId: number,
+  ingestResponse: IngestResponse,
+): Promise<void> {
+  const entry = {
+    id: crypto.randomUUID(),
+    source: "cloud_run",
+    severity: "error",
+    message: "ingest_openaq dispatch failed",
+    stack: null,
+    context: {
+      connector_code: CONNECTOR_CODE,
+      response_status: ingestResponse.status,
+      response_body: ingestResponse.body,
+    },
+    connector_id: connectorId,
+    station_id: null,
+    timeseries_id: null,
+    dropbox_path: null,
+  };
+
+  const response = await postgrestRequest("POST", "error_logs", {
+    schema: UK_AQ_RAW_SCHEMA,
+    body: entry,
+    prefer: "return=minimal",
+  });
+  if (!response.ok) {
+    throw new Error(
+      `Failed to insert error_logs row (${response.status}): ${response.text}`,
+    );
+  }
+}
+
+async function waitForServer(url: string, maxWaitMs = 30_000): Promise<void> {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < maxWaitMs) {
+    try {
+      const response = await fetch(url, { method: "GET" });
+      if (response.status > 0) {
+        return;
+      }
+    } catch {
+      // wait and retry
+    }
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  throw new Error("Timed out waiting for local OpenAQ server startup.");
+}
+
+function logSummary(message: string, details: Record<string, unknown>): void {
+  console.log(
+    JSON.stringify({
+      ts: new Date().toISOString(),
+      connector_code: CONNECTOR_CODE,
+      message,
+      ...details,
+    }),
+  );
+}
+
+async function runIngestOnce(
+  payload: Record<string, unknown>,
+): Promise<IngestResponse> {
+  const headers: HeadersInit = {
+    "content-type": "application/json",
+  };
+  if (CRON_SECRET) {
+    headers["x-cron-secret"] = CRON_SECRET;
+  }
+  const response = await fetch(`http://127.0.0.1:${PORT}/`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(payload),
+  });
+  const raw = await response.text();
+  let body: unknown = raw;
+  if (raw) {
+    try {
+      body = JSON.parse(raw);
+    } catch {
+      body = raw;
+    }
+  }
+  return {
+    ok: response.ok,
+    status: response.status,
+    body,
+    raw,
+  };
+}
+
+async function fetchGoogleAccessToken(): Promise<string> {
+  const response = await fetch(
+    "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token",
+    {
+      headers: { "Metadata-Flavor": "Google" },
+    },
+  );
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(
+      `Metadata token request failed (${response.status}): ${text}`,
+    );
+  }
+  const payload = await response.json();
+  const token = toStringOrNull(toObject(payload)?.access_token);
+  if (!token) {
+    throw new Error("Metadata token response missing access_token");
+  }
+  return token;
+}
+
+function effectiveTasksEnabled(): {
+  enabled: boolean;
+  reason: string;
+} {
+  if (!OPENAQ_TASKS_ENABLED) {
+    return { enabled: false, reason: "tasks_disabled" };
+  }
+  if (!OPENAQ_GCP_PROJECT_ID) {
+    return { enabled: false, reason: "missing_project_id" };
+  }
+  if (!OPENAQ_GCP_REGION) {
+    return { enabled: false, reason: "missing_region" };
+  }
+  if (!OPENAQ_CLOUD_RUN_JOB_NAME) {
+    return { enabled: false, reason: "missing_job_name" };
+  }
+  if (!OPENAQ_TASK_QUEUE_ID) {
+    return { enabled: false, reason: "missing_queue_id" };
+  }
+  if (!OPENAQ_TASK_INVOKER_SERVICE_ACCOUNT) {
+    return { enabled: false, reason: "missing_task_invoker_service_account" };
+  }
+  return { enabled: true, reason: "enabled" };
+}
+
+function computeNextCheckTime(
+  now: Date,
+  earliestNextDueAt: string | null,
+  failure: boolean,
+): Date {
+  if (failure) {
+    return new Date(now.getTime() + OPENAQ_FAILURE_RETRY_SECONDS * 1000);
+  }
+  const minDelayMs = OPENAQ_NEXT_CHECK_MIN_SECONDS * 1000;
+  if (!earliestNextDueAt) {
+    return new Date(now.getTime() + minDelayMs);
+  }
+  const dueMs = Date.parse(earliestNextDueAt);
+  if (!Number.isFinite(dueMs)) {
+    return new Date(now.getTime() + minDelayMs);
+  }
+  return new Date(Math.max(dueMs, now.getTime() + minDelayMs));
+}
+
+function buildTaskResourceName(taskId: string): string {
+  return `projects/${OPENAQ_GCP_PROJECT_ID}/locations/${OPENAQ_GCP_REGION}/queues/${OPENAQ_TASK_QUEUE_ID}/tasks/${taskId}`;
+}
+
+async function enqueueSelfRunTask(
+  scheduleAt: Date,
+  reason: string,
+): Promise<void> {
+  const tasksState = effectiveTasksEnabled();
+  if (!tasksState.enabled) {
+    logSummary("tasks_not_scheduled", {
+      reason: tasksState.reason,
+      schedule_at: scheduleAt.toISOString(),
+    });
+    return;
+  }
+
+  const runUri =
+    `https://run.googleapis.com/v2/projects/${OPENAQ_GCP_PROJECT_ID}/locations/${OPENAQ_GCP_REGION}/jobs/${OPENAQ_CLOUD_RUN_JOB_NAME}:run`;
+  const queueUri =
+    `https://cloudtasks.googleapis.com/v2/projects/${OPENAQ_GCP_PROJECT_ID}/locations/${OPENAQ_GCP_REGION}/queues/${OPENAQ_TASK_QUEUE_ID}/tasks`;
+
+  const taskMinuteBucket = Math.floor(scheduleAt.getTime() / 60_000);
+  const taskId = `${OPENAQ_TASK_NAME_PREFIX}-${CONNECTOR_CODE}-${taskMinuteBucket}`;
+  const taskName = buildTaskResourceName(taskId);
+  const token = await fetchGoogleAccessToken();
+
+  const body = {
+    task: {
+      name: taskName,
+      scheduleTime: scheduleAt.toISOString(),
+      httpRequest: {
+        httpMethod: "POST",
+        url: runUri,
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: btoa("{}"),
+        oauthToken: {
+          serviceAccountEmail: OPENAQ_TASK_INVOKER_SERVICE_ACCOUNT,
+          scope: "https://www.googleapis.com/auth/cloud-platform",
+        },
+      },
+    },
+  };
+
+  const response = await fetch(queueUri, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+  const text = await response.text();
+  if (!response.ok) {
+    if (response.status === 409) {
+      logSummary("task_already_scheduled", {
+        reason,
+        task_name: taskName,
+        schedule_at: scheduleAt.toISOString(),
+      });
+      return;
+    }
+    throw new Error(
+      `Cloud Tasks create failed (${response.status}): ${text}`,
+    );
+  }
+
+  logSummary("task_scheduled", {
+    reason,
+    task_name: taskName,
+    schedule_at: scheduleAt.toISOString(),
+  });
+}
+
+async function scheduleNextCheck(
+  connectorId: number,
+  reason: string,
+  failure: boolean,
+): Promise<void> {
+  let earliestNextDueAt: string | null = null;
+  try {
+    earliestNextDueAt = await loadEarliestNextDueAt(connectorId);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logSummary("next_due_lookup_failed", {
+      reason,
+      connector_id: connectorId,
+      error: message,
+    });
+  }
+
+  const now = new Date();
+  const scheduleAt = computeNextCheckTime(now, earliestNextDueAt, failure);
+  await enqueueSelfRunTask(scheduleAt, reason);
+}
+
+async function recordSkippedRun(
+  connectorId: number,
+  runStartedAtIso: string,
+  runMessage: string,
+): Promise<void> {
+  const runEndedAtIso = new Date().toISOString();
+  const runStatus = "skipped";
+  const ingestResponse: IngestResponse = {
+    ok: true,
+    status: 204,
+    body: {
+      run_status: runStatus,
+      run_message: runMessage,
+      connector_code: CONNECTOR_CODE,
+    },
+    raw: "",
+  };
+  await updateConnectorRun(
+    connectorId,
+    runStartedAtIso,
+    runEndedAtIso,
+    runStatus,
+    runMessage,
+  );
+  await insertRunRow(
+    connectorId,
+    runStartedAtIso,
+    runEndedAtIso,
+    runStatus,
+    runMessage,
+    ingestResponse,
+    toObject(ingestResponse.body),
+    null,
+  );
+}
+
+async function main(): Promise<void> {
+  const now = new Date();
+  const runStartedAtIso = now.toISOString();
+  const connector = await loadConnector();
+  const eligibility = evaluateEligibility(connector, now);
+  if (!eligibility.eligible) {
+    logSummary("skipped", {
+      reason: eligibility.reason,
+      poll_enabled: connector?.poll_enabled,
+      scheduler_backend: toStringOrNull(connector?.scheduler_backend) ||
+        SCHEDULER_BACKEND_SUPABASE_FUNCTION,
+    });
+    return;
+  }
+
+  const claim = await claimConnector(runStartedAtIso);
+  if (!claim || claim.claimed !== true) {
+    logSummary("skipped", {
+      reason: "claim_not_acquired",
+      claim,
+    });
+    return;
+  }
+
+  const claimedConnectorId = toIntegerOrNull(claim.connector_id);
+  let connectorId: number | null = claimedConnectorId ??
+    toIntegerOrNull(connector?.id);
+  if (connectorId === null) {
+    connectorId = await resolveConnectorId(null);
+  }
+
+  const payloadPlan = await buildIngestPayload(connector);
+  if (!payloadPlan.stationRows.length) {
+    await recordSkippedRun(connectorId, runStartedAtIso, "no_station_refs");
+    await scheduleNextCheck(connectorId, "no_station_refs", false);
+    logSummary("skipped", {
+      reason: "no_station_refs",
+      connector_id: connectorId,
+      batch_limit: payloadPlan.batchLimit,
+      tiered_limit: payloadPlan.tieredLimit,
+      stale_limit: payloadPlan.staleLimit,
+    });
+    return;
+  }
+
+  logSummary("dispatching", {
+    connector_id: connectorId,
+    batch_limit: payloadPlan.batchLimit,
+    tiered_limit: payloadPlan.tieredLimit,
+    stale_limit: payloadPlan.staleLimit,
+    window_hours: payloadPlan.windowHours,
+    station_refs_count: payloadPlan.stationRows.length,
+  });
+
+  const server = new Deno.Command("deno", {
+    args: [
+      "run",
+      "--allow-env",
+      "--allow-net",
+      "--allow-read",
+      "--allow-write",
+      "/app/runtime/ingest_openaq/index.ts",
+    ],
+    env: {
+      ...Deno.env.toObject(),
+    },
+    stdout: "inherit",
+    stderr: "inherit",
+  }).spawn();
+
+  let ingestResponse: IngestResponse | null = null;
+  let runFailed = false;
+  let runStatus = "failed";
+  let runMessage = "unknown";
+
+  try {
+    await waitForServer(`http://127.0.0.1:${PORT}/`);
+    ingestResponse = await runIngestOnce(payloadPlan.payload);
+
+    const summary = deriveRunSummary(ingestResponse);
+    runStatus = summary.runStatus;
+    runMessage = summary.runMessage;
+
+    const runEndedAtIso = new Date().toISOString();
+    await updateConnectorRun(
+      connectorId,
+      runStartedAtIso,
+      runEndedAtIso,
+      runStatus,
+      runMessage,
+    );
+    await insertRunRow(
+      connectorId,
+      runStartedAtIso,
+      runEndedAtIso,
+      runStatus,
+      runMessage,
+      ingestResponse,
+      summary.payload,
+      payloadPlan.stationRows.length,
+    );
+
+    if (
+      !ingestResponse.ok || runStatus === "failed" || runStatus === "error"
+    ) {
+      runFailed = true;
+      await insertErrorLog(connectorId, ingestResponse);
+      throw new Error(
+        `ingest_openaq failed (${ingestResponse.status}): ${ingestResponse.raw}`,
+      );
+    }
+
+    logSummary("success", {
+      run_status: runStatus,
+      run_message: runMessage,
+      response_status: ingestResponse.status,
+      connector_id: connectorId,
+      stations_selected: payloadPlan.stationRows.length,
+      observations_upserted: toIntegerOrNull(summary.payload?.observations_upserted),
+      series_polled: toIntegerOrNull(summary.payload?.series_polled),
+      partial: summary.payload?.partial === true,
+      stopped_reason: toStringOrNull(summary.payload?.stopped_reason),
+    });
+  } finally {
+    try {
+      server.kill("SIGTERM");
+    } catch {
+      // Process may already be closed.
+    }
+    try {
+      await Promise.race([
+        server.status,
+        new Promise((resolve) => setTimeout(resolve, 5000)),
+      ]);
+    } catch {
+      // Ignore shutdown race.
+    }
+
+    try {
+      await scheduleNextCheck(
+        connectorId,
+        runFailed ? "failed_retry" : runStatus,
+        runFailed,
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logSummary("task_schedule_failed", {
+        connector_id: connectorId,
+        error: message,
+      });
+    }
+  }
+
+  if (!ingestResponse) {
+    throw new Error("No OpenAQ ingest response received.");
+  }
+}
+
+main().catch((error) => {
+  const message = error instanceof Error ? error.message : String(error);
+  logSummary("failure", { error: message });
+  Deno.exit(1);
+});

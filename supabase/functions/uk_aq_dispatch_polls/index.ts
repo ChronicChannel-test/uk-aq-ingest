@@ -118,6 +118,7 @@ const GOOGLE_CLOUD_RUN_CONNECTOR_ALLOWLIST = new Set([
   "uk_air_sos",
   "sensorcommunity",
   "breathelondon",
+  "openaq",
 ]);
 
 const DEFAULT_INTERVAL_MINUTES: Record<string, number> = {

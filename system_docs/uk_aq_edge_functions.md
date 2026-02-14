@@ -94,7 +94,7 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
   - Worker sends `run_queue_claim_limit=1` with each `mode=run_queue` call to isolate each claim/call.
   - Worker fallback: if either queue-mode call fails, worker falls back to `mode=legacy` for that cron tick.
   - Disabled connectors are auto-resolved from queue in `mode=run_queue` (`queue_entry_disabled_connector`) so stale retries do not keep firing after `poll_enabled=false`.
-  - Connectors with `scheduler_backend='google_cloud_run'` are skipped in dispatcher selection and auto-resolved from queue in `mode=run_queue` (`queue_entry_external_scheduler`) for the Cloud Run allowlist connectors (`uk_air_sos`, `sensorcommunity`, `breathelondon`).
+  - Connectors with `scheduler_backend='google_cloud_run'` are skipped in dispatcher selection and auto-resolved from queue in `mode=run_queue` (`queue_entry_external_scheduler`) for the Cloud Run allowlist connectors (`uk_air_sos`, `sensorcommunity`, `breathelondon`, `openaq`).
   - For `uk_air_sos` on the edge path (`scheduler_backend='supabase_function'`), dispatcher uses `poll_timeseries_batch_size` with `uk_air_sos_select_timeseries_ids` (`uk_air_sos_timeseries_checkpoints`) and passes `timeseries_ids`/`timeseries_limit`.
   - Uses `uk_aq_public.uk_aq_rpc_dispatch_claim` to atomically claim a connector slot before dispatch.
   - Updates `connectors.last_run_start`, `last_run_end`, `last_run_status`, `last_run_message`, and `last_polled_at` for each attempted dispatch.
@@ -188,12 +188,16 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
 
 ### ingest_openaq
 - Purpose: Poll OpenAQ locations within the UK bounding box and write stations, timeseries, and observations.
-- Triggered by: `uk_aq_dispatch_polls` (external scheduler).
+- Triggered by:
+  - `uk_aq_dispatch_polls` when `connectors.scheduler_backend='supabase_function'` (edge path).
+  - `workers/uk_aq_openaq_cloud_run` when `connectors.scheduler_backend='google_cloud_run'` (Cloud Run path).
+- Cloud Run setup reference: `system_docs/uk_aq_openaq_cloud_run.md`.
 - Writes:
   - `stations`, `phenomena`, `timeseries`, `observations`
   - `openaq_station_checkpoints`, `openaq_timeseries_checkpoints`
 - Notes:
   - Requires an existing connector row; the ingest does not create connectors.
+  - Cloud Run scheduling model for OpenAQ is due-driven: each run enqueues a one-off next-run Cloud Task based on earliest due checkpoint, with a 15-minute Cloud Scheduler safety trigger.
   - Uses `OPENAQ_*` environment variables for base URL, API key, and bbox paging.
   - Fetches locations via `/v3/locations` (bbox) and latest values via `/v3/locations/{id}/latest`.
   - Performs a pre-call gap check using `openaq_timeseries_checkpoints.last_observed_at` (gap if any timeseries is 2–24 hours old); when true, polls `/v3/sensors/{id}/measurements/hourly` instead of `/latest` for that station.
