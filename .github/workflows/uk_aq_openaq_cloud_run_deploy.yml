@@ -365,15 +365,23 @@ jobs:
           add_secret_binding "DROPBOX_APP_SECRET" "${DROPBOX_APP_SECRET_SECRET_NAME}" 0
           add_secret_binding "DROPBOX_REFRESH_TOKEN" "${DROPBOX_REFRESH_TOKEN_SECRET_NAME}" 0
 
-          env_csv="$(IFS=,; echo "${env_updates[*]}")"
+          env_file="${RUNNER_TEMP}/uk-aq-openaq-env.yaml"
+          : > "${env_file}"
+          for kv in "${env_updates[@]}"; do
+            key="${kv%%=*}"
+            value="${kv#*=}"
+            python3 -c 'import json,sys; open(sys.argv[1], "a", encoding="utf-8").write(f"{sys.argv[2]}: {json.dumps(sys.argv[3])}\\n")' \
+              "${env_file}" "${key}" "${value}"
+          done
+
           secret_csv="$(IFS=,; echo "${secret_updates[*]}")"
-          echo "env_csv=${env_csv}" >> "${GITHUB_OUTPUT}"
+          echo "env_file=${env_file}" >> "${GITHUB_OUTPUT}"
           echo "secret_csv=${secret_csv}" >> "${GITHUB_OUTPUT}"
 
       - name: Update Cloud Run job image
         run: |
           set -euo pipefail
-          ENV_CSV='${{ steps.cloudrun_args.outputs.env_csv }}'
+          ENV_FILE='${{ steps.cloudrun_args.outputs.env_file }}'
           SECRET_CSV='${{ steps.cloudrun_args.outputs.secret_csv }}'
 
           CMD=(
@@ -384,8 +392,8 @@ jobs:
             --max-retries "${JOB_MAX_RETRIES}"
             --service-account "${JOB_SERVICE_ACCOUNT}"
           )
-          if [ -n "${ENV_CSV}" ]; then
-            CMD+=(--update-env-vars "${ENV_CSV}")
+          if [ -n "${ENV_FILE}" ]; then
+            CMD+=(--env-vars-file "${ENV_FILE}")
           fi
           if [ -n "${SECRET_CSV}" ]; then
             CMD+=(--update-secrets "${SECRET_CSV}")
