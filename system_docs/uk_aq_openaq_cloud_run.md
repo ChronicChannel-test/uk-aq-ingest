@@ -16,6 +16,11 @@ The worker:
 5. Writes run summary to `connectors`, `uk_aq_ingest_runs`, and `error_logs` on failures.
 6. Schedules the next run using Cloud Tasks based on earliest checkpoint due time.
 
+Run-summary metric note:
+- `uk_aq_ingest_runs.stations_updated` is populated from response station activity
+  keys in this order: `stations_polled`, `stations_processed`,
+  `stations_selected`, `stations_updated`, `stations`.
+
 ## Trigger Model (Option 2)
 
 - Primary trigger: self-scheduled one-off Cloud Tasks.

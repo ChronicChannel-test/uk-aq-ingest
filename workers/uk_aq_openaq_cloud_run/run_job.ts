@@ -593,8 +593,10 @@ async function insertRunRow(
     run_message: runMessage,
     last_observed_at: toStringOrNull(payload?.last_observed_at) ||
       toStringOrNull(payload?.last_observed),
-    stations_updated: toIntegerOrNull(payload?.stations_updated) ??
+    stations_updated: toIntegerOrNull(payload?.stations_polled) ??
+      toIntegerOrNull(payload?.stations_processed) ??
       toIntegerOrNull(payload?.stations_selected) ??
+      toIntegerOrNull(payload?.stations_updated) ??
       toIntegerOrNull(payload?.stations) ??
       stationRowsCount,
     observations_upserted: toIntegerOrNull(payload?.observations_upserted) ??

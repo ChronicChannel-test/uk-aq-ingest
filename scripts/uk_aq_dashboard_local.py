@@ -44,7 +44,7 @@ SCHEDULER_BACKEND_CONNECTOR_ALLOWLIST = {
     "uk_air_sos",
     "sensorcommunity",
     "breathelondon",
-    "openaq",
+    "openaq"
 }
 
 CACHE_LOCK = threading.Lock()
