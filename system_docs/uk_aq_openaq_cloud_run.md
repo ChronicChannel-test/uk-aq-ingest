@@ -23,6 +23,8 @@ Run-summary metric note:
 - `uk_aq_ingest_runs.response_payload` stores a compact subset of OpenAQ ingest
   response fields for run diagnostics (partial/stop reasons, rate-limit summary,
   request-budget stats, and selected/polled station counts).
+- `request_budget_limited` indicates local request-budget/gap-guard limiting
+  (our configured per-run budget), not an OpenAQ API rate-limit stop.
 
 ## Trigger Model (Option 2)
 
