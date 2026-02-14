@@ -10,6 +10,13 @@ RPC calls, because history RPCs are exposed from `uk_aq_public`.
 History dual-write write-path note: rows are normalized and deduplicated on
 `(connector_id, timeseries_id, observed_at)` before history upsert and outbox
 enqueue to reduce duplicate payload bytes, write churn, and request overhead.
+History write mode note: shared history writes now default to
+`HISTORY_WRITE_MODE=outbox_only` (enqueue on main DB, flush asynchronously via
+outbox worker). Set `HISTORY_WRITE_MODE=direct` only when immediate history
+writes are required.
+History outbox flush note: claimed outbox payloads are merged per flush batch
+before a single history upsert call, which cuts history RPC call count and
+egress overhead.
 
 Endpoint egress observability note: public read endpoints emit sampled egress
 metrics and persist them via RPCs defined in `supabase/uk_aq_egress_metrics.sql`
@@ -105,6 +112,9 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
 - Triggered by: Cloud Scheduler -> Cloud Run job (`workers/uk_aq_history_outbox_cloud_run`).
 - Notes:
   - This is no longer run by an edge function.
+  - Flush batches merge claimed outbox payloads before history upsert.
+  - History-side RPC pressure can be monitored via
+    `uk_aq_public.uk_aq_history_rpc_metrics_minute` (history DB bootstrap).
   - Archived edge/cloudflare implementation is under `archive/2026-02-12_history_outbox_migration/`.
 
 ### uk_aq_egress_monitor
@@ -425,6 +435,7 @@ Optional:
 - `HISTORY_OUTBOX_CLOUD_RUN_BUDGET_SECONDS` (optional; defaults to `540`; Cloud Run runtime budget)
 - `HISTORY_OUTBOX_CLOUD_RUN_SHUTDOWN_BUFFER_SECONDS` (optional; defaults to `20`; reserved buffer before timeout)
 - `HISTORY_OUTBOX_CLOUD_RUN_RPC_RETRIES` (optional; defaults to `3`; main RPC retry count)
+- `HISTORY_WRITE_MODE` (optional; defaults to `outbox_only`; `outbox_only` queues history rows to main outbox for asynchronous flush, `direct` attempts immediate history upsert then falls back to outbox)
 - `DISPATCH_TIME_BUDGET_MS` (optional; defaults to `150000`; dispatcher per-request runtime budget)
 - `DISPATCH_SHUTDOWN_BUFFER_MS` (optional; defaults to `10000`; reserved time before budget to return cleanly)
 - `DISPATCH_EDGE_CALL_TIMEOUT_MS` (optional; defaults to `140000`; per-child ingest timeout within dispatcher)

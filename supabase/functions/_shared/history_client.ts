@@ -110,6 +110,10 @@ const HISTORY_UPSERT_CHUNK_SIZE = parsePositiveInt(
   5000,
 );
 
+const HISTORY_WRITE_MODE = normalizeHistoryWriteMode(
+  Deno.env.get("HISTORY_WRITE_MODE"),
+);
+
 let historyClientCache: ReturnType<typeof createClient> | null = null;
 
 function parsePositiveInt(raw: string | undefined, fallback: number): number {
@@ -118,6 +122,14 @@ function parsePositiveInt(raw: string | undefined, fallback: number): number {
     return fallback;
   }
   return Math.max(1, Math.trunc(value));
+}
+
+function normalizeHistoryWriteMode(raw: string | undefined): "direct" | "outbox_only" {
+  const value = (raw ?? "").trim().toLowerCase();
+  if (value === "direct") {
+    return "direct";
+  }
+  return "outbox_only";
 }
 
 function chunkRows<T>(rows: T[], chunkSize: number): T[][] {
@@ -364,6 +376,16 @@ export async function writeHistoryWithOutbox(
   if (!preparedRows.length) {
     return { written: 0, receipts_upserted: 0, enqueued: 0 };
   }
+
+  if (HISTORY_WRITE_MODE === "outbox_only") {
+    const enqueued = await enqueueHistoryOutbox(mainRpc, preparedRows);
+    return {
+      written: 0,
+      receipts_upserted: 0,
+      enqueued,
+    };
+  }
+
   if (!historyConfigured()) {
     onWarning?.("History DB is not configured; skipping history write.");
     return { written: 0, receipts_upserted: 0, enqueued: 0 };
@@ -435,36 +457,47 @@ export async function flushHistoryOutbox(
     ok: boolean;
     error?: string;
   }> = [];
+  const deliveryRows: HistoryObservationRow[] = [];
+  const deliveryIds: string[] = [];
 
   for (const row of claimedRows) {
     const payloadRows = Array.isArray(row.payload)
       ? row.payload as HistoryObservationRow[]
       : [];
     const preparedRows = prepareHistoryRows(payloadRows);
-
     if (!preparedRows.length) {
       resolutions.push({ id: row.id, ok: true });
       continue;
     }
+    deliveryRows.push(...preparedRows);
+    deliveryIds.push(row.id);
+  }
 
+  if (deliveryIds.length > 0) {
+    const mergedRows = prepareHistoryRows(deliveryRows);
     try {
-      const delivered = await historyUpsertObservations(preparedRows);
+      const delivered = await historyUpsertObservations(mergedRows);
       stats.delivered += delivered;
-      const receipts = buildHistorySyncReceipts(preparedRows);
+      const receipts = buildHistorySyncReceipts(mergedRows);
       stats.receipts_upserted += await upsertHistorySyncReceipts(
         mainRpc,
         receipts,
       );
-      resolutions.push({ id: row.id, ok: true });
+      for (const id of deliveryIds) {
+        resolutions.push({ id, ok: true });
+      }
     } catch (error) {
-      stats.failed += 1;
-      resolutions.push({
-        id: row.id,
-        ok: false,
-        error: shortError(error),
-      });
+      const message = shortError(error);
+      stats.failed += deliveryIds.length;
+      for (const id of deliveryIds) {
+        resolutions.push({
+          id,
+          ok: false,
+          error: message,
+        });
+      }
       onWarning?.(
-        `History outbox delivery failed for ${row.id}: ${shortError(error)}`,
+        `History outbox batch delivery failed for ${deliveryIds.length} entries: ${message}`,
       );
     }
   }

@@ -82,3 +82,4 @@ Relevant env vars:
   - `uk_aq_raw.dispatch_connector_queue` row count, attempts, and last_error
   - `uk_aq_core.uk_aq_ingest_runs` for per-connector outcomes
   - `uk_aq_raw.history_observation_outbox` via dedicated Cloud Run flusher job (`workers/uk_aq_history_outbox_cloud_run`) on a 10-minute schedule
+  - History writes default to outbox-first (`HISTORY_WRITE_MODE=outbox_only`), so lag in history is expected between ingest completion and outbox flush.

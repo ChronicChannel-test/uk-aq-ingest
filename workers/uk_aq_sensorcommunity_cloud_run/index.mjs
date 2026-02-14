@@ -60,6 +60,9 @@ const HISTORY_UPSERT_CHUNK_SIZE = parsePositiveInt(
   process.env.HISTORY_UPSERT_CHUNK_SIZE,
   5000,
 );
+const HISTORY_WRITE_MODE = normalizeHistoryWriteMode(
+  process.env.HISTORY_WRITE_MODE,
+);
 const HISTORY_REST_BASE_URL = HISTORY_SUPABASE_URL
   ? buildRestBaseUrl(HISTORY_SUPABASE_URL)
   : "";
@@ -202,6 +205,14 @@ function normalizeHistoryRpcSchema(raw) {
     return "uk_aq_public";
   }
   return String(raw).trim();
+}
+
+function normalizeHistoryWriteMode(raw) {
+  const normalized = String(raw || "").trim().toLowerCase();
+  if (normalized === "direct") {
+    return "direct";
+  }
+  return "outbox_only";
 }
 
 function toIntegerOrNull(value) {
@@ -1144,6 +1155,16 @@ async function writeHistoryWithOutbox(historyRows) {
   if (!preparedRows.length) {
     return { written: 0, receipts_upserted: 0, enqueued: 0 };
   }
+
+  if (HISTORY_WRITE_MODE === "outbox_only") {
+    const enqueued = await enqueueHistoryOutbox(preparedRows);
+    return {
+      written: 0,
+      receipts_upserted: 0,
+      enqueued,
+    };
+  }
+
   if (!historyConfigured()) {
     return { written: 0, receipts_upserted: 0, enqueued: 0 };
   }

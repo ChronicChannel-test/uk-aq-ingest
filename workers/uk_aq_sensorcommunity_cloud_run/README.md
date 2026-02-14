@@ -55,6 +55,7 @@ The previous proxy worker (Cloud Run -> Supabase Edge function) is archived at:
 - `SCOMM_UPSERT_CHUNK_SIZE` (default `500`)
 - `HISTORY_UPSERT_RPC` (default `uk_aq_rpc_history_observations_upsert`)
 - `HISTORY_UPSERT_CHUNK_SIZE` (default `5000`)
+- `HISTORY_WRITE_MODE` (default `outbox_only`; set `direct` for immediate history writes)
 - `SCOMM_DROPBOX_ROOT` or `UK_AQ_DROPBOX_ROOT` (default `/CIC-Test`)
 - `SCOMM_RAW_DROPBOX_FOLDER` or `UK_AIR_RAW_DROPBOX_FOLDER`
   (default `/connectors/sensorcommunity/raw_data`)

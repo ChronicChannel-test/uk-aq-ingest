@@ -8,6 +8,8 @@ Design choices:
 - bounded batch count per run (default `30`)
 - bounded runtime budget (default `540s` with `20s` shutdown buffer)
 - retry-aware main RPC calls to reduce transient network reset failures
+- merges claimed outbox payloads per batch before history upsert to reduce
+  history RPC call count and egress overhead
 
 ## Required env vars / secrets
 
