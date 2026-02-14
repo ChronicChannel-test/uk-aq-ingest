@@ -12,6 +12,10 @@ This Cloud Run job runs UK-AIR SOS ingest in Google Cloud using the existing
 5. Records run status in `connectors` + `uk_aq_ingest_runs` (+ `error_logs` on failure).
 6. Updates `uk_aq_raw.uk_air_sos_station_checkpoints` after successful/partial runs.
 
+Run feed note:
+- If the ingest response omits `last_observed_at`, the worker derives it from
+  `max(timeseries.last_value_at)` across the run's selected timeseries ids.
+
 If no station refs are due, run is recorded as `skipped` (`no_station_refs`).
 If station refs are selected but no timeseries are found, run is `skipped` (`no_timeseries_ids`).
 

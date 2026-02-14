@@ -412,6 +412,30 @@ async function loadTimeseriesRows(
     );
 }
 
+async function fetchMaxTimeseriesLastValueAt(
+  timeseriesIds: string[],
+): Promise<string | null> {
+  if (!timeseriesIds.length) {
+    return null;
+  }
+  const response = await postgrestRequest("GET", "timeseries", {
+    query: {
+      select: "last_value_at",
+      id: postgrestIn(timeseriesIds),
+      last_value_at: "not.is.null",
+      order: "last_value_at.desc",
+      limit: "1",
+    },
+  });
+  if (!response.ok) {
+    throw new Error(
+      `Failed to load max timeseries.last_value_at (${response.status}): ${response.text}`,
+    );
+  }
+  const rows = Array.isArray(response.data) ? response.data : [];
+  return toStringOrNull(toObject(rows[0])?.last_value_at);
+}
+
 async function loadStationLatestObserved(
   connectorId: number,
   stationIds: number[],
@@ -811,6 +835,7 @@ async function insertRunRow(
   ingestResponse: IngestResponse,
   payload: Record<string, unknown> | null,
   stationsFallback: number | null,
+  lastObservedFallback: string | null,
 ): Promise<void> {
   const row = {
     connector_id: connectorId,
@@ -820,7 +845,8 @@ async function insertRunRow(
     run_status: runStatus,
     run_message: runMessage,
     last_observed_at: toStringOrNull(payload?.last_observed_at) ||
-      toStringOrNull(payload?.last_observed),
+      toStringOrNull(payload?.last_observed) ||
+      lastObservedFallback,
     stations_updated: toIntegerOrNull(payload?.stations_updated) ??
       toIntegerOrNull(payload?.stations) ??
       stationsFallback,
@@ -969,6 +995,7 @@ async function recordSkippedRun(
     ingestResponse,
     toObject(ingestResponse.body),
     null,
+    null,
   );
 }
 
@@ -1063,6 +1090,9 @@ async function main(): Promise<void> {
 
     const { runStatus, runMessage, payload } = deriveRunSummary(ingestResponse);
     const runEndedAtIso = new Date().toISOString();
+    const maxTimeseriesLastObservedAt = await fetchMaxTimeseriesLastValueAt(
+      payloadPlan.timeseriesIds,
+    );
 
     if ((runStatus === "succeeded" || runStatus === "partial") && payloadPlan.stationRows.length) {
       const checkpointNow = new Date();
@@ -1099,6 +1129,7 @@ async function main(): Promise<void> {
       ingestResponse,
       payload,
       payloadPlan.stationRows.length,
+      maxTimeseriesLastObservedAt,
     );
 
     if (!ingestResponse.ok || runStatus === "failed" || runStatus === "error") {

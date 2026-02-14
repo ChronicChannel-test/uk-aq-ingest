@@ -45,6 +45,8 @@ Per run, worker updates:
 
 - `uk_aq_core.connectors` (`last_run_*`, and `last_polled_at` on success/partial)
 - `uk_aq_core.uk_aq_ingest_runs` (dashboard run feed)
+  - `last_observed_at` uses ingest payload when present; otherwise falls back to
+    `max(timeseries.last_value_at)` across selected timeseries ids.
 - `uk_aq_raw.error_logs` on ingest failure
 - `uk_aq_raw.uk_air_sos_station_checkpoints` after successful/partial runs
 
