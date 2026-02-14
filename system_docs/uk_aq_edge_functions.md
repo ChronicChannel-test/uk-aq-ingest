@@ -147,6 +147,9 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
   - Writes a log file to Dropbox `/connectors/uk_air_sos/log/YYYY-MM-DD/`
   - Writes raw payloads to Dropbox `/connectors/uk_air_sos/raw_data/YYYY-MM-DD/` as ZIP
   - Writes errors to `error_logs` and `/error_log/YYYY-MM-DD/`
+  - Filename prefixes are runtime-specific via `UK_AIR_SOS_DROPBOX_UPLOAD_SOURCE`:
+    - edge runtime: `uk_aq_*_edge_*`
+    - Cloud Run runtime: `uk_aq_*_cloud_run_*`
   - Logs a "No datapoints parsed" warning with row count when the SOS payload has no rows.
 
 ### ingest_sensorcommunity

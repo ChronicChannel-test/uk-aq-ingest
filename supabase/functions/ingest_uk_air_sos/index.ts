@@ -101,6 +101,12 @@ const DROPBOX_ERROR_FOLDER = dropboxWithRoot(
 const DROPBOX_LOG_RETENTION_DAYS = 31;
 const DROPBOX_TOKEN_URL = "https://api.dropbox.com/oauth2/token";
 const DROPBOX_UPLOAD_URL = "https://content.dropboxapi.com/2/files/upload";
+const DROPBOX_UPLOAD_SOURCE = (() => {
+  const value = (Deno.env.get("UK_AIR_SOS_DROPBOX_UPLOAD_SOURCE") ?? "edge")
+    .trim()
+    .toLowerCase();
+  return value === "cloud_run" ? "cloud_run" : "edge";
+})();
 const DROPBOX_LIST_FOLDER_URL = "https://api.dropboxapi.com/2/files/list_folder";
 const DROPBOX_DOWNLOAD_ZIP_URL = "https://content.dropboxapi.com/2/files/download_zip";
 const DROPBOX_DELETE_URL = "https://api.dropboxapi.com/2/files/delete_v2";
@@ -927,7 +933,7 @@ function buildDropboxLogPath(
   const stamp = formatCompactTimestamp(timestamp);
   const dateFolder = formatDateYmd(timestamp);
   const prefix = normalizeConnectorPrefix(connectorCode);
-  return `${DROPBOX_LOG_FOLDER}/${dateFolder}/uk_aq_log_edge_${prefix}_${stamp}.log`;
+  return `${DROPBOX_LOG_FOLDER}/${dateFolder}/uk_aq_log_${DROPBOX_UPLOAD_SOURCE}_${prefix}_${stamp}.log`;
 }
 
 function buildDropboxRawPath(
@@ -937,7 +943,7 @@ function buildDropboxRawPath(
   const stamp = formatCompactTimestamp(timestamp);
   const dateFolder = formatDateYmd(timestamp);
   const prefix = normalizeConnectorPrefix(connectorCode);
-  return `${DROPBOX_RAW_FOLDER}/${dateFolder}/uk_aq_raw_edge_${prefix}_${stamp}.zip`;
+  return `${DROPBOX_RAW_FOLDER}/${dateFolder}/uk_aq_raw_${DROPBOX_UPLOAD_SOURCE}_${prefix}_${stamp}.zip`;
 }
 
 function buildDropboxErrorPath(
@@ -948,7 +954,7 @@ function buildDropboxErrorPath(
   const dateFolder = createdAt.slice(0, 10);
   const stamp = formatCompactTimestamp(new Date(createdAt));
   const prefix = normalizeConnectorPrefix(connectorCode);
-  return `${DROPBOX_ERROR_FOLDER}/${dateFolder}/uk_aq_error_edge_${prefix}_${stamp}_${errorId}.json`;
+  return `${DROPBOX_ERROR_FOLDER}/${dateFolder}/uk_aq_error_${DROPBOX_UPLOAD_SOURCE}_${prefix}_${stamp}_${errorId}.json`;
 }
 
 function formatCompactTimestamp(timestamp: Date): string {
@@ -1019,7 +1025,8 @@ async function uploadDropboxRaw(
   }
   try {
     const rawPath = buildDropboxRawPath(connectorCode, new Date());
-    const filename = rawPath.split("/").pop() ?? "uk_aq_raw_edge.jsonl";
+    const filename = rawPath.split("/").pop() ??
+      `uk_aq_raw_${DROPBOX_UPLOAD_SOURCE}.jsonl`;
     const jsonlName = filename.replace(/\.zip$/i, ".jsonl");
     const zipped = await zipTextCompressed(jsonlName, content);
     accessToken = await dropboxUploadFileWithRetry(

@@ -251,6 +251,14 @@ function getTimeseriesLimit(connector: ConnectorConfig | null): number {
   return DEFAULT_TIMESERIES_LIMIT;
 }
 
+function getStationBatchLimit(connector: ConnectorConfig | null): number {
+  const value = toPositiveIntegerOrNull(connector?.poll_timeseries_batch_size);
+  if (value !== null) {
+    return value;
+  }
+  return DEFAULT_STATION_BATCH_LIMIT;
+}
+
 function postgrestHeaders(
   schema: string,
   write = false,
@@ -663,7 +671,7 @@ async function buildIngestPayload(
   const windowHours = getWindowHours(connector);
   const timeseriesLimit = getTimeseriesLimit(connector);
   const stationBatchLimit =
-    toPositiveIntegerOrNull(payload.station_batch_limit) ?? DEFAULT_STATION_BATCH_LIMIT;
+    toPositiveIntegerOrNull(payload.station_batch_limit) ?? getStationBatchLimit(connector);
   const staleLimit = toPositiveIntegerOrNull(payload.stale_limit) ?? DEFAULT_STALE_LIMIT;
 
   const stationRefs = await loadStationRefs({

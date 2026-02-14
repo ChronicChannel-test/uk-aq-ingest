@@ -21,6 +21,8 @@ Use `connectors.scheduler_backend` in the dashboard:
 - Cloud Scheduler can run frequently (for example every 2 minutes).
 - Effective run cadence still comes from `connectors.poll_interval_minutes`.
 - The worker checks due-state and claim-state before dispatch.
+- Station batch size defaults to `connectors.poll_timeseries_batch_size` (dashboard `batch_size`);
+  fallback is `UK_AIR_SOS_STATION_BATCH_LIMIT` when connector batch size is unset.
 
 ## Checkpoint model
 
@@ -49,6 +51,8 @@ Per run, worker updates:
     `max(timeseries.last_value_at)` across selected timeseries ids.
 - `uk_aq_raw.error_logs` on ingest failure
 - `uk_aq_raw.uk_air_sos_station_checkpoints` after successful/partial runs
+- Dropbox artifacts use `uk_aq_*_cloud_run_*` filename prefixes
+  (`UK_AIR_SOS_DROPBOX_UPLOAD_SOURCE=cloud_run`).
 
 ## Deployment
 

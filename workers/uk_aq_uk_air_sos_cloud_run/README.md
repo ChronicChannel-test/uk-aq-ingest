@@ -15,6 +15,10 @@ This Cloud Run job runs UK-AIR SOS ingest in Google Cloud using the existing
 Run feed note:
 - If the ingest response omits `last_observed_at`, the worker derives it from
   `max(timeseries.last_value_at)` across the run's selected timeseries ids.
+- Station batch note:
+  - By default, station batch size follows `connectors.poll_timeseries_batch_size`
+    (dashboard `batch_size`) so switching backends keeps one control surface.
+  - `UK_AIR_SOS_STATION_BATCH_LIMIT` is fallback-only when connector batch size is unset.
 
 If no station refs are due, run is recorded as `skipped` (`no_station_refs`).
 If station refs are selected but no timeseries are found, run is `skipped` (`no_timeseries_ids`).
