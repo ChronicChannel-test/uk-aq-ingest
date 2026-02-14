@@ -374,7 +374,7 @@ curl "https://YOUR_PROJECT.supabase.co/functions/v1/uk_aq_timeseries?timeseries_
 - Auth:
   - Requires `Authorization: Bearer <JWT>`.
   - Verifies identity with `auth.getUser()`.
-  - Uses publishable/anon key + caller JWT (does not use service role key).
+  - Uses `SB_PUBLISHABLE_DEFAULT_KEY` first (falls back to `SB_ANON_JWT`) + caller JWT (does not use service role key).
 - RPC backing: `uk_aq_public.uk_aq_station_snapshot`.
 - Returns:
   - Raw station row (`stations`)

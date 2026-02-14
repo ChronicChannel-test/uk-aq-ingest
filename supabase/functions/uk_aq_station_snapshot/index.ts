@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import "../_shared/fetch_egress_patch.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.8";
-// deploy trigger: 2026-02-04
+// deploy trigger: 2026-02-14
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")
   ?? Deno.env.get("SB_SUPABASE_URL")

@@ -146,6 +146,7 @@ Environment:
 - `UK_AQ_DEV_REFRESH_TOKEN` (optional; enables auto-refresh)
 - `UK_AQ_DEV_ENV_FILE` (optional; env file to persist rotated refresh tokens, default `.env.supabase`)
 - `SB_PUBLISHABLE_DEFAULT_KEY` (or `SB_ANON_JWT`) required when using auto-refresh
+  - Resolution order is `SB_PUBLISHABLE_DEFAULT_KEY` first, then `SB_ANON_JWT`.
 
 ### `scripts/uk_aq_issue_dev_auth_tokens.py`
 Purpose:
@@ -166,6 +167,7 @@ Notes:
 Environment:
 - `SUPABASE_URL` or `SB_SUPABASE_URL`
 - `SB_PUBLISHABLE_DEFAULT_KEY` (or `SB_ANON_JWT`)
+  - Resolution order is `SB_PUBLISHABLE_DEFAULT_KEY` first, then `SB_ANON_JWT`.
 - `UK_AQ_DEV_USER_EMAIL` + `UK_AQ_DEV_USER_PASSWORD` (for password grant), or `UK_AQ_DEV_REFRESH_TOKEN` (for refresh grant)
 
 ### `dev_dashboards.sh` and `dev_dashboards_stop.sh`
