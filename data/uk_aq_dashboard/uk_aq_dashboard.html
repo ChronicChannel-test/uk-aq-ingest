@@ -561,41 +561,42 @@
         ]);
       }
 
-      function isPartialBudgetRun(run) {
-        const payload = asObject(run && run.response_payload);
-        if (!payload) {
-          return false;
-        }
-        const budgetStoppedReasons = new Set([
-          "runtime_budget_exceeded",
-          "max_requests_per_run",
+      function partialRunDetail(run) {
+        const rateLimitReasons = new Set([
           "remaining_low",
           "rate_limit_429",
           "rate_limit_guard",
+        ]);
+        const budgetReasons = new Set([
+          "runtime_budget_exceeded",
+          "max_requests_per_run",
           "request_budget_limited",
         ]);
-        const partial = payload.partial === true;
-        const stoppedReason = String(payload.stopped_reason || "").toLowerCase();
-        return partial || budgetStoppedReasons.has(stoppedReason);
+        const payload = asObject(run && run.response_payload);
+        const stoppedReason = String((payload && payload.stopped_reason) || "").toLowerCase();
+        if (rateLimitReasons.has(stoppedReason)) {
+          return "Rate-limit";
+        }
+        if (payload && payload.partial === true) {
+          return "Budget Limit";
+        }
+        if (budgetReasons.has(stoppedReason)) {
+          return "Budget Limit";
+        }
+        const message = String(run && run.run_message || "").toLowerCase();
+        if (rateLimitReasons.has(message)) {
+          return "Rate-limit";
+        }
+        if (budgetReasons.has(message)) {
+          return "Budget Limit";
+        }
+        return null;
       }
 
       function statusMeta(run) {
-        if (String(run && run.run_status || "").toLowerCase() === "partial") {
-          return { className: "partial", label: "Partial Run", detail: "Budget Limit" };
-        }
-        if (isPartialBudgetRun(run)) {
-          return { className: "partial", label: "Partial Run", detail: "Budget Limit" };
-        }
-        const message = String(run && run.run_message || "").toLowerCase();
-        if (
-          message === "runtime_budget_exceeded" ||
-          message === "max_requests_per_run" ||
-          message === "remaining_low" ||
-          message === "rate_limit_429" ||
-          message === "request_budget_limited" ||
-          message === "rate_limit_guard"
-        ) {
-          return { className: "partial", label: "Partial Run", detail: "Budget Limit" };
+        const partialDetail = partialRunDetail(run);
+        if (partialDetail || String(run && run.run_status || "").toLowerCase() === "partial") {
+          return { className: "partial", label: "Partial Run", detail: partialDetail || "Budget Limit" };
         }
         const raw = (run && run.run_status) || "unknown";
         return { className: String(raw).toLowerCase(), label: raw, detail: null };
@@ -980,7 +981,7 @@
           : 1;
         const updatedAt = settings.updated_at ? formatTime(settings.updated_at) : "n/a";
         panel.innerHTML = `
-          <h2>Dispatcher settings <span class="chip">i</span></h2>
+          <h2>Supabase Edge Functions Dispatcher Settings <span class="chip">i</span></h2>
           <div class="settings-inline">
             <label class="settings-toggle">
               <input type="checkbox" id="dispatcher-parallel" ${parallel ? "checked" : ""} />
@@ -1029,6 +1030,19 @@
         return panel;
       }
 
+      function shouldShowDispatcherSettings(connectors) {
+        if (!Array.isArray(connectors) || connectors.length === 0) {
+          return true;
+        }
+        const allGoogleCloudRun = connectors.every((row) => {
+          const backend = String(
+            (row && row.scheduler_backend) || "supabase_function"
+          ).toLowerCase();
+          return backend === "google_cloud_run";
+        });
+        return !allGoogleCloudRun;
+      }
+
       async function loadDashboard() {
         setError("");
         setStatus("Loading...");
@@ -1053,7 +1067,10 @@
           if (Array.isArray(data.connectors_settings)) {
             dashboardEl.appendChild(renderConnectorSettingsPanel(data.connectors_settings));
           }
-          if (data.dispatcher_settings) {
+          if (
+            data.dispatcher_settings &&
+            shouldShowDispatcherSettings(data.connectors_settings)
+          ) {
             dashboardEl.appendChild(renderDispatcherSettingsPanel(data.dispatcher_settings));
           }
           if (Array.isArray(data.dispatch_runs)) {

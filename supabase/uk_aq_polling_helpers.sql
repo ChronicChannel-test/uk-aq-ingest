@@ -90,7 +90,8 @@ begin
       c.station_ref,
       c.last_observed_at
     from candidates c
-    where (c.last_observed_at is null or c.last_observed_at <= now() - interval '24 hours')
+    where c.due_at <= now()
+      and (c.last_observed_at is null or c.last_observed_at <= now() - interval '24 hours')
       and (c.last_polled_at is null or c.last_polled_at <= now() - interval '12 hours')
       and not exists (
         select 1 from tiered_limited t where t.station_id = c.station_id

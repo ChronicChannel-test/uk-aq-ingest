@@ -248,6 +248,7 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
   - Supports `active_only` to limit polling to stations marked `enabled` or `site_active` in metadata.
   - Supports `station_refs` to limit polling to a specific set of station refs.
   - Uses `uk_aq_raw.breathelondon_station_checkpoints` for per-station scheduling (`next_due_at`, `ingest_lag_samples`).
+  - `breathelondon_select_station_refs` stale selection excludes future-due rows (`due_at > now()`).
   - Supports `debug=true` to include a debug block in the response (Dropbox config status, no secrets).
   - Response includes run-level `last_observed_at` (latest observed timestamp across the run scope) for ingest run feed reporting.
   - Cloud Run runner derives `window_hours` from `connectors.poll_window_hours` and batch limit from `connectors.poll_timeseries_batch_size` (fallback defaults apply), then fetches due station refs via `breathelondon_select_station_refs`.
