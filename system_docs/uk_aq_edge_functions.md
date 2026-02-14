@@ -222,6 +222,7 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
   - Enforces a runtime budget (default 120s) and returns `partial=true` when exceeded.
   - Requires `X-Cron-Secret` when `SB_UK_AQ_CRON_SECRET` is set.
   - Stops issuing new requests when rate-limit remaining drops below the threshold (default 5), on HTTP 429, on OpenAQ HTTP 401, or when the per-run request budget is exhausted.
+  - Response metadata includes `rate_limit_reset` and `rate_limit_reset_at` so Cloud Run scheduling can defer next run until reset when throttled.
 - Logs:
   - Writes a log file to Dropbox `/connectors/openaq/log/YYYY-MM-DD/` (prefix `uk_aq_log_edge_openaq_`).
   - Writes raw payloads to Dropbox `/connectors/openaq/raw_data/YYYY-MM-DD/` as ZIP (prefix `uk_aq_raw_edge_openaq_`).

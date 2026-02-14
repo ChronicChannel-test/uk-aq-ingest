@@ -30,12 +30,16 @@ const rateLimitState: {
   stopReason: string | null;
   limit: number | null;
   firstRemaining: number | null;
+  reset: number | null;
+  resetAt: string | null;
 } = {
   remaining: null,
   stop: false,
   stopReason: null,
   limit: null,
   firstRemaining: null,
+  reset: null,
+  resetAt: null,
 };
 
 type ErrorLogEntry = {
@@ -1159,6 +1163,8 @@ type RateLimitState = {
   stopReason: string | null;
   limit: number | null;
   firstRemaining: number | null;
+  reset: number | null;
+  resetAt: string | null;
 };
 
 function rateLimitDelayMs(reset: number | null): number {
@@ -1247,6 +1253,11 @@ async function openaqRequest(
       }
       if (info.limit !== null && Number.isFinite(info.limit)) {
         rateLimitState.limit = info.limit;
+      }
+      if (info.reset !== null && Number.isFinite(info.reset)) {
+        rateLimitState.reset = info.reset;
+        const delayMs = rateLimitDelayMs(info.reset);
+        rateLimitState.resetAt = new Date(Date.now() + delayMs).toISOString();
       }
       if (info.remaining <= OPENAQ_RATE_LIMIT_STOP_THRESHOLD) {
         rateLimitState.stop = true;
@@ -2035,6 +2046,8 @@ serve(async (req) => {
   rateLimitState.stopReason = null;
   rateLimitState.limit = null;
   rateLimitState.firstRemaining = null;
+  rateLimitState.reset = null;
+  rateLimitState.resetAt = null;
   const authResponse = requireCronSecret(req);
   if (authResponse) {
     return authResponse;
@@ -3555,6 +3568,8 @@ serve(async (req) => {
     series_polled: seriesPolled,
     last_observed_at: lastObservedAt,
     rate_limit_remaining: rateLimitState.remaining,
+    rate_limit_reset: rateLimitState.reset,
+    rate_limit_reset_at: rateLimitState.resetAt,
     rate_limit_stop: rateLimitState.stop,
     rate_limit_stop_reason: rateLimitState.stopReason,
     partial: timeBudgetHit,
@@ -3570,6 +3585,8 @@ serve(async (req) => {
 
   logLine("INFO", "OpenAQ rate limit summary", {
     rate_limit_limit: rateLimitState.limit,
+    rate_limit_reset: rateLimitState.reset,
+    rate_limit_reset_at: rateLimitState.resetAt,
     rate_limit_remaining_first: rateLimitState.firstRemaining,
     rate_limit_remaining_last: rateLimitState.remaining,
     rate_limit_used_estimate: rateLimitUsedEstimate,
@@ -3647,6 +3664,8 @@ serve(async (req) => {
     stopped_reason: stoppedReason,
     rate_limit_remaining: rateLimitState.remaining,
     rate_limit_limit: rateLimitState.limit,
+    rate_limit_reset: rateLimitState.reset,
+    rate_limit_reset_at: rateLimitState.resetAt,
     rate_limit_remaining_first: rateLimitState.firstRemaining,
     rate_limit_stop: rateLimitState.stop,
     rate_limit_stop_reason: rateLimitState.stopReason,

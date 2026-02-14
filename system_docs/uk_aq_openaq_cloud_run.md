@@ -26,6 +26,8 @@ Each run reads earliest `uk_aq_raw.openaq_station_checkpoints.next_due_at` and e
 - `https://run.googleapis.com/v2/projects/<project>/locations/<region>/jobs/<job>:run`
 
 If no due checkpoint is available, worker schedules a short fallback recheck.
+When OpenAQ signals rate-limit stop/reset, the worker schedules no earlier than
+the reported reset time.
 
 ## Required Config
 

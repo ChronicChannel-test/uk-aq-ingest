@@ -758,20 +758,28 @@ function effectiveTasksEnabled(): {
 function computeNextCheckTime(
   now: Date,
   earliestNextDueAt: string | null,
+  rateLimitResetAt: string | null,
   failure: boolean,
 ): Date {
   if (failure) {
     return new Date(now.getTime() + OPENAQ_FAILURE_RETRY_SECONDS * 1000);
   }
   const minDelayMs = OPENAQ_NEXT_CHECK_MIN_SECONDS * 1000;
+  let notBeforeMs = now.getTime() + minDelayMs;
+  if (rateLimitResetAt) {
+    const resetMs = Date.parse(rateLimitResetAt);
+    if (Number.isFinite(resetMs)) {
+      notBeforeMs = Math.max(notBeforeMs, resetMs);
+    }
+  }
   if (!earliestNextDueAt) {
-    return new Date(now.getTime() + minDelayMs);
+    return new Date(notBeforeMs);
   }
   const dueMs = Date.parse(earliestNextDueAt);
   if (!Number.isFinite(dueMs)) {
-    return new Date(now.getTime() + minDelayMs);
+    return new Date(notBeforeMs);
   }
-  return new Date(Math.max(dueMs, now.getTime() + minDelayMs));
+  return new Date(Math.max(dueMs, notBeforeMs));
 }
 
 function buildTaskResourceName(taskId: string): string {
@@ -854,6 +862,7 @@ async function scheduleNextCheck(
   connectorId: number,
   reason: string,
   failure: boolean,
+  rateLimitResetAt: string | null,
 ): Promise<void> {
   let earliestNextDueAt: string | null = null;
   try {
@@ -868,8 +877,41 @@ async function scheduleNextCheck(
   }
 
   const now = new Date();
-  const scheduleAt = computeNextCheckTime(now, earliestNextDueAt, failure);
+  const scheduleAt = computeNextCheckTime(
+    now,
+    earliestNextDueAt,
+    rateLimitResetAt,
+    failure,
+  );
   await enqueueSelfRunTask(scheduleAt, reason);
+}
+
+function deriveRateLimitResetAt(payload: Record<string, unknown> | null): string | null {
+  if (!payload) {
+    return null;
+  }
+  const stopReason = toStringOrNull(payload.rate_limit_stop_reason);
+  const rateLimitStop = payload.rate_limit_stop === true ||
+    stopReason === "remaining_low" ||
+    stopReason === "rate_limit_429";
+  if (!rateLimitStop) {
+    return null;
+  }
+  const explicitResetAt = toStringOrNull(payload.rate_limit_reset_at);
+  if (explicitResetAt) {
+    return explicitResetAt;
+  }
+  const numericReset = toIntegerOrNull(payload.rate_limit_reset);
+  if (numericReset !== null) {
+    const nowMs = Date.now();
+    const resetMs = numericReset > 1e12
+      ? numericReset
+      : numericReset > 1e9
+      ? numericReset * 1000
+      : nowMs + Math.max(0, numericReset * 1000);
+    return new Date(resetMs).toISOString();
+  }
+  return null;
 }
 
 async function recordSkippedRun(
@@ -942,7 +984,7 @@ async function main(): Promise<void> {
   const payloadPlan = await buildIngestPayload(connector);
   if (!payloadPlan.stationRows.length) {
     await recordSkippedRun(connectorId, runStartedAtIso, "no_station_refs");
-    await scheduleNextCheck(connectorId, "no_station_refs", false);
+    await scheduleNextCheck(connectorId, "no_station_refs", false, null);
     logSummary("skipped", {
       reason: "no_station_refs",
       connector_id: connectorId,
@@ -981,6 +1023,7 @@ async function main(): Promise<void> {
   let ingestResponse: IngestResponse | null = null;
   let runFailed = false;
   let runStatus = "failed";
+  let rateLimitResetAt: string | null = null;
   let runMessage = "unknown";
 
   try {
@@ -990,6 +1033,7 @@ async function main(): Promise<void> {
     const summary = deriveRunSummary(ingestResponse);
     runStatus = summary.runStatus;
     runMessage = summary.runMessage;
+    rateLimitResetAt = deriveRateLimitResetAt(summary.payload);
 
     const runEndedAtIso = new Date().toISOString();
     await updateConnectorRun(
@@ -1051,6 +1095,7 @@ async function main(): Promise<void> {
         connectorId,
         runFailed ? "failed_retry" : runStatus,
         runFailed,
+        rateLimitResetAt,
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
