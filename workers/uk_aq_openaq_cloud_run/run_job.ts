@@ -498,6 +498,47 @@ function deriveRunSummary(ingestResponse: IngestResponse): {
   };
 }
 
+const STORED_RESPONSE_PAYLOAD_KEYS = [
+  "partial",
+  "stopped_reason",
+  "rate_limit_stop",
+  "rate_limit_stop_reason",
+  "rate_limit_remaining",
+  "rate_limit_limit",
+  "rate_limit_reset",
+  "rate_limit_reset_at",
+  "requests_total",
+  "max_requests_per_run",
+  "gap_requests_remaining_min",
+  "gap_requests_planned",
+  "gap_requests_executed",
+  "gap_requests_skipped_budget",
+  "stations_selected",
+  "stations_polled",
+  "stations_updated",
+  "observations_upserted",
+  "series_polled",
+] as const;
+
+function compactRunResponsePayload(
+  payload: Record<string, unknown> | null,
+): Record<string, unknown> | null {
+  if (!payload) {
+    return null;
+  }
+  const compact: Record<string, unknown> = {};
+  for (const key of STORED_RESPONSE_PAYLOAD_KEYS) {
+    if (!Object.prototype.hasOwnProperty.call(payload, key)) {
+      continue;
+    }
+    const value = payload[key];
+    if (value !== undefined) {
+      compact[key] = value;
+    }
+  }
+  return Object.keys(compact).length ? compact : null;
+}
+
 async function resolveConnectorId(
   payload: Record<string, unknown> | null,
 ): Promise<number> {
@@ -635,6 +676,7 @@ async function insertRunRow(
       toIntegerOrNull(payload?.timeseries) ??
       toIntegerOrNull(payload?.timeseries_updated),
     response_status: ingestResponse.status,
+    response_payload: compactRunResponsePayload(payload),
   };
 
   const response = await postgrestRequest("POST", "uk_aq_ingest_runs", {

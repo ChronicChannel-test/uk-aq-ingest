@@ -20,6 +20,9 @@ Run-summary metric note:
 - `uk_aq_ingest_runs.stations_updated` is populated from response station activity
   keys in this order: `stations_polled`, `stations_processed`,
   `stations_selected`, `stations_updated`, `stations`.
+- `uk_aq_ingest_runs.response_payload` stores a compact subset of OpenAQ ingest
+  response fields for run diagnostics (partial/stop reasons, rate-limit summary,
+  request-budget stats, and selected/polled station counts).
 
 ## Trigger Model (Option 2)
 
