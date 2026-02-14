@@ -19,6 +19,7 @@ Run feed note:
   - By default, station batch size follows `connectors.poll_timeseries_batch_size`
     (dashboard `batch_size`) so switching backends keeps one control surface.
   - `UK_AIR_SOS_STATION_BATCH_LIMIT` is fallback-only when connector batch size is unset.
+  - `batch_size` is a total cap across tier1, tier2, and stale picks (stale does not add extra rows above `batch_size`).
 
 If no station refs are due, run is recorded as `skipped` (`no_station_refs`).
 If station refs are selected but no timeseries are found, run is `skipped` (`no_timeseries_ids`).

@@ -23,6 +23,7 @@ Use `connectors.scheduler_backend` in the dashboard:
 - The worker checks due-state and claim-state before dispatch.
 - Station batch size defaults to `connectors.poll_timeseries_batch_size` (dashboard `batch_size`);
   fallback is `UK_AIR_SOS_STATION_BATCH_LIMIT` when connector batch size is unset.
+- `batch_size` is a hard total cap across tier1, tier2, and stale station picks.
 
 ## Checkpoint model
 

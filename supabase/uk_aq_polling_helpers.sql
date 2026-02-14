@@ -213,7 +213,10 @@ begin
         select 1 from tiered_limited t where t.station_id = c.station_id
       )
     order by c.last_observed_at nulls first
-    limit stale_limit
+    limit least(
+      stale_limit,
+      greatest(0, batch_limit - (select count(*) from tiered_limited))
+    )
   ),
   combined as (
     select station_ref, 1 as group_order, due_at as sort_at
