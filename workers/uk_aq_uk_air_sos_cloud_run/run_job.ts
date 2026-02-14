@@ -360,7 +360,6 @@ async function loadStationRows(
     query: {
       select: "id,station_ref",
       connector_id: `eq.${connectorId}`,
-      service_ref: `eq.${CONNECTOR_CODE}`,
       station_ref: postgrestIn(stationRefs),
       removed_at: "is.null",
       limit: "1000",

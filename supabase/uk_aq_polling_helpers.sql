@@ -140,7 +140,6 @@ begin
       max(t.last_value_at) as last_observed_at
     from timeseries t
     where t.connector_id = v_connector_id
-      and t.service_ref = 'uk_air_sos'
     group by t.station_id
   ),
   candidates as (
@@ -163,7 +162,6 @@ begin
     left join latest_obs lo
       on lo.station_id = stn.id
     where stn.connector_id = v_connector_id
-      and stn.service_ref = 'uk_air_sos'
       and stn.station_ref is not null
       and stn.removed_at is null
   ),
