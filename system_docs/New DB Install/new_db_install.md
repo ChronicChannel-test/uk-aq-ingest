@@ -85,3 +85,20 @@ Notes:
 
 1. `uk_aq_latest` excludes rows with no `pcon_code` and no `la_code`, so Sensor.Community can be missing from map filters until station geo refresh is done.
 2. If you see `403 permission denied for view stations` when running geo refresh, `UK_AQ_CORE_SCHEMA` is set incorrectly (usually `uk_aq_public` instead of `uk_aq_core`).
+
+## 5. UK-AQ webpage HTML update after DB switch
+
+When moving to a new Supabase project ref/key, update the UK-AQ static HTML placeholders before deploy.
+
+1. In `../CIC UK-AQ Webpage/CIC-test-uk-aq/.env`, set:
+   - `SUPABASE_PROJECT_REF=<new-main-project-ref>`
+   - `SB_ANON_JWT=<new-main-anon-key>`
+2. Run injection script:
+   - `cd "../CIC UK-AQ Webpage/CIC-test-uk-aq"`
+   - `node scripts/uk_aq_inject_project_ref.mjs`
+3. Deploy webpage (GH Pages / Cloudflare) after injection.
+
+Notes:
+
+1. GH Pages workflow (`.github/workflows/pages.yml`) runs injection in CI using repo secrets (`SUPABASE_PROJECT_REF`, `SB_ANON_JWT`), then deploys the built artifact.
+2. GH Pages deploy does not write injected values back to git-tracked files in the repo; local files remain unchanged unless you run the script locally.
