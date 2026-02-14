@@ -513,15 +513,15 @@ async function insertRunRow(
     run_message: runMessage,
     last_observed_at: toStringOrNull(payload?.last_observed_at) ||
       toStringOrNull(payload?.last_observed),
-    stations_updated: toIntegerOrNull(payload?.stations_updated) ||
-      toIntegerOrNull(payload?.stations) ||
+    stations_updated: toIntegerOrNull(payload?.stations_updated) ??
+      toIntegerOrNull(payload?.stations) ??
       toIntegerOrNull(payload?.stations_processed),
-    observations_upserted: toIntegerOrNull(payload?.observations_upserted) ||
+    observations_upserted: toIntegerOrNull(payload?.observations_upserted) ??
       toIntegerOrNull(payload?.observations),
-    timeseries_updated: toIntegerOrNull(payload?.timeseries_updated) ||
+    timeseries_updated: toIntegerOrNull(payload?.timeseries_updated) ??
       toIntegerOrNull(payload?.timeseries),
-    series_polled: toIntegerOrNull(payload?.series_polled) ||
-      toIntegerOrNull(payload?.timeseries) ||
+    series_polled: toIntegerOrNull(payload?.series_polled) ??
+      toIntegerOrNull(payload?.timeseries) ??
       toIntegerOrNull(payload?.timeseries_updated),
     response_status: ingestResponse.status,
   };

@@ -229,6 +229,7 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
   - Response includes run-level `last_observed_at` (latest observed timestamp across the run scope) for ingest run feed reporting.
   - Cloud Run runner derives `window_hours` from `connectors.poll_window_hours` and batch limit from `connectors.poll_timeseries_batch_size` (fallback defaults apply), then fetches due station refs via `breathelondon_select_station_refs`.
   - Cloud Run runner marks run `skipped` with `no_station_refs` when no due refs are returned.
+  - Cloud Run run-row writes preserve zero-valued metrics (`observations_upserted`, `timeseries_updated`, `series_polled`) as `0` instead of storing `null`.
   - Logs cron secret mismatch diagnostics (presence/length only) when authorization fails.
   - Logs incoming request auth header presence (no secrets) for debugging.
   - Response includes `stations_requested`/`stations_selected` when station refs are supplied.
