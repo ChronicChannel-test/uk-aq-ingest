@@ -101,7 +101,7 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
   - Inserts per-run summaries into `uk_aq_ingest_runs` (status, counts, last_observed_at, response payload) for dashboard feeds.
   - Dispatcher write calls to PostgREST (`connectors`, `uk_aq_ingest_runs`, `error_logs`) now use `Prefer: return=minimal` to reduce PostgREST egress.
   - Stored `uk_aq_ingest_runs.response_payload` is compacted to dashboard-relevant summary keys (counts/partial flags/rate-limit summary/error message) instead of full child ingest responses.
-  - When a child ingest returns `partial=true` or `stopped_reason=runtime_budget_exceeded`, dispatcher records run status as `partial` (and `runtime_budget_exceeded` message) for consistent dashboard status pills.
+  - When a child ingest returns partial/limit signals, dispatcher records run status as `partial` using reason precedence from payload (`stopped_reason`, rate-limit stop flags/reasons, request-budget saturation); runtime timeout remains `runtime_budget_exceeded`.
   - Stores `series_polled` from ingest responses when available (used by OpenAQ and Breathe London).
   - Logs whether the cron secret is present (boolean + length) for debugging.
   - Logs each dispatched edge call with the target function name and cron secret presence (length only).
@@ -220,6 +220,7 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
   - Updates `timeseries.last_value` and `timeseries.last_value_at` based on the most recent measurement.
   - Uses public RPCs for database writes (schemas are not exposed via PostgREST).
   - Enforces a runtime budget (default 120s) and returns `partial=true` when exceeded.
+  - Runtime-vs-rate-limit stop signaling is explicit: `partial=true` is only set when the runtime deadline is reached; rate-limit/request-budget early stops are reported via `stopped_reason` without forcing `partial=true`.
   - Requires `X-Cron-Secret` when `SB_UK_AQ_CRON_SECRET` is set.
   - Stops issuing new requests when rate-limit remaining drops below the threshold (default 5), on HTTP 429, on OpenAQ HTTP 401, or when the per-run request budget is exhausted.
   - Response metadata includes `rate_limit_reset` and `rate_limit_reset_at` so Cloud Run scheduling can defer next run until reset when throttled.

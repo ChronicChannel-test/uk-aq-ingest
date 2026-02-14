@@ -397,11 +397,26 @@ function getPartialBudgetReason(payload: unknown): string | null {
   if (!data) {
     return null;
   }
+  const stoppedReason = String(data.stopped_reason ?? "").trim().toLowerCase();
+  const isRateLimitReason = (
+    stoppedReason === "remaining_low" ||
+    stoppedReason === "rate_limit_429" ||
+    stoppedReason === "rate_limit_guard"
+  );
+  const isRequestBudgetReason = (
+    stoppedReason === "request_budget_limited" ||
+    stoppedReason === "max_requests_per_run"
+  );
   if (asBoolean(data.partial)) {
-    const explicitReason = String(data.stopped_reason ?? "").trim().toLowerCase();
+    const explicitReason = stoppedReason;
     return explicitReason || "runtime_budget_exceeded";
   }
-  const stoppedReason = String(data.stopped_reason ?? "").toLowerCase();
+  if (isRateLimitReason) {
+    return stoppedReason;
+  }
+  if (isRequestBudgetReason) {
+    return stoppedReason;
+  }
   if (stoppedReason === "runtime_budget_exceeded") {
     return "runtime_budget_exceeded";
   }

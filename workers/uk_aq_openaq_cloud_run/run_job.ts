@@ -454,11 +454,39 @@ function deriveRunSummary(ingestResponse: IngestResponse): {
   }
 
   const partial = payload?.partial === true;
-  const stoppedReason = toStringOrNull(payload?.stopped_reason);
-  if (partial) {
+  const stoppedReason = toStringOrNull(payload?.stopped_reason)?.toLowerCase() ??
+    null;
+  const rateLimitStopReason = toStringOrNull(payload?.rate_limit_stop_reason)
+    ?.toLowerCase() ?? null;
+  const rateLimitStop = payload?.rate_limit_stop === true ||
+    Boolean(rateLimitStopReason) ||
+    stoppedReason === "remaining_low" ||
+    stoppedReason === "rate_limit_429" ||
+    stoppedReason === "rate_limit_guard";
+  const requestsTotal = toIntegerOrNull(payload?.requests_total);
+  const maxRequestsPerRun = toIntegerOrNull(payload?.max_requests_per_run);
+  const gapRequestsSkippedBudget = toIntegerOrNull(
+    payload?.gap_requests_skipped_budget,
+  );
+  const requestBudgetLimited =
+    (gapRequestsSkippedBudget !== null && gapRequestsSkippedBudget > 0) ||
+    (
+      requestsTotal !== null &&
+      maxRequestsPerRun !== null &&
+      maxRequestsPerRun > 0 &&
+      requestsTotal >= maxRequestsPerRun
+    ) ||
+    stoppedReason === "request_budget_limited" ||
+    stoppedReason === "max_requests_per_run";
+
+  if (partial || stoppedReason !== null || rateLimitStop || requestBudgetLimited) {
+    const reason = stoppedReason ||
+      (rateLimitStop ? (rateLimitStopReason || "rate_limit_guard") : null) ||
+      (requestBudgetLimited ? "request_budget_limited" : null) ||
+      "partial_run";
     return {
       runStatus: "partial",
-      runMessage: stoppedReason || "partial_run",
+      runMessage: reason,
       payload,
     };
   }

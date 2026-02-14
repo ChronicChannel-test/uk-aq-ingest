@@ -2112,7 +2112,8 @@ serve(async (req) => {
     ? Math.max(30, OPENAQ_MAX_RUNTIME_SECONDS)
     : DEFAULT_MAX_RUNTIME_SECONDS;
   const runtimeDeadline = runStartedAt + maxRuntimeSeconds * 1000;
-  const shouldStop = () => Date.now() >= runtimeDeadline || rateLimitState.stop;
+  const runtimeDeadlineReached = () => Date.now() >= runtimeDeadline;
+  const shouldStop = () => runtimeDeadlineReached() || rateLimitState.stop;
   let timeBudgetHit = false;
   const logLines: string[] = [];
   errorLogLines = [];
@@ -2699,7 +2700,7 @@ serve(async (req) => {
 
   await runPool(locationIds, OPENAQ_CONCURRENCY, async (locationId) => {
     if (shouldStop()) {
-      timeBudgetHit = true;
+      timeBudgetHit = runtimeDeadlineReached();
       return;
     }
     const stationIdValue = stationIdByRef[locationId];
@@ -2753,7 +2754,7 @@ serve(async (req) => {
           break;
         }
         if (shouldStop()) {
-          timeBudgetHit = true;
+          timeBudgetHit = runtimeDeadlineReached();
           return;
         }
         const timeseriesId = timeseriesIdByRef[timeseriesRef];
@@ -2994,7 +2995,7 @@ serve(async (req) => {
     }
   }, () => {
     if (shouldStop()) {
-      timeBudgetHit = true;
+      timeBudgetHit = runtimeDeadlineReached();
       return true;
     }
     return false;

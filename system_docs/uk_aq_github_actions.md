@@ -133,7 +133,7 @@ SB_UK_AQ_CRON_SECRET=...
 - Optional:
   - `HISTORY_SUPABASE_URL`, `HISTORY_SERVICE_ROLE_KEY`
   - `SB_UK_AQ_CRON_SECRET`
-  - Dropbox secrets (`DROPBOX_*`) and raw-upload allowlist env (`OPENAQ_RAW_DROPBOX_ALLOWED_SUPABASE_URL`)
+  - Dropbox secrets (`DROPBOX_*`) and raw-upload allowlist env (`OPENAQ_RAW_DROPBOX_ALLOWED_SUPABASE_URL` or legacy `UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL`)
   - `GCP_OPENAQ_TASK_QUEUE_ID`, `GCP_OPENAQ_TASK_INVOKER_SERVICE_ACCOUNT`, `GCP_OPENAQ_SCHEDULER_SERVICE_ACCOUNT`.
 
 ### `uk_air_sos_site_register_monthly.yml`
