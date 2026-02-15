@@ -13,7 +13,9 @@ enqueue to reduce duplicate payload bytes, write churn, and request overhead.
 History write mode note: shared history writes now default to
 `HISTORY_WRITE_MODE=outbox_only` (enqueue on main DB, flush asynchronously via
 outbox worker). Set `HISTORY_WRITE_MODE=direct` only when immediate history
-writes are required.
+writes are required. `HISTORY_WRITE_MODE=pubsub_only` publishes history rows to
+GCP Pub/Sub for asynchronous writer jobs (for example OpenAQ Cloud Run direct
+cutover).
 History outbox flush note: claimed outbox payloads are merged per flush batch
 before a single history upsert call, which cuts history RPC call count and
 egress overhead.
@@ -116,6 +118,14 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
   - History-side RPC pressure can be monitored via
     `uk_aq_public.uk_aq_history_rpc_metrics_minute` (history DB bootstrap).
   - Archived edge/cloudflare implementation is under `archive/2026-02-12_history_outbox_migration/`.
+
+### History Pub/Sub Writer (Cloud Run)
+- Purpose: Pull history messages from Pub/Sub and write merged mixed-row batches to history DB.
+- Triggered by: Cloud Scheduler -> Cloud Run job (`workers/uk_aq_history_pubsub_cloud_run`).
+- Notes:
+  - This is external to edge runtime; edge/shared ingest logic publishes when `HISTORY_WRITE_MODE=pubsub_only`.
+  - Writer dedupes by `(connector_id, timeseries_id, observed_at)` before upsert and writes sync receipts to main DB.
+  - Mixed rows across connectors are processed in the same batch, reducing history RPC call overhead.
 
 ### uk_aq_egress_monitor
 - Purpose: Lightweight monitor endpoint that summarizes egress metrics and raises a warning when total MB over a lookback window exceeds a threshold.
@@ -451,7 +461,10 @@ Optional:
 - `HISTORY_OUTBOX_CLOUD_RUN_BUDGET_SECONDS` (optional; defaults to `540`; Cloud Run runtime budget)
 - `HISTORY_OUTBOX_CLOUD_RUN_SHUTDOWN_BUFFER_SECONDS` (optional; defaults to `20`; reserved buffer before timeout)
 - `HISTORY_OUTBOX_CLOUD_RUN_RPC_RETRIES` (optional; defaults to `3`; main RPC retry count)
-- `HISTORY_WRITE_MODE` (optional; defaults to `outbox_only`; `outbox_only` queues history rows to main outbox for asynchronous flush, `direct` attempts immediate history upsert then falls back to outbox)
+- `HISTORY_WRITE_MODE` (optional; defaults to `outbox_only`; `outbox_only` queues history rows to main outbox for asynchronous flush, `direct` attempts immediate history upsert then falls back to outbox, `pubsub_only` publishes rows to Pub/Sub and does not use main DB outbox)
+- `GCP_PROJECT_ID` (required when `HISTORY_WRITE_MODE=pubsub_only` unless `GOOGLE_CLOUD_PROJECT` is set)
+- `HISTORY_PUBSUB_TOPIC` (optional; required when `HISTORY_WRITE_MODE=pubsub_only`; accepts topic id or full `projects/.../topics/...` path)
+- `HISTORY_PUBSUB_PUBLISH_BATCH_SIZE` (optional; defaults to `500`; number of Pub/Sub messages per publish call)
 - `DISPATCH_TIME_BUDGET_MS` (optional; defaults to `150000`; dispatcher per-request runtime budget)
 - `DISPATCH_SHUTDOWN_BUFFER_MS` (optional; defaults to `10000`; reserved time before budget to return cleanly)
 - `DISPATCH_EDGE_CALL_TIMEOUT_MS` (optional; defaults to `140000`; per-child ingest timeout within dispatcher)

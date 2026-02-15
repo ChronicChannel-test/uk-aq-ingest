@@ -15,6 +15,7 @@ The worker:
 4. Runs OpenAQ ingest once with scoped `station_refs`.
 5. Writes run summary to `connectors`, `uk_aq_ingest_runs`, and `error_logs` on failures.
 6. Schedules the next run using Cloud Tasks based on earliest checkpoint due time.
+7. Publishes history rows using shared history mode (`HISTORY_WRITE_MODE`).
 
 Run-summary metric note:
 - `uk_aq_ingest_runs.stations_updated` is populated from response station activity
@@ -56,10 +57,14 @@ the reported reset time.
 - `GCP_OPENAQ_SCHEDULER_SERVICE_ACCOUNT` (defaults to job service account if unset)
 - `OPENAQ_MIN_GAP_STATIONS` (default `1`)
 - `OPENAQ_MIN_NON_GAP_STATIONS` (default `10`)
+- `OPENAQ_HISTORY_WRITE_MODE` (default in workflow: `pubsub_only`)
+- `HISTORY_PUBSUB_TOPIC` (default `uk-aq-history-observations`)
+- `HISTORY_PUBSUB_PUBLISH_BATCH_SIZE` (default `500`)
 
 ## IAM Notes
 
 - Job runtime SA needs `roles/cloudtasks.enqueuer` on the OpenAQ queue.
+- Job runtime SA needs `roles/pubsub.publisher` on `HISTORY_PUBSUB_TOPIC` when using `HISTORY_WRITE_MODE=pubsub_only`.
 - Task invoker SA needs `roles/run.invoker` on the OpenAQ Cloud Run Job.
 - Cloud Tasks service agent (`service-<project-number>@gcp-sa-cloudtasks.iam.gserviceaccount.com`) needs `roles/iam.serviceAccountTokenCreator` on the task invoker SA.
 - Scheduler SA needs `roles/run.invoker` on the OpenAQ Cloud Run Job.

@@ -100,6 +100,22 @@ SB_UK_AQ_CRON_SECRET=...
   - `HISTORY_SUPABASE_URL`, `HISTORY_SERVICE_ROLE_KEY`,
   - GCP deploy/auth secrets as in other Cloud Run workflows.
 
+### `uk_aq_history_pubsub_cloud_run_deploy.yml`
+- Trigger: push to `main` affecting `workers/uk_aq_history_pubsub_cloud_run/**`, or manual dispatch.
+- Purpose: deploy the hourly Cloud Run job that drains history Pub/Sub messages and writes mixed-row batches to history DB.
+- Default job name: `uk-aq-history-pubsub-writer`.
+- Worker: `workers/uk_aq_history_pubsub_cloud_run`.
+- Runtime:
+  - Pulls from one Pub/Sub subscription.
+  - Merges rows across connectors, deduplicates by `(connector_id, timeseries_id, observed_at)`, and upserts in chunks.
+  - Acknowledges messages only after successful upsert + receipt write.
+- Pub/Sub setup:
+  - Ensures topic + subscription exist.
+  - Grants writer job service account `roles/pubsub.subscriber` on the subscription.
+- Scheduler:
+  - Uses Google Cloud Scheduler -> Cloud Run Jobs API (`:run`).
+  - Default cron is hourly (`0 * * * *`).
+
 ### `uk_aq_uk_air_sos_cloud_run_deploy.yml`
 - Trigger: push to `main` affecting `workers/uk_aq_uk_air_sos_cloud_run/**` or SOS ingest runtime files, or manual dispatch.
 - Purpose: deploy the UK-AIR SOS Cloud Run job + optional Cloud Scheduler trigger.
@@ -132,6 +148,8 @@ SB_UK_AQ_CRON_SECRET=...
   - `OPENAQ_API_KEY`
 - Optional:
   - `HISTORY_SUPABASE_URL`, `HISTORY_SERVICE_ROLE_KEY`
+  - `OPENAQ_HISTORY_WRITE_MODE` (workflow default `pubsub_only` for direct history Pub/Sub publishing)
+  - `HISTORY_PUBSUB_TOPIC`, `HISTORY_PUBSUB_PUBLISH_BATCH_SIZE`
   - `SB_UK_AQ_CRON_SECRET`
   - Dropbox secrets (`DROPBOX_*`) and raw-upload allowlist env (`OPENAQ_RAW_DROPBOX_ALLOWED_SUPABASE_URL` or legacy `UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL`)
   - `GCP_OPENAQ_TASK_QUEUE_ID`, `GCP_OPENAQ_TASK_INVOKER_SERVICE_ACCOUNT`, `GCP_OPENAQ_SCHEDULER_SERVICE_ACCOUNT`.

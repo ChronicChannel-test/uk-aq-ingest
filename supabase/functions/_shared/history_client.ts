@@ -68,6 +68,8 @@ export type HistoryOutboxFlushOptions = {
   claim_batch_limit?: number;
 };
 
+type HistoryWriteMode = "direct" | "outbox_only" | "pubsub_only";
+
 const HISTORY_SUPABASE_URL = (
   Deno.env.get("HISTORY_SUPABASE_URL") ?? ""
 ).trim();
@@ -114,6 +116,21 @@ const HISTORY_WRITE_MODE = normalizeHistoryWriteMode(
   Deno.env.get("HISTORY_WRITE_MODE"),
 );
 
+const GCP_PROJECT_ID = (
+  Deno.env.get("GCP_PROJECT_ID") ??
+    Deno.env.get("GOOGLE_CLOUD_PROJECT") ??
+    ""
+).trim();
+
+const HISTORY_PUBSUB_TOPIC = (
+  Deno.env.get("HISTORY_PUBSUB_TOPIC") ?? ""
+).trim();
+
+const HISTORY_PUBSUB_PUBLISH_BATCH_SIZE = parsePositiveInt(
+  Deno.env.get("HISTORY_PUBSUB_PUBLISH_BATCH_SIZE"),
+  500,
+);
+
 let historyClientCache: ReturnType<typeof createClient> | null = null;
 
 function parsePositiveInt(raw: string | undefined, fallback: number): number {
@@ -124,10 +141,13 @@ function parsePositiveInt(raw: string | undefined, fallback: number): number {
   return Math.max(1, Math.trunc(value));
 }
 
-function normalizeHistoryWriteMode(raw: string | undefined): "direct" | "outbox_only" {
+function normalizeHistoryWriteMode(raw: string | undefined): HistoryWriteMode {
   const value = (raw ?? "").trim().toLowerCase();
   if (value === "direct") {
     return "direct";
+  }
+  if (value === "pubsub_only") {
+    return "pubsub_only";
   }
   return "outbox_only";
 }
@@ -180,7 +200,7 @@ function normalizeStatus(value: unknown): string | null {
   return status ? status : null;
 }
 
-function prepareHistoryRows(
+export function prepareHistoryRows(
   historyRows: HistoryObservationRow[],
 ): HistoryObservationRow[] {
   if (!historyRows.length) {
@@ -223,6 +243,104 @@ function toObservedDay(value: unknown): string | null {
 function shortError(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   return message.length > 400 ? `${message.slice(0, 397)}...` : message;
+}
+
+function pubsubTopicPath(): string {
+  if (!HISTORY_PUBSUB_TOPIC) {
+    return "";
+  }
+  if (HISTORY_PUBSUB_TOPIC.startsWith("projects/")) {
+    return HISTORY_PUBSUB_TOPIC;
+  }
+  if (!GCP_PROJECT_ID) {
+    return "";
+  }
+  return `projects/${GCP_PROJECT_ID}/topics/${HISTORY_PUBSUB_TOPIC}`;
+}
+
+function historyPubsubConfigured(): boolean {
+  return Boolean(pubsubTopicPath());
+}
+
+async function fetchGoogleAccessToken(): Promise<string> {
+  const response = await fetch(
+    "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token",
+    {
+      headers: { "Metadata-Flavor": "Google" },
+    },
+  );
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    throw new Error(
+      `Metadata token request failed (${response.status}): ${text}`,
+    );
+  }
+  const payload = await response.json().catch(() => null);
+  const token = typeof payload?.access_token === "string"
+    ? payload.access_token.trim()
+    : "";
+  if (!token) {
+    throw new Error("Metadata token response missing access_token");
+  }
+  return token;
+}
+
+type PubsubPublishResponse = {
+  messageIds?: unknown;
+};
+
+async function publishHistoryRowsToPubsub(
+  preparedRows: HistoryObservationRow[],
+): Promise<number> {
+  if (!preparedRows.length) {
+    return 0;
+  }
+  const topicPath = pubsubTopicPath();
+  if (!topicPath) {
+    throw new Error(
+      "History Pub/Sub is not configured (missing HISTORY_PUBSUB_TOPIC or GCP_PROJECT_ID).",
+    );
+  }
+
+  const token = await fetchGoogleAccessToken();
+  let published = 0;
+
+  for (const chunk of chunkRows(preparedRows, HISTORY_PUBSUB_PUBLISH_BATCH_SIZE)) {
+    const messages = chunk.map((row) => ({
+      data: btoa(JSON.stringify(row)),
+      attributes: {
+        connector_id: String(row.connector_id),
+        timeseries_id: String(row.timeseries_id),
+        observed_at: row.observed_at,
+      },
+    }));
+
+    const response = await fetch(
+      `https://pubsub.googleapis.com/v1/${topicPath}:publish`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ messages }),
+      },
+    );
+
+    const payload = await response.json().catch(() => null) as PubsubPublishResponse | null;
+    if (!response.ok) {
+      const message = typeof payload === "object" && payload !== null
+        ? JSON.stringify(payload)
+        : `HTTP ${response.status}`;
+      throw new Error(`History Pub/Sub publish failed: ${message}`);
+    }
+    const messageIds = payload?.messageIds;
+    published += Array.isArray(messageIds)
+      ? messageIds.length
+      : chunk.length;
+  }
+
+  return published;
 }
 
 function countRowsFromPayload<T extends string>(
@@ -379,6 +497,20 @@ export async function writeHistoryWithOutbox(
 
   if (HISTORY_WRITE_MODE === "outbox_only") {
     const enqueued = await enqueueHistoryOutbox(mainRpc, preparedRows);
+    return {
+      written: 0,
+      receipts_upserted: 0,
+      enqueued,
+    };
+  }
+
+  if (HISTORY_WRITE_MODE === "pubsub_only") {
+    if (!historyPubsubConfigured()) {
+      throw new Error(
+        "HISTORY_WRITE_MODE=pubsub_only but Pub/Sub is not configured.",
+      );
+    }
+    const enqueued = await publishHistoryRowsToPubsub(preparedRows);
     return {
       written: 0,
       receipts_upserted: 0,
