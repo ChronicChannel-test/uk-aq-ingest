@@ -1011,6 +1011,47 @@ async function upsertObservations(
   return written;
 }
 
+function observationValueDedupeToken(value: unknown): string {
+  if (value === null || value === undefined) {
+    return "null";
+  }
+  const numericValue = Number(value);
+  if (Number.isFinite(numericValue)) {
+    return `n:${numericValue}`;
+  }
+  return `s:${String(value)}`;
+}
+
+function observationStatusDedupeToken(value: unknown): string {
+  if (value === null || value === undefined) {
+    return "";
+  }
+  return String(value).trim();
+}
+
+function dedupeExactObservationRows(
+  rows: Array<Record<string, unknown>>,
+): { rows: Array<Record<string, unknown>>; deduped: number } {
+  if (!rows.length) {
+    return { rows: [], deduped: 0 };
+  }
+  const dedup = new Map<string, Record<string, unknown>>();
+  for (const row of rows) {
+    const connectorId = String(row.connector_id ?? "");
+    const timeseriesId = String(row.timeseries_id ?? "");
+    const observedAt = String(row.observed_at ?? "").trim();
+    const valueToken = observationValueDedupeToken(row.value);
+    const statusToken = observationStatusDedupeToken(row.status);
+    const key =
+      `${connectorId}:${timeseriesId}:${observedAt}:${valueToken}:${statusToken}`;
+    if (!dedup.has(key)) {
+      dedup.set(key, row);
+    }
+  }
+  const preparedRows = Array.from(dedup.values());
+  return { rows: preparedRows, deduped: rows.length - preparedRows.length };
+}
+
 function toHistoryObservationRow(
   observationRow: Record<string, unknown>,
 ): HistoryObservationRow | null {
@@ -1704,6 +1745,11 @@ serve(async (req) => {
   let stationsCount = 0;
   let timeseriesCount = 0;
   let observationsUpserted = 0;
+  let observationsRowsInput = 0;
+  let observationsRowsPrepared = 0;
+  let observationsRowsDedupedPrewrite = 0;
+  let historyRowsPrepared = 0;
+  let historyRowsDedupedPrewrite = 0;
   let stationsProcessed = 0;
   const runStartedAt = Date.now();
   const maxRuntimeSeconds = Number.isFinite(SCOMM_MAX_RUNTIME_SECONDS)
@@ -2049,8 +2095,8 @@ serve(async (req) => {
                 );
               }
 
-              const observationRows: Array<Record<string, unknown>> = [];
-              const historyRows: HistoryObservationRow[] = [];
+              const rawObservationRows: Array<Record<string, unknown>> = [];
+              let historyRows: HistoryObservationRow[] = [];
               if (!budgetStopPhase) {
                 for (const entry of observationsByTimeseries.values()) {
                   if (!checkBudget("during_observation_build")) {
@@ -2062,21 +2108,27 @@ serve(async (req) => {
                   if (!timeseriesId) {
                     continue;
                   }
-                  observationRows.push({
+                  rawObservationRows.push({
                     connector_id: connector.id,
                     timeseries_id: timeseriesId,
                     observed_at: entry.observed_at,
                     value: entry.value,
                     status: null,
                   });
-                  const historyRow = toHistoryObservationRow(
-                    observationRows[observationRows.length - 1],
-                  );
-                  if (historyRow) {
-                    historyRows.push(historyRow);
-                  }
                 }
               }
+
+              observationsRowsInput = rawObservationRows.length;
+              const observationDedupe = dedupeExactObservationRows(
+                rawObservationRows,
+              );
+              const observationRows = observationDedupe.rows;
+              observationsRowsPrepared = observationRows.length;
+              observationsRowsDedupedPrewrite = observationDedupe.deduped;
+              historyRows = observationRows.map(toHistoryObservationRow)
+                .filter((row): row is HistoryObservationRow => row !== null);
+              historyRowsPrepared = historyRows.length;
+              historyRowsDedupedPrewrite = observationsRowsDedupedPrewrite;
 
               if (!budgetStopPhase && checkBudget("before_dual_write")) {
                 const [observationWriteResult] = await Promise.all([
@@ -2150,6 +2202,13 @@ serve(async (req) => {
                 timeseries_updated: timeseriesCount,
                 observations: observationsUpserted,
                 observations_upserted: observationsUpserted,
+                observations_rows_input: observationsRowsInput,
+                observations_rows_prepared: observationsRowsPrepared,
+                observations_rows_deduped_prewrite:
+                  observationsRowsDedupedPrewrite,
+                history_rows_prepared: historyRowsPrepared,
+                history_rows_deduped_prewrite:
+                  historyRowsDedupedPrewrite,
                 series_polled: seriesPolled,
                 last_observed_at: lastObservedAt,
                 partial: timeBudgetHit || Boolean(budgetStopPhase),

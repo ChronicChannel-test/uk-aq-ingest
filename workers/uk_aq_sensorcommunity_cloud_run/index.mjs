@@ -1083,6 +1083,45 @@ async function upsertObservations(rows) {
   return count;
 }
 
+function observationValueDedupeToken(value) {
+  if (value === null || value === undefined) {
+    return "null";
+  }
+  const numericValue = Number(value);
+  if (Number.isFinite(numericValue)) {
+    return `n:${numericValue}`;
+  }
+  return `s:${String(value)}`;
+}
+
+function observationStatusDedupeToken(value) {
+  if (value === null || value === undefined) {
+    return "";
+  }
+  return String(value).trim();
+}
+
+function dedupeExactObservationRows(rows) {
+  if (!Array.isArray(rows) || rows.length === 0) {
+    return { rows: [], deduped: 0 };
+  }
+  const dedup = new Map();
+  for (const row of rows) {
+    const connectorId = String(row?.connector_id ?? "");
+    const timeseriesId = String(row?.timeseries_id ?? "");
+    const observedAt = String(row?.observed_at ?? "").trim();
+    const valueToken = observationValueDedupeToken(row?.value);
+    const statusToken = observationStatusDedupeToken(row?.status);
+    const key =
+      `${connectorId}:${timeseriesId}:${observedAt}:${valueToken}:${statusToken}`;
+    if (!dedup.has(key)) {
+      dedup.set(key, row);
+    }
+  }
+  const preparedRows = Array.from(dedup.values());
+  return { rows: preparedRows, deduped: rows.length - preparedRows.length };
+}
+
 function toObservedDay(value) {
   if (typeof value === "string") {
     const trimmed = value.trim();
@@ -1689,8 +1728,7 @@ async function runDirectIngest(connectorId, overwriteStationName, dropboxCapture
     timeseriesRefs,
   );
 
-  const observationRows = [];
-  const historyRows = [];
+  const rawObservationRows = [];
   let lastObservedMs = Number.NEGATIVE_INFINITY;
   let lastObservedAt = null;
 
@@ -1700,25 +1738,24 @@ async function runDirectIngest(connectorId, overwriteStationName, dropboxCapture
       continue;
     }
 
-    observationRows.push({
+    rawObservationRows.push({
       connector_id: connectorId,
       timeseries_id: timeseriesId,
       observed_at: observation.observed_at,
       value: observation.value,
       status: null,
     });
-    const historyRow = toHistoryObservationRow(
-      observationRows[observationRows.length - 1],
-    );
-    if (historyRow) {
-      historyRows.push(historyRow);
-    }
 
     if (observation.observed_ms > lastObservedMs) {
       lastObservedMs = observation.observed_ms;
       lastObservedAt = observation.observed_at;
     }
   }
+
+  const observationDedupe = dedupeExactObservationRows(rawObservationRows);
+  const observationRows = observationDedupe.rows;
+  const historyRows = observationRows.map((row) => toHistoryObservationRow(row))
+    .filter((row) => row !== null);
 
   const [observationsUpserted, historyWriteStats] = await Promise.all([
     upsertObservations(observationRows),
@@ -1732,6 +1769,11 @@ async function runDirectIngest(connectorId, overwriteStationName, dropboxCapture
     stations_updated: stationsUpdated,
     timeseries_updated: timeseriesPayload.length,
     observations_upserted: observationsUpserted,
+    observations_rows_input: rawObservationRows.length,
+    observations_rows_prepared: observationRows.length,
+    observations_rows_deduped_prewrite: observationDedupe.deduped,
+    history_rows_prepared: historyRows.length,
+    history_rows_deduped_prewrite: observationDedupe.deduped,
     series_polled: timeseriesPayload.length,
     last_observed_at: lastObservedAt,
     history_written: historyWriteStats.written,
@@ -1993,6 +2035,13 @@ async function main() {
     response_status: ingestResponse.status,
     interval_minutes: dueCheck.intervalMinutes,
     observations_upserted: payload?.observations_upserted ?? null,
+    observations_rows_input: payload?.observations_rows_input ?? null,
+    observations_rows_prepared: payload?.observations_rows_prepared ?? null,
+    observations_rows_deduped_prewrite:
+      payload?.observations_rows_deduped_prewrite ?? null,
+    history_rows_prepared: payload?.history_rows_prepared ?? null,
+    history_rows_deduped_prewrite:
+      payload?.history_rows_deduped_prewrite ?? null,
     history_written: payload?.history_written ?? null,
     history_receipts_upserted: payload?.history_receipts_upserted ?? null,
     history_enqueued: payload?.history_enqueued ?? null,

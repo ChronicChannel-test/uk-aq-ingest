@@ -27,6 +27,7 @@ Notes:
 
 1. Exposed schemas is a Supabase project setting (dashboard/API), not a SQL migration.
 2. If `uk_aq_core`/`uk_aq_raw` are not exposed, PostgREST calls can fail with `406 PGRST106` errors.
+3. Main DB observation-write payload metrics are available in `uk_aq_public.uk_aq_observation_rpc_metrics_minute`.
 
 Then set MAIN project runtime secrets:
 
@@ -51,6 +52,7 @@ Notes:
 1. History observations uses ID keys: `(connector_id, timeseries_id, observed_at)`.
 2. History observations column is `created_at`.
 3. History upsert RPC: `uk_aq_public.uk_aq_rpc_history_observations_upsert`.
+4. History write payload metrics are available in both `uk_aq_public.uk_aq_history_rpc_metrics_minute` and `uk_aq_public.uk_aq_observation_rpc_metrics_minute` (alias view with matching shape to main DB).
 
 ## 3. Connector setup actions after install
 

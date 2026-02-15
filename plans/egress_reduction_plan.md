@@ -59,6 +59,16 @@ Current state snapshot (Monday, February 9, 2026):
 - Verify history table/index footprint and remove duplicate index patterns that do not improve lookup performance.
 - Add history-specific request-count/egress tracking to weekly runbook.
 
+7) 🎯 Exact-value pre-write dedupe on ingest write paths (main + history)
+- Add a strict dedupe pass in ingest runtime before main observations write payload creation:
+  - dedupe key: `(connector_id, timeseries_id, observed_at, value, status)`.
+  - preserve updates where same `(connector_id, timeseries_id, observed_at)` arrives with changed `value` or `status`.
+- Add the same strict dedupe pass before history publish/outbox enqueue.
+- Keep Pub/Sub writer dedupe as a safety net (do not remove), but treat ingest-side dedupe as primary byte reduction.
+- Track dedupe effectiveness with payload metrics in both DBs:
+  - main: `uk_aq_public.uk_aq_observation_rpc_metrics_minute`
+  - history: `uk_aq_public.uk_aq_observation_rpc_metrics_minute` (history alias view)
+
 This plan is based on the authoritative cross-repo READMEs and a scan of all five repos for Supabase-related network calls, polling patterns, and large payload risks.
 
 ---
@@ -398,9 +408,15 @@ One row per Supabase-related call site (active code + notable test/demo scripts)
    - Pros: catches request explosions early.
    - Cons: needs scheduled reporting.
    - Risk: low; Impact: med.
+5) **Exact-value pre-write dedupe before both main write and history publish**
+   - Drop only rows where all fields match exactly:
+     `(connector_id, timeseries_id, observed_at, value, status)`.
+   - Pros: directly reduces payload bytes crossing network boundaries to main DB and history pipeline.
+   - Cons: requires careful implementation/testing to avoid suppressing legitimate value/status corrections.
+   - Risk: med; Impact: high.
 
 **Recommendation**
-- Execute (1) + (2) first for immediate egress relief, then (3) for storage cleanup, and keep (4) as ongoing guardrail.
+- Execute (5) + (1) first for immediate egress relief, then (2), then (3) for storage cleanup, and keep (4) as ongoing guardrail.
 
 ---
 
@@ -415,6 +431,10 @@ One row per Supabase-related call site (active code + notable test/demo scripts)
 6) ✅ Add visibility gating for map polling (UK and C&R tabs): poll only when the tab panel and document are visible; pause when hidden and refresh once on re-visibility.
 7) ⏳ Refactor ingest flows to batch history dual-write calls at run scope (avoid repeated `writeHistoryWithOutbox` in tight loops).
 8) ⏳ Increase history outbox throughput knobs to reduce per-run RPC churn (`HISTORY_OUTBOX_CLOUD_RUN_CLAIM_BATCH_LIMIT`, `HISTORY_OUTBOX_FLUSH_LIMIT`, `HISTORY_UPSERT_CHUNK_SIZE`) and validate against runtime budget.
+9) ⏳ Add strict exact-value pre-write dedupe in ingest paths before:
+   - main observations payload write
+   - history outbox/Pub/Sub publish payload write
+   Keep writer-side dedupe in place as a downstream safety layer.
 
 ### Phase 2 (medium effort)
 1) ⏳ Add ETag/If-None-Match support for Edge Function responses.

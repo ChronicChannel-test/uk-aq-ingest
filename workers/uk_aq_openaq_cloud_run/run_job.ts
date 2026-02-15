@@ -531,6 +531,11 @@ const STORED_RESPONSE_PAYLOAD_KEYS = [
   "stations_polled",
   "stations_updated",
   "observations_upserted",
+  "observations_rows_input",
+  "observations_rows_prepared",
+  "observations_rows_deduped_prewrite",
+  "history_rows_prepared",
+  "history_rows_deduped_prewrite",
   "series_polled",
 ] as const;
 
@@ -1157,6 +1162,17 @@ async function main(): Promise<void> {
       connector_id: connectorId,
       stations_selected: payloadPlan.stationRows.length,
       observations_upserted: toIntegerOrNull(summary.payload?.observations_upserted),
+      observations_rows_input: toIntegerOrNull(summary.payload?.observations_rows_input),
+      observations_rows_prepared: toIntegerOrNull(
+        summary.payload?.observations_rows_prepared,
+      ),
+      observations_rows_deduped_prewrite: toIntegerOrNull(
+        summary.payload?.observations_rows_deduped_prewrite,
+      ),
+      history_rows_prepared: toIntegerOrNull(summary.payload?.history_rows_prepared),
+      history_rows_deduped_prewrite: toIntegerOrNull(
+        summary.payload?.history_rows_deduped_prewrite,
+      ),
       series_polled: toIntegerOrNull(summary.payload?.series_polled),
       partial: summary.payload?.partial === true,
       stopped_reason: toStringOrNull(summary.payload?.stopped_reason),

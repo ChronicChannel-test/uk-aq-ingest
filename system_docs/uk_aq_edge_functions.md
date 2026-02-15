@@ -10,6 +10,10 @@ RPC calls, because history RPCs are exposed from `uk_aq_public`.
 History dual-write write-path note: rows are normalized and deduplicated on
 `(connector_id, timeseries_id, observed_at)` before history upsert and outbox
 enqueue to reduce duplicate payload bytes, write churn, and request overhead.
+OpenAQ/Sensor.Community pre-write note: ingest write payloads now run an exact
+duplicate pass on `(connector_id, timeseries_id, observed_at, value, status)`
+before both main observations write and history enqueue/publish; changed
+`value`/`status` at the same timestamp are preserved.
 History write mode note: shared history writes now default to
 `HISTORY_WRITE_MODE=outbox_only` (enqueue on main DB, flush asynchronously via
 outbox worker). Set `HISTORY_WRITE_MODE=direct` only when immediate history
@@ -115,8 +119,11 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
 - Notes:
   - This is no longer run by an edge function.
   - Flush batches merge claimed outbox payloads before history upsert.
+  - Main DB observation-write payload metrics are exposed via
+    `uk_aq_public.uk_aq_observation_rpc_metrics_minute` (main DB).
   - History-side RPC pressure can be monitored via
-    `uk_aq_public.uk_aq_history_rpc_metrics_minute` (history DB bootstrap).
+    `uk_aq_public.uk_aq_history_rpc_metrics_minute` and
+    `uk_aq_public.uk_aq_observation_rpc_metrics_minute` (history DB alias view).
   - Archived edge/cloudflare implementation is under `archive/2026-02-12_history_outbox_migration/`.
 
 ### History Pub/Sub Writer (Cloud Run)
@@ -190,6 +197,7 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
   - Enforces a runtime budget and returns partial progress (`partial=true`, `stopped_reason=runtime_budget_exceeded`, optional `stopped_phase`) when exceeded.
   - Reserves a response buffer (`SCOMM_RESPONSE_BUFFER_MS`, default `10000`) and skips non-critical Dropbox uploads when the remaining budget is too low.
   - Performs dual-write to main observations and history in parallel to reduce end-to-end runtime.
+  - Applies strict pre-write exact dedupe on `(connector_id, timeseries_id, observed_at, value, status)` before main observations upsert and before history write enqueue/publish.
   - Runtime ingest no longer performs Sensor.Community timeseries phenomenon backfill; run that as maintenance in the daily stations workflow.
 - Logs:
   - Writes a log file to Dropbox `/connectors/sensorcommunity/log/YYYY-MM-DD/` (prefix `uk_aq_log_edge_scomm_`).
@@ -227,6 +235,7 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
     - `OPENAQ_MIN_NON_GAP_STATIONS` (default `10`)
     - If selected stations do not meet either threshold, the run returns `run_status=skipped` with `stations_polled=0`.
   - Response payload includes `gap_stations_total` and `gap_stations_polled` for run diagnostics/UI.
+  - Applies strict pre-write exact dedupe on `(connector_id, timeseries_id, observed_at, value, status)` before main observations upsert and before history write enqueue/publish.
   - `request_budget_limited` means the ingest was constrained by the local per-run request budget/gap guard (our budget), not OpenAQ API rate-limit headers.
   - OpenAQ API rate-limit-driven stops are surfaced as `remaining_low`, `rate_limit_429`, or `rate_limit_guard`.
   - Tracks per-station scheduling in `uk_aq_raw.openaq_station_checkpoints` (next due, last observed, sample arrays, last polled). `last_polled_at` only updates for stations where at least one OpenAQ request is issued in the run. When fewer than 10 interval/lag samples exist, `next_due_at` is set to `now() + 5 minutes`. Otherwise it uses the minimum interval (capped at 1 hour) plus minimum lag from samples. If no observations are returned and `next_due_at` is null, it is set to `now() + 5 minutes`. For gap-mode stations with no new observations, `next_due_at` is set to `last_observed_at + min(observ_interval_samples)` capped at `+1 hour` (fallback `+1 hour` when samples are empty).

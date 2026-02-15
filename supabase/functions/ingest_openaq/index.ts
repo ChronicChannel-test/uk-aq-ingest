@@ -1989,6 +1989,47 @@ async function upsertObservations(
   return touched;
 }
 
+function observationValueDedupeToken(value: unknown): string {
+  if (value === null || value === undefined) {
+    return "null";
+  }
+  const numericValue = Number(value);
+  if (Number.isFinite(numericValue)) {
+    return `n:${numericValue}`;
+  }
+  return `s:${String(value)}`;
+}
+
+function observationStatusDedupeToken(value: unknown): string {
+  if (value === null || value === undefined) {
+    return "";
+  }
+  return String(value).trim();
+}
+
+function dedupeExactObservationRows(
+  rows: Array<Record<string, unknown>>,
+): { rows: Array<Record<string, unknown>>; deduped: number } {
+  if (!rows.length) {
+    return { rows: [], deduped: 0 };
+  }
+  const dedup = new Map<string, Record<string, unknown>>();
+  for (const row of rows) {
+    const connectorId = String(row.connector_id ?? "");
+    const timeseriesId = String(row.timeseries_id ?? "");
+    const observedAt = String(row.observed_at ?? "").trim();
+    const valueToken = observationValueDedupeToken(row.value);
+    const statusToken = observationStatusDedupeToken(row.status);
+    const key =
+      `${connectorId}:${timeseriesId}:${observedAt}:${valueToken}:${statusToken}`;
+    if (!dedup.has(key)) {
+      dedup.set(key, row);
+    }
+  }
+  const preparedRows = Array.from(dedup.values());
+  return { rows: preparedRows, deduped: rows.length - preparedRows.length };
+}
+
 function collectParameters(
   locations: OpenAQLocation[],
 ): Record<string, ParameterMeta> {
@@ -2696,7 +2737,11 @@ serve(async (req) => {
       stations_updated: 0,
       timeseries_updated: 0,
       observations_upserted: 0,
+      observations_rows_input: 0,
       observations_rows_prepared: 0,
+      observations_rows_deduped_prewrite: 0,
+      history_rows_prepared: 0,
+      history_rows_deduped_prewrite: 0,
       series_polled: 0,
       window_hours: windowHours,
       last_observed_at: null,
@@ -3167,15 +3212,18 @@ serve(async (req) => {
   });
 
   let observationsUpserted = 0;
+  let observationsRowsInput = 0;
   let observationsRowsPrepared = 0;
+  let observationsRowsDedupedPrewrite = 0;
+  let historyRowsPrepared = 0;
+  let historyRowsDedupedPrewrite = 0;
   const seriesPolled = observationsByTimeseries.size;
   let lastObservedAt: string | null = null;
   let timeseriesLastUpdated = 0;
   const timeseriesErrors: string[] = [];
 
   if (!dryRun) {
-    const observationRows: Array<Record<string, unknown>> = [];
-    const historyRows: HistoryObservationRow[] = [];
+    const rawObservationRows: Array<Record<string, unknown>> = [];
     for (
       const [timeseriesRef, observations] of observationsByTimeseries.entries()
     ) {
@@ -3184,15 +3232,8 @@ serve(async (req) => {
         continue;
       }
       for (const [observedAt, value] of observations.entries()) {
-        observationRows.push({
+        rawObservationRows.push({
           connector_id: connectorId,
-          timeseries_id: timeseriesId,
-          observed_at: observedAt,
-          value,
-          status: null,
-        });
-        historyRows.push({
-          connector_id: Number(connectorId),
           timeseries_id: timeseriesId,
           observed_at: observedAt,
           value,
@@ -3200,7 +3241,21 @@ serve(async (req) => {
         });
       }
     }
+    observationsRowsInput = rawObservationRows.length;
+    const observationDedupe = dedupeExactObservationRows(rawObservationRows);
+    const observationRows = observationDedupe.rows;
     observationsRowsPrepared = observationRows.length;
+    observationsRowsDedupedPrewrite = observationDedupe.deduped;
+
+    const historyRows: HistoryObservationRow[] = observationRows.map((row) => ({
+      connector_id: Number(row.connector_id),
+      timeseries_id: Number(row.timeseries_id),
+      observed_at: String(row.observed_at),
+      value: typeof row.value === "number" ? row.value : null,
+      status: row.status == null ? null : String(row.status),
+    }));
+    historyRowsPrepared = historyRows.length;
+    historyRowsDedupedPrewrite = observationsRowsDedupedPrewrite;
 
     observationsUpserted = await upsertObservations(observationRows);
     if (historyRows.length) {
@@ -3662,7 +3717,11 @@ serve(async (req) => {
     timeseries_updated: timeseriesRows.length,
     timeseries_last_updated: timeseriesLastUpdated,
     observations_upserted: observationsUpserted,
+    observations_rows_input: observationsRowsInput,
     observations_rows_prepared: observationsRowsPrepared,
+    observations_rows_deduped_prewrite: observationsRowsDedupedPrewrite,
+    history_rows_prepared: historyRowsPrepared,
+    history_rows_deduped_prewrite: historyRowsDedupedPrewrite,
     series_polled: seriesPolled,
     last_observed_at: lastObservedAt,
     rate_limit_remaining: rateLimitState.remaining,
@@ -3761,7 +3820,11 @@ serve(async (req) => {
     stations_updated: stationsUpdated,
     timeseries_updated: timeseriesRows.length,
     observations_upserted: observationsUpserted,
+    observations_rows_input: observationsRowsInput,
     observations_rows_prepared: observationsRowsPrepared,
+    observations_rows_deduped_prewrite: observationsRowsDedupedPrewrite,
+    history_rows_prepared: historyRowsPrepared,
+    history_rows_deduped_prewrite: historyRowsDedupedPrewrite,
     series_polled: seriesPolled,
     window_hours: windowHours,
     last_observed_at: lastObservedAt,
