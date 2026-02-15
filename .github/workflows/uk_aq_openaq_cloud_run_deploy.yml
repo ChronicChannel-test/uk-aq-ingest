@@ -65,6 +65,8 @@ jobs:
       OPENAQ_FAILURE_RETRY_SECONDS: ${{ vars.OPENAQ_FAILURE_RETRY_SECONDS || '120' }}
       OPENAQ_TASK_NAME_PREFIX: ${{ vars.OPENAQ_TASK_NAME_PREFIX || 'uk-aq-openaq-next' }}
       OPENAQ_RAW_DROPBOX_ALLOWED_SUPABASE_URL: ${{ secrets.OPENAQ_RAW_DROPBOX_ALLOWED_SUPABASE_URL || secrets.UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL || vars.OPENAQ_RAW_DROPBOX_ALLOWED_SUPABASE_URL || vars.UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL || '' }}
+      UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL: ${{ secrets.UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL || vars.UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL || '' }}
+      UK_AQ_DROPBOX_ROOT: ${{ vars.UK_AQ_DROPBOX_ROOT || '/CIC-Test' }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
       HISTORY_SERVICE_ROLE_KEY: ${{ secrets.HISTORY_SERVICE_ROLE_KEY }}
       OPENAQ_API_KEY: ${{ secrets.OPENAQ_API_KEY }}
@@ -104,6 +106,29 @@ jobs:
           fi
           if [ -z "${OPENAQ_API_KEY:-}" ]; then
             echo "Missing required secret: OPENAQ_API_KEY"
+            exit 1
+          fi
+          has_dropbox_app_key=0
+          has_dropbox_app_secret=0
+          has_dropbox_refresh_token=0
+          if [ -n "${DROPBOX_APP_KEY:-}" ]; then
+            has_dropbox_app_key=1
+          fi
+          if [ -n "${DROPBOX_APP_SECRET:-}" ]; then
+            has_dropbox_app_secret=1
+          fi
+          if [ -n "${DROPBOX_REFRESH_TOKEN:-}" ]; then
+            has_dropbox_refresh_token=1
+          fi
+          has_any_dropbox_credential=$((has_dropbox_app_key + has_dropbox_app_secret + has_dropbox_refresh_token))
+          if [ "${has_any_dropbox_credential}" -gt 0 ] && [ "${has_any_dropbox_credential}" -lt 3 ]; then
+            echo "Dropbox config is partial for OpenAQ Cloud Run."
+            echo "Set DROPBOX_APP_KEY, DROPBOX_APP_SECRET, and DROPBOX_REFRESH_TOKEN together (or leave all empty)."
+            exit 1
+          fi
+          if [ "${has_any_dropbox_credential}" -eq 3 ] && [ -z "${OPENAQ_RAW_DROPBOX_ALLOWED_SUPABASE_URL:-}" ] && [ -z "${UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL:-}" ]; then
+            echo "Dropbox credentials are present but no allowed Supabase URL is configured."
+            echo "Set OPENAQ_RAW_DROPBOX_ALLOWED_SUPABASE_URL (or UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL)."
             exit 1
           fi
 
@@ -346,6 +371,8 @@ jobs:
           add_env OPENAQ_FAILURE_RETRY_SECONDS
           add_env OPENAQ_TASK_NAME_PREFIX
           add_env OPENAQ_RAW_DROPBOX_ALLOWED_SUPABASE_URL
+          add_env UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL
+          add_env UK_AQ_DROPBOX_ROOT
           add_env OPENAQ_TASK_INVOKER_SERVICE_ACCOUNT
           env_updates+=("OPENAQ_GCP_PROJECT_ID=${PROJECT_ID}")
           env_updates+=("OPENAQ_GCP_REGION=${REGION}")

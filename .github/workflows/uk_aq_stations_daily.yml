@@ -34,6 +34,31 @@ jobs:
           python3 -m pip install --upgrade pip
           python3 -m pip install requests python-dotenv supabase pyproj psycopg2-binary
 
+      - name: Validate SUPABASE_DB_URL for pooler
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL || secrets.DATABASE_URL }}
+        run: |
+          python3 - <<'PY'
+          import os
+          from urllib.parse import urlparse
+
+          dsn = (os.environ.get("SUPABASE_DB_URL") or "").strip()
+          if not dsn:
+              raise SystemExit("Missing SUPABASE_DB_URL (or DATABASE_URL) secret.")
+
+          parsed = urlparse(dsn)
+          host = (parsed.hostname or "").lower()
+          user = parsed.username or ""
+
+          if host.endswith(".pooler.supabase.com") and "." not in user:
+              raise SystemExit(
+                  "Invalid SUPABASE_DB_URL for Supabase pooler host: username must be "
+                  "'postgres.<project_ref>' (not plain 'postgres')."
+              )
+
+          print(f"SUPABASE_DB_URL looks valid for host={host}, user={user}.")
+          PY
+
       - name: Sync stations
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -168,7 +193,7 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL || secrets.DATABASE_URL }}
           OPENAQ_API_KEY: ${{ secrets.OPENAQ_API_KEY }}
         run: |
           python3 scripts/openaq/openaq_list_stations.py --to-supabase --toggle-polling
@@ -344,7 +369,7 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL || secrets.DATABASE_URL }}
           DROPBOX_APP_KEY: ${{ secrets.DROPBOX_APP_KEY }}
           DROPBOX_APP_SECRET: ${{ secrets.DROPBOX_APP_SECRET }}
           DROPBOX_REFRESH_TOKEN: ${{ secrets.DROPBOX_REFRESH_TOKEN }}

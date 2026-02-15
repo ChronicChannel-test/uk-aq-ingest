@@ -116,7 +116,7 @@ resolve_secret_value() {
   if [[ "${key}" == "SUPABASE_DB_URL" ]]; then
     python3 - "${value}" <<'PY'
 import sys
-from urllib.parse import quote, urlsplit, urlunsplit
+from urllib.parse import quote, unquote, urlsplit, urlunsplit
 
 raw = sys.argv[1]
 try:
@@ -137,7 +137,10 @@ port = f":{parsed.port}" if parsed.port else ""
 
 userinfo = username
 if parsed.password is not None:
-    userinfo = f"{username}:{quote(password, safe='')}"
+    # urlsplit keeps percent escapes in parsed.password.
+    # Decode once to canonical text, then re-encode once to avoid accidental double-encoding.
+    canonical_password = unquote(password)
+    userinfo = f"{username}:{quote(canonical_password, safe='')}"
 
 netloc = f"{userinfo}@{host}{port}"
 encoded = urlunsplit((parsed.scheme, netloc, parsed.path, parsed.query, parsed.fragment))
