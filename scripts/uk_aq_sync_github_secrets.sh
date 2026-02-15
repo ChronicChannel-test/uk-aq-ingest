@@ -17,6 +17,9 @@ Options:
 
 Notes:
   - Each KEY=VALUE in --env-file and --supabase-env-file is uploaded as a secret named KEY.
+  - Selected keys are uploaded as GitHub Actions variables instead of secrets:
+    - OPENAQ_MIN_GAP_STATIONS
+    - OPENAQ_MIN_NON_GAP_STATIONS
   - The full contents of --supabase-env-file are also uploaded to SUPABASE_SECRETS_ENV.
   - For GCP_SA_KEY, if VALUE is a path to a local file, the file contents are uploaded.
 EOF
@@ -104,6 +107,29 @@ set_secret() {
   printf '%s\n' "${name}" >> "${SEEN_FILE}"
 }
 
+set_variable() {
+  local name="$1"
+  local value="$2"
+  if [[ "${DRY_RUN}" -eq 1 ]]; then
+    echo "[dry-run] would set variable ${name}=${value}"
+  else
+    gh variable set "${name}" --repo "${REPO}" --body "${value}"
+    echo "set variable ${name}"
+  fi
+}
+
+is_variable_key() {
+  local key="$1"
+  case "${key}" in
+    OPENAQ_MIN_GAP_STATIONS|OPENAQ_MIN_NON_GAP_STATIONS)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
 resolve_secret_value() {
   local key="$1"
   local value="$2"
@@ -186,7 +212,11 @@ sync_env_vars() {
     fi
 
     value="$(resolve_secret_value "${key}" "${value}")"
-    set_secret "${key}" "${value}"
+    if is_variable_key "${key}"; then
+      set_variable "${key}" "${value}"
+    else
+      set_secret "${key}" "${value}"
+    fi
   done < "${file}"
 }
 

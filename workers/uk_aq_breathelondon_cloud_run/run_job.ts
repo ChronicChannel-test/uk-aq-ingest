@@ -395,6 +395,43 @@ function deriveRunSummary(ingestResponse: IngestResponse): {
   return { runStatus, runMessage, payload };
 }
 
+const STORED_RESPONSE_PAYLOAD_KEYS = [
+  "partial",
+  "stopped_reason",
+  "stations_selected",
+  "stations_processed",
+  "stations_updated",
+  "observations_upserted",
+  "observations_rows_input",
+  "observations_rows_prepared",
+  "observations_rows_deduped_prewrite",
+  "history_rows_prepared",
+  "history_rows_deduped_prewrite",
+  "history_written",
+  "history_receipts_upserted",
+  "history_enqueued",
+  "series_polled",
+] as const;
+
+function compactRunResponsePayload(
+  payload: Record<string, unknown> | null,
+): Record<string, unknown> | null {
+  if (!payload) {
+    return null;
+  }
+  const compact: Record<string, unknown> = {};
+  for (const key of STORED_RESPONSE_PAYLOAD_KEYS) {
+    if (!Object.prototype.hasOwnProperty.call(payload, key)) {
+      continue;
+    }
+    const value = payload[key];
+    if (value !== undefined) {
+      compact[key] = value;
+    }
+  }
+  return Object.keys(compact).length ? compact : null;
+}
+
 async function resolveConnectorId(
   payload: Record<string, unknown> | null,
 ): Promise<number> {
@@ -523,6 +560,7 @@ async function insertRunRow(
     series_polled: toIntegerOrNull(payload?.series_polled) ??
       toIntegerOrNull(payload?.timeseries) ??
       toIntegerOrNull(payload?.timeseries_updated),
+    response_payload: compactRunResponsePayload(payload),
     response_status: ingestResponse.status,
   };
 
@@ -767,6 +805,17 @@ async function main(): Promise<void> {
       response_status: ingestResponse.status,
       connector_id: connectorId,
       observations_upserted: toIntegerOrNull(payload?.observations_upserted),
+      observations_rows_input: toIntegerOrNull(payload?.observations_rows_input),
+      observations_rows_prepared: toIntegerOrNull(
+        payload?.observations_rows_prepared,
+      ),
+      observations_rows_deduped_prewrite: toIntegerOrNull(
+        payload?.observations_rows_deduped_prewrite,
+      ),
+      history_rows_prepared: toIntegerOrNull(payload?.history_rows_prepared),
+      history_rows_deduped_prewrite: toIntegerOrNull(
+        payload?.history_rows_deduped_prewrite,
+      ),
       series_polled: toIntegerOrNull(payload?.series_polled),
       stations_processed: toIntegerOrNull(payload?.stations_processed),
     });

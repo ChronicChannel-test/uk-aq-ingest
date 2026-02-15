@@ -975,6 +975,47 @@ async function upsertObservations(rows: Record<string, unknown>[]): Promise<numb
   return rows.length;
 }
 
+function observationValueDedupeToken(value: unknown): string {
+  if (value === null || value === undefined) {
+    return "null";
+  }
+  const numericValue = Number(value);
+  if (Number.isFinite(numericValue)) {
+    return `n:${numericValue}`;
+  }
+  return `s:${String(value)}`;
+}
+
+function observationStatusDedupeToken(value: unknown): string {
+  if (value === null || value === undefined) {
+    return "";
+  }
+  return String(value).trim();
+}
+
+function dedupeExactObservationRows(
+  rows: Record<string, unknown>[],
+): { rows: Record<string, unknown>[]; deduped: number } {
+  if (!rows.length) {
+    return { rows: [], deduped: 0 };
+  }
+  const dedup = new Map<string, Record<string, unknown>>();
+  for (const row of rows) {
+    const connectorId = String(row.connector_id ?? "");
+    const timeseriesId = String(row.timeseries_id ?? "");
+    const observedAt = String(row.observed_at ?? "").trim();
+    const valueToken = observationValueDedupeToken(row.value);
+    const statusToken = observationStatusDedupeToken(row.status);
+    const key =
+      `${connectorId}:${timeseriesId}:${observedAt}:${valueToken}:${statusToken}`;
+    if (!dedup.has(key)) {
+      dedup.set(key, row);
+    }
+  }
+  const preparedRows = Array.from(dedup.values());
+  return { rows: preparedRows, deduped: rows.length - preparedRows.length };
+}
+
 function toHistoryObservationRows(
   rows: Record<string, unknown>[],
   connectorId: number,
@@ -1697,6 +1738,11 @@ serve(async (req) => {
   let stationsRequested: number | null = null;
   let runLastObservedAt: string | null = null;
   let stationFetchEnabled: boolean | null = null;
+  let observationsRowsInput = 0;
+  let observationsRowsPrepared = 0;
+  let observationsRowsDedupedPrewrite = 0;
+  let historyRowsPrepared = 0;
+  let historyRowsDedupedPrewrite = 0;
   const runStartedAt = Date.now();
   const maxRuntimeSeconds = Number.isFinite(BREATHELONDON_MAX_RUNTIME_SECONDS)
     ? Math.max(30, BREATHELONDON_MAX_RUNTIME_SECONDS)
@@ -2129,16 +2175,28 @@ serve(async (req) => {
                           return Number.isFinite(observedMs) && observedMs > checkpointCutoffMs!;
                         });
                       if (freshRows.length) {
-                        if (!dryRun) {
-                          for (const batch of chunk(freshRows, batchSize)) {
+                        const observationDedupe = dedupeExactObservationRows(freshRows);
+                        const preparedRows = observationDedupe.rows;
+                        observationsRowsInput += freshRows.length;
+                        observationsRowsPrepared += preparedRows.length;
+                        observationsRowsDedupedPrewrite += observationDedupe.deduped;
+                        historyRowsDedupedPrewrite += observationDedupe.deduped;
+                        if (dryRun) {
+                          historyRowsPrepared += toHistoryObservationRows(
+                            preparedRows,
+                            Number(connector.id),
+                            timeseriesId,
+                          ).length;
+                        } else {
+                          for (const batch of chunk(preparedRows, batchSize)) {
                             observationsUpserted += await upsertObservations(batch);
-                            historyRowsPending.push(
-                              ...toHistoryObservationRows(
-                                batch,
-                                Number(connector.id),
-                                timeseriesId,
-                              ),
+                            const historyRows = toHistoryObservationRows(
+                              batch,
+                              Number(connector.id),
+                              timeseriesId,
                             );
+                            historyRowsPrepared += historyRows.length;
+                            historyRowsPending.push(...historyRows);
                             await flushPendingHistoryRows(false, "batch_threshold");
                           }
                         }
@@ -2236,6 +2294,11 @@ serve(async (req) => {
                 last_observed_at: runLastObservedAt,
                 species: speciesList,
                 observations_upserted: observationsUpserted,
+                observations_rows_input: observationsRowsInput,
+                observations_rows_prepared: observationsRowsPrepared,
+                observations_rows_deduped_prewrite: observationsRowsDedupedPrewrite,
+                history_rows_prepared: historyRowsPrepared,
+                history_rows_deduped_prewrite: historyRowsDedupedPrewrite,
                 history_written: historyWritten,
                 history_receipts_upserted: historyReceiptsUpserted,
                 history_enqueued: historyEnqueued,
@@ -2304,6 +2367,11 @@ serve(async (req) => {
     connector_id: connector?.id ?? null,
     stations_selected: stationsSelected,
     observations_upserted: observationsUpserted,
+    observations_rows_input: observationsRowsInput,
+    observations_rows_prepared: observationsRowsPrepared,
+    observations_rows_deduped_prewrite: observationsRowsDedupedPrewrite,
+    history_rows_prepared: historyRowsPrepared,
+    history_rows_deduped_prewrite: historyRowsDedupedPrewrite,
     history_written: historyWritten,
     history_receipts_upserted: historyReceiptsUpserted,
     history_enqueued: historyEnqueued,

@@ -293,6 +293,8 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
     - Override with `BREATHELONDON_ENFORCE_RUNTIME_BUDGET=true|false`.
   - History dual-write rows are buffered and flushed in batches to reduce History RPC request count (`HISTORY_BUFFER_FLUSH_ROWS`, default `5000`).
     - This applies to both Edge and Cloud Run because Cloud Run reuses `ingest_breathelondon/index.ts`.
+  - Applies strict pre-write exact dedupe on `(connector_id, timeseries_id, observed_at, value, status)` before main observations upsert and before history write enqueue/publish.
+  - Response payload includes dedupe counters: `observations_rows_input`, `observations_rows_prepared`, `observations_rows_deduped_prewrite`, `history_rows_prepared`, `history_rows_deduped_prewrite`.
   - Response payload includes history write counters: `history_written`, `history_receipts_upserted`, `history_enqueued`, `history_flushes`.
   - Updates `connectors.last_polled_at` on successful non-dry runs.
 - Logs:
