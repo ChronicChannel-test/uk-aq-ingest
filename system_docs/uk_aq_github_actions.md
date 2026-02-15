@@ -166,6 +166,7 @@ SB_UK_AQ_CRON_SECRET=...
   - `HISTORY_SUPABASE_URL`, `HISTORY_SERVICE_ROLE_KEY`
   - `SCOMM_HISTORY_WRITE_MODE` (workflow default `pubsub_only`)
   - `GCP_HISTORY_PUBSUB_TOPIC`, `HISTORY_PUBSUB_PUBLISH_BATCH_SIZE`
+  - `GCP_SCOMM_JOB_SERVICE_ACCOUNT` (fallback runtime SA used for Pub/Sub publisher IAM binding if Cloud Run job describe does not return a service account)
   - Dropbox secrets (`DROPBOX_*`) and raw-upload allowlist env (`SCOMM_RAW_DROPBOX_ALLOWED_SUPABASE_URL` / `UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL`)
 
 ### `uk_air_sos_site_register_monthly.yml`

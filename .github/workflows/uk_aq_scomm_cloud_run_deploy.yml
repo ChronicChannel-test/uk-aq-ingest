@@ -21,6 +21,7 @@ jobs:
       REGION: ${{ vars.GCP_REGION || 'europe-west2' }}
       REPO: ${{ vars.GCP_ARTIFACT_REPO || 'uk-aq' }}
       JOB_NAME: ${{ vars.GCP_SCOMM_JOB_NAME || 'uk-aq-scomm-ingest' }}
+      GCP_SCOMM_JOB_SERVICE_ACCOUNT: ${{ vars.GCP_SCOMM_JOB_SERVICE_ACCOUNT || '' }}
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       HISTORY_SUPABASE_URL: ${{ secrets.HISTORY_SUPABASE_URL }}
       UK_AQ_CORE_SCHEMA: ${{ vars.UK_AQ_CORE_SCHEMA || 'uk_aq_core' }}
@@ -147,9 +148,22 @@ jobs:
 
           runtime_sa="$(gcloud run jobs describe "${JOB_NAME}" --region "${REGION}" --format='value(template.template.serviceAccount)')"
           if [ -z "${runtime_sa}" ]; then
-            echo "Unable to resolve Cloud Run job service account for ${JOB_NAME}."
+            runtime_sa="$(gcloud run jobs describe "${JOB_NAME}" --region "${REGION}" --format='value(template.template.service_account)')"
+          fi
+          if [ -z "${runtime_sa}" ] && [ -n "${GCP_SCOMM_JOB_SERVICE_ACCOUNT:-}" ]; then
+            runtime_sa="${GCP_SCOMM_JOB_SERVICE_ACCOUNT}"
+          fi
+          if [ -z "${runtime_sa}" ]; then
+            project_number="$(gcloud projects describe "${PROJECT_ID}" --format='value(projectNumber)')"
+            if [ -n "${project_number}" ]; then
+              runtime_sa="${project_number}-compute@developer.gserviceaccount.com"
+            fi
+          fi
+          if [ -z "${runtime_sa}" ]; then
+            echo "Unable to resolve Cloud Run job service account for ${JOB_NAME}. Set repo variable GCP_SCOMM_JOB_SERVICE_ACCOUNT."
             exit 1
           fi
+          echo "Using runtime service account: ${runtime_sa}"
 
           gcloud pubsub topics add-iam-policy-binding "${GCP_HISTORY_PUBSUB_TOPIC}" \
             --project "${PROJECT_ID}" \
