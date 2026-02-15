@@ -160,6 +160,8 @@ const DEFAULT_MAX_REQUESTS_PER_RUN = 56;
 const DEFAULT_STALE_LIMIT = 4;
 const DEFAULT_RATE_LIMIT_STOP_THRESHOLD = 5;
 const DEFAULT_GAP_REQUESTS_REMAINING_MIN = 10;
+const DEFAULT_MIN_GAP_STATIONS = 1;
+const DEFAULT_MIN_NON_GAP_STATIONS = 10;
 const PROVIDER_SHORTNAMES: Record<string, string> = {
   "London Air Quality Network": "LAQN",
 };
@@ -216,6 +218,14 @@ const OPENAQ_RATE_LIMIT_STOP_THRESHOLD = Number(
 const OPENAQ_GAP_REQUESTS_REMAINING_MIN = Number(
   Deno.env.get("OPENAQ_GAP_REQUESTS_REMAINING_MIN") ??
     DEFAULT_GAP_REQUESTS_REMAINING_MIN,
+);
+const OPENAQ_MIN_GAP_STATIONS = Number(
+  Deno.env.get("OPENAQ_MIN_GAP_STATIONS") ??
+    DEFAULT_MIN_GAP_STATIONS,
+);
+const OPENAQ_MIN_NON_GAP_STATIONS = Number(
+  Deno.env.get("OPENAQ_MIN_NON_GAP_STATIONS") ??
+    DEFAULT_MIN_NON_GAP_STATIONS,
 );
 const OPENAQ_DEBUG_STATION_ID = Number(
   Deno.env.get("CLEANAIRSURB_ST_ID") ?? 189841,
@@ -2106,6 +2116,14 @@ serve(async (req) => {
     OPENAQ_GAP_REQUESTS_REMAINING_MIN,
     DEFAULT_GAP_REQUESTS_REMAINING_MIN,
   );
+  const minNonGapStations = positiveInt(
+    OPENAQ_MIN_NON_GAP_STATIONS,
+    DEFAULT_MIN_NON_GAP_STATIONS,
+  );
+  const minGapStations = positiveInt(
+    OPENAQ_MIN_GAP_STATIONS,
+    DEFAULT_MIN_GAP_STATIONS,
+  );
   requestBudgetState.maxPerRun = maxRequestsPerRun;
   requestBudgetState.total = 0;
   requestBudgetState.gapReserveMin = gapReserveMin;
@@ -2255,6 +2273,8 @@ serve(async (req) => {
     max_requests_per_run: maxRequestsPerRun,
     tiered_limit: tieredLimit,
     stale_limit: staleLimit,
+    min_gap_stations: minGapStations,
+    min_non_gap_stations: minNonGapStations,
     gap_requests_remaining_min: gapReserveMin,
     max_runtime_seconds: maxRuntimeSeconds,
   });
@@ -2644,6 +2664,64 @@ serve(async (req) => {
     }
     return count;
   }, 0);
+  if (
+    gapStationIds.size < minGapStations &&
+    nonGapLocationCount < minNonGapStations
+  ) {
+    const skippedReason = gapStationIds.size === 0
+      ? "insufficient_non_gap_stations_no_gap"
+      : "insufficient_gap_and_non_gap_stations";
+    logLine("INFO", "OpenAQ run skipped by non-gap threshold", {
+      skipped_reason: skippedReason,
+      stations_selected: stationsSelected,
+      gap_stations_total: gapStationIds.size,
+      min_gap_stations: minGapStations,
+      non_gap_stations_selected: nonGapLocationCount,
+      min_non_gap_stations: minNonGapStations,
+      stations_polled: 0,
+    });
+    return jsonResponse({
+      run_status: "skipped",
+      run_message: "skipped",
+      skipped_reason: skippedReason,
+      connector_code: connectorCode,
+      stations_requested: stationsRequested,
+      stations_selected: stationsSelected,
+      gap_stations_total: gapStationIds.size,
+      gap_stations_polled: 0,
+      min_gap_stations: minGapStations,
+      non_gap_stations_selected: nonGapLocationCount,
+      min_non_gap_stations: minNonGapStations,
+      stations_polled: 0,
+      stations_updated: 0,
+      timeseries_updated: 0,
+      observations_upserted: 0,
+      observations_rows_prepared: 0,
+      series_polled: 0,
+      window_hours: windowHours,
+      last_observed_at: null,
+      station_fetch_enabled: locationsFetched,
+      partial: false,
+      stopped_reason: skippedReason,
+      rate_limit_remaining: rateLimitState.remaining,
+      rate_limit_limit: rateLimitState.limit,
+      rate_limit_reset: rateLimitState.reset,
+      rate_limit_reset_at: rateLimitState.resetAt,
+      rate_limit_remaining_first: rateLimitState.firstRemaining,
+      rate_limit_stop: false,
+      rate_limit_stop_reason: null,
+      requests_total: requestBudgetState.total,
+      max_requests_per_run: requestBudgetState.maxPerRun,
+      tiered_limit: tieredLimit,
+      stale_limit: staleLimit,
+      gap_requests_remaining_min: requestBudgetState.gapReserveMin,
+      gap_requests_planned: 0,
+      gap_requests_executed: 0,
+      gap_requests_skipped_budget: 0,
+      gap_zero_yield_timeseries: 0,
+      dry_run: dryRun,
+    });
+  }
   const gapStationPlan = Array.from(gapStationIds).map((stationId) => {
     const stationCheckpoint = checkpointByStationId[stationId];
     return {
@@ -2695,6 +2773,8 @@ serve(async (req) => {
   logLine("INFO", "OpenAQ gap budget plan", {
     max_requests_per_run: requestBudgetState.maxPerRun,
     requests_remaining_before_polling: requestsRemainingBeforePolling,
+    min_gap_stations: minGapStations,
+    min_non_gap_stations: minNonGapStations,
     reserve_for_non_gap_requests: nonGapLocationCount,
     gap_requests_remaining_min: requestBudgetState.gapReserveMin,
     gap_requests_planned: requestBudgetState.gapPlannedRequests,
@@ -3075,6 +3155,10 @@ serve(async (req) => {
   logLine("INFO", "OpenAQ polling summary", {
     stations_selected: stationsSelected,
     stations_polled: polledStationIds.size,
+    gap_stations_total: gapStationIds.size,
+    gap_stations_polled: Array.from(polledStationIds).filter((stationId) =>
+      gapStationIds.has(stationId)
+    ).length,
     latest_timeseries: latestByTimeseries.size,
     observations_timeseries: observationsByTimeseries.size,
     timeseries_refs: timeseriesRefs.length,
@@ -3561,12 +3645,19 @@ serve(async (req) => {
     rateLimitState.limit !== null && rateLimitState.remaining !== null
       ? Math.max(0, rateLimitState.limit - rateLimitState.remaining)
       : null;
+  const gapStationsPolled = Array.from(polledStationIds).filter((stationId) =>
+    gapStationIds.has(stationId)
+  ).length;
 
   logLine("INFO", "OpenAQ ingest complete", {
     locations: locations.length,
     station_fetch_enabled: locationsFetched,
     stations_selected: stationsSelected,
     stations_polled: polledStationIds.size,
+    gap_stations_total: gapStationIds.size,
+    gap_stations_polled: gapStationsPolled,
+    min_gap_stations: minGapStations,
+    min_non_gap_stations: minNonGapStations,
     stations_updated: stationsUpdated,
     timeseries_updated: timeseriesRows.length,
     timeseries_last_updated: timeseriesLastUpdated,
@@ -3606,6 +3697,10 @@ serve(async (req) => {
     gap_zero_yield_timeseries: requestBudgetState.gapZeroYieldTimeseries,
     stations_selected: stationsSelected,
     stations_polled: polledStationIds.size,
+    gap_stations_total: gapStationIds.size,
+    gap_stations_polled: gapStationsPolled,
+    min_gap_stations: minGapStations,
+    min_non_gap_stations: minNonGapStations,
     stopped_reason: stoppedReason,
   });
 
@@ -3659,6 +3754,10 @@ serve(async (req) => {
     stations_requested: stationsRequested,
     stations_selected: stationsSelected,
     stations_polled: polledStationIds.size,
+    gap_stations_total: gapStationIds.size,
+    gap_stations_polled: gapStationsPolled,
+    min_gap_stations: minGapStations,
+    min_non_gap_stations: minNonGapStations,
     stations_updated: stationsUpdated,
     timeseries_updated: timeseriesRows.length,
     observations_upserted: observationsUpserted,

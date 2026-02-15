@@ -115,6 +115,7 @@ python3 scripts/uk_aq_dashboard_local.py --port 8045
 Notes:
 - Serves the UI at `http://127.0.0.1:8045` and JSON at `/api/dashboard`.
 - The HTML lives at `data/uk_aq_dashboard/uk_aq_dashboard.html`.
+- Dispatcher feed shows gap-station context for OpenAQ runs as `(<n> GAP)` under Stations when `gap_stations_polled > 0`.
 - Requires a service role key (anon/authenticated JWTs will be rejected).
 
 Environment:

@@ -16,6 +16,9 @@ This Cloud Run job runs OpenAQ ingest in Google Cloud using the existing
 
 If no station refs are due, run is recorded as `skipped` (`no_station_refs`) and
 the worker only schedules the next check task.
+If station refs are selected but do not meet minimum station thresholds
+(`OPENAQ_MIN_GAP_STATIONS`, default `1`; `OPENAQ_MIN_NON_GAP_STATIONS`, default
+`10`), ingest returns `skipped` with `stations_polled=0`.
 
 ## Triggering model
 
@@ -59,6 +62,8 @@ gcloud run jobs update uk-aq-openaq-ingest \
 - `OPENAQ_DEFAULT_WINDOW_HOURS` (default `6`)
 - `OPENAQ_DEFAULT_BATCH_LIMIT` (default `56`)
 - `OPENAQ_STALE_LIMIT` (default `4`)
+- `OPENAQ_MIN_GAP_STATIONS` (default `1`; minimum selected gap stations needed to run regardless of non-gap count)
+- `OPENAQ_MIN_NON_GAP_STATIONS` (default `10`; skip when no gap stations and non-gap selected stations are below this threshold)
 - `OPENAQ_IN_FLIGHT_TIMEOUT_MINUTES` (default `30`)
 - `OPENAQ_CLAIM_TIMEOUT_MINUTES` (default `30`)
 - `OPENAQ_REQUEST_PAYLOAD` (JSON object overrides)

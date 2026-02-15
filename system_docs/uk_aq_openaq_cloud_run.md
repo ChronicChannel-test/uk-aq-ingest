@@ -25,6 +25,10 @@ Run-summary metric note:
   request-budget stats, and selected/polled station counts).
 - `request_budget_limited` indicates local request-budget/gap-guard limiting
   (our configured per-run budget), not an OpenAQ API rate-limit stop.
+- When OpenAQ ingest returns `run_status=skipped` (for example, selected
+  stations do not meet `OPENAQ_MIN_GAP_STATIONS`/`OPENAQ_MIN_NON_GAP_STATIONS`
+  thresholds), the worker writes `run_status` as `skipped` and preserves
+  `stations_polled=0` in the run payload.
 
 ## Trigger Model (Option 2)
 
@@ -50,6 +54,8 @@ the reported reset time.
 - `GCP_OPENAQ_TASK_QUEUE_ID` (default `uk-aq-openaq-trigger-queue`)
 - `GCP_OPENAQ_TASK_INVOKER_SERVICE_ACCOUNT` (defaults to job service account if unset)
 - `GCP_OPENAQ_SCHEDULER_SERVICE_ACCOUNT` (defaults to job service account if unset)
+- `OPENAQ_MIN_GAP_STATIONS` (default `1`)
+- `OPENAQ_MIN_NON_GAP_STATIONS` (default `10`)
 
 ## IAM Notes
 

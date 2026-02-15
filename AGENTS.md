@@ -58,3 +58,7 @@
 ## Planning Requests
 - When proposing plans, offer more than one option when possible, list pros/cons for each, and recommend which to pick with a brief rationale.
 - For every plan, explicitly assess both egress impact and database-size impact. Include those impacts in each option's pros/cons, and use them directly in the recommendation so tradeoffs are clear before implementation.
+
+## Website Polling Policy
+- Never suggest reducing website polling frequency below 1 minute.
+- Treat 1-minute website polling as a fixed requirement when proposing egress optimizations.

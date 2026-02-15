@@ -453,6 +453,15 @@ function deriveRunSummary(ingestResponse: IngestResponse): {
     };
   }
 
+  const explicitRunStatus = toStringOrNull(payload?.run_status)?.toLowerCase();
+  if (explicitRunStatus === "skipped") {
+    return {
+      runStatus: "skipped",
+      runMessage: toStringOrNull(payload?.run_message) ?? "skipped",
+      payload,
+    };
+  }
+
   const partial = payload?.partial === true;
   const stoppedReason = toStringOrNull(payload?.stopped_reason)?.toLowerCase() ??
     null;
@@ -513,6 +522,11 @@ const STORED_RESPONSE_PAYLOAD_KEYS = [
   "gap_requests_planned",
   "gap_requests_executed",
   "gap_requests_skipped_budget",
+  "gap_stations_total",
+  "gap_stations_polled",
+  "min_gap_stations",
+  "non_gap_stations_selected",
+  "min_non_gap_stations",
   "stations_selected",
   "stations_polled",
   "stations_updated",

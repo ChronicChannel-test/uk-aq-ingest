@@ -212,6 +212,11 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
   - `tier2` includes all stations with `due_at < now()-3h` (not capped at 24h old) so overdue stations are not trapped in a 24h dead zone before stale cooldown.
   - Applies a per-run OpenAQ request budget (`OPENAQ_MAX_REQUESTS_PER_RUN`, default 56).
   - Applies a gap reserve guard (`OPENAQ_GAP_REQUESTS_REMAINING_MIN`, default 10) so hourly gap calls do not consume the final request budget.
+  - Applies station-count thresholds for run gating:
+    - `OPENAQ_MIN_GAP_STATIONS` (default `1`)
+    - `OPENAQ_MIN_NON_GAP_STATIONS` (default `10`)
+    - If selected stations do not meet either threshold, the run returns `run_status=skipped` with `stations_polled=0`.
+  - Response payload includes `gap_stations_total` and `gap_stations_polled` for run diagnostics/UI.
   - `request_budget_limited` means the ingest was constrained by the local per-run request budget/gap guard (our budget), not OpenAQ API rate-limit headers.
   - OpenAQ API rate-limit-driven stops are surfaced as `remaining_low`, `rate_limit_429`, or `rate_limit_guard`.
   - Tracks per-station scheduling in `uk_aq_raw.openaq_station_checkpoints` (next due, last observed, sample arrays, last polled). `last_polled_at` only updates for stations where at least one OpenAQ request is issued in the run. When fewer than 10 interval/lag samples exist, `next_due_at` is set to `now() + 5 minutes`. Otherwise it uses the minimum interval (capped at 1 hour) plus minimum lag from samples. If no observations are returned and `next_due_at` is null, it is set to `now() + 5 minutes`. For gap-mode stations with no new observations, `next_due_at` is set to `last_observed_at + min(observ_interval_samples)` capped at `+1 hour` (fallback `+1 hour` when samples are empty).
@@ -491,7 +496,9 @@ Optional:
 - `OPENAQ_RATE_LIMIT_RETRIES` (optional; defaults to `3`)
 - `OPENAQ_INGEST_STATION_FETCH` (optional; defaults to `false`)
 - `OPENAQ_TIERED_LIMIT` (optional; defaults to `50`)
-- `OPENAQ_STALE_LIMIT` (optional; defaults to `10`)
+- `OPENAQ_STALE_LIMIT` (optional; defaults to `4`)
+- `OPENAQ_MIN_GAP_STATIONS` (optional; defaults to `1`; minimum selected gap stations needed to run regardless of non-gap count)
+- `OPENAQ_MIN_NON_GAP_STATIONS` (optional; defaults to `10`; skip when no gap stations and selected non-gap stations are below this threshold)
 - `OPENAQ_RATE_LIMIT_STOP_THRESHOLD` (optional; defaults to `5`)
 - `CLEANAIRSURB_ST_ID` (optional; defaults to `189841`; OpenAQ debug station id used in ingest debug logs)
 - `BREATHELONDON_BASE_URL` (optional override for Breathe London API base URL)

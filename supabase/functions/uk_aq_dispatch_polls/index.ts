@@ -354,6 +354,11 @@ const STORED_RESPONSE_PAYLOAD_KEYS = [
   "rate_limit_stop_reason",
   "requests_total",
   "max_requests_per_run",
+  "gap_stations_total",
+  "gap_stations_polled",
+  "min_gap_stations",
+  "non_gap_stations_selected",
+  "min_non_gap_stations",
 ] as const;
 
 function truncateString(value: string, maxLen = 500): string {

@@ -549,6 +549,14 @@
         return payloadStations;
       }
 
+      function resolveGapStationsPolled(run) {
+        const payload = asObject(run && run.response_payload);
+        if (!payload) {
+          return null;
+        }
+        return payloadNumber(payload, ["gap_stations_polled"]);
+      }
+
       function resolveObservationCount(run) {
         const direct = asNumber(run && run.observations_upserted);
         if (direct !== null) {
@@ -627,8 +635,13 @@
 
       function formatStations(run) {
         const stationCount = resolveStationCount(run);
+        const gapStationsPolled = resolveGapStationsPolled(run);
         if (stationCount !== null) {
-          return formatCount(stationCount);
+          const base = formatCount(stationCount);
+          if (gapStationsPolled !== null && gapStationsPolled > 0) {
+            return `${base}<br><span class="metric-note">(${formatCount(gapStationsPolled)} GAP)</span>`;
+          }
+          return base;
         }
         if (run.series_polled !== null && run.series_polled !== undefined) {
           return `${formatCount(run.series_polled)} series`;
