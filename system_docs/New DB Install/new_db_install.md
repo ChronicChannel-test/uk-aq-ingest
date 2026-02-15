@@ -102,3 +102,77 @@ Notes:
 
 1. GH Pages workflow (`.github/workflows/pages.yml`) runs injection in CI using repo secrets (`SUPABASE_PROJECT_REF`, `SB_ANON_JWT`), then deploys the built artifact.
 2. GH Pages deploy does not write injected values back to git-tracked files in the repo; local files remain unchanged unless you run the script locally.
+
+## 6. GCP service accounts and IAM roles
+
+Use dedicated service accounts (not default compute SAs) for deploy and runtime.
+
+### 6.1 Core service accounts
+
+1. GitHub deploy SA (`GCP_SERVICE_ACCOUNT`)
+   - Purpose: GitHub Actions auth principal that deploys Cloud Run jobs and supporting resources.
+   - Project roles needed by current workflows:
+     - `roles/run.admin`
+     - `roles/pubsub.admin`
+     - `roles/cloudscheduler.admin`
+     - `roles/cloudtasks.admin` (required for OpenAQ Cloud Tasks setup)
+     - `roles/artifactregistry.writer`
+     - `roles/secretmanager.admin` (or equivalent create/update + set policy permissions used by workflows)
+   - Extra IAM needed:
+     - `roles/iam.serviceAccountUser` on each runtime/invoker SA used in `--service-account`.
+     - Permission to set IAM policy on OpenAQ task-invoker SA (for `roles/iam.serviceAccountTokenCreator` binding to Cloud Tasks service agent), e.g. `roles/iam.serviceAccountAdmin` on that SA.
+
+2. OpenAQ runtime SA (`GCP_OPENAQ_JOB_SERVICE_ACCOUNT`, e.g. `uk-aq-openaq-job@...`)
+   - Required roles/bindings:
+     - Secret Manager access to runtime secrets (`roles/secretmanager.secretAccessor`).
+     - `roles/cloudtasks.enqueuer` on OpenAQ task queue.
+     - `roles/pubsub.publisher` on history topic (`GCP_HISTORY_PUBSUB_TOPIC`) when `OPENAQ_HISTORY_WRITE_MODE=pubsub_only`.
+
+3. Sensor.Community runtime SA (`GCP_SCOMM_JOB_SERVICE_ACCOUNT`, e.g. `uk-aq-scomm-job@...`)
+   - Required roles/bindings:
+     - Secret Manager access to runtime secrets (`roles/secretmanager.secretAccessor`).
+     - `roles/pubsub.publisher` on history topic (`GCP_HISTORY_PUBSUB_TOPIC`) when `SCOMM_HISTORY_WRITE_MODE=pubsub_only`.
+
+4. UK-AIR SOS runtime SA (`GCP_UK_AIR_SOS_JOB_SERVICE_ACCOUNT`, e.g. `uk-aq-sos-job@...`)
+   - Required roles/bindings:
+     - Secret Manager access to runtime secrets (`roles/secretmanager.secretAccessor`).
+
+5. Breathe London runtime SA (`GCP_BREATHELONDON_JOB_SERVICE_ACCOUNT`, e.g. `uk-aq-breathelondon-job@...`)
+   - Required roles/bindings:
+     - Secret Manager access to runtime secrets (`roles/secretmanager.secretAccessor`).
+
+6. History outbox runtime SA (`GCP_HISTORY_OUTBOX_JOB_SERVICE_ACCOUNT`, e.g. `uk-aq-history-outbox-flusher@...`)
+   - Required roles/bindings:
+     - Secret Manager access to runtime secrets (`roles/secretmanager.secretAccessor`).
+
+7. History Pub/Sub writer runtime SA (`GCP_HISTORY_PUBSUB_JOB_SERVICE_ACCOUNT`, e.g. `uk-aq-history-pubsub-job@...`)
+   - Required roles/bindings:
+     - Secret Manager access to runtime secrets (`roles/secretmanager.secretAccessor`).
+     - `roles/pubsub.subscriber` on history subscription (`uk-aq-history-observations-sub` by default).
+
+8. Scheduler invoker SA(s)
+   - Examples:
+     - Shared: `uk-aq-scheduler-invoker@...`
+     - OpenAQ-specific: `GCP_OPENAQ_SCHEDULER_SERVICE_ACCOUNT`
+     - History Pub/Sub specific: `GCP_HISTORY_PUBSUB_SCHEDULER_SERVICE_ACCOUNT`
+   - Required roles/bindings:
+     - `roles/run.invoker` on each target Cloud Run Job.
+
+9. OpenAQ task invoker SA (`GCP_OPENAQ_TASK_INVOKER_SERVICE_ACCOUNT`, defaults to scheduler SA or OpenAQ job SA)
+   - Required roles/bindings:
+     - `roles/run.invoker` on OpenAQ Cloud Run Job.
+     - The Google Cloud Tasks service agent must have `roles/iam.serviceAccountTokenCreator` on this SA.
+
+10. Google-managed Cloud Tasks service agent (`service-<PROJECT_NUMBER>@gcp-sa-cloudtasks.iam.gserviceaccount.com`)
+   - Required binding:
+     - `roles/iam.serviceAccountTokenCreator` on the OpenAQ task invoker SA.
+
+### 6.2 Pub/Sub-specific notes for history flow
+
+1. Topic: `GCP_HISTORY_PUBSUB_TOPIC` (default `uk-aq-history-observations`)
+   - Publisher SAs: OpenAQ runtime SA and Sensor.Community runtime SA (and any other connector migrated to `pubsub_only`).
+2. Subscription: `uk-aq-history-observations-sub` (default in history Pub/Sub deploy workflow)
+   - Subscriber SA: history Pub/Sub writer runtime SA.
+3. Recommended subscription settings for this project:
+   - Ack deadline: `600` seconds.
+   - Message retention: `604800s` (7 days).
