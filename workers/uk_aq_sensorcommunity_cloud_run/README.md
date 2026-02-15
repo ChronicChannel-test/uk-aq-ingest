@@ -14,6 +14,7 @@ This worker now runs Sensor.Community ingest directly in Cloud Run Jobs
 - Fetches Sensor.Community data directly from `data.sensor.community`.
 - Upserts stations, phenomena, timeseries, and observations directly via PostgREST.
 - Dual-writes observations to history DB (with main DB outbox fallback) when history env is configured.
+- Supports `HISTORY_WRITE_MODE=pubsub_only` to publish history rows directly to GCP Pub/Sub.
 - Normalizes and deduplicates history observation rows on `(connector_id, timeseries_id, observed_at)` before history upsert/outbox enqueue.
 - Uploads run log + raw payload snapshot to Dropbox when Dropbox env/secrets are configured and allowed for the active Supabase URL.
   - Log artifact: `uk_aq_log_cloud_run_scomm_<timestamp>.json`
@@ -55,7 +56,9 @@ The previous proxy worker (Cloud Run -> Supabase Edge function) is archived at:
 - `SCOMM_UPSERT_CHUNK_SIZE` (default `500`)
 - `HISTORY_UPSERT_RPC` (default `uk_aq_rpc_history_observations_upsert`)
 - `HISTORY_UPSERT_CHUNK_SIZE` (default `5000`)
-- `HISTORY_WRITE_MODE` (default `outbox_only`; set `direct` for immediate history writes)
+- `HISTORY_WRITE_MODE` (default `outbox_only`; supports `outbox_only`, `direct`, `pubsub_only`)
+- `GCP_HISTORY_PUBSUB_TOPIC` (required when `HISTORY_WRITE_MODE=pubsub_only`)
+- `HISTORY_PUBSUB_PUBLISH_BATCH_SIZE` (default `500`; publish chunk size when `HISTORY_WRITE_MODE=pubsub_only`)
 - `SCOMM_DROPBOX_ROOT` or `UK_AQ_DROPBOX_ROOT` (default `/CIC-Test`)
 - `SCOMM_RAW_DROPBOX_FOLDER` or `UK_AIR_RAW_DROPBOX_FOLDER`
   (default `/connectors/sensorcommunity/raw_data`)

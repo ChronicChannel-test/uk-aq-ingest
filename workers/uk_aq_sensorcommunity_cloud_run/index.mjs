@@ -63,6 +63,20 @@ const HISTORY_UPSERT_CHUNK_SIZE = parsePositiveInt(
 const HISTORY_WRITE_MODE = normalizeHistoryWriteMode(
   process.env.HISTORY_WRITE_MODE,
 );
+const GCP_PROJECT_ID = (
+  process.env.GCP_PROJECT_ID ||
+  process.env.GOOGLE_CLOUD_PROJECT ||
+  ""
+).trim();
+const GCP_HISTORY_PUBSUB_TOPIC = (
+  process.env.GCP_HISTORY_PUBSUB_TOPIC ||
+  process.env.HISTORY_PUBSUB_TOPIC ||
+  ""
+).trim();
+const HISTORY_PUBSUB_PUBLISH_BATCH_SIZE = parsePositiveInt(
+  process.env.HISTORY_PUBSUB_PUBLISH_BATCH_SIZE,
+  500,
+);
 const HISTORY_REST_BASE_URL = HISTORY_SUPABASE_URL
   ? buildRestBaseUrl(HISTORY_SUPABASE_URL)
   : "";
@@ -212,6 +226,9 @@ function normalizeHistoryWriteMode(raw) {
   if (normalized === "direct") {
     return "direct";
   }
+  if (normalized === "pubsub_only") {
+    return "pubsub_only";
+  }
   return "outbox_only";
 }
 
@@ -282,6 +299,97 @@ function buildRestBaseUrl(url) {
 
 function historyConfigured() {
   return Boolean(HISTORY_SUPABASE_URL && HISTORY_SERVICE_ROLE_KEY);
+}
+
+function historyPubsubTopicPath() {
+  if (!GCP_HISTORY_PUBSUB_TOPIC) {
+    return "";
+  }
+  if (GCP_HISTORY_PUBSUB_TOPIC.startsWith("projects/")) {
+    return GCP_HISTORY_PUBSUB_TOPIC;
+  }
+  if (!GCP_PROJECT_ID) {
+    return "";
+  }
+  return `projects/${GCP_PROJECT_ID}/topics/${GCP_HISTORY_PUBSUB_TOPIC}`;
+}
+
+function historyPubsubConfigured() {
+  return Boolean(historyPubsubTopicPath());
+}
+
+async function fetchGoogleAccessToken() {
+  const response = await fetch(
+    "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token",
+    {
+      headers: { "Metadata-Flavor": "Google" },
+    },
+  );
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    throw new Error(
+      `Metadata token request failed (${response.status}): ${text}`,
+    );
+  }
+  const payload = await response.json().catch(() => null);
+  const token = typeof payload?.access_token === "string"
+    ? payload.access_token.trim()
+    : "";
+  if (!token) {
+    throw new Error("Metadata token response missing access_token");
+  }
+  return token;
+}
+
+async function publishHistoryRowsToPubsub(preparedRows) {
+  if (!preparedRows.length) {
+    return 0;
+  }
+  const topicPath = historyPubsubTopicPath();
+  if (!topicPath) {
+    throw new Error(
+      "History Pub/Sub is not configured (missing GCP_HISTORY_PUBSUB_TOPIC or GCP_PROJECT_ID).",
+    );
+  }
+
+  const token = await fetchGoogleAccessToken();
+  let published = 0;
+
+  for (const rowsChunk of chunk(preparedRows, HISTORY_PUBSUB_PUBLISH_BATCH_SIZE)) {
+    const messages = rowsChunk.map((row) => ({
+      data: Buffer.from(JSON.stringify(row), "utf8").toString("base64"),
+      attributes: {
+        connector_id: String(row.connector_id),
+        timeseries_id: String(row.timeseries_id),
+        observed_at: row.observed_at,
+      },
+    }));
+
+    const response = await fetch(
+      `https://pubsub.googleapis.com/v1/${topicPath}:publish`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ messages }),
+      },
+    );
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) {
+      const message = payload && typeof payload === "object"
+        ? JSON.stringify(payload)
+        : `HTTP ${response.status}`;
+      throw new Error(`History Pub/Sub publish failed: ${message}`);
+    }
+    const messageIds = Array.isArray(payload?.messageIds)
+      ? payload.messageIds
+      : null;
+    published += messageIds ? messageIds.length : rowsChunk.length;
+  }
+
+  return published;
 }
 
 function postgrestHeaders(schema, apiKey, write = false) {
@@ -1158,6 +1266,20 @@ async function writeHistoryWithOutbox(historyRows) {
 
   if (HISTORY_WRITE_MODE === "outbox_only") {
     const enqueued = await enqueueHistoryOutbox(preparedRows);
+    return {
+      written: 0,
+      receipts_upserted: 0,
+      enqueued,
+    };
+  }
+
+  if (HISTORY_WRITE_MODE === "pubsub_only") {
+    if (!historyPubsubConfigured()) {
+      throw new Error(
+        "HISTORY_WRITE_MODE=pubsub_only but Pub/Sub is not configured.",
+      );
+    }
+    const enqueued = await publishHistoryRowsToPubsub(preparedRows);
     return {
       written: 0,
       receipts_upserted: 0,

@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
 name: Deploy Sensor.Community Cloud Run Job
 
 on:
@@ -25,6 +26,9 @@ jobs:
       UK_AQ_CORE_SCHEMA: ${{ vars.UK_AQ_CORE_SCHEMA || 'uk_aq_core' }}
       UK_AQ_RAW_SCHEMA: ${{ vars.UK_AQ_RAW_SCHEMA || 'uk_aq_raw' }}
       HISTORY_SCHEMA: ${{ vars.HISTORY_SCHEMA || 'uk_aq_public' }}
+      HISTORY_WRITE_MODE: ${{ vars.SCOMM_HISTORY_WRITE_MODE || 'pubsub_only' }}
+      GCP_HISTORY_PUBSUB_TOPIC: ${{ vars.GCP_HISTORY_PUBSUB_TOPIC || 'uk-aq-history-observations' }}
+      HISTORY_PUBSUB_PUBLISH_BATCH_SIZE: ${{ vars.HISTORY_PUBSUB_PUBLISH_BATCH_SIZE || '500' }}
       SCOMM_COUNTRY: ${{ vars.SCOMM_COUNTRY || 'GB' }}
       SCOMM_BASE_URL: ${{ vars.SCOMM_BASE_URL || 'https://data.sensor.community' }}
       SCOMM_SERVICE_REF: ${{ vars.SCOMM_SERVICE_REF || 'sensorcommunity' }}
@@ -58,6 +62,13 @@ jobs:
           if [ -z "${PROJECT_ID:-}" ]; then
             echo "Missing required secret: GCP_PROJECT_ID"
             exit 1
+          fi
+          history_mode="$(printf '%s' "${HISTORY_WRITE_MODE:-}" | tr '[:upper:]' '[:lower:]')"
+          if [ "${history_mode}" = "pubsub_only" ]; then
+            if [ -z "${GCP_HISTORY_PUBSUB_TOPIC:-}" ]; then
+              echo "HISTORY_WRITE_MODE=pubsub_only requires GCP_HISTORY_PUBSUB_TOPIC."
+              exit 1
+            fi
           fi
 
       - name: Validate Google auth config
@@ -117,6 +128,33 @@ jobs:
       - name: Validate Cloud Run job exists
         run: |
           gcloud run jobs describe "${JOB_NAME}" --region "${REGION}" >/dev/null
+
+      - name: Ensure history Pub/Sub topic + publisher IAM binding
+        run: |
+          set -euo pipefail
+          history_mode="$(printf '%s' "${HISTORY_WRITE_MODE:-}" | tr '[:upper:]' '[:lower:]')"
+          if [ "${history_mode}" != "pubsub_only" ]; then
+            echo "Skipping Pub/Sub publisher setup (HISTORY_WRITE_MODE=${HISTORY_WRITE_MODE})."
+            exit 0
+          fi
+
+          if gcloud pubsub topics describe "${GCP_HISTORY_PUBSUB_TOPIC}" --project "${PROJECT_ID}" >/dev/null 2>&1; then
+            echo "Pub/Sub topic exists: ${GCP_HISTORY_PUBSUB_TOPIC}"
+          else
+            gcloud pubsub topics create "${GCP_HISTORY_PUBSUB_TOPIC}" --project "${PROJECT_ID}"
+            echo "Created Pub/Sub topic: ${GCP_HISTORY_PUBSUB_TOPIC}"
+          fi
+
+          runtime_sa="$(gcloud run jobs describe "${JOB_NAME}" --region "${REGION}" --format='value(template.template.serviceAccount)')"
+          if [ -z "${runtime_sa}" ]; then
+            echo "Unable to resolve Cloud Run job service account for ${JOB_NAME}."
+            exit 1
+          fi
+
+          gcloud pubsub topics add-iam-policy-binding "${GCP_HISTORY_PUBSUB_TOPIC}" \
+            --project "${PROJECT_ID}" \
+            --member "serviceAccount:${runtime_sa}" \
+            --role "roles/pubsub.publisher" >/dev/null
 
       - name: Sync GitHub secrets to GCP Secret Manager
         run: |
@@ -212,6 +250,9 @@ jobs:
 
           env_updates=()
           add_env SUPABASE_URL
+          add_env HISTORY_WRITE_MODE
+          add_env GCP_HISTORY_PUBSUB_TOPIC
+          add_env HISTORY_PUBSUB_PUBLISH_BATCH_SIZE
           add_env UK_AQ_CORE_SCHEMA
           add_env UK_AQ_RAW_SCHEMA
           add_env SCOMM_COUNTRY
@@ -225,6 +266,7 @@ jobs:
           add_env UK_AQ_DROPBOX_ROOT
           add_env SCOMM_RAW_DROPBOX_FOLDER
           add_env UK_AIR_RAW_DROPBOX_FOLDER
+          env_updates+=("GCP_PROJECT_ID=${PROJECT_ID}")
           if [ -n "${HISTORY_SUPABASE_URL:-}" ]; then
             add_env HISTORY_SUPABASE_URL
             add_env HISTORY_SCHEMA
