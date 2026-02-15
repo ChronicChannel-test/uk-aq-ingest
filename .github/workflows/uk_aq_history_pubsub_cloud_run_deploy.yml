@@ -31,7 +31,7 @@ jobs:
       SCHEDULER_MAX_RETRY_ATTEMPTS: ${{ vars.GCP_HISTORY_PUBSUB_SCHEDULER_MAX_RETRY_ATTEMPTS || '0' }}
       SCHEDULER_SERVICE_ACCOUNT: ${{ vars.GCP_HISTORY_PUBSUB_SCHEDULER_SERVICE_ACCOUNT || '' }}
       PUBSUB_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-      PUBSUB_TOPIC: ${{ vars.HISTORY_PUBSUB_TOPIC || 'uk-aq-history-observations' }}
+      PUBSUB_TOPIC: ${{ vars.GCP_HISTORY_PUBSUB_TOPIC || vars.HISTORY_PUBSUB_TOPIC || 'uk-aq-history-observations' }}
       PUBSUB_SUBSCRIPTION: ${{ vars.HISTORY_PUBSUB_SUBSCRIPTION || 'uk-aq-history-observations-sub' }}
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       HISTORY_SUPABASE_URL: ${{ secrets.HISTORY_SUPABASE_URL }}

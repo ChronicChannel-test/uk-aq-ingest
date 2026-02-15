@@ -58,13 +58,13 @@ the reported reset time.
 - `OPENAQ_MIN_GAP_STATIONS` (default `1`)
 - `OPENAQ_MIN_NON_GAP_STATIONS` (default `10`)
 - `OPENAQ_HISTORY_WRITE_MODE` (default in workflow: `pubsub_only`)
-- `HISTORY_PUBSUB_TOPIC` (default `uk-aq-history-observations`)
+- `GCP_HISTORY_PUBSUB_TOPIC` (default `uk-aq-history-observations`)
 - `HISTORY_PUBSUB_PUBLISH_BATCH_SIZE` (default `500`)
 
 ## IAM Notes
 
 - Job runtime SA needs `roles/cloudtasks.enqueuer` on the OpenAQ queue.
-- Job runtime SA needs `roles/pubsub.publisher` on `HISTORY_PUBSUB_TOPIC` when using `HISTORY_WRITE_MODE=pubsub_only`.
+- Job runtime SA needs `roles/pubsub.publisher` on `GCP_HISTORY_PUBSUB_TOPIC` when using `HISTORY_WRITE_MODE=pubsub_only`.
 - Task invoker SA needs `roles/run.invoker` on the OpenAQ Cloud Run Job.
 - Cloud Tasks service agent (`service-<project-number>@gcp-sa-cloudtasks.iam.gserviceaccount.com`) needs `roles/iam.serviceAccountTokenCreator` on the task invoker SA.
 - Scheduler SA needs `roles/run.invoker` on the OpenAQ Cloud Run Job.

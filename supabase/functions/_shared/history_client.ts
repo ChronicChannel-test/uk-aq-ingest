@@ -122,8 +122,10 @@ const GCP_PROJECT_ID = (
     ""
 ).trim();
 
-const HISTORY_PUBSUB_TOPIC = (
-  Deno.env.get("HISTORY_PUBSUB_TOPIC") ?? ""
+const GCP_HISTORY_PUBSUB_TOPIC = (
+  Deno.env.get("GCP_HISTORY_PUBSUB_TOPIC") ??
+    Deno.env.get("HISTORY_PUBSUB_TOPIC") ??
+    ""
 ).trim();
 
 const HISTORY_PUBSUB_PUBLISH_BATCH_SIZE = parsePositiveInt(
@@ -246,16 +248,16 @@ function shortError(error: unknown): string {
 }
 
 function pubsubTopicPath(): string {
-  if (!HISTORY_PUBSUB_TOPIC) {
+  if (!GCP_HISTORY_PUBSUB_TOPIC) {
     return "";
   }
-  if (HISTORY_PUBSUB_TOPIC.startsWith("projects/")) {
-    return HISTORY_PUBSUB_TOPIC;
+  if (GCP_HISTORY_PUBSUB_TOPIC.startsWith("projects/")) {
+    return GCP_HISTORY_PUBSUB_TOPIC;
   }
   if (!GCP_PROJECT_ID) {
     return "";
   }
-  return `projects/${GCP_PROJECT_ID}/topics/${HISTORY_PUBSUB_TOPIC}`;
+  return `projects/${GCP_PROJECT_ID}/topics/${GCP_HISTORY_PUBSUB_TOPIC}`;
 }
 
 function historyPubsubConfigured(): boolean {
@@ -298,7 +300,7 @@ async function publishHistoryRowsToPubsub(
   const topicPath = pubsubTopicPath();
   if (!topicPath) {
     throw new Error(
-      "History Pub/Sub is not configured (missing HISTORY_PUBSUB_TOPIC or GCP_PROJECT_ID).",
+      "History Pub/Sub is not configured (missing GCP_HISTORY_PUBSUB_TOPIC or GCP_PROJECT_ID).",
     );
   }
 

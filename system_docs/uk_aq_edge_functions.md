@@ -463,7 +463,7 @@ Optional:
 - `HISTORY_OUTBOX_CLOUD_RUN_RPC_RETRIES` (optional; defaults to `3`; main RPC retry count)
 - `HISTORY_WRITE_MODE` (optional; defaults to `outbox_only`; `outbox_only` queues history rows to main outbox for asynchronous flush, `direct` attempts immediate history upsert then falls back to outbox, `pubsub_only` publishes rows to Pub/Sub and does not use main DB outbox)
 - `GCP_PROJECT_ID` (required when `HISTORY_WRITE_MODE=pubsub_only` unless `GOOGLE_CLOUD_PROJECT` is set)
-- `HISTORY_PUBSUB_TOPIC` (optional; required when `HISTORY_WRITE_MODE=pubsub_only`; accepts topic id or full `projects/.../topics/...` path)
+- `GCP_HISTORY_PUBSUB_TOPIC` (optional; required when `HISTORY_WRITE_MODE=pubsub_only`; accepts topic id or full `projects/.../topics/...` path)
 - `HISTORY_PUBSUB_PUBLISH_BATCH_SIZE` (optional; defaults to `500`; number of Pub/Sub messages per publish call)
 - `DISPATCH_TIME_BUDGET_MS` (optional; defaults to `150000`; dispatcher per-request runtime budget)
 - `DISPATCH_SHUTDOWN_BUFFER_MS` (optional; defaults to `10000`; reserved time before budget to return cleanly)

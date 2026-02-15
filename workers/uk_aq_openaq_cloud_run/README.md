@@ -83,7 +83,7 @@ gcloud run jobs update uk-aq-openaq-ingest \
 - `SB_UK_AQ_CRON_SECRET` (if set, local call sends `x-cron-secret`)
 - `HISTORY_SUPABASE_URL`, `HISTORY_SERVICE_ROLE_KEY`, `HISTORY_SCHEMA`
 - `HISTORY_WRITE_MODE` (default in deploy workflow: `pubsub_only`)
-- `HISTORY_PUBSUB_TOPIC` (required when `HISTORY_WRITE_MODE=pubsub_only`)
+- `GCP_HISTORY_PUBSUB_TOPIC` (required when `HISTORY_WRITE_MODE=pubsub_only`)
 - `HISTORY_PUBSUB_PUBLISH_BATCH_SIZE` (optional; defaults to `500`)
 - `DROPBOX_APP_KEY`, `DROPBOX_APP_SECRET`, `DROPBOX_REFRESH_TOKEN`
 - `OPENAQ_RAW_DROPBOX_ALLOWED_SUPABASE_URL` (or `UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL`)

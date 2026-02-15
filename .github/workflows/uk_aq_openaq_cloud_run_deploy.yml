@@ -43,7 +43,7 @@ jobs:
       UK_AQ_RAW_SCHEMA: ${{ vars.UK_AQ_RAW_SCHEMA || 'uk_aq_raw' }}
       HISTORY_SCHEMA: ${{ vars.HISTORY_SCHEMA || 'uk_aq_public' }}
       HISTORY_WRITE_MODE: ${{ vars.OPENAQ_HISTORY_WRITE_MODE || 'pubsub_only' }}
-      HISTORY_PUBSUB_TOPIC: ${{ vars.HISTORY_PUBSUB_TOPIC || 'uk-aq-history-observations' }}
+      GCP_HISTORY_PUBSUB_TOPIC: ${{ vars.GCP_HISTORY_PUBSUB_TOPIC || vars.HISTORY_PUBSUB_TOPIC || 'uk-aq-history-observations' }}
       HISTORY_PUBSUB_PUBLISH_BATCH_SIZE: ${{ vars.HISTORY_PUBSUB_PUBLISH_BATCH_SIZE || '500' }}
       OPENAQ_BASE_URL: ${{ vars.OPENAQ_BASE_URL || 'https://api.openaq.org/v3' }}
       OPENAQ_CONNECTOR_CODE: ${{ vars.OPENAQ_CONNECTOR_CODE || 'openaq' }}
@@ -114,8 +114,8 @@ jobs:
           fi
           history_mode="$(printf '%s' "${HISTORY_WRITE_MODE:-}" | tr '[:upper:]' '[:lower:]')"
           if [ "${history_mode}" = "pubsub_only" ]; then
-            if [ -z "${HISTORY_PUBSUB_TOPIC:-}" ]; then
-              echo "HISTORY_WRITE_MODE=pubsub_only requires HISTORY_PUBSUB_TOPIC."
+            if [ -z "${GCP_HISTORY_PUBSUB_TOPIC:-}" ]; then
+              echo "HISTORY_WRITE_MODE=pubsub_only requires GCP_HISTORY_PUBSUB_TOPIC."
               exit 1
             fi
           fi
@@ -270,14 +270,14 @@ jobs:
             exit 0
           fi
 
-          if gcloud pubsub topics describe "${HISTORY_PUBSUB_TOPIC}" --project "${PROJECT_ID}" >/dev/null 2>&1; then
-            echo "Pub/Sub topic exists: ${HISTORY_PUBSUB_TOPIC}"
+          if gcloud pubsub topics describe "${GCP_HISTORY_PUBSUB_TOPIC}" --project "${PROJECT_ID}" >/dev/null 2>&1; then
+            echo "Pub/Sub topic exists: ${GCP_HISTORY_PUBSUB_TOPIC}"
           else
-            gcloud pubsub topics create "${HISTORY_PUBSUB_TOPIC}" --project "${PROJECT_ID}"
-            echo "Created Pub/Sub topic: ${HISTORY_PUBSUB_TOPIC}"
+            gcloud pubsub topics create "${GCP_HISTORY_PUBSUB_TOPIC}" --project "${PROJECT_ID}"
+            echo "Created Pub/Sub topic: ${GCP_HISTORY_PUBSUB_TOPIC}"
           fi
 
-          gcloud pubsub topics add-iam-policy-binding "${HISTORY_PUBSUB_TOPIC}" \
+          gcloud pubsub topics add-iam-policy-binding "${GCP_HISTORY_PUBSUB_TOPIC}" \
             --project "${PROJECT_ID}" \
             --member "serviceAccount:${JOB_SERVICE_ACCOUNT}" \
             --role "roles/pubsub.publisher" >/dev/null
@@ -381,7 +381,7 @@ jobs:
           add_env UK_AQ_CORE_SCHEMA
           add_env UK_AQ_RAW_SCHEMA
           add_env HISTORY_WRITE_MODE
-          add_env HISTORY_PUBSUB_TOPIC
+          add_env GCP_HISTORY_PUBSUB_TOPIC
           add_env HISTORY_PUBSUB_PUBLISH_BATCH_SIZE
           add_env OPENAQ_BASE_URL
           add_env OPENAQ_CONNECTOR_CODE
