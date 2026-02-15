@@ -227,8 +227,10 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
   - Stops issuing new requests when rate-limit remaining drops below the threshold (default 5), on HTTP 429, on OpenAQ HTTP 401, or when the per-run request budget is exhausted.
   - Response metadata includes `rate_limit_reset` and `rate_limit_reset_at` so Cloud Run scheduling can defer next run until reset when throttled.
 - Logs:
-  - Writes a log file to Dropbox `/connectors/openaq/log/YYYY-MM-DD/` (prefix `uk_aq_log_edge_openaq_`).
-  - Writes raw payloads to Dropbox `/connectors/openaq/raw_data/YYYY-MM-DD/` as ZIP (prefix `uk_aq_raw_edge_openaq_`).
+  - Filename prefixes are runtime-specific via `OPENAQ_DROPBOX_UPLOAD_SOURCE`:
+    - Edge runtime (default): `uk_aq_log_edge_openaq_`, `uk_aq_raw_edge_openaq_`, `uk_aq_error_edge_openaq_`.
+    - Cloud Run runtime: `uk_aq_log_cloud_run_openaq_`, `uk_aq_raw_cloud_run_openaq_`, `uk_aq_error_cloud_run_openaq_`.
+  - Writes to Dropbox `/connectors/openaq/log/YYYY-MM-DD/` and `/connectors/openaq/raw_data/YYYY-MM-DD/` when Dropbox config is enabled.
   - Writes diagnostic entries to `error_logs` when Dropbox config is missing/mismatched or log/raw uploads fail.
   - Writes an error log entry when timeseries refs are polled but cannot be mapped to internal `timeseries_id`s (includes sample refs + station ids/refs when available).
   - Buffers error log lines for optional Dropbox error log uploads.

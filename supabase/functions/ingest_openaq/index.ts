@@ -238,6 +238,12 @@ const DROPBOX_ERROR_FOLDER = "/error_log";
 const DROPBOX_RAW_FOLDER = "/connectors/openaq/raw_data";
 const DROPBOX_TOKEN_URL = "https://api.dropbox.com/oauth2/token";
 const DROPBOX_UPLOAD_URL = "https://content.dropboxapi.com/2/files/upload";
+const DROPBOX_UPLOAD_SOURCE = (() => {
+  const value = (Deno.env.get("OPENAQ_DROPBOX_UPLOAD_SOURCE") ?? "edge")
+    .trim()
+    .toLowerCase();
+  return value === "cloud_run" ? "cloud_run" : "edge";
+})();
 
 const requestBudgetState: {
   maxPerRun: number;
@@ -687,7 +693,7 @@ function buildDropboxLogPath(
   const dateFolder = formatDateYmd(timestamp);
   const prefix = normalizeConnectorPrefix(connectorCode);
   const base = dropboxWithRoot(DROPBOX_LOG_FOLDER);
-  return `${base}/${dateFolder}/uk_aq_log_edge_${prefix}_${stamp}.log`;
+  return `${base}/${dateFolder}/uk_aq_log_${DROPBOX_UPLOAD_SOURCE}_${prefix}_${stamp}.log`;
 }
 
 function buildDropboxRawPath(
@@ -698,7 +704,7 @@ function buildDropboxRawPath(
   const dateFolder = formatDateYmd(timestamp);
   const prefix = normalizeConnectorPrefix(connectorCode);
   const base = dropboxWithRoot(DROPBOX_RAW_FOLDER);
-  return `${base}/${dateFolder}/uk_aq_raw_edge_${prefix}_${stamp}.zip`;
+  return `${base}/${dateFolder}/uk_aq_raw_${DROPBOX_UPLOAD_SOURCE}_${prefix}_${stamp}.zip`;
 }
 
 function buildDropboxErrorPath(
@@ -709,7 +715,7 @@ function buildDropboxErrorPath(
   const dateFolder = formatDateYmd(timestamp);
   const prefix = normalizeConnectorPrefix(connectorCode);
   const base = dropboxWithRoot(DROPBOX_ERROR_FOLDER);
-  return `${base}/${dateFolder}/uk_aq_error_edge_${prefix}_${stamp}.log`;
+  return `${base}/${dateFolder}/uk_aq_error_${DROPBOX_UPLOAD_SOURCE}_${prefix}_${stamp}.log`;
 }
 
 function createRawRecorder(): RawRecorder {
