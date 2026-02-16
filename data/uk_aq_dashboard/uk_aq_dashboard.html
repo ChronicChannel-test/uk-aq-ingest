@@ -199,6 +199,40 @@
         color: var(--accent);
       }
 
+      .panel-heading {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+
+      .dispatch-filters {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+
+      .dispatch-filter {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--ink-soft);
+        font-size: 12px;
+        font-family: "IBM Plex Mono", ui-monospace, monospace;
+      }
+
+      .dispatch-filter select {
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: #fff;
+        color: var(--ink);
+        padding: 6px 9px;
+        font-size: 13px;
+        font-family: "Space Grotesk", "Segoe UI", sans-serif;
+      }
+
       .status-pill {
         display: inline-flex;
         align-items: center;
@@ -486,6 +520,41 @@
       let wasInactive = document.hidden || !document.hasFocus();
 
       const bucketOrder = ["0-3 Hours", "3-6 Hours", "6-24 Hours", "1 - 7 Days", "Older than 7 Days"];
+      const DISPATCH_CONNECTOR_OPTIONS = [
+        { value: "all", label: "All" },
+        { value: "uk_air_sos", label: "UK-AIR SOS" },
+        { value: "sensorcommunity", label: "Sensor.Community" },
+        { value: "breathelondon", label: "Breathe London" },
+        { value: "openaq", label: "OpenAQ" },
+      ];
+      const DISPATCH_LOOKBACK_OPTIONS = [
+        { value: 10, label: "10mins" },
+        { value: 30, label: "30mins" },
+        { value: 60, label: "60mins" },
+        { value: 120, label: "120mins" },
+        { value: 240, label: "240mins" },
+        { value: 720, label: "720mins" },
+      ];
+      const DISPATCH_CONNECTOR_STORAGE_KEY = "uk_aq_dispatch_connector";
+      const DISPATCH_LOOKBACK_STORAGE_KEY = "uk_aq_dispatch_lookback_mins";
+      let dispatchConnectorFilter = "all";
+      let dispatchLookbackMinutes = 30;
+
+      try {
+        const storedConnector = localStorage.getItem(DISPATCH_CONNECTOR_STORAGE_KEY);
+        if (storedConnector && DISPATCH_CONNECTOR_OPTIONS.some((opt) => opt.value === storedConnector)) {
+          dispatchConnectorFilter = storedConnector;
+        }
+        const storedLookback = Number(localStorage.getItem(DISPATCH_LOOKBACK_STORAGE_KEY));
+        if (
+          Number.isFinite(storedLookback) &&
+          DISPATCH_LOOKBACK_OPTIONS.some((opt) => opt.value === storedLookback)
+        ) {
+          dispatchLookbackMinutes = storedLookback;
+        }
+      } catch (_err) {
+        // Ignore storage read issues and use defaults.
+      }
 
       function formatTime(value) {
         if (!value) return "n/a";
@@ -810,10 +879,50 @@
       }
 
       function renderDispatchPanel(runs) {
+        const filteredRuns = (Array.isArray(runs) ? runs : []).filter((run) => {
+          const connectorCode = String((run && run.connector_code) || "").toLowerCase();
+          if (dispatchConnectorFilter !== "all" && connectorCode !== dispatchConnectorFilter) {
+            return false;
+          }
+          if (dispatchLookbackMinutes <= 0) {
+            return true;
+          }
+          const timestamp = run.run_timestamp || run.run_ended_at || run.run_started_at;
+          if (!timestamp) {
+            return false;
+          }
+          const runMs = new Date(timestamp).getTime();
+          if (Number.isNaN(runMs)) {
+            return false;
+          }
+          const cutoffMs = Date.now() - dispatchLookbackMinutes * 60 * 1000;
+          return runMs >= cutoffMs;
+        });
+
         const panel = document.createElement("section");
         panel.className = "panel";
         panel.innerHTML = `
-          <h2>Dispatcher Feed <span class="chip">ingest runs</span></h2>
+          <h2 class="panel-heading">
+            <span>Dispatcher Feed</span>
+            <div class="dispatch-filters">
+              <label class="dispatch-filter" for="dispatch-connector-filter">
+                Connector
+                <select id="dispatch-connector-filter">
+                  ${DISPATCH_CONNECTOR_OPTIONS
+                    .map((opt) => `<option value="${opt.value}" ${opt.value === dispatchConnectorFilter ? "selected" : ""}>${opt.label}</option>`)
+                    .join("")}
+                </select>
+              </label>
+              <label class="dispatch-filter" for="dispatch-lookback-filter">
+                Lookback
+                <select id="dispatch-lookback-filter">
+                  ${DISPATCH_LOOKBACK_OPTIONS
+                    .map((opt) => `<option value="${opt.value}" ${opt.value === dispatchLookbackMinutes ? "selected" : ""}>${opt.label}</option>`)
+                    .join("")}
+                </select>
+              </label>
+            </div>
+          </h2>
           <table class="dispatch-table">
             <thead>
               <tr>
@@ -828,7 +937,8 @@
               </tr>
             </thead>
             <tbody>
-              ${runs
+              ${filteredRuns.length
+                ? filteredRuns
                 .map((run) => {
                   const status = statusMeta(run);
                   const timestamp = run.run_timestamp || run.run_ended_at || run.run_started_at;
@@ -858,11 +968,49 @@
                     </tr>
                   `;
                 })
-                .join("")}
+                .join("")
+                : `<tr><td colspan="8">No runs found for selected filters.</td></tr>`}
             </tbody>
           </table>
-          <div class="footnote">Ordered by most recent run end time.</div>
+          <div class="footnote">Ordered by most recent run end time. Filters persist across refresh.</div>
         `;
+
+        const connectorSelect = panel.querySelector("#dispatch-connector-filter");
+        if (connectorSelect) {
+          connectorSelect.addEventListener("change", (event) => {
+            const nextValue = String(event.target.value || "all");
+            if (!DISPATCH_CONNECTOR_OPTIONS.some((opt) => opt.value === nextValue)) {
+              return;
+            }
+            dispatchConnectorFilter = nextValue;
+            try {
+              localStorage.setItem(DISPATCH_CONNECTOR_STORAGE_KEY, dispatchConnectorFilter);
+            } catch (_err) {
+              // Ignore storage write issues.
+            }
+            loadDashboard();
+          });
+        }
+        const lookbackSelect = panel.querySelector("#dispatch-lookback-filter");
+        if (lookbackSelect) {
+          lookbackSelect.addEventListener("change", (event) => {
+            const nextMinutes = Number(event.target.value);
+            if (
+              !Number.isFinite(nextMinutes) ||
+              !DISPATCH_LOOKBACK_OPTIONS.some((opt) => opt.value === nextMinutes)
+            ) {
+              return;
+            }
+            dispatchLookbackMinutes = nextMinutes;
+            try {
+              localStorage.setItem(DISPATCH_LOOKBACK_STORAGE_KEY, String(dispatchLookbackMinutes));
+            } catch (_err) {
+              // Ignore storage write issues.
+            }
+            loadDashboard();
+          });
+        }
+
         return panel;
       }
 
