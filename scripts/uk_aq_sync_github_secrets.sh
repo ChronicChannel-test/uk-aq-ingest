@@ -30,10 +30,12 @@ TARGETS_FILE="config/uk_aq_github_env_targets.csv"
 DRY_RUN=0
 SEEN_FILE="$(mktemp)"
 TARGETS_CACHE_FILE="$(mktemp)"
+PROCESSED_KEYS_FILE="$(mktemp)"
 
 cleanup() {
   rm -f "${SEEN_FILE}"
   rm -f "${TARGETS_CACHE_FILE}"
+  rm -f "${PROCESSED_KEYS_FILE}"
 }
 trap cleanup EXIT
 
@@ -251,6 +253,16 @@ target_for_key() {
   echo "${target}"
 }
 
+key_already_processed() {
+  local key="$1"
+  grep -Fxq "${key}" "${PROCESSED_KEYS_FILE}"
+}
+
+mark_key_processed() {
+  local key="$1"
+  printf '%s\n' "${key}" >> "${PROCESSED_KEYS_FILE}"
+}
+
 resolve_secret_value() {
   local key="$1"
   local value="$2"
@@ -327,6 +339,10 @@ sync_env_vars() {
       echo "skip reserved ${key} from ${file}; value is built from filtered ${SUPABASE_ENV_FILE}"
       continue
     fi
+    if key_already_processed "${key}"; then
+      echo "skip duplicate key ${key} from ${file} (already processed)"
+      continue
+    fi
 
     first_char="${value:0:1}"
     last_char="${value: -1}"
@@ -357,6 +373,7 @@ sync_env_vars() {
         exit 1
         ;;
     esac
+    mark_key_processed "${key}"
   done < "${file}"
 }
 
