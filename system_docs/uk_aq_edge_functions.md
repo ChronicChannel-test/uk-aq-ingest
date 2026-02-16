@@ -139,7 +139,10 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
 
 ### uk_aq_egress_monitor
 - Purpose: Lightweight monitor endpoint that summarizes egress metrics and raises a warning when total MB over a lookback window exceeds a threshold.
-- Triggered by: Scheduled GitHub workflow `.github/workflows/uk_aq_egress_monitor.yml` (every 5 minutes) or manual invocation.
+- Triggered by:
+  - `.github/workflows/uk_aq_egress_monitor.yml` (main ingest Supabase project; every 5 minutes)
+  - `.github/workflows/uk_aq_history_egress_monitor.yml` (history Supabase project; every 5 minutes)
+  - Manual invocation.
 - Reads:
   - `uk_aq_public.uk_aq_endpoint_egress_metrics_minute`
 - Writes:

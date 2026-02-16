@@ -1,0 +1,30 @@
+name: UK-AQ History Egress Monitor
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+jobs:
+  egress-monitor-history:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger history egress monitor function
+        env:
+          HISTORY_SUPABASE_URL: ${{ vars.HISTORY_SUPABASE_URL }}
+          HISTORY_SERVICE_ROLE_KEY: ${{ secrets.HISTORY_SERVICE_ROLE_KEY }}
+          SB_UK_AQ_CRON_SECRET: ${{ secrets.SB_UK_AQ_CRON_SECRET }}
+        run: |
+          set -euo pipefail
+          if [ -z "${HISTORY_SUPABASE_URL:-}" ] || [ -z "${HISTORY_SERVICE_ROLE_KEY:-}" ]; then
+            echo "Missing HISTORY_SUPABASE_URL or HISTORY_SERVICE_ROLE_KEY." >&2
+            exit 1
+          fi
+          curl --silent --show-error --fail-with-body \
+            -X POST \
+            "${HISTORY_SUPABASE_URL%/}/functions/v1/uk_aq_egress_monitor?lookback_minutes=60&top_n=15" \
+            -H "Authorization: Bearer ${HISTORY_SERVICE_ROLE_KEY}" \
+            -H "apikey: ${HISTORY_SERVICE_ROLE_KEY}" \
+            -H "Content-Type: application/json" \
+            -H "X-Cron-Secret: ${SB_UK_AQ_CRON_SECRET:-}" \
+            -d '{}'

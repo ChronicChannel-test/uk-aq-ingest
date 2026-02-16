@@ -50,6 +50,22 @@ SB_ANON_JWT=...
 SB_UK_AQ_CRON_SECRET=...
 ```
 
+### `uk_aq_egress_monitor.yml`
+- Trigger: schedule every 5 minutes, or manual dispatch.
+- Purpose: trigger `uk_aq_egress_monitor` against the main ingest Supabase project and record top endpoint/caller egress totals.
+- Auth/config:
+  - `vars.SUPABASE_URL`
+  - `secrets.SB_ANON_JWT`
+  - optional `secrets.SB_UK_AQ_CRON_SECRET` header.
+
+### `uk_aq_history_egress_monitor.yml`
+- Trigger: schedule every 5 minutes, or manual dispatch.
+- Purpose: trigger `uk_aq_egress_monitor` against the history Supabase project for history-side endpoint/caller egress visibility.
+- Auth/config:
+  - `vars.HISTORY_SUPABASE_URL`
+  - `secrets.HISTORY_SERVICE_ROLE_KEY`
+  - optional `secrets.SB_UK_AQ_CRON_SECRET` header.
+
 ### `uk_aq_raw_dropbox.yml`
 - Trigger: manual dispatch.
 - Purpose: run a Bristol-only ingest with raw Dropbox upload for debugging/testing.
