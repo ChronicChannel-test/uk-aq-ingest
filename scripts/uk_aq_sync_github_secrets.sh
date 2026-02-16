@@ -12,14 +12,12 @@ Options:
   --repo <owner/name>            GitHub repo (default: current gh repo)
   --env-file <path>              Env file for per-secret key/value sync (default: .env)
   --supabase-env-file <path>     Env file to upload as SUPABASE_SECRETS_ENV (default: .env.supabase)
+  --targets-file <path>          CSV map of KEY -> target(secret|variable|both) (default: config/uk_aq_github_env_targets.csv)
   --dry-run                      Show what would be updated without changing secrets
   -h, --help                     Show help
 
 Notes:
-  - Each KEY=VALUE in --env-file and --supabase-env-file is uploaded as a secret named KEY.
-  - Selected keys are uploaded as GitHub Actions variables instead of secrets:
-    - OPENAQ_MIN_GAP_STATIONS
-    - OPENAQ_MIN_NON_GAP_STATIONS
+  - Routing is controlled by --targets-file. Unmapped keys default to secret.
   - The full contents of --supabase-env-file are also uploaded to SUPABASE_SECRETS_ENV.
   - For GCP_SA_KEY, if VALUE is a path to a local file, the file contents are uploaded.
 EOF
@@ -28,11 +26,14 @@ EOF
 REPO=""
 ENV_FILE=".env"
 SUPABASE_ENV_FILE=".env.supabase"
+TARGETS_FILE="config/uk_aq_github_env_targets.csv"
 DRY_RUN=0
 SEEN_FILE="$(mktemp)"
+TARGETS_CACHE_FILE="$(mktemp)"
 
 cleanup() {
   rm -f "${SEEN_FILE}"
+  rm -f "${TARGETS_CACHE_FILE}"
 }
 trap cleanup EXIT
 
@@ -48,6 +49,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --supabase-env-file)
       SUPABASE_ENV_FILE="${2:-}"
+      shift 2
+      ;;
+    --targets-file)
+      TARGETS_FILE="${2:-}"
       shift 2
       ;;
     --dry-run)
@@ -88,6 +93,66 @@ if [[ "${DRY_RUN}" -eq 0 ]]; then
   gh auth status >/dev/null
 fi
 
+load_targets_map() {
+  local file="$1"
+  if [[ ! -f "${file}" ]]; then
+    echo "Targets file not found: ${file}" >&2
+    exit 1
+  fi
+
+  python3 - "${file}" "${TARGETS_CACHE_FILE}" <<'PY'
+import csv
+import re
+import sys
+from pathlib import Path
+
+source = Path(sys.argv[1])
+output = Path(sys.argv[2])
+
+allowed_targets = {"secret", "variable", "both"}
+key_re = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+seen = {}
+
+with source.open("r", encoding="utf-8", newline="") as handle:
+    reader = csv.DictReader(handle)
+    if not reader.fieldnames:
+        raise SystemExit(f"Targets file is empty: {source}")
+    normalized = {name.strip().lower(): name for name in reader.fieldnames}
+    if "key" not in normalized or "target" not in normalized:
+        raise SystemExit(
+            f"Targets file must contain 'key' and 'target' columns: {source}"
+        )
+    key_col = normalized["key"]
+    target_col = normalized["target"]
+
+    for idx, row in enumerate(reader, start=2):
+        raw_key = (row.get(key_col) or "").strip()
+        raw_target = (row.get(target_col) or "").strip().lower()
+        if not raw_key:
+            continue
+        if not key_re.match(raw_key):
+            raise SystemExit(
+                f"Invalid key '{raw_key}' at {source}:{idx}. "
+                "Keys must match [A-Za-z_][A-Za-z0-9_]*."
+            )
+        if raw_target not in allowed_targets:
+            raise SystemExit(
+                f"Invalid target '{raw_target}' for key '{raw_key}' at {source}:{idx}. "
+                "Allowed: secret, variable, both."
+            )
+        previous = seen.get(raw_key)
+        if previous and previous != raw_target:
+            raise SystemExit(
+                f"Conflicting targets for key '{raw_key}': '{previous}' vs '{raw_target}'."
+            )
+        seen[raw_key] = raw_target
+
+with output.open("w", encoding="utf-8") as handle:
+    for key in sorted(seen):
+        handle.write(f"{key}\t{seen[key]}\n")
+PY
+}
+
 trim() {
   local value="$1"
   value="${value#"${value%%[![:space:]]*}"}"
@@ -118,16 +183,15 @@ set_variable() {
   fi
 }
 
-is_variable_key() {
+target_for_key() {
   local key="$1"
-  case "${key}" in
-    OPENAQ_MIN_GAP_STATIONS|OPENAQ_MIN_NON_GAP_STATIONS)
-      return 0
-      ;;
-    *)
-      return 1
-      ;;
-  esac
+  local target
+  target="$(awk -F $'\t' -v key="${key}" '$1 == key { print $2; exit }' "${TARGETS_CACHE_FILE}")"
+  if [[ -z "${target}" ]]; then
+    echo "secret"
+    return 0
+  fi
+  echo "${target}"
 }
 
 resolve_secret_value() {
@@ -186,7 +250,7 @@ sync_env_vars() {
   fi
 
   while IFS= read -r raw_line || [[ -n "${raw_line}" ]]; do
-    local line key value first_char last_char
+    local line key value first_char last_char target
     line="${raw_line%$'\r'}"
     line="$(trim "${line}")"
     [[ -z "${line}" ]] && continue
@@ -212,14 +276,27 @@ sync_env_vars() {
     fi
 
     value="$(resolve_secret_value "${key}" "${value}")"
-    if is_variable_key "${key}"; then
-      set_variable "${key}" "${value}"
-    else
-      set_secret "${key}" "${value}"
-    fi
+    target="$(target_for_key "${key}")"
+    case "${target}" in
+      secret)
+        set_secret "${key}" "${value}"
+        ;;
+      variable)
+        set_variable "${key}" "${value}"
+        ;;
+      both)
+        set_variable "${key}" "${value}"
+        set_secret "${key}" "${value}"
+        ;;
+      *)
+        echo "Invalid target '${target}' for key '${key}' from ${TARGETS_FILE}" >&2
+        exit 1
+        ;;
+    esac
   done < "${file}"
 }
 
+load_targets_map "${TARGETS_FILE}"
 sync_env_vars "${ENV_FILE}"
 sync_env_vars "${SUPABASE_ENV_FILE}"
 

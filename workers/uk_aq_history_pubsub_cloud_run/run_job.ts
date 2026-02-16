@@ -1,3 +1,5 @@
+import "../../supabase/functions/_shared/fetch_egress_patch.ts";
+
 import {
   buildHistorySyncReceipts,
   historyUpsertObservations,

@@ -1,3 +1,5 @@
+import "../../supabase/functions/_shared/fetch_egress_patch.ts";
+
 const CONNECTOR_CODE =
   (Deno.env.get("OPENAQ_CONNECTOR_CODE") || "openaq").trim();
 const OPENAQ_SERVICE_REF =

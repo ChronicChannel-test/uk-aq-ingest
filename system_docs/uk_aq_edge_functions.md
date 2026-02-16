@@ -27,12 +27,15 @@ egress overhead.
 Endpoint egress observability note: public read endpoints emit sampled egress
 metrics and persist them via RPCs defined in `supabase/uk_aq_egress_metrics.sql`
 (`uk_aq_record_endpoint_metric`, `uk_aq_cleanup_endpoint_metrics`).
-PostgREST egress capture note: all edge functions import
-`_shared/fetch_egress_patch.ts`, which instruments outgoing
+PostgREST egress capture note: all edge functions and Cloud Run worker entrypoints
+import `_shared/fetch_egress_patch.ts`, which instruments outgoing
 `/rest/v1/*` calls and records response size + duration metrics as
-`postgrest:<path>` endpoint rows via the same RPC. `2xx` capture is sampled
-(`UK_AQ_POSTGREST_EGRESS_CAPTURE_SAMPLE_RATE`, default `0.05`); `304`/`4xx`/`5xx`
+`postgrest:<path>` endpoint rows via the same RPC. `2xx` capture defaults to
+full capture (`UK_AQ_POSTGREST_EGRESS_CAPTURE_SAMPLE_RATE=1`); `304`/`4xx`/`5xx`
 remain always logged.
+Multi-project capture note: PostgREST capture supports multiple Supabase origins
+via `UK_AQ_POSTGREST_EGRESS_CAPTURE_URLS` (comma-separated) and automatically
+includes `SUPABASE_URL`/`SB_SUPABASE_URL` and `HISTORY_SUPABASE_URL` when set.
 Caller attribution note: PostgREST metric endpoints now include caller tags
 when available (`postgrest:<path>|caller=<function_name>`), and outgoing
 PostgREST requests from major edge functions set `x-ukaq-egress-caller` so
@@ -490,8 +493,9 @@ Optional:
 - `UK_AQ_EGRESS_METRICS_CLEANUP_MIN_INTERVAL_MS` (optional; defaults to `900000`; minimum interval between cleanup attempts)
 - `UK_AQ_EGRESS_METRICS_AGG_RETENTION_DAYS` (optional; defaults to `30`; minute aggregate retention)
 - `UK_AQ_EGRESS_METRICS_RAW_RETENTION_DAYS` (optional; defaults to `7`; raw `304`/error event retention)
-- `UK_AQ_POSTGREST_EGRESS_CAPTURE_ENABLED` (optional; defaults to `true`; enables `/rest/v1/*` fetch instrumentation in edge functions)
-- `UK_AQ_POSTGREST_EGRESS_CAPTURE_SAMPLE_RATE` (optional; defaults to `0.05`; sampling for captured PostgREST `2xx` fetch metrics)
+- `UK_AQ_POSTGREST_EGRESS_CAPTURE_ENABLED` (optional; defaults to `true`; enables `/rest/v1/*` fetch instrumentation in edge functions and Cloud Run workers that import the shared patch)
+- `UK_AQ_POSTGREST_EGRESS_CAPTURE_SAMPLE_RATE` (optional; defaults to `1`; sampling for captured PostgREST `2xx` fetch metrics)
+- `UK_AQ_POSTGREST_EGRESS_CAPTURE_URLS` (optional; comma-separated Supabase base URLs/origins to track in addition to `SUPABASE_URL` and `HISTORY_SUPABASE_URL`)
 - `UK_AQ_EGRESS_MONITOR_LOOKBACK_MINUTES` (optional; defaults to `60`; monitor lookback window)
 - `UK_AQ_EGRESS_MONITOR_TOP_N` (optional; defaults to `20`; monitor top endpoint count)
 - `UK_AQ_EGRESS_MONITOR_ALERT_MB` (optional; defaults to `250`; warning threshold for MB in lookback window)

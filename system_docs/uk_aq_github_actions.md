@@ -2,6 +2,12 @@
 
 This repo uses GitHub Actions for scheduled syncs and deployments.
 
+Env target routing for GitHub sync:
+- `scripts/uk_aq_sync_github_secrets.sh` uses `config/uk_aq_github_env_targets.csv`
+  to decide if a key syncs to GitHub `secret`, `variable`, or `both`.
+- Keep this mapping file updated whenever workflow references move between
+  `vars.KEY` and `secrets.KEY`.
+
 ## Workflows
 
 ### `supabase-keepalive.yml`
@@ -168,6 +174,16 @@ SB_UK_AQ_CRON_SECRET=...
   - `GCP_HISTORY_PUBSUB_TOPIC`, `HISTORY_PUBSUB_PUBLISH_BATCH_SIZE`
   - `GCP_SCOMM_JOB_SERVICE_ACCOUNT` (fallback runtime SA used for Pub/Sub publisher IAM binding if Cloud Run job describe does not return a service account)
   - Dropbox secrets (`DROPBOX_*`) and raw-upload allowlist env (`SCOMM_RAW_DROPBOX_ALLOWED_SUPABASE_URL` / `UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL`)
+
+### `uk_aq_validate_github_env_targets.yml`
+- Trigger: push/PR/manual when workflows, sync script, or env target map changes.
+- Purpose: enforce that `config/uk_aq_github_env_targets.csv` matches workflow
+  usage:
+  - `vars.KEY` only -> mapping must be `variable`
+  - `secrets.KEY` only -> mapping must be `secret`
+  - both references -> mapping must be `both`
+- Fails CI when a referenced key is missing from the mapping or mapped to the
+  wrong target.
 
 ### `uk_air_sos_site_register_monthly.yml`
 - Schedule: monthly on day 1 at 04:15 UTC.

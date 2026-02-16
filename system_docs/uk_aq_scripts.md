@@ -86,6 +86,25 @@ Notes:
   - Main/history REST root access with `SB_ANON_JWT`, `SUPABASE_SERVICE_ROLE_KEY`, and `HISTORY_SERVICE_ROLE_KEY`.
 - Secret values are masked in output.
 
+### `scripts/uk_aq_sync_github_secrets.sh`
+Purpose:
+- Sync local env files to GitHub Actions secrets/variables.
+- Route each key using `config/uk_aq_github_env_targets.csv` (`secret`, `variable`, or `both`).
+- Upload full `.env.supabase` content into the `SUPABASE_SECRETS_ENV` GitHub secret for edge deploy.
+
+Common commands:
+```bash
+scripts/uk_aq_sync_github_secrets.sh --dry-run
+scripts/uk_aq_sync_github_secrets.sh --repo owner/repo
+scripts/uk_aq_sync_github_secrets.sh --targets-file config/uk_aq_github_env_targets.csv
+```
+
+Notes:
+- Unmapped keys default to GitHub secret routing.
+- `GCP_SA_KEY` uploads file contents when the value points to a local path.
+- `SUPABASE_DB_URL` is normalized to avoid accidental double-encoding before sync.
+- Keep `config/uk_aq_github_env_targets.csv` aligned with workflow `vars.*` / `secrets.*` references.
+
 ### `scripts/uk_aq_export_connectors_snapshot.py`
 Purpose:
 - Export connector polling settings and station/timeseries counts to a CSV for spreadsheet review.

@@ -1,3 +1,5 @@
+import "../../supabase/functions/_shared/fetch_egress_patch.ts";
+
 const CONNECTOR_CODE =
   (Deno.env.get("UK_AIR_SOS_CONNECTOR_CODE") || "uk_air_sos").trim();
 const SCHEDULER_BACKEND_SUPABASE_FUNCTION = "supabase_function";
