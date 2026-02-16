@@ -6,6 +6,8 @@ ENV DENO_NET_ALLOW=
 WORKDIR /app
 
 COPY workers/uk_aq_history_pubsub_cloud_run/run_job.ts /app/workers/uk_aq_history_pubsub_cloud_run/run_job.ts
+COPY supabase/functions/_shared/fetch_egress_patch.ts /app/supabase/functions/_shared/fetch_egress_patch.ts
+COPY supabase/functions/_shared/egress_metrics.ts /app/supabase/functions/_shared/egress_metrics.ts
 COPY supabase/functions/_shared/history_client.ts /app/supabase/functions/_shared/history_client.ts
 
 RUN deno cache /app/workers/uk_aq_history_pubsub_cloud_run/run_job.ts

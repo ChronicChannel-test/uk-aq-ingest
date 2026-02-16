@@ -96,6 +96,10 @@ SB_UK_AQ_CRON_SECRET=...
 
 ### `uk_aq_history_outbox_cloud_run_deploy.yml`
 - Trigger: push to `main` affecting `workers/uk_aq_history_outbox_cloud_run/**`, or manual dispatch.
+- Also watches shared egress patch/runtime files:
+  - `supabase/functions/_shared/fetch_egress_patch.ts`
+  - `supabase/functions/_shared/egress_metrics.ts`
+  - `supabase/functions/_shared/history_client.ts`
 - Purpose: deploy the dedicated Cloud Run job that flushes history outbox on a 10-minute schedule.
 - Job: `workers/uk_aq_history_outbox_cloud_run`.
 - Runtime:
@@ -108,6 +112,10 @@ SB_UK_AQ_CRON_SECRET=...
 
 ### `uk_aq_history_pubsub_cloud_run_deploy.yml`
 - Trigger: push to `main` affecting `workers/uk_aq_history_pubsub_cloud_run/**`, or manual dispatch.
+- Also watches shared egress patch/runtime files:
+  - `supabase/functions/_shared/fetch_egress_patch.ts`
+  - `supabase/functions/_shared/egress_metrics.ts`
+  - `supabase/functions/_shared/history_client.ts`
 - Purpose: deploy the hourly Cloud Run job that drains history Pub/Sub messages and writes mixed-row batches to history DB.
 - Default job name: `uk-aq-history-pubsub-writer`.
 - Worker: `workers/uk_aq_history_pubsub_cloud_run`.

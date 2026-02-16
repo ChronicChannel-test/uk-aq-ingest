@@ -6,6 +6,8 @@ on:
       - main
     paths:
       - "workers/uk_aq_history_outbox_cloud_run/**"
+      - "supabase/functions/_shared/fetch_egress_patch.ts"
+      - "supabase/functions/_shared/egress_metrics.ts"
       - "supabase/functions/_shared/history_client.ts"
       - ".github/workflows/uk_aq_history_outbox_cloud_run_deploy.yml"
   workflow_dispatch:
