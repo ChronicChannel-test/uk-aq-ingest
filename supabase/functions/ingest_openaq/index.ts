@@ -12,6 +12,7 @@ type PollRequest = {
   station_refs?: string[];
   window_hours?: number;
   batch_size?: number;
+  tier1_retry_seconds?: number;
   dry_run?: boolean;
 };
 
@@ -158,10 +159,13 @@ const DEFAULT_MAX_RUNTIME_SECONDS = 120;
 const DEFAULT_RATE_LIMIT_RETRIES = 3;
 const DEFAULT_MAX_REQUESTS_PER_RUN = 56;
 const DEFAULT_STALE_LIMIT = 4;
+const DEFAULT_TIER1_RETRY_SECONDS = 300;
 const DEFAULT_RATE_LIMIT_STOP_THRESHOLD = 5;
 const DEFAULT_GAP_REQUESTS_REMAINING_MIN = 10;
 const DEFAULT_MIN_GAP_STATIONS = 1;
 const DEFAULT_MIN_NON_GAP_STATIONS = 10;
+type LagStat = "min" | "median" | "p25";
+const DEFAULT_LAG_STAT: LagStat = "min";
 const PROVIDER_SHORTNAMES: Record<string, string> = {
   "London Air Quality Network": "LAQN",
 };
@@ -211,6 +215,9 @@ const OPENAQ_MAX_REQUESTS_PER_RUN = Number(
 const OPENAQ_STALE_LIMIT = Number(
   Deno.env.get("OPENAQ_STALE_LIMIT") ?? DEFAULT_STALE_LIMIT,
 );
+const OPENAQ_TIER1_RETRY_SECONDS = Number(
+  Deno.env.get("OPENAQ_TIER1_RETRY_SECONDS") ?? DEFAULT_TIER1_RETRY_SECONDS,
+);
 const OPENAQ_RATE_LIMIT_STOP_THRESHOLD = Number(
   Deno.env.get("OPENAQ_RATE_LIMIT_STOP_THRESHOLD") ??
     DEFAULT_RATE_LIMIT_STOP_THRESHOLD,
@@ -226,6 +233,9 @@ const OPENAQ_MIN_GAP_STATIONS = Number(
 const OPENAQ_MIN_NON_GAP_STATIONS = Number(
   Deno.env.get("OPENAQ_MIN_NON_GAP_STATIONS") ??
     DEFAULT_MIN_NON_GAP_STATIONS,
+);
+const OPENAQ_LAG_STAT: LagStat = parseLagStat(
+  Deno.env.get("OPENAQ_LAG_STAT"),
 );
 const OPENAQ_DEBUG_STATION_ID = Number(
   Deno.env.get("CLEANAIRSURB_ST_ID") ?? 189841,
@@ -420,16 +430,33 @@ async function rpcRequest<T>(
 async function loadOpenaqStationRefs(
   batchLimit: number,
   staleLimit: number,
+  tier1RetrySeconds: number,
 ): Promise<Array<{ station_ref: string; station_id: number | null }>> {
-  const { data, error } = await rpcRequest<
+  let { data, error } = await rpcRequest<
     Array<{ station_ref: string; station_id: number | null }>
   >(
     "uk_aq_rpc_openaq_select_station_refs",
     {
       batch_limit: batchLimit,
       stale_limit: staleLimit,
+      tier1_retry_seconds: tier1RetrySeconds,
     },
   );
+  if (error) {
+    const fallback = await rpcRequest<
+      Array<{ station_ref: string; station_id: number | null }>
+    >(
+      "uk_aq_rpc_openaq_select_station_refs",
+      {
+        batch_limit: batchLimit,
+        stale_limit: staleLimit,
+      },
+    );
+    if (!fallback.error) {
+      data = fallback.data;
+      error = null;
+    }
+  }
   if (error) {
     throw new Error(`OpenAQ station selection failed: ${error.message}`);
   }
@@ -575,7 +602,9 @@ async function fetchOpenaqTimeseriesCheckpointDetails(
   if (!timeseriesIds.length) {
     return {};
   }
-  const rows = await fetchOpenaqTimeseriesCheckpointRows<OpenAQTimeseriesCheckpoint>(
+  const rows = await fetchOpenaqTimeseriesCheckpointRows<
+    OpenAQTimeseriesCheckpoint
+  >(
     "timeseries_id",
     timeseriesIds,
     "station_id,timeseries_id,next_due_at,last_observed_at,ingest_lag_samples",
@@ -946,7 +975,17 @@ function appendSample(
   return next;
 }
 
-function _medianSeconds(values: number[] | null): number | null {
+function parseLagStat(raw: string | undefined): LagStat {
+  const value = String(raw ?? "")
+    .trim()
+    .toLowerCase();
+  if (value === "median" || value === "p25" || value === "min") {
+    return value;
+  }
+  return DEFAULT_LAG_STAT;
+}
+
+function medianSeconds(values: number[] | null): number | null {
   if (!Array.isArray(values) || values.length === 0) {
     return null;
   }
@@ -962,6 +1001,35 @@ function _medianSeconds(values: number[] | null): number | null {
     return sorted[mid];
   }
   return Math.round((sorted[mid - 1] + sorted[mid]) / 2);
+}
+
+function percentileSeconds(
+  values: number[] | null,
+  percentile: number,
+): number | null {
+  if (
+    !Array.isArray(values) ||
+    values.length === 0 ||
+    !Number.isFinite(percentile)
+  ) {
+    return null;
+  }
+  const sorted = values
+    .filter((v) => Number.isFinite(v))
+    .map((v) => Math.max(0, Math.round(v)))
+    .sort((a, b) => a - b);
+  if (!sorted.length) {
+    return null;
+  }
+  const clamped = Math.min(1, Math.max(0, percentile));
+  const index = Math.max(
+    0,
+    Math.min(
+      sorted.length - 1,
+      Math.ceil(clamped * sorted.length) - 1,
+    ),
+  );
+  return sorted[index];
 }
 
 function minSeconds(values: number[] | null): number | null {
@@ -982,6 +1050,16 @@ function minSeconds(values: number[] | null): number | null {
     return null;
   }
   return minValue;
+}
+
+function lagSecondsByStat(values: number[] | null): number | null {
+  if (OPENAQ_LAG_STAT === "median") {
+    return medianSeconds(values);
+  }
+  if (OPENAQ_LAG_STAT === "p25") {
+    return percentileSeconds(values, 0.25);
+  }
+  return minSeconds(values);
 }
 
 const CRC_TABLE = (() => {
@@ -2152,6 +2230,10 @@ serve(async (req) => {
     DEFAULT_STALE_LIMIT,
     Math.max(0, maxRequestsPerRun),
   );
+  const tier1RetrySeconds = positiveInt(
+    Number(payload.tier1_retry_seconds ?? OPENAQ_TIER1_RETRY_SECONDS),
+    DEFAULT_TIER1_RETRY_SECONDS,
+  );
   const tieredLimit = Math.max(0, maxRequestsPerRun - staleLimit);
   const gapReserveMin = nonNegativeInt(
     OPENAQ_GAP_REQUESTS_REMAINING_MIN,
@@ -2314,6 +2396,7 @@ serve(async (req) => {
     max_requests_per_run: maxRequestsPerRun,
     tiered_limit: tieredLimit,
     stale_limit: staleLimit,
+    tier1_retry_seconds: tier1RetrySeconds,
     min_gap_stations: minGapStations,
     min_non_gap_stations: minNonGapStations,
     gap_requests_remaining_min: gapReserveMin,
@@ -2341,7 +2424,11 @@ serve(async (req) => {
 
   if (!stationRefs.length) {
     try {
-      selectedStations = await loadOpenaqStationRefs(tieredLimit, staleLimit);
+      selectedStations = await loadOpenaqStationRefs(
+        tieredLimit,
+        staleLimit,
+        tier1RetrySeconds,
+      );
       stationRefs = selectedStations.map((row) => row.station_ref);
       for (const row of selectedStations) {
         if (row.station_id !== null && Number.isFinite(row.station_id)) {
@@ -2360,6 +2447,7 @@ serve(async (req) => {
     rawRecorder?.recordEvent("selection", {
       tiered_limit: tieredLimit,
       stale_limit: staleLimit,
+      tier1_retry_seconds: tier1RetrySeconds,
       station_refs: stationRefs,
     });
     if (!stationRefs.length) {
@@ -2601,8 +2689,8 @@ serve(async (req) => {
     try {
       const timeseriesCheckpointMaps =
         await fetchOpenaqTimeseriesCheckpointSnapshots(
-        stationIds,
-      );
+          stationIds,
+        );
       timeseriesCheckpointById = timeseriesCheckpointMaps.byTimeseriesId;
       timeseriesCheckpointsByStationId = timeseriesCheckpointMaps.byStationId;
       logLine("INFO", "OpenAQ timeseries checkpoints fetched", {
@@ -2759,6 +2847,7 @@ serve(async (req) => {
       max_requests_per_run: requestBudgetState.maxPerRun,
       tiered_limit: tieredLimit,
       stale_limit: staleLimit,
+      tier1_retry_seconds: tier1RetrySeconds,
       gap_requests_remaining_min: requestBudgetState.gapReserveMin,
       gap_requests_planned: 0,
       gap_requests_executed: 0,
@@ -3486,7 +3575,7 @@ serve(async (req) => {
             minSeconds(observSamples) ?? 5 * 60,
             60 * 60,
           );
-          const lagSeconds = minSeconds(lagSamples) ?? 5 * 60;
+          const lagSeconds = lagSecondsByStat(lagSamples) ?? 5 * 60;
           const baseMs = Date.parse(latestObservedForNonGap);
           if (Number.isFinite(baseMs)) {
             nextDueAt = new Date(baseMs + (intervalSeconds + lagSeconds) * 1000)
@@ -3514,6 +3603,7 @@ serve(async (req) => {
       logLine("INFO", "OpenAQ station checkpoints upserted", {
         rows_prepared: checkpointRows.length,
         rows_upserted: rowsUpserted,
+        lag_stat: OPENAQ_LAG_STAT,
         station_observed_sample: stationObservedSample,
         gap_scheduling_sample: gapSchedulingSample,
       });
@@ -3636,7 +3726,7 @@ serve(async (req) => {
           if (lagSamples.length < 10) {
             nextDueAt = new Date(nowMsForLag + 5 * 60 * 1000).toISOString();
           } else {
-            const lagSeconds = minSeconds(lagSamples) ?? 5 * 60;
+            const lagSeconds = lagSecondsByStat(lagSamples) ?? 5 * 60;
             const baseMs = Date.parse(
               updatedLastObserved ?? latestObserved ?? "",
             );
@@ -3667,6 +3757,7 @@ serve(async (req) => {
           );
           logLine("INFO", "OpenAQ timeseries checkpoints upserted", {
             ...timeseriesCheckpointStats,
+            lag_stat: OPENAQ_LAG_STAT,
             rows_upserted: rowsUpserted,
           });
         } catch (err) {
@@ -3709,6 +3800,7 @@ serve(async (req) => {
     station_fetch_enabled: locationsFetched,
     stations_selected: stationsSelected,
     stations_polled: polledStationIds.size,
+    lag_stat: OPENAQ_LAG_STAT,
     gap_stations_total: gapStationIds.size,
     gap_stations_polled: gapStationsPolled,
     min_gap_stations: minGapStations,
@@ -3843,6 +3935,8 @@ serve(async (req) => {
     max_requests_per_run: requestBudgetState.maxPerRun,
     tiered_limit: tieredLimit,
     stale_limit: staleLimit,
+    lag_stat: OPENAQ_LAG_STAT,
+    tier1_retry_seconds: tier1RetrySeconds,
     gap_requests_remaining_min: requestBudgetState.gapReserveMin,
     gap_requests_planned: requestBudgetState.gapPlannedRequests,
     gap_requests_executed: requestBudgetState.gapExecutedRequests,

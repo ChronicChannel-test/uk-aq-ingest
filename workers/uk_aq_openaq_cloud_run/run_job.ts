@@ -1,7 +1,7 @@
 import "../../supabase/functions/_shared/fetch_egress_patch.ts";
 
-const CONNECTOR_CODE =
-  (Deno.env.get("OPENAQ_CONNECTOR_CODE") || "openaq").trim();
+const CONNECTOR_CODE = (Deno.env.get("OPENAQ_CONNECTOR_CODE") || "openaq")
+  .trim();
 const OPENAQ_SERVICE_REF =
   (Deno.env.get("OPENAQ_SERVICE_REF") || CONNECTOR_CODE).trim();
 const SCHEDULER_BACKEND_SUPABASE_FUNCTION = "supabase_function";
@@ -27,6 +27,10 @@ const DEFAULT_STALE_LIMIT = parsePositiveInt(
   Deno.env.get("OPENAQ_STALE_LIMIT"),
   4,
 );
+const DEFAULT_TIER1_RETRY_SECONDS = parsePositiveInt(
+  Deno.env.get("OPENAQ_TIER1_RETRY_SECONDS"),
+  300,
+);
 const PORT = parsePositiveInt(
   Deno.env.get("OPENAQ_LOCAL_PORT") || Deno.env.get("PORT"),
   8000,
@@ -43,6 +47,14 @@ const OPENAQ_TASKS_ENABLED = parseBool(
 const OPENAQ_NEXT_CHECK_MIN_SECONDS = parsePositiveInt(
   Deno.env.get("OPENAQ_NEXT_CHECK_MIN_SECONDS"),
   60,
+);
+const OPENAQ_NEXT_CHECK_PARTIAL_MIN_SECONDS = parsePositiveInt(
+  Deno.env.get("OPENAQ_NEXT_CHECK_PARTIAL_MIN_SECONDS"),
+  OPENAQ_NEXT_CHECK_MIN_SECONDS,
+);
+const OPENAQ_NEXT_CHECK_SKIPPED_MIN_SECONDS = parsePositiveInt(
+  Deno.env.get("OPENAQ_NEXT_CHECK_SKIPPED_MIN_SECONDS"),
+  OPENAQ_NEXT_CHECK_MIN_SECONDS,
 );
 const OPENAQ_FAILURE_RETRY_SECONDS = parsePositiveInt(
   Deno.env.get("OPENAQ_FAILURE_RETRY_SECONDS"),
@@ -315,19 +327,41 @@ async function postgrestRequest(
 async function loadStationRefs(params: {
   tieredLimit: number;
   staleLimit: number;
+  tier1RetrySeconds: number;
 }): Promise<Array<{ station_ref: string; station_id: number | null }>> {
-  const body = {
+  const bodyWithTier1 = {
+    batch_limit: Math.max(0, Math.trunc(params.tieredLimit)),
+    stale_limit: Math.max(0, Math.trunc(params.staleLimit)),
+    tier1_retry_seconds: Math.max(0, Math.trunc(params.tier1RetrySeconds)),
+  };
+  const bodyLegacy = {
     batch_limit: Math.max(0, Math.trunc(params.tieredLimit)),
     stale_limit: Math.max(0, Math.trunc(params.staleLimit)),
   };
-  const response = await postgrestRequest(
+  let response = await postgrestRequest(
     "POST",
     "rpc/uk_aq_rpc_openaq_select_station_refs",
     {
       schema: "uk_aq_public",
-      body,
+      body: bodyWithTier1,
     },
   );
+  if (!response.ok) {
+    const fallback = await postgrestRequest(
+      "POST",
+      "rpc/uk_aq_rpc_openaq_select_station_refs",
+      {
+        schema: "uk_aq_public",
+        body: bodyLegacy,
+      },
+    );
+    if (fallback.ok) {
+      response = fallback;
+      console.warn(
+        "OpenAQ station selection fallback to legacy RPC signature (missing tier1_retry_seconds parameter).",
+      );
+    }
+  }
   if (!response.ok) {
     throw new Error(
       `Failed to load OpenAQ station refs (${response.status}): ${response.text}`,
@@ -352,14 +386,17 @@ async function loadStationRefs(params: {
     );
 }
 
-async function loadEarliestNextDueAt(connectorId: number): Promise<string | null> {
+async function loadEarliestNextDueAt(
+  connectorId: number,
+): Promise<string | null> {
   const primary = await postgrestRequest(
     "GET",
     "openaq_station_checkpoints",
     {
       schema: UK_AQ_RAW_SCHEMA,
       query: {
-        select: "next_due_at,station_id,stations!inner(connector_id,service_ref,removed_at)",
+        select:
+          "next_due_at,station_id,stations!inner(connector_id,service_ref,removed_at)",
         "stations.connector_id": `eq.${connectorId}`,
         "stations.service_ref": `eq.${OPENAQ_SERVICE_REF}`,
         "stations.removed_at": "is.null",
@@ -408,6 +445,7 @@ async function buildIngestPayload(
   windowHours: number;
   staleLimit: number;
   tieredLimit: number;
+  tier1RetrySeconds: number;
   stationRows: Array<{ station_ref: string; station_id: number | null }>;
 }> {
   const payload: Record<string, unknown> = {
@@ -417,18 +455,23 @@ async function buildIngestPayload(
     CONNECTOR_CODE;
   const windowHours = getWindowHours(connector);
   const batchLimit = getBatchLimit(connector);
-  const staleLimitConfigured =
-    toPositiveIntegerOrNull(payload.stale_limit) ?? DEFAULT_STALE_LIMIT;
+  const staleLimitConfigured = toPositiveIntegerOrNull(payload.stale_limit) ??
+    DEFAULT_STALE_LIMIT;
   const staleLimit = Math.min(staleLimitConfigured, Math.max(0, batchLimit));
   const tieredLimit = Math.max(0, batchLimit - staleLimit);
+  const tier1RetrySeconds =
+    toPositiveIntegerOrNull(payload.tier1_retry_seconds) ??
+      DEFAULT_TIER1_RETRY_SECONDS;
   const stationRows = await loadStationRefs({
     tieredLimit,
     staleLimit,
+    tier1RetrySeconds,
   });
 
   payload.connector_code = connectorCode;
   payload.window_hours = windowHours;
   payload.batch_size = batchLimit;
+  payload.tier1_retry_seconds = tier1RetrySeconds;
   payload.station_refs = stationRows.map((row) => row.station_ref);
 
   return {
@@ -437,6 +480,7 @@ async function buildIngestPayload(
     windowHours,
     staleLimit,
     tieredLimit,
+    tier1RetrySeconds,
     stationRows,
   };
 }
@@ -465,8 +509,9 @@ function deriveRunSummary(ingestResponse: IngestResponse): {
   }
 
   const partial = payload?.partial === true;
-  const stoppedReason = toStringOrNull(payload?.stopped_reason)?.toLowerCase() ??
-    null;
+  const stoppedReason =
+    toStringOrNull(payload?.stopped_reason)?.toLowerCase() ??
+      null;
   const rateLimitStopReason = toStringOrNull(payload?.rate_limit_stop_reason)
     ?.toLowerCase() ?? null;
   const rateLimitStop = payload?.rate_limit_stop === true ||
@@ -490,7 +535,9 @@ function deriveRunSummary(ingestResponse: IngestResponse): {
     stoppedReason === "request_budget_limited" ||
     stoppedReason === "max_requests_per_run";
 
-  if (partial || stoppedReason !== null || rateLimitStop || requestBudgetLimited) {
+  if (
+    partial || stoppedReason !== null || rateLimitStop || requestBudgetLimited
+  ) {
     const reason = stoppedReason ||
       (rateLimitStop ? (rateLimitStopReason || "rate_limit_guard") : null) ||
       (requestBudgetLimited ? "request_budget_limited" : null) ||
@@ -520,6 +567,7 @@ const STORED_RESPONSE_PAYLOAD_KEYS = [
   "rate_limit_reset_at",
   "requests_total",
   "max_requests_per_run",
+  "lag_stat",
   "gap_requests_remaining_min",
   "gap_requests_planned",
   "gap_requests_executed",
@@ -852,12 +900,17 @@ function computeNextCheckTime(
   now: Date,
   earliestNextDueAt: string | null,
   rateLimitResetAt: string | null,
+  runStatus: string,
   failure: boolean,
 ): Date {
-  if (failure) {
-    return new Date(now.getTime() + OPENAQ_FAILURE_RETRY_SECONDS * 1000);
-  }
-  const minDelayMs = OPENAQ_NEXT_CHECK_MIN_SECONDS * 1000;
+  const minDelaySeconds = failure
+    ? OPENAQ_FAILURE_RETRY_SECONDS
+    : runStatus === "partial"
+    ? OPENAQ_NEXT_CHECK_PARTIAL_MIN_SECONDS
+    : runStatus === "skipped"
+    ? OPENAQ_NEXT_CHECK_SKIPPED_MIN_SECONDS
+    : OPENAQ_NEXT_CHECK_MIN_SECONDS;
+  const minDelayMs = minDelaySeconds * 1000;
   let notBeforeMs = now.getTime() + minDelayMs;
   if (rateLimitResetAt) {
     const resetMs = Date.parse(rateLimitResetAt);
@@ -898,7 +951,8 @@ async function enqueueSelfRunTask(
     `https://cloudtasks.googleapis.com/v2/projects/${OPENAQ_GCP_PROJECT_ID}/locations/${OPENAQ_GCP_REGION}/queues/${OPENAQ_TASK_QUEUE_ID}/tasks`;
 
   const taskMinuteBucket = Math.floor(scheduleAt.getTime() / 60_000);
-  const taskId = `${OPENAQ_TASK_NAME_PREFIX}-${CONNECTOR_CODE}-${taskMinuteBucket}`;
+  const taskId =
+    `${OPENAQ_TASK_NAME_PREFIX}-${CONNECTOR_CODE}-${taskMinuteBucket}`;
   const taskName = buildTaskResourceName(taskId);
   const token = await fetchGoogleAccessToken();
 
@@ -954,6 +1008,7 @@ async function enqueueSelfRunTask(
 async function scheduleNextCheck(
   connectorId: number,
   reason: string,
+  runStatus: string,
   failure: boolean,
   rateLimitResetAt: string | null,
 ): Promise<void> {
@@ -974,12 +1029,15 @@ async function scheduleNextCheck(
     now,
     earliestNextDueAt,
     rateLimitResetAt,
+    runStatus,
     failure,
   );
   await enqueueSelfRunTask(scheduleAt, reason);
 }
 
-function deriveRateLimitResetAt(payload: Record<string, unknown> | null): string | null {
+function deriveRateLimitResetAt(
+  payload: Record<string, unknown> | null,
+): string | null {
   if (!payload) {
     return null;
   }
@@ -1077,13 +1135,20 @@ async function main(): Promise<void> {
   const payloadPlan = await buildIngestPayload(connector);
   if (!payloadPlan.stationRows.length) {
     await recordSkippedRun(connectorId, runStartedAtIso, "no_station_refs");
-    await scheduleNextCheck(connectorId, "no_station_refs", false, null);
+    await scheduleNextCheck(
+      connectorId,
+      "no_station_refs",
+      "skipped",
+      false,
+      null,
+    );
     logSummary("skipped", {
       reason: "no_station_refs",
       connector_id: connectorId,
       batch_limit: payloadPlan.batchLimit,
       tiered_limit: payloadPlan.tieredLimit,
       stale_limit: payloadPlan.staleLimit,
+      tier1_retry_seconds: payloadPlan.tier1RetrySeconds,
     });
     return;
   }
@@ -1093,6 +1158,7 @@ async function main(): Promise<void> {
     batch_limit: payloadPlan.batchLimit,
     tiered_limit: payloadPlan.tieredLimit,
     stale_limit: payloadPlan.staleLimit,
+    tier1_retry_seconds: payloadPlan.tier1RetrySeconds,
     window_hours: payloadPlan.windowHours,
     station_refs_count: payloadPlan.stationRows.length,
   });
@@ -1163,15 +1229,21 @@ async function main(): Promise<void> {
       response_status: ingestResponse.status,
       connector_id: connectorId,
       stations_selected: payloadPlan.stationRows.length,
-      observations_upserted: toIntegerOrNull(summary.payload?.observations_upserted),
-      observations_rows_input: toIntegerOrNull(summary.payload?.observations_rows_input),
+      observations_upserted: toIntegerOrNull(
+        summary.payload?.observations_upserted,
+      ),
+      observations_rows_input: toIntegerOrNull(
+        summary.payload?.observations_rows_input,
+      ),
       observations_rows_prepared: toIntegerOrNull(
         summary.payload?.observations_rows_prepared,
       ),
       observations_rows_deduped_prewrite: toIntegerOrNull(
         summary.payload?.observations_rows_deduped_prewrite,
       ),
-      history_rows_prepared: toIntegerOrNull(summary.payload?.history_rows_prepared),
+      history_rows_prepared: toIntegerOrNull(
+        summary.payload?.history_rows_prepared,
+      ),
       history_rows_deduped_prewrite: toIntegerOrNull(
         summary.payload?.history_rows_deduped_prewrite,
       ),
@@ -1198,6 +1270,7 @@ async function main(): Promise<void> {
       await scheduleNextCheck(
         connectorId,
         runFailed ? "failed_retry" : runStatus,
+        runStatus,
         runFailed,
         rateLimitResetAt,
       );

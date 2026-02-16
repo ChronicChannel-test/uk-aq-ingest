@@ -160,6 +160,63 @@ trim() {
   printf '%s' "${value}"
 }
 
+strip_inline_comment() {
+  local input="$1"
+  local output=""
+  local i ch prev_char
+  local in_single=0
+  local in_double=0
+  local escaped=0
+
+  for ((i=0; i<${#input}; i++)); do
+    ch="${input:i:1}"
+
+    if (( in_single )); then
+      [[ "${ch}" == "'" ]] && in_single=0
+      output+="${ch}"
+      continue
+    fi
+
+    if (( in_double )); then
+      if (( escaped )); then
+        escaped=0
+      elif [[ "${ch}" == "\\" ]]; then
+        escaped=1
+      elif [[ "${ch}" == '"' ]]; then
+        in_double=0
+      fi
+      output+="${ch}"
+      continue
+    fi
+
+    if [[ "${ch}" == "'" ]]; then
+      in_single=1
+      output+="${ch}"
+      continue
+    fi
+
+    if [[ "${ch}" == '"' ]]; then
+      in_double=1
+      output+="${ch}"
+      continue
+    fi
+
+    if [[ "${ch}" == "#" ]]; then
+      prev_char=""
+      if (( i > 0 )); then
+        prev_char="${input:i-1:1}"
+      fi
+      if [[ -z "${prev_char}" || "${prev_char}" =~ [[:space:]] ]]; then
+        break
+      fi
+    fi
+
+    output+="${ch}"
+  done
+
+  trim "${output}"
+}
+
 set_secret() {
   local name="$1"
   local value="$2"
@@ -260,7 +317,7 @@ sync_env_vars() {
 
     key="$(trim "${line%%=*}")"
     value="${line#*=}"
-    value="$(trim "${value}")"
+    value="$(strip_inline_comment "${value}")"
 
     if [[ ! "${key}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
       echo "skip invalid key in ${file}: ${key}" >&2
@@ -320,7 +377,7 @@ build_filtered_supabase_env_payload() {
 
     key="$(trim "${line%%=*}")"
     value="${line#*=}"
-    value="$(trim "${value}")"
+    value="$(strip_inline_comment "${value}")"
 
     if [[ ! "${key}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
       continue

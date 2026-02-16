@@ -67,6 +67,7 @@ gcloud run jobs update uk-aq-openaq-ingest \
 - `OPENAQ_DEFAULT_WINDOW_HOURS` (default `6`)
 - `OPENAQ_DEFAULT_BATCH_LIMIT` (default `56`)
 - `OPENAQ_STALE_LIMIT` (default `4`)
+- `OPENAQ_TIER1_RETRY_SECONDS` (default `300`; minimum seconds since `last_polled_at` for tier1 due candidates)
 - `OPENAQ_MIN_GAP_STATIONS` (default `1`; minimum selected gap stations needed to run regardless of non-gap count)
 - `OPENAQ_MIN_NON_GAP_STATIONS` (default `10`; skip when no gap stations and non-gap selected stations are below this threshold)
 - `OPENAQ_IN_FLIGHT_TIMEOUT_MINUTES` (default `30`)
@@ -74,7 +75,10 @@ gcloud run jobs update uk-aq-openaq-ingest \
 - `OPENAQ_REQUEST_PAYLOAD` (JSON object overrides)
 - `OPENAQ_TASKS_ENABLED` (default `true`)
 - `OPENAQ_NEXT_CHECK_MIN_SECONDS` (default `60`)
+- `OPENAQ_NEXT_CHECK_PARTIAL_MIN_SECONDS` (default `60`; minimum delay floor when run result is `partial`)
+- `OPENAQ_NEXT_CHECK_SKIPPED_MIN_SECONDS` (default `60`; minimum delay floor when run result is `skipped`)
 - `OPENAQ_FAILURE_RETRY_SECONDS` (default `120`)
+- `OPENAQ_LAG_STAT` (default `min`; options: `min`, `median`, `p25` for non-gap checkpoint lag scheduling)
 - `OPENAQ_GCP_PROJECT_ID`, `OPENAQ_GCP_REGION`
 - `OPENAQ_CLOUD_RUN_JOB_NAME` (default `uk-aq-openaq-ingest`)
 - `OPENAQ_TASK_QUEUE_ID` (default `uk-aq-openaq-trigger-queue`)

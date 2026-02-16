@@ -493,7 +493,8 @@ $$;
 
 create or replace function uk_aq_core.openaq_select_station_refs(
   batch_limit integer default 52,
-  stale_limit integer default 4
+  stale_limit integer default 4,
+  tier1_retry_seconds integer default 300
 )
 returns text[]
 language plpgsql
@@ -554,7 +555,10 @@ begin
     from candidates
     where due_at <= now()
       and due_at >= now() - interval '6 hours'
-      and (last_polled_at is null or last_polled_at <= now() - interval '5 minutes')
+      and (
+        last_polled_at is null or
+        last_polled_at <= now() - make_interval(secs => greatest(0, tier1_retry_seconds))
+      )
     order by last_polled_at asc nulls first, due_at asc
     limit batch_limit
   ),

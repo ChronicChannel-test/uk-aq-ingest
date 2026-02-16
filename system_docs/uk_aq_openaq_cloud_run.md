@@ -43,6 +43,10 @@ Each run reads earliest `uk_aq_raw.openaq_station_checkpoints.next_due_at` and e
 If no due checkpoint is available, worker schedules a short fallback recheck.
 When OpenAQ signals rate-limit stop/reset, the worker schedules no earlier than
 the reported reset time.
+Delay floors are outcome-aware:
+- `OPENAQ_NEXT_CHECK_MIN_SECONDS` for succeeded runs.
+- `OPENAQ_NEXT_CHECK_PARTIAL_MIN_SECONDS` for partial runs.
+- `OPENAQ_NEXT_CHECK_SKIPPED_MIN_SECONDS` for skipped runs.
 
 ## Required Config
 
@@ -57,6 +61,11 @@ the reported reset time.
 - `GCP_OPENAQ_SCHEDULER_SERVICE_ACCOUNT` (defaults to job service account if unset)
 - `OPENAQ_MIN_GAP_STATIONS` (default `1`)
 - `OPENAQ_MIN_NON_GAP_STATIONS` (default `10`)
+- `OPENAQ_TIER1_RETRY_SECONDS` (default `300`; tier1 re-poll guard for station selection)
+- `OPENAQ_NEXT_CHECK_MIN_SECONDS` (default `60`)
+- `OPENAQ_NEXT_CHECK_PARTIAL_MIN_SECONDS` (default `60`)
+- `OPENAQ_NEXT_CHECK_SKIPPED_MIN_SECONDS` (default `60`)
+- `OPENAQ_LAG_STAT` (default `min`; options `min|median|p25` for OpenAQ lag samples)
 - `OPENAQ_HISTORY_WRITE_MODE` (default in workflow: `pubsub_only`)
 - `GCP_HISTORY_PUBSUB_TOPIC` (default `uk-aq-history-observations`)
 - `HISTORY_PUBSUB_PUBLISH_BATCH_SIZE` (default `500`)
