@@ -89,8 +89,8 @@ Notes:
 ### `scripts/uk_aq_sync_github_secrets.sh`
 Purpose:
 - Sync local env files to GitHub Actions secrets/variables.
-- Route each key using `config/uk_aq_github_env_targets.csv` (`secret`, `variable`, or `both`).
-- Upload full `.env.supabase` content into the `SUPABASE_SECRETS_ENV` GitHub secret for edge deploy.
+- Route each key using `config/uk_aq_github_env_targets.csv` (`secret`, `variable`, `both`, or `local`).
+- Upload non-local keys from `.env.supabase` into the `SUPABASE_SECRETS_ENV` GitHub secret for edge deploy.
 
 Common commands:
 ```bash
@@ -100,10 +100,78 @@ scripts/uk_aq_sync_github_secrets.sh --targets-file config/uk_aq_github_env_targ
 ```
 
 Notes:
-- Unmapped keys default to GitHub secret routing.
+- Unmapped keys default to `local` (not synced to GitHub).
 - `GCP_SA_KEY` uploads file contents when the value points to a local path.
 - `SUPABASE_DB_URL` is normalized to avoid accidental double-encoding before sync.
+- `--dry-run` prints key names and value lengths (not raw values).
+- `SUPABASE_SECRETS_ENV` includes only non-local keys from the Supabase env file.
+- Any `SUPABASE_SECRETS_ENV=...` line in env files is ignored; the value is always rebuilt by the script.
 - Keep `config/uk_aq_github_env_targets.csv` aligned with workflow `vars.*` / `secrets.*` references.
+
+### `scripts/gcp/uk_aq_secret_upsert_if_changed.sh`
+Purpose:
+- Upsert one GCP Secret Manager secret from stdin.
+- Add a new secret version only when the value hash changed.
+- Store a content-hash label on the secret to support safe no-plaintext comparisons.
+
+Common commands:
+```bash
+printf '%s' "$SUPABASE_SERVICE_ROLE_KEY" | \
+  scripts/gcp/uk_aq_secret_upsert_if_changed.sh \
+    --project "$GCP_PROJECT_ID" \
+    --secret "SUPABASE_SERVICE_ROLE_KEY" \
+    --required 1
+
+printf '%s' "$OPENAQ_API_KEY" | \
+  scripts/gcp/uk_aq_secret_upsert_if_changed.sh \
+    --project "$GCP_PROJECT_ID" \
+    --secret "OPENAQ_API_KEY" \
+    --required 1 \
+    --dry-run
+```
+
+Notes:
+- Does not fetch secret plaintext from Secret Manager.
+- `--dry-run` prints planned create/update/skip actions.
+
+### `scripts/gcp/uk_aq_secret_manager_prune_versions.sh`
+Purpose:
+- Reduce Secret Manager version storage by destroying older versions per secret.
+- Keep the newest `N` versions (`N=1` for current cost-control policy).
+
+Common commands:
+```bash
+scripts/gcp/uk_aq_secret_manager_prune_versions.sh \
+  --project "$GCP_PROJECT_ID" \
+  --keep 1 \
+  --dry-run
+
+scripts/gcp/uk_aq_secret_manager_prune_versions.sh \
+  --project "$GCP_PROJECT_ID" \
+  --keep 1
+```
+
+Notes:
+- Works across all secrets by default, or one secret via repeated `--secret`.
+- `--dry-run` prints planned destroys without changing versions.
+
+### `scripts/gcp_billing_export_check.sh`
+Purpose:
+- Check whether Cloud Billing export to BigQuery is enabled and producing billing export tables.
+- Confirm whether export table schema includes a `labels` field for label-based cost analysis.
+
+Common commands:
+```bash
+BILLING_EXPORT_PROJECT=my-billing-proj BILLING_EXPORT_DATASET=billing_export \
+  ./scripts/gcp_billing_export_check.sh
+
+./scripts/gcp_billing_export_check.sh --project my-billing-proj --dataset billing_export
+```
+
+Notes:
+- Reports `PASS` only when billing export tables are present.
+- If a dataset exists but no export tables are present yet, reports `FAIL` with a startup-delay warning.
+- Console path to enable export: `Billing -> Billing export -> BigQuery export`.
 
 ### `scripts/uk_aq_export_connectors_snapshot.py`
 Purpose:

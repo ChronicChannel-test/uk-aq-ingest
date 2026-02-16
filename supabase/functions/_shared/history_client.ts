@@ -124,7 +124,6 @@ const GCP_PROJECT_ID = (
 
 const GCP_HISTORY_PUBSUB_TOPIC = (
   Deno.env.get("GCP_HISTORY_PUBSUB_TOPIC") ??
-    Deno.env.get("HISTORY_PUBSUB_TOPIC") ??
     ""
 ).trim();
 

@@ -4,9 +4,23 @@ This repo uses GitHub Actions for scheduled syncs and deployments.
 
 Env target routing for GitHub sync:
 - `scripts/uk_aq_sync_github_secrets.sh` uses `config/uk_aq_github_env_targets.csv`
-  to decide if a key syncs to GitHub `secret`, `variable`, or `both`.
+  to decide if a key syncs to GitHub `secret`, `variable`, `both`, or `local`.
 - Keep this mapping file updated whenever workflow references move between
   `vars.KEY` and `secrets.KEY`.
+- Unmapped keys default to `local` and are not synced to GitHub.
+- Cloud Run deploy workflows use vars-first with secret fallback for non-sensitive
+  config (`vars.KEY || secrets.KEY`) so migration from Secrets to Variables is
+  non-breaking.
+
+Cloud Run deploy idempotency:
+- `scripts/gcp/uk_aq_secret_upsert_if_changed.sh` only creates a new secret
+  version when content changes.
+- Deploy workflows diff the current Cloud Run job before update and skip
+  `gcloud run jobs update` when image/env/secret/label config is unchanged.
+- Deploy updates use `--set-secrets` to replace secret bindings, which removes
+  stale bindings from prior revisions.
+- Deploy updates apply `--update-labels "job_name=<job>"` and verify the
+  deployed job label after each run.
 
 ## Workflows
 

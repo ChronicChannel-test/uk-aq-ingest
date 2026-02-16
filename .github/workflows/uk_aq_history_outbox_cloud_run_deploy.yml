@@ -9,6 +9,7 @@ on:
       - "supabase/functions/_shared/fetch_egress_patch.ts"
       - "supabase/functions/_shared/egress_metrics.ts"
       - "supabase/functions/_shared/history_client.ts"
+      - "scripts/gcp/**"
       - ".github/workflows/uk_aq_history_outbox_cloud_run_deploy.yml"
   workflow_dispatch:
 
@@ -19,11 +20,11 @@ jobs:
       contents: read
       id-token: write
     env:
-      PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+      PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
       REGION: ${{ vars.GCP_REGION || 'europe-west2' }}
       REPO: ${{ vars.GCP_ARTIFACT_REPO || 'uk-aq' }}
       JOB_NAME: ${{ vars.GCP_HISTORY_OUTBOX_JOB_NAME || 'uk-aq-history-outbox-flush' }}
-      JOB_SERVICE_ACCOUNT: ${{ vars.GCP_HISTORY_OUTBOX_JOB_SERVICE_ACCOUNT || secrets.GCP_HISTORY_OUTBOX_JOB_SERVICE_ACCOUNT || '' }}
+      JOB_SERVICE_ACCOUNT: ${{ vars.GCP_HISTORY_OUTBOX_JOB_SERVICE_ACCOUNT || '' }}
       JOB_TIMEOUT_SECONDS: ${{ vars.GCP_HISTORY_OUTBOX_JOB_TIMEOUT_SECONDS || '600' }}
       JOB_MAX_RETRIES: ${{ vars.GCP_HISTORY_OUTBOX_JOB_MAX_RETRIES || '0' }}
       SCHEDULER_ENABLED: ${{ vars.GCP_HISTORY_OUTBOX_SCHEDULER_ENABLED || 'true' }}
@@ -32,8 +33,8 @@ jobs:
       SCHEDULER_TIMEZONE: ${{ vars.GCP_HISTORY_OUTBOX_SCHEDULER_TIMEZONE || 'Etc/UTC' }}
       SCHEDULER_MAX_RETRY_ATTEMPTS: ${{ vars.GCP_HISTORY_OUTBOX_SCHEDULER_MAX_RETRY_ATTEMPTS || '0' }}
       SCHEDULER_SERVICE_ACCOUNT: ${{ vars.GCP_HISTORY_OUTBOX_SCHEDULER_SERVICE_ACCOUNT || '' }}
-      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-      HISTORY_SUPABASE_URL: ${{ secrets.HISTORY_SUPABASE_URL }}
+      SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+      HISTORY_SUPABASE_URL: ${{ vars.HISTORY_SUPABASE_URL }}
       UK_AQ_PUBLIC_SCHEMA: ${{ vars.UK_AQ_PUBLIC_SCHEMA || 'uk_aq_public' }}
       HISTORY_SCHEMA: ${{ vars.HISTORY_SCHEMA || 'uk_aq_public' }}
       HISTORY_UPSERT_RPC: ${{ vars.HISTORY_UPSERT_RPC || 'uk_aq_rpc_history_observations_upsert' }}
@@ -48,8 +49,8 @@ jobs:
       HISTORY_SERVICE_ROLE_KEY: ${{ secrets.HISTORY_SERVICE_ROLE_KEY }}
       SUPABASE_SERVICE_ROLE_KEY_SECRET_NAME: ${{ vars.SUPABASE_SERVICE_ROLE_KEY_SECRET_NAME || 'SUPABASE_SERVICE_ROLE_KEY' }}
       HISTORY_SERVICE_ROLE_KEY_SECRET_NAME: ${{ vars.HISTORY_SERVICE_ROLE_KEY_SECRET_NAME || 'HISTORY_SERVICE_ROLE_KEY' }}
-      GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-      GCP_SERVICE_ACCOUNT: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+      GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+      GCP_SERVICE_ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT }}
       GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
     steps:
       - name: Checkout
@@ -63,7 +64,7 @@ jobs:
           fi
           if [ -z "${JOB_SERVICE_ACCOUNT:-}" ]; then
             echo "Missing required service account setting."
-            echo "Set either repo variable or repo secret: GCP_HISTORY_OUTBOX_JOB_SERVICE_ACCOUNT"
+            echo "Set repo variable: GCP_HISTORY_OUTBOX_JOB_SERVICE_ACCOUNT"
             exit 1
           fi
           if [[ "${JOB_SERVICE_ACCOUNT}" == *"-compute@developer.gserviceaccount.com" ]]; then
@@ -151,6 +152,7 @@ jobs:
       - name: Sync GitHub secrets to GCP Secret Manager
         run: |
           set -euo pipefail
+          UPSERT_SCRIPT="scripts/gcp/uk_aq_secret_upsert_if_changed.sh"
 
           upsert_secret() {
             local secret_name="$1"
@@ -165,24 +167,15 @@ jobs:
               return 0
             fi
 
-            if [ -z "${secret_value}" ]; then
-              if [ "${required}" = "1" ]; then
-                echo "Missing required secret value for ${secret_name} in GitHub Secrets."
-                exit 1
-              fi
+            if [ -z "${secret_value}" ] && [ "${required}" = "0" ]; then
+              echo "Skipping optional secret ${secret_name} (no GitHub secret/variable value)."
               return 0
             fi
 
-            if gcloud secrets describe "${secret_name}" --project "${PROJECT_ID}" >/dev/null 2>&1; then
-              printf '%s' "${secret_value}" | gcloud secrets versions add "${secret_name}" \
-                --project "${PROJECT_ID}" \
-                --data-file=-
-            else
-              printf '%s' "${secret_value}" | gcloud secrets create "${secret_name}" \
-                --project "${PROJECT_ID}" \
-                --replication-policy="automatic" \
-                --data-file=-
-            fi
+            printf '%s' "${secret_value}" | "${UPSERT_SCRIPT}" \
+              --project "${PROJECT_ID}" \
+              --secret "${secret_name}" \
+              --required "${required}"
           }
 
           upsert_secret "${SUPABASE_SERVICE_ROLE_KEY_SECRET_NAME}" "${SUPABASE_SERVICE_ROLE_KEY}" 1
@@ -257,7 +250,29 @@ jobs:
           echo "env_csv=${env_csv}" >> "${GITHUB_OUTPUT}"
           echo "secret_csv=${secret_csv}" >> "${GITHUB_OUTPUT}"
 
+      - name: Determine whether Cloud Run update is required
+        id: cloudrun_diff
+        run: |
+          set -euo pipefail
+          ENV_CSV='${{ steps.cloudrun_args.outputs.env_csv }}'
+          SECRET_CSV='${{ steps.cloudrun_args.outputs.secret_csv }}'
+          JOB_JSON="${RUNNER_TEMP}/${JOB_NAME}-current.json"
+          gcloud run jobs describe "${JOB_NAME}" --region "${REGION}" --format=json > "${JOB_JSON}"
+
+          needs_update="$(python3 scripts/gcp/uk_aq_cloud_run_job_has_changes.py \
+            --job-json "${JOB_JSON}" \
+            --image "${{ steps.build.outputs.image }}" \
+            --task-timeout-seconds "${JOB_TIMEOUT_SECONDS}" \
+            --max-retries "${JOB_MAX_RETRIES}" \
+            --service-account "${JOB_SERVICE_ACCOUNT}" \
+            --env-csv "${ENV_CSV}" \
+            --secret-csv "${SECRET_CSV}" \
+            --label-csv "job_name=${JOB_NAME}" \
+            --verbose)"
+          echo "needs_update=${needs_update}" >> "${GITHUB_OUTPUT}"
+
       - name: Update Cloud Run job image
+        if: ${{ steps.cloudrun_diff.outputs.needs_update == 'true' }}
         run: |
           set -euo pipefail
           ENV_CSV='${{ steps.cloudrun_args.outputs.env_csv }}'
@@ -270,14 +285,33 @@ jobs:
             --task-timeout "${JOB_TIMEOUT_SECONDS}s"
             --max-retries "${JOB_MAX_RETRIES}"
             --service-account "${JOB_SERVICE_ACCOUNT}"
+            --update-labels "job_name=${JOB_NAME}"
           )
           if [ -n "${ENV_CSV}" ]; then
-            CMD+=(--update-env-vars "${ENV_CSV}")
+            CMD+=(--set-env-vars "${ENV_CSV}")
           fi
           if [ -n "${SECRET_CSV}" ]; then
-            CMD+=(--update-secrets "${SECRET_CSV}")
+            CMD+=(--set-secrets "${SECRET_CSV}")
           fi
           "${CMD[@]}"
+
+      - name: Skip Cloud Run job update
+        if: ${{ steps.cloudrun_diff.outputs.needs_update != 'true' }}
+        run: |
+          echo "Cloud Run job is already up to date; skipping update."
+
+      - name: Verify Cloud Run job labels
+        run: |
+          set -euo pipefail
+          labels_json="$(gcloud run jobs describe "${JOB_NAME}" --region "${REGION}" --format="json(metadata.labels)")"
+          job_name_label="$(
+            python3 -c 'import json,sys; print(((json.loads(sys.stdin.read()) or {}).get("metadata", {}) or {}).get("labels", {}).get("job_name", ""))' <<<"${labels_json}"
+          )"
+          if [ "${job_name_label}" != "${JOB_NAME}" ]; then
+            echo "job_name label mismatch: expected ${JOB_NAME}, got ${job_name_label:-<missing>}"
+            exit 1
+          fi
+          echo "Verified label job_name=${job_name_label}"
 
       - name: Ensure Cloud Scheduler trigger exists
         run: |

@@ -25,7 +25,7 @@ jobs:
 
       - name: Debug station_name counts
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           python3 scripts/uk_aq_enrich_test_script.py --samples 5 --verbose

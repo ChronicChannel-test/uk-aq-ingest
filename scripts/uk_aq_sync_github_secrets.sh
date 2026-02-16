@@ -12,13 +12,13 @@ Options:
   --repo <owner/name>            GitHub repo (default: current gh repo)
   --env-file <path>              Env file for per-secret key/value sync (default: .env)
   --supabase-env-file <path>     Env file to upload as SUPABASE_SECRETS_ENV (default: .env.supabase)
-  --targets-file <path>          CSV map of KEY -> target(secret|variable|both) (default: config/uk_aq_github_env_targets.csv)
+  --targets-file <path>          CSV map of KEY -> target(secret|variable|both|local) (default: config/uk_aq_github_env_targets.csv)
   --dry-run                      Show what would be updated without changing secrets
   -h, --help                     Show help
 
 Notes:
-  - Routing is controlled by --targets-file. Unmapped keys default to secret.
-  - The full contents of --supabase-env-file are also uploaded to SUPABASE_SECRETS_ENV.
+  - Routing is controlled by --targets-file. Unmapped keys default to local-only (not synced to GitHub).
+  - SUPABASE_SECRETS_ENV is built from non-local keys in --supabase-env-file.
   - For GCP_SA_KEY, if VALUE is a path to a local file, the file contents are uploaded.
 EOF
 }
@@ -109,7 +109,7 @@ from pathlib import Path
 source = Path(sys.argv[1])
 output = Path(sys.argv[2])
 
-allowed_targets = {"secret", "variable", "both"}
+allowed_targets = {"secret", "variable", "both", "local"}
 key_re = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 seen = {}
 
@@ -138,7 +138,7 @@ with source.open("r", encoding="utf-8", newline="") as handle:
         if raw_target not in allowed_targets:
             raise SystemExit(
                 f"Invalid target '{raw_target}' for key '{raw_key}' at {source}:{idx}. "
-                "Allowed: secret, variable, both."
+                "Allowed: secret, variable, both, local."
             )
         previous = seen.get(raw_key)
         if previous and previous != raw_target:
@@ -176,7 +176,7 @@ set_variable() {
   local name="$1"
   local value="$2"
   if [[ "${DRY_RUN}" -eq 1 ]]; then
-    echo "[dry-run] would set variable ${name}=${value}"
+    echo "[dry-run] would set variable ${name} (len=${#value})"
   else
     gh variable set "${name}" --repo "${REPO}" --body "${value}"
     echo "set variable ${name}"
@@ -188,7 +188,7 @@ target_for_key() {
   local target
   target="$(awk -F $'\t' -v key="${key}" '$1 == key { print $2; exit }' "${TARGETS_CACHE_FILE}")"
   if [[ -z "${target}" ]]; then
-    echo "secret"
+    echo "local"
     return 0
   fi
   echo "${target}"
@@ -266,6 +266,10 @@ sync_env_vars() {
       echo "skip invalid key in ${file}: ${key}" >&2
       continue
     fi
+    if [[ "${key}" == "SUPABASE_SECRETS_ENV" ]]; then
+      echo "skip reserved ${key} from ${file}; value is built from filtered ${SUPABASE_ENV_FILE}"
+      continue
+    fi
 
     first_char="${value:0:1}"
     last_char="${value: -1}"
@@ -288,6 +292,9 @@ sync_env_vars() {
         set_variable "${key}" "${value}"
         set_secret "${key}" "${value}"
         ;;
+      local)
+        echo "skip local-only ${key}"
+        ;;
       *)
         echo "Invalid target '${target}' for key '${key}' from ${TARGETS_FILE}" >&2
         exit 1
@@ -296,12 +303,52 @@ sync_env_vars() {
   done < "${file}"
 }
 
+build_filtered_supabase_env_payload() {
+  local file="$1"
+  if [[ ! -f "${file}" ]]; then
+    return 0
+  fi
+
+  local raw_line line key value target
+  while IFS= read -r raw_line || [[ -n "${raw_line}" ]]; do
+    line="${raw_line%$'\r'}"
+    line="$(trim "${line}")"
+    [[ -z "${line}" ]] && continue
+    [[ "${line}" == \#* ]] && continue
+    [[ "${line}" == export\ * ]] && line="${line#export }"
+    [[ "${line}" != *=* ]] && continue
+
+    key="$(trim "${line%%=*}")"
+    value="${line#*=}"
+    value="$(trim "${value}")"
+
+    if [[ ! "${key}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+      continue
+    fi
+    if [[ "${key}" == "SUPABASE_SECRETS_ENV" ]]; then
+      continue
+    fi
+
+    target="$(target_for_key "${key}")"
+    if [[ "${target}" == "local" ]]; then
+      continue
+    fi
+
+    printf '%s=%s\n' "${key}" "${value}"
+  done < "${file}"
+}
+
 load_targets_map "${TARGETS_FILE}"
 sync_env_vars "${ENV_FILE}"
 sync_env_vars "${SUPABASE_ENV_FILE}"
 
 if [[ -f "${SUPABASE_ENV_FILE}" ]]; then
-  set_secret "SUPABASE_SECRETS_ENV" "$(cat "${SUPABASE_ENV_FILE}")"
+  SUPABASE_SECRETS_ENV_VALUE="$(build_filtered_supabase_env_payload "${SUPABASE_ENV_FILE}")"
+  if [[ -n "${SUPABASE_SECRETS_ENV_VALUE}" ]]; then
+    set_secret "SUPABASE_SECRETS_ENV" "${SUPABASE_SECRETS_ENV_VALUE}"
+  else
+    echo "skip SUPABASE_SECRETS_ENV (no non-local keys found in ${SUPABASE_ENV_FILE})"
+  fi
 fi
 
 WORKFLOW_DIR=".github/workflows"

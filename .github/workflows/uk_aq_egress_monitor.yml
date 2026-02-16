@@ -11,7 +11,7 @@ jobs:
     steps:
       - name: Trigger egress monitor function
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
           SB_ANON_JWT: ${{ secrets.SB_ANON_JWT }}
           SB_UK_AQ_CRON_SECRET: ${{ secrets.SB_UK_AQ_CRON_SECRET }}
         run: |

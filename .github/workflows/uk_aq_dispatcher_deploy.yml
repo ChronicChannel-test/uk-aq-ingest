@@ -32,7 +32,7 @@ jobs:
         run: |
           set -euo pipefail
           secrets_json="$(jq -n \
-            --arg SUPABASE_URL "${{ secrets.SUPABASE_URL }}" \
+            --arg SUPABASE_URL "${{ vars.SUPABASE_URL }}" \
             --arg SB_ANON_JWT "${{ secrets.SB_ANON_JWT }}" \
             --arg SB_UK_AQ_CRON_SECRET "${{ secrets.SB_UK_AQ_CRON_SECRET }}" \
             '{SUPABASE_URL: $SUPABASE_URL, SB_ANON_JWT: $SB_ANON_JWT, SB_UK_AQ_CRON_SECRET: $SB_UK_AQ_CRON_SECRET}')"

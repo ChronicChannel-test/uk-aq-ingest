@@ -19,7 +19,7 @@ jobs:
       DROPBOX_APP_KEY: ${{ secrets.DROPBOX_APP_KEY }}
       DROPBOX_APP_SECRET: ${{ secrets.DROPBOX_APP_SECRET }}
       DROPBOX_REFRESH_TOKEN: ${{ secrets.DROPBOX_REFRESH_TOKEN }}
-      UK_AQ_DROPBOX_ROOT: ${{ secrets.UK_AQ_DROPBOX_ROOT }}
+      UK_AQ_DROPBOX_ROOT: ${{ vars.UK_AQ_DROPBOX_ROOT }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -61,7 +61,7 @@ jobs:
 
       - name: Sync stations
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           python3 scripts/uk_air_sos/uk_air_sos_list_stations.py --to-supabase
@@ -69,7 +69,7 @@ jobs:
       - name: Check UK-AIR SOS polling flag
         id: check_uk_air_sos_polling
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           python3 - <<'PY'
@@ -105,7 +105,7 @@ jobs:
       - name: Pause UK-AIR SOS polling
         if: steps.check_uk_air_sos_polling.outputs.poll_was_enabled == '1'
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           python3 - <<'PY'
@@ -136,7 +136,7 @@ jobs:
 
       - name: Discover UK-AIR SOS timeseries
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           python3 scripts/uk_air_sos/uk_air_sos_ingest.py --discover
@@ -144,7 +144,7 @@ jobs:
       - name: Resume UK-AIR SOS polling
         if: always() && steps.check_uk_air_sos_polling.outputs.poll_was_enabled == '1'
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           python3 - <<'PY'
@@ -175,7 +175,7 @@ jobs:
 
       - name: Sync Breathe London stations
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           BREATHELONDON_API_KEY: ${{ secrets.BREATHELONDON_API_KEY }}
         run: |
@@ -184,14 +184,14 @@ jobs:
       # Script needs updating before LAQN can start polling
       # - name: Sync LAQN stations
       #   env:
-      #     SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      #     SUPABASE_URL: ${{ vars.SUPABASE_URL }}
       #     SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
       #   run: |
       #     python3 scripts/erg_laqn/erg_laqn_list_stations.py --to-supabase
 
       - name: Sync OpenAQ stations
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL || secrets.DATABASE_URL }}
           OPENAQ_API_KEY: ${{ secrets.OPENAQ_API_KEY }}
@@ -207,14 +207,14 @@ jobs:
 
       - name: Backfill Sensor.Community timeseries phenomena
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           python3 scripts/sensorcommunity/sensorcommunity_backfill_timeseries_phenomena.py
 
       - name: Refresh station PCON/LA from Aiven
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           PCON_AIVEN_PG_DSN: ${{ secrets.PCON_AIVEN_PG_DSN }}
         run: |
@@ -223,7 +223,7 @@ jobs:
       - name: Check null station_name
         id: check_null_station_name
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           python3 - <<'PY'
@@ -310,7 +310,7 @@ jobs:
 
       - name: Enrich station names
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           DROPBOX_APP_KEY: ${{ secrets.DROPBOX_APP_KEY }}
           DROPBOX_APP_SECRET: ${{ secrets.DROPBOX_APP_SECRET }}
@@ -367,12 +367,12 @@ jobs:
 
       - name: Export stations to Dropbox
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL || secrets.DATABASE_URL }}
           DROPBOX_APP_KEY: ${{ secrets.DROPBOX_APP_KEY }}
           DROPBOX_APP_SECRET: ${{ secrets.DROPBOX_APP_SECRET }}
           DROPBOX_REFRESH_TOKEN: ${{ secrets.DROPBOX_REFRESH_TOKEN }}
-          UK_AQ_DROPBOX_ROOT: ${{ secrets.UK_AQ_DROPBOX_ROOT }}
+          UK_AQ_DROPBOX_ROOT: ${{ vars.UK_AQ_DROPBOX_ROOT }}
         run: |
           python3 scripts/uk_aq_export_stations_dropbox.py

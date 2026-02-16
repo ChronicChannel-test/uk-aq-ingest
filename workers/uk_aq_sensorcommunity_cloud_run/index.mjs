@@ -70,7 +70,6 @@ const GCP_PROJECT_ID = (
 ).trim();
 const GCP_HISTORY_PUBSUB_TOPIC = (
   process.env.GCP_HISTORY_PUBSUB_TOPIC ||
-  process.env.HISTORY_PUBSUB_TOPIC ||
   ""
 ).trim();
 const HISTORY_PUBSUB_PUBLISH_BATCH_SIZE = parsePositiveInt(
