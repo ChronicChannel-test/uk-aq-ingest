@@ -533,12 +533,13 @@
         { value: 60, label: "60mins" },
         { value: 120, label: "120mins" },
         { value: 240, label: "240mins" },
-        { value: 720, label: "720mins" },
       ];
       const DISPATCH_CONNECTOR_STORAGE_KEY = "uk_aq_dispatch_connector";
       const DISPATCH_LOOKBACK_STORAGE_KEY = "uk_aq_dispatch_lookback_mins";
+      const DISPATCH_CURSOR_STORAGE_KEY = "uk_aq_dispatch_cursor";
       let dispatchConnectorFilter = "all";
       let dispatchLookbackMinutes = 30;
+      let dispatchCursor = null;
 
       try {
         const storedConnector = localStorage.getItem(DISPATCH_CONNECTOR_STORAGE_KEY);
@@ -551,6 +552,10 @@
           DISPATCH_LOOKBACK_OPTIONS.some((opt) => opt.value === storedLookback)
         ) {
           dispatchLookbackMinutes = storedLookback;
+        }
+        const storedCursor = localStorage.getItem(DISPATCH_CURSOR_STORAGE_KEY);
+        if (storedCursor) {
+          dispatchCursor = storedCursor;
         }
       } catch (_err) {
         // Ignore storage read issues and use defaults.
@@ -1208,7 +1213,12 @@
         setError("");
         setStatus("Loading...");
         try {
-          const resp = await fetch(`/api/dashboard?t=${Date.now()}`);
+          const params = new URLSearchParams();
+          params.set("t", String(Date.now()));
+          if (dispatchCursor) {
+            params.set("dispatch_cursor", dispatchCursor);
+          }
+          const resp = await fetch(`/api/dashboard?${params.toString()}`);
           const text = await resp.text();
           let payload = null;
           try {
@@ -1224,6 +1234,14 @@
             throw new Error(message);
           }
           const data = payload || {};
+          if (typeof data.dispatch_cursor === "string" && data.dispatch_cursor) {
+            dispatchCursor = data.dispatch_cursor;
+            try {
+              localStorage.setItem(DISPATCH_CURSOR_STORAGE_KEY, dispatchCursor);
+            } catch (_err) {
+              // Ignore storage write issues.
+            }
+          }
           dashboardEl.innerHTML = "";
           if (Array.isArray(data.connectors_settings)) {
             dashboardEl.appendChild(renderConnectorSettingsPanel(data.connectors_settings));

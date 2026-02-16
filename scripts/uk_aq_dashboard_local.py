@@ -16,7 +16,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 import requests
 
@@ -31,7 +31,22 @@ EXCLUDED_CONNECTORS_BY_POLLUTANT = {
     "pm10": {"breathelondon"},
     "no2": {"sensorcommunity"},
 }
-DISPATCH_FEED_LIMIT = 30
+DISPATCH_HISTORY_WINDOW_MINUTES = max(
+    30,
+    int(os.getenv("DISPATCH_HISTORY_WINDOW_MINUTES", "240")),
+)
+DISPATCH_FETCH_LIMIT = max(
+    100,
+    int(os.getenv("DISPATCH_FETCH_LIMIT", "1000")),
+)
+DISPATCH_INCREMENTAL_OVERLAP_SECONDS = max(
+    30,
+    int(os.getenv("DISPATCH_INCREMENTAL_OVERLAP_SECONDS", "120")),
+)
+DISPATCH_MAX_ROWS = max(
+    200,
+    int(os.getenv("DISPATCH_MAX_ROWS", "5000")),
+)
 IN_FLIGHT_WARN_MINUTES = 5
 IN_FLIGHT_MAX_AGE_MINUTES = 180
 SCHEDULER_BACKEND_SUPABASE_FUNCTION = "supabase_function"
@@ -49,6 +64,10 @@ SCHEDULER_BACKEND_CONNECTOR_ALLOWLIST = {
 
 CACHE_LOCK = threading.Lock()
 CACHE_STATE: Dict[str, Any] = {"data": None, "generated_at": None}
+DISPATCH_RUNS_STATE: Dict[str, Any] = {
+    "rows": [],
+    "latest_created_at": None,
+}
 CACHE_TTL_SECONDS = 20
 
 
@@ -144,16 +163,21 @@ def _fetch_all(
 def _fetch_ingest_runs(
     base_url: str,
     headers: Dict[str, str],
-    limit: int = DISPATCH_FEED_LIMIT,
+    *,
+    created_since: Optional[datetime] = None,
+    limit: int = DISPATCH_FETCH_LIMIT,
 ) -> List[Dict[str, Any]]:
+    params: Dict[str, str] = {
+        "select": "id,connector_id,connector_code,run_started_at,run_ended_at,run_status,run_message,last_observed_at,stations_updated,observations_upserted,timeseries_updated,series_polled,response_payload,created_at",
+        "order": "created_at.desc.nullslast",
+        "limit": str(limit),
+    }
+    if created_since:
+        params["created_at"] = f"gte.{_to_postgrest_ts(created_since)}"
     return _fetch_json(
         f"{base_url}/uk_aq_ingest_runs",
         headers,
-        {
-            "select": "connector_id,connector_code,run_started_at,run_ended_at,run_status,run_message,last_observed_at,stations_updated,observations_upserted,timeseries_updated,series_polled,response_payload",
-            "order": "run_ended_at.desc.nullslast",
-            "limit": str(limit),
-        },
+        params,
     )
 
 
@@ -217,6 +241,122 @@ def _parse_timestamp(value: Optional[str]) -> Optional[datetime]:
         return None
 
 
+def _to_postgrest_ts(value: datetime) -> str:
+    return value.astimezone(timezone.utc).isoformat(timespec="seconds").replace(
+        "+00:00",
+        "Z",
+    )
+
+
+def _dispatch_run_timestamp(row: Dict[str, Any]) -> Optional[datetime]:
+    return _parse_timestamp(
+        (row.get("run_ended_at") if isinstance(row, dict) else None)
+        or (row.get("run_started_at") if isinstance(row, dict) else None)
+    )
+
+
+def _dispatch_created_timestamp(row: Dict[str, Any]) -> Optional[datetime]:
+    return _parse_timestamp(row.get("created_at") if isinstance(row, dict) else None)
+
+
+def _dispatch_row_key(row: Dict[str, Any]) -> str:
+    row_id = row.get("id")
+    if row_id is not None:
+        return f"id:{row_id}"
+    return (
+        "fallback:"
+        f"{row.get('connector_id')}|{row.get('run_started_at')}|"
+        f"{row.get('run_ended_at')}|{row.get('run_status')}"
+    )
+
+
+def _merge_dispatch_runs(
+    existing: List[Dict[str, Any]],
+    incoming: List[Dict[str, Any]],
+    *,
+    window_start: datetime,
+) -> List[Dict[str, Any]]:
+    by_key: Dict[str, Dict[str, Any]] = {}
+    for row in [*existing, *incoming]:
+        key = _dispatch_row_key(row)
+        current = by_key.get(key)
+        if current is None:
+            by_key[key] = row
+            continue
+        current_created = _dispatch_created_timestamp(current)
+        row_created = _dispatch_created_timestamp(row)
+        if (row_created or datetime.min.replace(tzinfo=timezone.utc)) >= (
+            current_created or datetime.min.replace(tzinfo=timezone.utc)
+        ):
+            by_key[key] = row
+
+    merged = list(by_key.values())
+    filtered = []
+    for row in merged:
+        run_ts = _dispatch_run_timestamp(row)
+        created_ts = _dispatch_created_timestamp(row)
+        if (run_ts and run_ts >= window_start) or (
+            created_ts and created_ts >= window_start
+        ):
+            filtered.append(row)
+
+    filtered.sort(
+        key=lambda item: _dispatch_run_timestamp(item)
+        or _dispatch_created_timestamp(item)
+        or datetime.min.replace(tzinfo=timezone.utc),
+        reverse=True,
+    )
+    if len(filtered) > DISPATCH_MAX_ROWS:
+        return filtered[:DISPATCH_MAX_ROWS]
+    return filtered
+
+
+def _get_ingest_runs_cached(
+    base_url: str,
+    headers: Dict[str, str],
+    now: datetime,
+    dispatch_cursor: Optional[datetime] = None,
+) -> List[Dict[str, Any]]:
+    window_start = now - timedelta(minutes=DISPATCH_HISTORY_WINDOW_MINUTES)
+    with CACHE_LOCK:
+        cached_rows: List[Dict[str, Any]] = list(DISPATCH_RUNS_STATE.get("rows") or [])
+        latest_created_at = DISPATCH_RUNS_STATE.get("latest_created_at")
+
+    created_since: Optional[datetime]
+    if isinstance(latest_created_at, datetime):
+        created_since = latest_created_at - timedelta(
+            seconds=DISPATCH_INCREMENTAL_OVERLAP_SECONDS
+        )
+    elif isinstance(dispatch_cursor, datetime):
+        created_since = dispatch_cursor - timedelta(
+            seconds=DISPATCH_INCREMENTAL_OVERLAP_SECONDS
+        )
+    else:
+        created_since = window_start
+    if created_since < window_start:
+        created_since = window_start
+
+    incoming = _fetch_ingest_runs(
+        base_url,
+        headers,
+        created_since=created_since,
+    )
+    merged = _merge_dispatch_runs(cached_rows, incoming, window_start=window_start)
+    newest_created = max(
+        (
+            _dispatch_created_timestamp(row)
+            for row in merged
+            if _dispatch_created_timestamp(row) is not None
+        ),
+        default=latest_created_at if isinstance(latest_created_at, datetime) else None,
+    )
+
+    with CACHE_LOCK:
+        DISPATCH_RUNS_STATE["rows"] = merged
+        DISPATCH_RUNS_STATE["latest_created_at"] = newest_created
+    return list(merged)
+
+
 def _normalize_token(value: str) -> str:
     return NON_ALNUM_RE.sub("", value.lower())
 
@@ -258,7 +398,11 @@ def _bucket_for(latest_at: datetime, now: datetime) -> str:
     return "Older than 7 Days"
 
 
-def _build_dashboard(base_url: str, service_role_key: str) -> Dict[str, Any]:
+def _build_dashboard(
+    base_url: str,
+    service_role_key: str,
+    dispatch_cursor: Optional[datetime] = None,
+) -> Dict[str, Any]:
     headers = _postgrest_headers(service_role_key)
     project_ref = _project_ref_from_base_url(base_url)
 
@@ -322,7 +466,12 @@ def _build_dashboard(base_url: str, service_role_key: str) -> Dict[str, Any]:
             active_station_keys[(connector_id, station_id)] = True
 
     now = datetime.now(timezone.utc)
-    ingest_runs = _fetch_ingest_runs(base_url, headers)
+    ingest_runs = _get_ingest_runs_cached(
+        base_url,
+        headers,
+        now,
+        dispatch_cursor=dispatch_cursor,
+    )
     dispatcher_settings = _fetch_dispatcher_settings(base_url, headers)
     in_flight_rows: List[Dict[str, Any]] = []
     latest_run_by_connector: Dict[int, Dict[str, Any]] = {}
@@ -501,9 +650,16 @@ def _build_dashboard(base_url: str, service_role_key: str) -> Dict[str, Any]:
             },
         )
 
+    next_dispatch_cursor: Optional[str] = None
+    with CACHE_LOCK:
+        latest_created_at = DISPATCH_RUNS_STATE.get("latest_created_at")
+        if isinstance(latest_created_at, datetime):
+            next_dispatch_cursor = _to_postgrest_ts(latest_created_at)
+
     return {
         "project_ref": project_ref,
         "generated_at": now.isoformat().replace("+00:00", "Z"),
+        "dispatch_cursor": next_dispatch_cursor,
         "buckets": list(BUCKETS),
         "pollutants": pollutants_payload,
         "dispatch_runs": dispatch_runs,
@@ -527,7 +683,11 @@ def _build_dashboard(base_url: str, service_role_key: str) -> Dict[str, Any]:
     }
 
 
-def _get_dashboard(base_url: str, service_role_key: str) -> Dict[str, Any]:
+def _get_dashboard(
+    base_url: str,
+    service_role_key: str,
+    dispatch_cursor: Optional[datetime] = None,
+) -> Dict[str, Any]:
     with CACHE_LOCK:
         cached = CACHE_STATE.get("data")
         generated_at = CACHE_STATE.get("generated_at")
@@ -535,7 +695,11 @@ def _get_dashboard(base_url: str, service_role_key: str) -> Dict[str, Any]:
             age = (datetime.now(timezone.utc) - generated_at).total_seconds()
             if age < CACHE_TTL_SECONDS:
                 return cached
-    data = _build_dashboard(base_url, service_role_key)
+    data = _build_dashboard(
+        base_url,
+        service_role_key,
+        dispatch_cursor=dispatch_cursor,
+    )
     with CACHE_LOCK:
         CACHE_STATE["data"] = data
         CACHE_STATE["generated_at"] = datetime.now(timezone.utc)
@@ -551,7 +715,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._serve_html()
             return
         if parsed.path == "/api/dashboard":
-            self._serve_dashboard()
+            self._serve_dashboard(parsed)
             return
         self.send_error(HTTPStatus.NOT_FOUND, "Not found")
 
@@ -581,9 +745,23 @@ class DashboardHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(content.encode("utf-8"))
 
-    def _serve_dashboard(self) -> None:
+    def _serve_dashboard(self, parsed) -> None:
+        dispatch_cursor: Optional[datetime] = None
+        query = parse_qs(parsed.query, keep_blank_values=False)
+        cursor_values = query.get("dispatch_cursor") or []
+        if cursor_values:
+            parsed_cursor = _parse_timestamp(cursor_values[0])
+            if isinstance(parsed_cursor, datetime):
+                now = datetime.now(timezone.utc)
+                # Reject far-future cursors; clamp old cursors via history window in fetch path.
+                if parsed_cursor <= now + timedelta(minutes=5):
+                    dispatch_cursor = parsed_cursor
         try:
-            data = _get_dashboard(self.server.base_url, self.server.service_role_key)
+            data = _get_dashboard(
+                self.server.base_url,
+                self.server.service_role_key,
+                dispatch_cursor=dispatch_cursor,
+            )
         except Exception as exc:
             payload = json.dumps({"error": str(exc)}, indent=2)
             self.send_response(HTTPStatus.INTERNAL_SERVER_ERROR)
