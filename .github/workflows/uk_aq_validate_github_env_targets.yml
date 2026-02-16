@@ -30,7 +30,7 @@ jobs:
 
           map_path = Path("config/uk_aq_github_env_targets.csv")
           workflows_dir = Path(".github/workflows")
-          allowed_targets = {"secret", "variable", "both"}
+          allowed_targets = {"secret", "variable", "both", "local"}
           key_re = re.compile(r"^[A-Z0-9_]+$")
 
           if not map_path.exists():
@@ -67,6 +67,7 @@ jobs:
                   if target not in allowed_targets:
                       print(
                           f"Invalid target '{target}' for key '{key}' at {map_path}:{idx}.",
+                          f"Allowed targets: {', '.join(sorted(allowed_targets))}.",
                           file=sys.stderr,
                       )
                       sys.exit(1)
