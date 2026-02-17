@@ -672,24 +672,31 @@ async function loadConnector(): Promise<ConnectorConfig | null> {
   return row as ConnectorConfig | null;
 }
 
-async function loadLatestSuccessfulRunStartedAt(): Promise<Date | null> {
+async function loadLatestSafetyRunStartedAt(): Promise<{
+  runStartedAt: Date | null;
+  runStatus: string | null;
+}> {
   const response = await postgrestRequest("GET", "uk_aq_ingest_runs", {
     query: {
-      select: "run_started_at",
+      select: "run_started_at,run_status",
       connector_code: `eq.${CONNECTOR_CODE}`,
-      run_status: "in.(succeeded,success)",
+      run_status: "in.(succeeded,success,partial,skipped)",
       order: "run_started_at.desc",
       limit: "1",
     },
   });
   if (!response.ok) {
     throw new Error(
-      `Failed to load latest successful run (${response.status}): ${response.text}`,
+      `Failed to load latest safety run (${response.status}): ${response.text}`,
     );
   }
   const rows = Array.isArray(response.data) ? response.data : [];
-  const runStartedAt = toStringOrNull(toObject(rows[0])?.run_started_at);
-  return parseTimestamp(runStartedAt);
+  const row = toObject(rows[0]);
+  const runStartedAt = toStringOrNull(row?.run_started_at);
+  return {
+    runStartedAt: parseTimestamp(runStartedAt),
+    runStatus: toStringOrNull(row?.run_status),
+  };
 }
 
 async function claimConnector(
@@ -1166,19 +1173,21 @@ async function main(): Promise<void> {
   }
 
   if (OPENAQ_TRIGGER_MODE === "safety") {
-    const latestSuccessAt = await loadLatestSuccessfulRunStartedAt();
+    const latestRun = await loadLatestSafetyRunStartedAt();
+    const latestRunAt = latestRun.runStartedAt;
     const lookbackMs = OPENAQ_SAFETY_SUCCESS_LOOKBACK_MINUTES * 60 * 1000;
     if (
-      latestSuccessAt &&
-      now.getTime() - latestSuccessAt.getTime() <= lookbackMs
+      latestRunAt &&
+      now.getTime() - latestRunAt.getTime() <= lookbackMs
     ) {
-      logSummary("safety_noop_recent_success", {
+      logSummary("safety_noop_recent_run", {
         trigger_mode: OPENAQ_TRIGGER_MODE,
         lookback_minutes: OPENAQ_SAFETY_SUCCESS_LOOKBACK_MINUTES,
-        last_success_at: latestSuccessAt.toISOString(),
-        minutes_since_last_success: Math.max(
+        last_run_at: latestRunAt.toISOString(),
+        last_run_status: latestRun.runStatus,
+        minutes_since_last_run: Math.max(
           0,
-          Math.round((now.getTime() - latestSuccessAt.getTime()) / 60000),
+          Math.round((now.getTime() - latestRunAt.getTime()) / 60000),
         ),
       });
       return;
@@ -1186,7 +1195,8 @@ async function main(): Promise<void> {
     logSummary("safety_trigger_run", {
       trigger_mode: OPENAQ_TRIGGER_MODE,
       lookback_minutes: OPENAQ_SAFETY_SUCCESS_LOOKBACK_MINUTES,
-      last_success_at: latestSuccessAt ? latestSuccessAt.toISOString() : null,
+      last_run_at: latestRunAt ? latestRunAt.toISOString() : null,
+      last_run_status: latestRun.runStatus,
     });
   }
 
