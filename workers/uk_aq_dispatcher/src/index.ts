@@ -45,7 +45,6 @@ async function invokeDispatch(
   const url = `${normalizeBaseUrl(supabaseUrl)}/functions/v1/uk_aq_dispatch_polls`;
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
-    Authorization: `Bearer ${supabasePublishableKey}`,
     apikey: supabasePublishableKey,
   };
   if (cronSecret) {

@@ -101,7 +101,13 @@ const OPENAQ_INGEST_SCRIPT_PATH =
     "/app/runtime/ingest_openaq/index.ts").trim();
 
 const SUPABASE_URL = requiredEnv("SUPABASE_URL");
-const SUPABASE_SERVICE_ROLE_KEY = requiredEnv("SUPABASE_SERVICE_ROLE_KEY");
+const SB_SECRET_KEY = (Deno.env.get("SB_SECRET_KEY") || "").trim();
+const SUPABASE_SERVICE_ROLE_KEY = (Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "")
+  .trim();
+const SUPABASE_PRIVILEGED_KEY = requiredEnvAny([
+  "SB_SECRET_KEY",
+  "SUPABASE_SERVICE_ROLE_KEY",
+]);
 const UK_AQ_CORE_SCHEMA = (Deno.env.get("UK_AQ_CORE_SCHEMA") || "uk_aq_core")
   .trim();
 const UK_AQ_RAW_SCHEMA = (Deno.env.get("UK_AQ_RAW_SCHEMA") || "uk_aq_raw")
@@ -171,6 +177,18 @@ function requiredEnv(name: string): string {
     throw new Error(`Missing required environment variable: ${name}`);
   }
   return value;
+}
+
+function requiredEnvAny(names: string[]): string {
+  for (const name of names) {
+    const value = (Deno.env.get(name) || "").trim();
+    if (value) {
+      return value;
+    }
+  }
+  throw new Error(
+    `Missing required environment variable: one of ${names.join(", ")}`,
+  );
 }
 
 function parsePositiveInt(raw: string | undefined, fallback: number): number {
@@ -310,11 +328,13 @@ function postgrestHeaders(
   write = false,
 ): Record<string, string> {
   const headers: Record<string, string> = {
-    apikey: SUPABASE_SERVICE_ROLE_KEY,
-    Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+    apikey: SUPABASE_PRIVILEGED_KEY,
     Accept: "application/json",
     "Accept-Profile": schema,
   };
+  if (!SB_SECRET_KEY && SUPABASE_SERVICE_ROLE_KEY) {
+    headers["Authorization"] = `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`;
+  }
   if (write) {
     headers["Content-Type"] = "application/json";
     headers["Content-Profile"] = schema;

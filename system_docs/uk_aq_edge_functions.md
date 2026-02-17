@@ -72,8 +72,8 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
   - `ingest_erg_laqn` (`station_refs`, `days=ceil(poll_window_hours/24)`, `group=London`)
 - Notes:
   - Requires `X-Cron-Secret` when `SB_UK_AQ_CRON_SECRET` is set.
-  - Uses the Supabase service role key to read connector settings.
-  - Uses `SB_PUBLISHABLE_DEFAULT_KEY` (falls back to service role) to call ingest functions.
+  - Uses `SB_SECRET_KEY` (preferred) with fallback to `SUPABASE_SERVICE_ROLE_KEY` for internal PostgREST reads/writes.
+  - Calls ingest functions with `SB_PUBLISHABLE_DEFAULT_KEY` (or `SB_SECRET_KEY` fallback) plus `X-Cron-Secret`; `verify_jwt=false` is set for dispatcher/ingest functions.
   - Uses a runtime budget guard to avoid platform timeout overruns:
     - `DISPATCH_TIME_BUDGET_MS` (default `150000`)
     - `DISPATCH_SHUTDOWN_BUFFER_MS` (default `10000`)
@@ -457,7 +457,7 @@ curl "https://YOUR_PROJECT.supabase.co/functions/v1/uk_aq_timeseries?timeseries_
 
 Required:
 - `SUPABASE_URL`
-- `SUPABASE_SERVICE_ROLE_KEY`
+- `SB_SECRET_KEY` (preferred; fallback `SUPABASE_SERVICE_ROLE_KEY` during migration)
 - `BREATHELONDON_API_KEY` (required for `ingest_breathelondon`)
 
 Dropbox (raw/log/error uploads):

@@ -12,3 +12,21 @@ verify_jwt = false
 
 [functions.uk_aq_egress_monitor]
 verify_jwt = false
+
+[functions.uk_aq_dispatch_polls]
+verify_jwt = false
+
+[functions.ingest_uk_air_sos]
+verify_jwt = false
+
+[functions.ingest_breathelondon]
+verify_jwt = false
+
+[functions.ingest_sensorcommunity]
+verify_jwt = false
+
+[functions.ingest_openaq]
+verify_jwt = false
+
+[functions.ingest_erg_laqn]
+verify_jwt = false

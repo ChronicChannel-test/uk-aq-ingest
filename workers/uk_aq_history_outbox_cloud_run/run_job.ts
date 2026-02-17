@@ -23,7 +23,13 @@ type FlushSummary = HistoryOutboxFlushStats & {
 };
 
 const SUPABASE_URL = requiredEnv("SUPABASE_URL");
-const SUPABASE_SERVICE_ROLE_KEY = requiredEnv("SUPABASE_SERVICE_ROLE_KEY");
+const SB_SECRET_KEY = (Deno.env.get("SB_SECRET_KEY") || "").trim();
+const SUPABASE_SERVICE_ROLE_KEY = (Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "")
+  .trim();
+const SUPABASE_PRIVILEGED_KEY = requiredEnvAny([
+  "SB_SECRET_KEY",
+  "SUPABASE_SERVICE_ROLE_KEY",
+]);
 const HISTORY_SUPABASE_URL = (Deno.env.get("HISTORY_SUPABASE_URL") || "").trim();
 const HISTORY_SERVICE_ROLE_KEY = (Deno.env.get("HISTORY_SERVICE_ROLE_KEY") || "")
   .trim();
@@ -61,6 +67,18 @@ function requiredEnv(name: string): string {
   return value;
 }
 
+function requiredEnvAny(names: string[]): string {
+  for (const name of names) {
+    const value = (Deno.env.get(name) || "").trim();
+    if (value) {
+      return value;
+    }
+  }
+  throw new Error(
+    `Missing required environment variable: one of ${names.join(", ")}`,
+  );
+}
+
 function parsePositiveInt(raw: string | undefined, fallback: number): number {
   const value = Number(raw || "");
   if (!Number.isFinite(value) || value <= 0) {
@@ -84,14 +102,16 @@ async function mainRpc<T>(
 ): Promise<RpcResult<T>> {
   const url = `${REST_BASE_URL}/rpc/${fn}`;
   const headers: Record<string, string> = {
-    apikey: SUPABASE_SERVICE_ROLE_KEY,
-    Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+    apikey: SUPABASE_PRIVILEGED_KEY,
     "Content-Type": "application/json",
     Accept: "application/json",
     "Accept-Profile": MAIN_RPC_SCHEMA,
     "Content-Profile": MAIN_RPC_SCHEMA,
     "x-ukaq-egress-caller": "uk_aq_history_outbox_cloud_run",
   };
+  if (!SB_SECRET_KEY && SUPABASE_SERVICE_ROLE_KEY) {
+    headers["Authorization"] = `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`;
+  }
 
   for (let attempt = 1; attempt <= MAIN_RPC_RETRIES; attempt += 1) {
     try {

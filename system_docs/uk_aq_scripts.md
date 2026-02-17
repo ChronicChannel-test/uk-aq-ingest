@@ -81,7 +81,7 @@ Notes:
 - Exit code `0` = pass (warnings allowed); exit code `1` = one or more failures.
 - Network mode validates:
   - `SUPABASE_ACCESS_TOKEN` against Supabase Management API.
-  - Main/history REST root access with `SB_PUBLISHABLE_DEFAULT_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, and `HISTORY_SERVICE_ROLE_KEY`.
+  - Main/history REST root access with `SB_PUBLISHABLE_DEFAULT_KEY`, main privileged key (`SB_SECRET_KEY` preferred, fallback `SUPABASE_SERVICE_ROLE_KEY`), and `HISTORY_SERVICE_ROLE_KEY`.
 - Secret values are masked in output.
 
 ### `scripts/uk_aq_sync_github_secrets.sh`

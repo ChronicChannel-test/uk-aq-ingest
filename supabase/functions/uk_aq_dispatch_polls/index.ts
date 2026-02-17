@@ -91,9 +91,11 @@ type HistoryOutboxDrainSummary = {
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ??
   Deno.env.get("SB_SUPABASE_URL") ??
   "";
-const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
-  Deno.env.get("SB_SERVICE_ROLE_KEY") ??
-  "";
+const SB_SECRET_KEY = Deno.env.get("SB_SECRET_KEY") ?? "";
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")
+  ?? Deno.env.get("SB_SERVICE_ROLE_KEY")
+  ?? "";
+const SUPABASE_PRIVILEGED_KEY = SB_SECRET_KEY || SUPABASE_SERVICE_ROLE_KEY;
 const SB_PUBLISHABLE_DEFAULT_KEY = Deno.env.get("SB_PUBLISHABLE_DEFAULT_KEY") ??
   "";
 const SB_UK_AQ_CRON_SECRET = Deno.env.get("SB_UK_AQ_CRON_SECRET") ?? "";
@@ -224,13 +226,15 @@ function postgrestHeaders(
   options?: { preferMinimal?: boolean },
 ): Record<string, string> {
   const headers: Record<string, string> = {
-    apikey: SUPABASE_SERVICE_ROLE_KEY,
-    Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+    apikey: SUPABASE_PRIVILEGED_KEY,
     "Content-Type": "application/json",
     "x-ukaq-egress-caller": "uk_aq_dispatch_polls",
   };
   if (options?.preferMinimal) {
     headers["Prefer"] = "return=minimal";
+  }
+  if (!SB_SECRET_KEY && SUPABASE_SERVICE_ROLE_KEY) {
+    headers["Authorization"] = `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`;
   }
   if (schema && schema !== "public") {
     headers["Accept-Profile"] = schema;
@@ -263,6 +267,10 @@ function asBoolean(value: unknown): boolean {
     return value === 1;
   }
   return false;
+}
+
+function isLikelyJwt(value: string): boolean {
+  return value.startsWith("eyJ") && value.split(".").length === 3;
 }
 
 function asPayloadObject(payload: unknown): Record<string, unknown> | null {
@@ -939,10 +947,10 @@ async function postgrestRequest<T>(
   schema?: string,
   options?: { preferMinimal?: boolean },
 ): Promise<{ data: T | null; error: { message: string } | null }> {
-  if (!REST_BASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+  if (!REST_BASE_URL || !SUPABASE_PRIVILEGED_KEY) {
     return {
       data: null,
-      error: { message: "Missing REST_BASE_URL or SUPABASE_SERVICE_ROLE_KEY." },
+      error: { message: "Missing REST_BASE_URL or SB_SECRET_KEY or SUPABASE_SERVICE_ROLE_KEY." },
     };
   }
   const url = new URL(`${REST_BASE_URL}/${table}`);
@@ -1303,18 +1311,20 @@ async function callEdgeFunction(
   if (!SUPABASE_URL) {
     throw new Error("Missing SUPABASE_URL.");
   }
-  const authKey = SB_PUBLISHABLE_DEFAULT_KEY || SUPABASE_SERVICE_ROLE_KEY;
+  const authKey = SB_PUBLISHABLE_DEFAULT_KEY || SUPABASE_PRIVILEGED_KEY;
   if (!authKey) {
     throw new Error(
-      "Missing SB_PUBLISHABLE_DEFAULT_KEY or SUPABASE_SERVICE_ROLE_KEY.",
+      "Missing SB_PUBLISHABLE_DEFAULT_KEY or SB_SECRET_KEY or SUPABASE_SERVICE_ROLE_KEY.",
     );
   }
   const url = `${SUPABASE_URL.replace(/\/$/, "")}/functions/v1/${path}`;
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
-    Authorization: `Bearer ${authKey}`,
     apikey: authKey,
   };
+  if (isLikelyJwt(authKey)) {
+    headers["Authorization"] = `Bearer ${authKey}`;
+  }
   if (SB_UK_AQ_CRON_SECRET) {
     headers["X-Cron-Secret"] = SB_UK_AQ_CRON_SECRET;
   }
@@ -1418,9 +1428,9 @@ serve(async (req) => {
     : dispatchModeRaw === "legacy"
     ? "legacy"
     : "enqueue";
-  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+  if (!SUPABASE_URL || !SUPABASE_PRIVILEGED_KEY) {
     return jsonResponse({
-      error: "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY.",
+      error: "Missing SUPABASE_URL or SB_SECRET_KEY or SUPABASE_SERVICE_ROLE_KEY.",
     }, 500);
   }
 

@@ -137,7 +137,7 @@ SB_UK_AQ_CRON_SECRET=...
   - Small per-batch claims, bounded runtime budget, and retry-aware RPC calls.
   - Scheduler target uses Google Cloud Scheduler -> Cloud Run Jobs API (`:run`).
 - Secrets:
-  - `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`,
+  - `SUPABASE_URL`, `SB_SECRET_KEY` (preferred; workflow falls back to `SUPABASE_SERVICE_ROLE_KEY`),
   - `HISTORY_SUPABASE_URL`, `HISTORY_SERVICE_ROLE_KEY`,
   - GCP deploy/auth secrets as in other Cloud Run workflows.
 
@@ -172,7 +172,7 @@ SB_UK_AQ_CRON_SECRET=...
 - Required secrets/vars:
   - `GCP_PROJECT_ID`, Google auth secrets (`GCP_WORKLOAD_IDENTITY_PROVIDER` + `GCP_SERVICE_ACCOUNT` or `GCP_SA_KEY`)
   - `GCP_UK_AIR_SOS_JOB_SERVICE_ACCOUNT` (repo var or secret)
-  - `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`
+  - `SUPABASE_URL`, `SB_SECRET_KEY` (preferred; workflow falls back to `SUPABASE_SERVICE_ROLE_KEY`)
 - Optional:
   - `HISTORY_SUPABASE_URL`, `HISTORY_SERVICE_ROLE_KEY`
   - `SB_UK_AQ_CRON_SECRET`
@@ -190,7 +190,7 @@ SB_UK_AQ_CRON_SECRET=...
 - Required secrets/vars:
   - `GCP_PROJECT_ID`, Google auth secrets (`GCP_WORKLOAD_IDENTITY_PROVIDER` + `GCP_SERVICE_ACCOUNT` or `GCP_SA_KEY`)
   - `GCP_OPENAQ_JOB_SERVICE_ACCOUNT` (repo var or secret)
-  - `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`
+  - `SUPABASE_URL`, `SB_SECRET_KEY` (preferred; workflow falls back to `SUPABASE_SERVICE_ROLE_KEY`)
   - `OPENAQ_API_KEY`
 - Optional:
   - `HISTORY_SUPABASE_URL`, `HISTORY_SERVICE_ROLE_KEY`
@@ -207,7 +207,7 @@ SB_UK_AQ_CRON_SECRET=...
 - Worker: `workers/uk_aq_sensorcommunity_cloud_run`.
 - Required secrets/vars:
   - `GCP_PROJECT_ID`, Google auth secrets (`GCP_WORKLOAD_IDENTITY_PROVIDER` + `GCP_SERVICE_ACCOUNT` or `GCP_SA_KEY`)
-  - `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`
+  - `SUPABASE_URL`, `SB_SECRET_KEY` (preferred; workflow falls back to `SUPABASE_SERVICE_ROLE_KEY`)
 - Optional:
   - `HISTORY_SUPABASE_URL`, `HISTORY_SERVICE_ROLE_KEY`
   - `SCOMM_HISTORY_WRITE_MODE` (workflow default `pubsub_only`)

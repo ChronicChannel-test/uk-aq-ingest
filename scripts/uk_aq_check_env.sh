@@ -56,7 +56,7 @@ main_vars=(
   SUPABASE_PROJECT_REF
   SUPABASE_DB_URL
   SB_PUBLISHABLE_DEFAULT_KEY
-  SUPABASE_SERVICE_ROLE_KEY
+  SB_SECRET_KEY
   SUPABASE_ACCESS_TOKEN
   UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL
   SB_UK_AQ_CRON_SECRET
@@ -149,11 +149,15 @@ echo "Env file: $ENV_FILE"
 
 check_presence_group "Main" "${main_vars[@]}"
 check_presence_group "History" "${history_vars[@]}"
+if [[ -z "${SB_SECRET_KEY:-}" && -z "${SUPABASE_SERVICE_ROLE_KEY:-}" ]]; then
+  fail "Main key check: set SB_SECRET_KEY (preferred) or SUPABASE_SERVICE_ROLE_KEY (fallback)"
+fi
 
 echo
 echo "[Secrets] Masked preview"
 for var in \
   SB_PUBLISHABLE_DEFAULT_KEY \
+  SB_SECRET_KEY \
   SUPABASE_SERVICE_ROLE_KEY \
   SUPABASE_ACCESS_TOKEN \
   SB_UK_AQ_CRON_SECRET \
@@ -249,11 +253,12 @@ if (( NO_NETWORK == 0 )); then
     fail "SB_PUBLISHABLE_DEFAULT_KEY main /rest/v1/ check returned HTTP $code"
   fi
 
-  code="$(http_code -H "apikey: ${SUPABASE_SERVICE_ROLE_KEY:-}" "${SUPABASE_URL:-}/rest/v1/")"
+  main_priv_key="${SB_SECRET_KEY:-${SUPABASE_SERVICE_ROLE_KEY:-}}"
+  code="$(http_code -H "apikey: ${main_priv_key}" "${SUPABASE_URL:-}/rest/v1/")"
   if [[ "$code" == "200" ]]; then
-    ok "SUPABASE_SERVICE_ROLE_KEY can access main /rest/v1/ (200)"
+    ok "Main privileged key (SB_SECRET_KEY/SUPABASE_SERVICE_ROLE_KEY) can access main /rest/v1/ (200)"
   else
-    fail "SUPABASE_SERVICE_ROLE_KEY main /rest/v1/ check returned HTTP $code"
+    fail "Main privileged key (SB_SECRET_KEY/SUPABASE_SERVICE_ROLE_KEY) main /rest/v1/ check returned HTTP $code"
   fi
 
   code="$(http_code -H "apikey: ${HISTORY_SERVICE_ROLE_KEY:-}" "${HISTORY_SUPABASE_URL:-}/rest/v1/")"

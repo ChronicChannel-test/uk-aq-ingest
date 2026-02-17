@@ -39,7 +39,12 @@ const SCOMM_USER_AGENT = process.env.SCOMM_USER_AGENT || "uk-air-quality-network
 const SCOMM_INGEST_MET_FIELDS = parseBool(process.env.SCOMM_INGEST_MET_FIELDS, false);
 
 const SUPABASE_URL = requiredEnv("SUPABASE_URL");
-const SUPABASE_SERVICE_ROLE_KEY = requiredEnv("SUPABASE_SERVICE_ROLE_KEY");
+const SB_SECRET_KEY = (process.env.SB_SECRET_KEY || "").trim();
+const SUPABASE_SERVICE_ROLE_KEY = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
+const SUPABASE_PRIVILEGED_KEY = requiredEnvAny([
+  "SB_SECRET_KEY",
+  "SUPABASE_SERVICE_ROLE_KEY",
+]);
 const UK_AQ_CORE_SCHEMA = process.env.UK_AQ_CORE_SCHEMA || "uk_aq_core";
 const UK_AQ_RAW_SCHEMA = process.env.UK_AQ_RAW_SCHEMA || "uk_aq_raw";
 const REST_BASE_URL = buildRestBaseUrl(SUPABASE_URL);
@@ -191,6 +196,18 @@ function requiredEnv(name) {
     throw new Error(`Missing required environment variable: ${name}`);
   }
   return value;
+}
+
+function requiredEnvAny(names) {
+  for (const name of names) {
+    const value = (process.env[name] || "").trim();
+    if (value) {
+      return value;
+    }
+  }
+  throw new Error(
+    `Missing required environment variable: one of ${names.join(", ")}`,
+  );
 }
 
 function parsePositiveInt(raw, fallback) {
@@ -394,10 +411,12 @@ async function publishHistoryRowsToPubsub(preparedRows) {
 function postgrestHeaders(schema, apiKey, write = false) {
   const headers = {
     apikey: apiKey,
-    Authorization: `Bearer ${apiKey}`,
     Accept: "application/json",
     "Accept-Profile": schema,
   };
+  if (isLikelyJwt(apiKey)) {
+    headers.Authorization = `Bearer ${apiKey}`;
+  }
   if (write) {
     headers["Content-Type"] = "application/json";
     headers["Content-Profile"] = schema;
@@ -431,7 +450,7 @@ async function fetchWithTimeout(url, init, timeoutMs) {
 async function postgrestRequest(method, path, options = {}) {
   const schema = options.schema || UK_AQ_CORE_SCHEMA;
   const timeoutMs = options.timeoutMs || HTTP_TIMEOUT_MS;
-  const apiKey = options.apiKey || SUPABASE_SERVICE_ROLE_KEY;
+  const apiKey = options.apiKey || SUPABASE_PRIVILEGED_KEY;
   const restBaseUrl = options.restBaseUrl || REST_BASE_URL;
   const url = withQuery(restBaseUrl, path, options.query);
   const write = method !== "GET";
@@ -490,6 +509,12 @@ async function mainRpcRequest(fn, args = {}) {
 
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isLikelyJwt(value) {
+  return typeof value === "string" &&
+    value.startsWith("eyJ") &&
+    value.split(".").length === 3;
 }
 
 async function fetchJsonWithRetry(url, retries = SOURCE_FETCH_RETRIES) {

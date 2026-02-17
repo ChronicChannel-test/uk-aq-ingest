@@ -96,9 +96,11 @@ const BASE_SCOMM_PHENOMENA: Record<
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ??
   Deno.env.get("SB_SUPABASE_URL") ??
   "";
-const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
-  Deno.env.get("SB_SERVICE_ROLE_KEY") ??
-  "";
+const SB_SECRET_KEY = Deno.env.get("SB_SECRET_KEY") ?? "";
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")
+  ?? Deno.env.get("SB_SERVICE_ROLE_KEY")
+  ?? "";
+const SUPABASE_PRIVILEGED_KEY = SB_SECRET_KEY || SUPABASE_SERVICE_ROLE_KEY;
 const UK_AQ_CORE_SCHEMA = Deno.env.get("UK_AQ_CORE_SCHEMA") ??
   "uk_aq_core";
 const UK_AQ_RAW_SCHEMA = Deno.env.get("UK_AQ_RAW_SCHEMA") ??
@@ -252,13 +254,15 @@ function postgrestHeaders(
   schema = UK_AQ_CORE_SCHEMA,
 ): Record<string, string> {
   const headers: Record<string, string> = {
-    apikey: SUPABASE_SERVICE_ROLE_KEY,
-    Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+    apikey: SUPABASE_PRIVILEGED_KEY,
     "Content-Type": "application/json",
     "x-ukaq-egress-caller": "ingest_sensorcommunity",
   };
   if (prefer) {
     headers.Prefer = prefer;
+  }
+  if (!SB_SECRET_KEY && SUPABASE_SERVICE_ROLE_KEY) {
+    headers["Authorization"] = `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`;
   }
   if (schema && schema !== "public") {
     headers["Accept-Profile"] = schema;
@@ -286,10 +290,10 @@ async function postgrestRequest<T>(
   prefer?: string,
   schema?: string,
 ): Promise<{ data: T | null; error: { message: string } | null }> {
-  if (!REST_BASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+  if (!REST_BASE_URL || !SUPABASE_PRIVILEGED_KEY) {
     return {
       data: null,
-      error: { message: "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY." },
+      error: { message: "Missing SUPABASE_URL or SB_SECRET_KEY or SUPABASE_SERVICE_ROLE_KEY." },
     };
   }
   const url = new URL(`${REST_BASE_URL}/${table}`);
@@ -1715,7 +1719,7 @@ async function dropboxDeletePath(
 
 const ERROR_LOGGER = createErrorLogger(
   loadErrorDropboxConfig(),
-  Boolean(SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY),
+  Boolean(SUPABASE_URL && SUPABASE_PRIVILEGED_KEY),
 );
 
 serve(async (req) => {
@@ -1785,11 +1789,11 @@ serve(async (req) => {
   };
 
   try {
-    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    if (!SUPABASE_URL || !SUPABASE_PRIVILEGED_KEY) {
       status = 500;
       responsePayload = {
         ok: false,
-        error: "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY.",
+        error: "Missing SUPABASE_URL or SB_SECRET_KEY or SUPABASE_SERVICE_ROLE_KEY.",
       };
       log.error("Missing Supabase configuration.");
     } else {
