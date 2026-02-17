@@ -39,6 +39,9 @@ Run-summary metric note:
 Each run reads earliest `uk_aq_raw.openaq_station_checkpoints.next_due_at` and enqueues one Cloud Task that calls:
 
 - `https://run.googleapis.com/v2/projects/<project>/locations/<region>/jobs/<job>:run`
+- Queue reconciliation rule:
+  - If an earlier/equal pending OpenAQ task exists, the worker skips enqueue.
+  - If only later pending OpenAQ task(s) exist, the worker deletes those later task(s) and enqueues the newly computed earlier task.
 
 Safety trigger mode:
 - Scheduler invocations pass a run override env `OPENAQ_TRIGGER_MODE=safety`.

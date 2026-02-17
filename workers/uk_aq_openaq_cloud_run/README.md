@@ -28,6 +28,9 @@ If station refs are selected but do not meet minimum station thresholds
 ## Triggering model
 
 - Primary trigger: one-off Cloud Tasks created by the worker itself.
+- Queue reconciliation rule:
+  - If an earlier/equal pending OpenAQ task exists, the worker does not enqueue another.
+  - If only later pending OpenAQ task(s) exist, the worker deletes them and enqueues the newly computed earlier task.
 - Safety trigger: Cloud Scheduler cron (recommended every 15 minutes) to recover
   from missed/deleted tasks and to bootstrap if task creation fails.
 

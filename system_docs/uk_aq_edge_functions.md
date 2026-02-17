@@ -222,6 +222,9 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
 - Notes:
   - Requires an existing connector row; the ingest does not create connectors.
   - Cloud Run scheduling model for OpenAQ is due-driven: each run enqueues a one-off next-run Cloud Task based on earliest due checkpoint, with a 15-minute Cloud Scheduler safety trigger.
+  - Queue reconciliation for OpenAQ Cloud Run tasks:
+    - if an earlier/equal pending OpenAQ task exists, do not enqueue another task;
+    - if only later pending OpenAQ task(s) exist, delete those later task(s) and enqueue the newly computed earlier task.
   - Uses `OPENAQ_*` environment variables for base URL, API key, and bbox paging.
   - Fetches locations via `/v3/locations` (bbox) and latest values via `/v3/locations/{id}/latest`.
   - Performs a pre-call gap check using `openaq_timeseries_checkpoints.last_observed_at` (gap if any timeseries is 2–24 hours old); when true, polls `/v3/sensors/{id}/measurements/hourly` instead of `/latest` for that station.

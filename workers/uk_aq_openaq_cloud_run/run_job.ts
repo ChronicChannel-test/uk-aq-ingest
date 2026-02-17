@@ -138,6 +138,12 @@ type OpenAQStationRefRow = {
   station_id: unknown;
 };
 
+type PendingOpenAQTask = {
+  name: string;
+  scheduleAt: string;
+  scheduleAtMs: number;
+};
+
 function requiredEnv(name: string): string {
   const value = (Deno.env.get(name) || "").trim();
   if (!value) {
@@ -976,6 +982,88 @@ function buildTaskResourceName(taskId: string): string {
   return `projects/${OPENAQ_GCP_PROJECT_ID}/locations/${OPENAQ_GCP_REGION}/queues/${OPENAQ_TASK_QUEUE_ID}/tasks/${taskId}`;
 }
 
+function isOpenaqSelfTaskName(taskName: string): boolean {
+  return taskName.includes(
+    `/tasks/${OPENAQ_TASK_NAME_PREFIX}-${CONNECTOR_CODE}-`,
+  );
+}
+
+async function listPendingOpenaqTasks(
+  queueUri: string,
+  token: string,
+): Promise<PendingOpenAQTask[]> {
+  const tasks: PendingOpenAQTask[] = [];
+  let pageToken: string | null = null;
+  do {
+    const url = new URL(queueUri);
+    url.searchParams.set("responseView", "BASIC");
+    url.searchParams.set("pageSize", "100");
+    if (pageToken) {
+      url.searchParams.set("pageToken", pageToken);
+    }
+    const response = await fetch(url.toString(), {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    const text = await response.text();
+    if (!response.ok) {
+      throw new Error(`Cloud Tasks list failed (${response.status}): ${text}`);
+    }
+    let payload: unknown = null;
+    if (text) {
+      try {
+        payload = JSON.parse(text);
+      } catch {
+        payload = null;
+      }
+    }
+    const root = toObject(payload);
+    const rows = Array.isArray(root?.tasks) ? root?.tasks : [];
+    for (const row of rows) {
+      const obj = toObject(row);
+      const name = toStringOrNull(obj?.name);
+      if (!name || !isOpenaqSelfTaskName(name)) {
+        continue;
+      }
+      const scheduleAt = toStringOrNull(obj?.scheduleTime);
+      if (!scheduleAt) {
+        continue;
+      }
+      const scheduleAtMs = Date.parse(scheduleAt);
+      if (!Number.isFinite(scheduleAtMs)) {
+        continue;
+      }
+      tasks.push({
+        name,
+        scheduleAt,
+        scheduleAtMs,
+      });
+    }
+    pageToken = toStringOrNull(root?.nextPageToken);
+  } while (pageToken);
+  tasks.sort((a, b) => a.scheduleAtMs - b.scheduleAtMs);
+  return tasks;
+}
+
+async function deleteCloudTask(taskName: string, token: string): Promise<void> {
+  const response = await fetch(
+    `https://cloudtasks.googleapis.com/v2/${taskName}`,
+    {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    },
+  );
+  if (response.ok || response.status === 404) {
+    return;
+  }
+  const text = await response.text();
+  throw new Error(`Cloud Tasks delete failed (${response.status}): ${text}`);
+}
+
 async function enqueueSelfRunTask(
   scheduleAt: Date,
   reason: string,
@@ -999,6 +1087,59 @@ async function enqueueSelfRunTask(
     `${OPENAQ_TASK_NAME_PREFIX}-${CONNECTOR_CODE}-${taskMinuteBucket}`;
   const taskName = buildTaskResourceName(taskId);
   const token = await fetchGoogleAccessToken();
+
+  let pendingTasks: PendingOpenAQTask[] = [];
+  try {
+    pendingTasks = await listPendingOpenaqTasks(queueUri, token);
+  } catch (error) {
+    logSummary("task_probe_failed", {
+      reason,
+      requested_schedule_at: scheduleAt.toISOString(),
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+
+  if (pendingTasks.length) {
+    const requestedScheduleMs = scheduleAt.getTime();
+    const hasEarlierOrEqualTask = pendingTasks.some((task) =>
+      task.scheduleAtMs <= requestedScheduleMs
+    );
+    if (hasEarlierOrEqualTask) {
+      const earliestTask = pendingTasks[0];
+      logSummary("task_enqueue_skipped_existing_earlier", {
+        reason,
+        requested_schedule_at: scheduleAt.toISOString(),
+        pending_count: pendingTasks.length,
+        earliest_pending_task_name: earliestTask?.name ?? null,
+        earliest_pending_schedule_at: earliestTask?.scheduleAt ?? null,
+      });
+      return;
+    }
+
+    let deletedCount = 0;
+    let deleteErrors = 0;
+    for (const task of pendingTasks) {
+      try {
+        await deleteCloudTask(task.name, token);
+        deletedCount += 1;
+      } catch (error) {
+        deleteErrors += 1;
+        logSummary("task_delete_failed", {
+          reason,
+          task_name: task.name,
+          task_schedule_at: task.scheduleAt,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+    logSummary("task_reconciled_later_tasks", {
+      reason,
+      requested_schedule_at: scheduleAt.toISOString(),
+      pending_count: pendingTasks.length,
+      deleted_count: deletedCount,
+      delete_errors: deleteErrors,
+    });
+  }
 
   const body = {
     task: {
