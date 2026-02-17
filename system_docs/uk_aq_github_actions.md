@@ -46,6 +46,7 @@ Example `SUPABASE_SECRETS_ENV` content:
 ```
 SB_SUPABASE_URL=...
 SB_SERVICE_ROLE_KEY=...
+SB_SECRET_KEY=...   # preferred for new key model
 SB_PUBLISHABLE_DEFAULT_KEY=...
 SB_UK_AQ_CRON_SECRET=...
 ```
@@ -63,7 +64,7 @@ SB_UK_AQ_CRON_SECRET=...
 - Purpose: trigger `uk_aq_egress_monitor` against the history Supabase project for history-side endpoint/caller egress visibility.
 - Auth/config:
   - `vars.HISTORY_SUPABASE_URL`
-  - `secrets.HISTORY_SERVICE_ROLE_KEY`
+  - `secrets.HISTORY_PUBLISHABLE_DEFAULT_KEY`
   - optional `secrets.SB_UK_AQ_CRON_SECRET` header.
 
 ### `uk_aq_raw_dropbox.yml`

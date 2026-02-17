@@ -150,6 +150,8 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
 - Auth:
   - Requires `X-Cron-Secret` only when `SB_UK_AQ_CRON_SECRET` is set.
 - Notes:
+  - Internal PostgREST access prefers `SB_SECRET_KEY` (new-style secret key) and falls back to `SUPABASE_SERVICE_ROLE_KEY` during migration.
+  - For migration safety, it only sends `Authorization: Bearer ...` when using legacy `SUPABASE_SERVICE_ROLE_KEY`; `SB_SECRET_KEY` is sent via `apikey` only.
   - Uses `x-ukaq-egress-bypass: 1` on its own PostgREST calls so monitor traffic does not recursively inflate egress metrics.
   - Paginates through `uk_aq_endpoint_egress_metrics_minute` for the lookback window (not capped to a single page).
   - Returns both observed sampled totals and sampling-adjusted estimated totals; alert threshold uses `estimated_mb`.

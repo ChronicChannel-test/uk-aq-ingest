@@ -242,7 +242,7 @@ if (( NO_NETWORK == 0 )); then
     fail "SUPABASE_ACCESS_TOKEN projects check returned HTTP $code"
   fi
 
-  code="$(http_code -H "apikey: ${SB_PUBLISHABLE_DEFAULT_KEY:-}" -H "Authorization: Bearer ${SB_PUBLISHABLE_DEFAULT_KEY:-}" "${SUPABASE_URL:-}/rest/v1/")"
+  code="$(http_code -H "apikey: ${SB_PUBLISHABLE_DEFAULT_KEY:-}" "${SUPABASE_URL:-}/rest/v1/")"
   if [[ "$code" == "200" ]]; then
     ok "SB_PUBLISHABLE_DEFAULT_KEY can access main /rest/v1/ (200)"
   else

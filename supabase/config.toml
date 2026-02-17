@@ -9,3 +9,6 @@ verify_jwt = false
 
 [functions.uk_aq_station_snapshot]
 verify_jwt = false
+
+[functions.uk_aq_egress_monitor]
+verify_jwt = false
