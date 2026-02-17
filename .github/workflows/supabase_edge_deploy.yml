@@ -25,7 +25,6 @@ jobs:
         env:
           SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
           SB_PUBLISHABLE_DEFAULT_KEY: ${{ secrets.SB_PUBLISHABLE_DEFAULT_KEY }}
-          SB_ANON_JWT: ${{ secrets.SB_ANON_JWT }}
         run: |
           node scripts/uk_aq_inject_project_ref.mjs
       - name: Set Supabase secrets

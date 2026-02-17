@@ -6,8 +6,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.8";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")
   ?? Deno.env.get("SB_SUPABASE_URL")
   ?? "";
-const SUPABASE_ANON_KEY = Deno.env.get("SB_PUBLISHABLE_DEFAULT_KEY")
-  ?? Deno.env.get("SB_ANON_JWT")
+const SUPABASE_PUBLISHABLE_KEY = Deno.env.get("SB_PUBLISHABLE_DEFAULT_KEY")
   ?? "";
 const UK_AQ_PUBLIC_SCHEMA = Deno.env.get("UK_AQ_PUBLIC_SCHEMA")
   ?? "uk_aq_public";
@@ -96,7 +95,7 @@ async function validateAccessToken(accessToken: string): Promise<boolean> {
   const resp = await fetch(`${SUPABASE_URL.replace(/\/$/, "")}/auth/v1/user`, {
     method: "GET",
     headers: {
-      apikey: SUPABASE_ANON_KEY,
+      apikey: SUPABASE_PUBLISHABLE_KEY,
       Authorization: `Bearer ${accessToken}`,
     },
   });
@@ -119,9 +118,9 @@ serve(async (req) => {
     return jsonResponse({ error: "Method not allowed" }, 405);
   }
 
-  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+  if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
     return jsonResponse(
-      { error: "Missing SUPABASE_URL or publishable/anon key for authenticated requests." },
+      { error: "Missing SUPABASE_URL or publishable key for authenticated requests." },
       500,
     );
   }
@@ -152,7 +151,7 @@ serve(async (req) => {
     return jsonResponse({ error: "obs_limit must be 100 or 1000." }, 400);
   }
 
-  const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
     auth: {
       persistSession: false,
       autoRefreshToken: false,

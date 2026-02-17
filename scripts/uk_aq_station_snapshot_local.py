@@ -78,7 +78,6 @@ def _default_edge_url() -> str:
 def _env_publishable_key() -> str:
     return (
         os.getenv("SB_PUBLISHABLE_DEFAULT_KEY")
-        or os.getenv("SB_ANON_JWT")
         or ""
     ).strip()
 
@@ -339,7 +338,7 @@ def main() -> None:
     if dev_refresh_token and (not supabase_url or not publishable_key):
         raise SystemExit(
             "Auto-refresh requires SUPABASE_URL (or SB_SUPABASE_URL) and "
-            "SB_PUBLISHABLE_DEFAULT_KEY (or SB_ANON_JWT)."
+            "SB_PUBLISHABLE_DEFAULT_KEY."
         )
 
     server = ThreadingHTTPServer((args.host, args.port), StationSnapshotHandler)

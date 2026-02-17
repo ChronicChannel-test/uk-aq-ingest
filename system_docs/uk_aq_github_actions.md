@@ -46,7 +46,7 @@ Example `SUPABASE_SECRETS_ENV` content:
 ```
 SB_SUPABASE_URL=...
 SB_SERVICE_ROLE_KEY=...
-SB_ANON_JWT=...
+SB_PUBLISHABLE_DEFAULT_KEY=...
 SB_UK_AQ_CRON_SECRET=...
 ```
 
@@ -55,7 +55,7 @@ SB_UK_AQ_CRON_SECRET=...
 - Purpose: trigger `uk_aq_egress_monitor` against the main ingest Supabase project and record top endpoint/caller egress totals.
 - Auth/config:
   - `vars.SUPABASE_URL`
-  - `secrets.SB_ANON_JWT`
+  - `secrets.SB_PUBLISHABLE_DEFAULT_KEY`
   - optional `secrets.SB_UK_AQ_CRON_SECRET` header.
 
 ### `uk_aq_history_egress_monitor.yml`
@@ -78,7 +78,7 @@ SB_UK_AQ_CRON_SECRET=...
 - Purpose: batch station refs and invoke `ingest_breathelondon` per chunk for manual runs.
 - Script: `python3 scripts/breathelondon/breathelondon_batch.py --connector-code breathelondon --batch-size 10 --active-only --skip-stations`.
 - Order: `breathelondon_station_checkpoints.last_polled_at` asc (nulls first), then `next_due_at` asc.
-- Secrets: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SB_ANON_JWT`, `SB_UK_AQ_CRON_SECRET`.
+- Secrets: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SB_PUBLISHABLE_DEFAULT_KEY`, `SB_UK_AQ_CRON_SECRET`.
 
 ### `uk_aq_stations_daily.yml`
 - Schedule: daily at 03:00 UTC.
@@ -116,7 +116,7 @@ SB_UK_AQ_CRON_SECRET=...
 - Purpose: deploy the Cloudflare Worker cron dispatcher and set its secrets.
 - Worker: `workers/uk_aq_dispatcher`.
 - Secrets: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`,
-  `SUPABASE_URL`, `SB_ANON_JWT`, `SB_UK_AQ_CRON_SECRET`.
+  `SUPABASE_URL`, `SB_PUBLISHABLE_DEFAULT_KEY`, `SB_UK_AQ_CRON_SECRET`.
 - Deploy sequence:
   1. Deploy current Worker code (`Deploy Worker (base)`).
   2. Apply all three secrets in one `wrangler secret bulk` call (with retry).

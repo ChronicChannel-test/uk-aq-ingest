@@ -58,7 +58,6 @@ main_vars=(
   SB_PUBLISHABLE_DEFAULT_KEY
   SUPABASE_SERVICE_ROLE_KEY
   SUPABASE_ACCESS_TOKEN
-  SB_ANON_JWT
   UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL
   SB_UK_AQ_CRON_SECRET
   UK_AQ_CORE_SCHEMA
@@ -157,7 +156,6 @@ for var in \
   SB_PUBLISHABLE_DEFAULT_KEY \
   SUPABASE_SERVICE_ROLE_KEY \
   SUPABASE_ACCESS_TOKEN \
-  SB_ANON_JWT \
   SB_UK_AQ_CRON_SECRET \
   HISTORY_SERVICE_ROLE_KEY; do
   value="${!var:-}"
@@ -205,7 +203,7 @@ if [[ -n "${SUPABASE_SECRETS_ENV:-}" ]]; then
 fi
 
 echo
-echo "[JWT] Legacy token claims"
+echo "[JWT] Token claims (JWT-formatted keys)"
 python3 - <<'PY'
 import base64
 import json
@@ -222,7 +220,7 @@ def decode_payload(token: str):
     except Exception:
         return None
 
-for key in ("SUPABASE_SERVICE_ROLE_KEY", "SB_ANON_JWT", "HISTORY_SERVICE_ROLE_KEY"):
+for key in ("SUPABASE_SERVICE_ROLE_KEY", "HISTORY_SERVICE_ROLE_KEY"):
     token = (os.environ.get(key, "") or "").strip()
     payload = decode_payload(token)
     if not payload:
@@ -244,11 +242,11 @@ if (( NO_NETWORK == 0 )); then
     fail "SUPABASE_ACCESS_TOKEN projects check returned HTTP $code"
   fi
 
-  code="$(http_code -H "apikey: ${SB_ANON_JWT:-}" -H "Authorization: Bearer ${SB_ANON_JWT:-}" "${SUPABASE_URL:-}/rest/v1/")"
+  code="$(http_code -H "apikey: ${SB_PUBLISHABLE_DEFAULT_KEY:-}" -H "Authorization: Bearer ${SB_PUBLISHABLE_DEFAULT_KEY:-}" "${SUPABASE_URL:-}/rest/v1/")"
   if [[ "$code" == "200" ]]; then
-    ok "SB_ANON_JWT can access main /rest/v1/ (200)"
+    ok "SB_PUBLISHABLE_DEFAULT_KEY can access main /rest/v1/ (200)"
   else
-    fail "SB_ANON_JWT main /rest/v1/ check returned HTTP $code"
+    fail "SB_PUBLISHABLE_DEFAULT_KEY main /rest/v1/ check returned HTTP $code"
   fi
 
   code="$(http_code -H "apikey: ${SUPABASE_SERVICE_ROLE_KEY:-}" "${SUPABASE_URL:-}/rest/v1/")"
@@ -276,4 +274,3 @@ if (( failures > 0 )); then
 fi
 
 echo "Result: PASS (warnings=$warnings)"
-

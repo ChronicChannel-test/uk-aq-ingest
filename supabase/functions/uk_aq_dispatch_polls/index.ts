@@ -94,7 +94,8 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ??
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
   Deno.env.get("SB_SERVICE_ROLE_KEY") ??
   "";
-const SB_ANON_JWT = Deno.env.get("SB_ANON_JWT") ?? "";
+const SB_PUBLISHABLE_DEFAULT_KEY = Deno.env.get("SB_PUBLISHABLE_DEFAULT_KEY") ??
+  "";
 const SB_UK_AQ_CRON_SECRET = Deno.env.get("SB_UK_AQ_CRON_SECRET") ?? "";
 const UK_AQ_CORE_SCHEMA = Deno.env.get("UK_AQ_CORE_SCHEMA") ??
   "uk_aq_core";
@@ -1302,9 +1303,11 @@ async function callEdgeFunction(
   if (!SUPABASE_URL) {
     throw new Error("Missing SUPABASE_URL.");
   }
-  const authKey = SB_ANON_JWT || SUPABASE_SERVICE_ROLE_KEY;
+  const authKey = SB_PUBLISHABLE_DEFAULT_KEY || SUPABASE_SERVICE_ROLE_KEY;
   if (!authKey) {
-    throw new Error("Missing SB_ANON_JWT or SUPABASE_SERVICE_ROLE_KEY.");
+    throw new Error(
+      "Missing SB_PUBLISHABLE_DEFAULT_KEY or SUPABASE_SERVICE_ROLE_KEY.",
+    );
   }
   const url = `${SUPABASE_URL.replace(/\/$/, "")}/functions/v1/${path}`;
   const headers: Record<string, string> = {
@@ -1338,7 +1341,9 @@ async function callEdgeFunction(
     remaining_budget_ms: remainingMs,
     has_cron_secret: Boolean(SB_UK_AQ_CRON_SECRET),
     cron_secret_length: SB_UK_AQ_CRON_SECRET ? SB_UK_AQ_CRON_SECRET.length : 0,
-    auth_key_type: SB_ANON_JWT ? "anon" : "service_role",
+    auth_key_type: SB_PUBLISHABLE_DEFAULT_KEY
+      ? "publishable"
+      : "service_role",
     auth_key_length: authKey.length,
   });
   let resp: Response;

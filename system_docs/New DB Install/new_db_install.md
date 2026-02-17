@@ -94,7 +94,7 @@ When moving to a new Supabase project ref/key, update the UK-AQ static HTML plac
 
 1. In `../CIC UK-AQ Webpage/CIC-test-uk-aq/.env`, set:
    - `SUPABASE_PROJECT_REF=<new-main-project-ref>`
-   - `SB_ANON_JWT=<new-main-anon-key>`
+   - `SB_PUBLISHABLE_DEFAULT_KEY=<new-main-publishable-key>`
 2. Run injection script:
    - `cd "../CIC UK-AQ Webpage/CIC-test-uk-aq"`
    - `node scripts/uk_aq_inject_project_ref.mjs`
@@ -102,7 +102,7 @@ When moving to a new Supabase project ref/key, update the UK-AQ static HTML plac
 
 Notes:
 
-1. GH Pages workflow (`.github/workflows/pages.yml`) runs injection in CI using repo secrets (`SUPABASE_PROJECT_REF`, `SB_ANON_JWT`), then deploys the built artifact.
+1. GH Pages workflow (`.github/workflows/pages.yml`) runs injection in CI using repo secrets (`SUPABASE_PROJECT_REF`, `SB_PUBLISHABLE_DEFAULT_KEY`), then deploys the built artifact.
 2. GH Pages deploy does not write injected values back to git-tracked files in the repo; local files remain unchanged unless you run the script locally.
 
 ## 6. GCP service accounts and IAM roles

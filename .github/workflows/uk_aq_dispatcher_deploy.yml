@@ -33,9 +33,9 @@ jobs:
           set -euo pipefail
           secrets_json="$(jq -n \
             --arg SUPABASE_URL "${{ vars.SUPABASE_URL }}" \
-            --arg SB_ANON_JWT "${{ secrets.SB_ANON_JWT }}" \
+            --arg SB_PUBLISHABLE_DEFAULT_KEY "${{ secrets.SB_PUBLISHABLE_DEFAULT_KEY }}" \
             --arg SB_UK_AQ_CRON_SECRET "${{ secrets.SB_UK_AQ_CRON_SECRET }}" \
-            '{SUPABASE_URL: $SUPABASE_URL, SB_ANON_JWT: $SB_ANON_JWT, SB_UK_AQ_CRON_SECRET: $SB_UK_AQ_CRON_SECRET}')"
+            '{SUPABASE_URL: $SUPABASE_URL, SB_PUBLISHABLE_DEFAULT_KEY: $SB_PUBLISHABLE_DEFAULT_KEY, SB_UK_AQ_CRON_SECRET: $SB_UK_AQ_CRON_SECRET}')"
           for attempt in 1 2 3; do
             if printf "%s" "$secrets_json" | npx wrangler secret bulk; then
               exit 0

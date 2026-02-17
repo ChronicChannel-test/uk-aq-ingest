@@ -12,19 +12,19 @@ jobs:
       - name: Trigger egress monitor function
         env:
           SUPABASE_URL: ${{ vars.SUPABASE_URL }}
-          SB_ANON_JWT: ${{ secrets.SB_ANON_JWT }}
+          SB_PUBLISHABLE_DEFAULT_KEY: ${{ secrets.SB_PUBLISHABLE_DEFAULT_KEY }}
           SB_UK_AQ_CRON_SECRET: ${{ secrets.SB_UK_AQ_CRON_SECRET }}
         run: |
           set -euo pipefail
-          if [ -z "${SUPABASE_URL:-}" ] || [ -z "${SB_ANON_JWT:-}" ]; then
-            echo "Missing SUPABASE_URL or SB_ANON_JWT secret." >&2
+          if [ -z "${SUPABASE_URL:-}" ] || [ -z "${SB_PUBLISHABLE_DEFAULT_KEY:-}" ]; then
+            echo "Missing SUPABASE_URL or SB_PUBLISHABLE_DEFAULT_KEY secret." >&2
             exit 1
           fi
           curl --silent --show-error --fail-with-body \
             -X POST \
             "${SUPABASE_URL%/}/functions/v1/uk_aq_egress_monitor?lookback_minutes=60&top_n=15" \
-            -H "Authorization: Bearer ${SB_ANON_JWT}" \
-            -H "apikey: ${SB_ANON_JWT}" \
+            -H "Authorization: Bearer ${SB_PUBLISHABLE_DEFAULT_KEY}" \
+            -H "apikey: ${SB_PUBLISHABLE_DEFAULT_KEY}" \
             -H "Content-Type: application/json" \
             -H "X-Cron-Secret: ${SB_UK_AQ_CRON_SECRET:-}" \
             -d '{}'

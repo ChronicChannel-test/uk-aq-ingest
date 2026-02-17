@@ -73,7 +73,7 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
 - Notes:
   - Requires `X-Cron-Secret` when `SB_UK_AQ_CRON_SECRET` is set.
   - Uses the Supabase service role key to read connector settings.
-  - Uses `SB_ANON_JWT` (falls back to service role) to call ingest functions.
+  - Uses `SB_PUBLISHABLE_DEFAULT_KEY` (falls back to service role) to call ingest functions.
   - Uses a runtime budget guard to avoid platform timeout overruns:
     - `DISPATCH_TIME_BUDGET_MS` (default `150000`)
     - `DISPATCH_SHUTDOWN_BUFFER_MS` (default `10000`)
@@ -438,7 +438,7 @@ curl "https://YOUR_PROJECT.supabase.co/functions/v1/uk_aq_timeseries?timeseries_
 - Auth:
   - Requires `Authorization: Bearer <JWT>`.
   - Verifies identity with `auth.getUser()`.
-  - Uses `SB_PUBLISHABLE_DEFAULT_KEY` first (falls back to `SB_ANON_JWT`) + caller JWT (does not use service role key).
+  - Uses `SB_PUBLISHABLE_DEFAULT_KEY` + caller JWT (does not use service role key).
 - RPC backing: `uk_aq_public.uk_aq_station_snapshot`.
 - Returns:
   - Raw station row (`stations`)

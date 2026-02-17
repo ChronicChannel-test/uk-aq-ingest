@@ -95,9 +95,9 @@ def parse_args() -> argparse.Namespace:
         help="Supabase service role key (default: SUPABASE_SERVICE_ROLE_KEY).",
     )
     parser.add_argument(
-        "--anon-jwt",
-        default=os.getenv("SB_ANON_JWT") or os.getenv("SUPABASE_ANON_KEY"),
-        help="Supabase anon JWT (default: SB_ANON_JWT).",
+        "--publishable-key",
+        default=os.getenv("SB_PUBLISHABLE_DEFAULT_KEY") or os.getenv("SUPABASE_ANON_KEY"),
+        help="Supabase publishable key (default: SB_PUBLISHABLE_DEFAULT_KEY).",
     )
     parser.add_argument(
         "--cron-secret",
@@ -220,9 +220,9 @@ def main() -> int:
     service_role_key = (args.service_role_key or "").strip()
     if not service_role_key:
         raise SystemExit("SUPABASE_SERVICE_ROLE_KEY (or --service-role-key) is required.")
-    anon_jwt = (args.anon_jwt or "").strip()
-    if not anon_jwt:
-        raise SystemExit("SB_ANON_JWT (or --anon-jwt) is required.")
+    publishable_key = (args.publishable_key or "").strip()
+    if not publishable_key:
+        raise SystemExit("SB_PUBLISHABLE_DEFAULT_KEY (or --publishable-key) is required.")
 
     connector_code = args.connector_code
     service_ref = args.service_ref or connector_code
@@ -278,8 +278,8 @@ def main() -> int:
     print(f"Loaded {total} station refs (connector={connector_code}, service_ref={service_ref}).")
 
     headers = {
-        "Authorization": f"Bearer {anon_jwt}",
-        "apikey": anon_jwt,
+        "Authorization": f"Bearer {publishable_key}",
+        "apikey": publishable_key,
         "Content-Type": "application/json",
     }
     if args.cron_secret:

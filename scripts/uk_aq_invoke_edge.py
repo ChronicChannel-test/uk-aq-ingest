@@ -43,9 +43,9 @@ def parse_args() -> argparse.Namespace:
         help="Supabase URL (defaults to SUPABASE_URL).",
     )
     parser.add_argument(
-        "--anon-jwt",
-        default=os.getenv("SB_ANON_JWT") or os.getenv("SUPABASE_ANON_KEY"),
-        help="Supabase anon JWT (defaults to SB_ANON_JWT).",
+        "--publishable-key",
+        default=os.getenv("SB_PUBLISHABLE_DEFAULT_KEY") or os.getenv("SUPABASE_ANON_KEY"),
+        help="Supabase publishable key (defaults to SB_PUBLISHABLE_DEFAULT_KEY).",
     )
     parser.add_argument(
         "--cron-secret",
@@ -74,9 +74,9 @@ def main() -> int:
     base_url = (args.base_url or "").rstrip("/")
     if not base_url:
         raise SystemExit("SUPABASE_URL (or --base-url) is required.")
-    anon_jwt = args.anon_jwt or ""
-    if not anon_jwt:
-        raise SystemExit("SB_ANON_JWT (or --anon-jwt) is required.")
+    publishable_key = args.publishable_key or ""
+    if not publishable_key:
+        raise SystemExit("SB_PUBLISHABLE_DEFAULT_KEY (or --publishable-key) is required.")
 
     method = args.method or ("POST" if args.function.startswith("ingest_") else "GET")
     params = parse_json(args.params, "params")
@@ -95,8 +95,8 @@ def main() -> int:
         payload.setdefault("connector_code", args.connector_code)
 
     headers = {
-        "Authorization": f"Bearer {anon_jwt}",
-        "apikey": anon_jwt,
+        "Authorization": f"Bearer {publishable_key}",
+        "apikey": publishable_key,
         "Content-Type": "application/json",
     }
     if args.cron_secret:

@@ -28,8 +28,8 @@ set +a
 if [[ -z "${SUPABASE_URL:-}" && -n "${SB_SUPABASE_URL:-}" ]]; then
   export SUPABASE_URL="$SB_SUPABASE_URL"
 fi
-if [[ -z "${SUPABASE_ANON_KEY:-}" && -n "${SB_ANON_JWT:-}" ]]; then
-  export SUPABASE_ANON_KEY="$SB_ANON_JWT"
+if [[ -z "${SUPABASE_ANON_KEY:-}" && -n "${SB_PUBLISHABLE_DEFAULT_KEY:-}" ]]; then
+  export SUPABASE_ANON_KEY="$SB_PUBLISHABLE_DEFAULT_KEY"
 fi
 
 missing_vars=()

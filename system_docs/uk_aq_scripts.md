@@ -56,7 +56,6 @@ Purpose:
 Placeholders:
 - `__SUPABASE_PROJECT_REF__` or `{{SUPABASE_PROJECT_REF}}`
 - `__SB_PUBLISHABLE_DEFAULT_KEY__` or `{{SB_PUBLISHABLE_DEFAULT_KEY}}`
-- `__SB_ANON_JWT__` or `{{SB_ANON_JWT}}`
 
 Notes:
 - If no placeholders are found, the script exits without changes.
@@ -65,12 +64,11 @@ Notes:
 Environment:
 - `SUPABASE_PROJECT_REF`
 - `SB_PUBLISHABLE_DEFAULT_KEY`
-- `SB_ANON_JWT`
 
 ### `scripts/uk_aq_check_env.sh`
 Purpose:
 - Run one-pass validation for local Supabase env variables used by Ingest + History.
-- Check variable presence, project-ref alignment, masked secret previews, legacy JWT claims, and optional live HTTP checks.
+- Check variable presence, project-ref alignment, masked secret previews, JWT-formatted key claims, and optional live HTTP checks.
 
 Common commands:
 ```
@@ -83,7 +81,7 @@ Notes:
 - Exit code `0` = pass (warnings allowed); exit code `1` = one or more failures.
 - Network mode validates:
   - `SUPABASE_ACCESS_TOKEN` against Supabase Management API.
-  - Main/history REST root access with `SB_ANON_JWT`, `SUPABASE_SERVICE_ROLE_KEY`, and `HISTORY_SERVICE_ROLE_KEY`.
+  - Main/history REST root access with `SB_PUBLISHABLE_DEFAULT_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, and `HISTORY_SERVICE_ROLE_KEY`.
 - Secret values are masked in output.
 
 ### `scripts/uk_aq_sync_github_secrets.sh`
@@ -233,8 +231,7 @@ Environment:
 - `UK_AQ_DEV_JWT` (required unless `UK_AQ_DEV_REFRESH_TOKEN` is provided)
 - `UK_AQ_DEV_REFRESH_TOKEN` (optional; enables auto-refresh)
 - `UK_AQ_DEV_ENV_FILE` (optional; env file to persist rotated refresh tokens, default `.env.supabase`)
-- `SB_PUBLISHABLE_DEFAULT_KEY` (or `SB_ANON_JWT`) required when using auto-refresh
-  - Resolution order is `SB_PUBLISHABLE_DEFAULT_KEY` first, then `SB_ANON_JWT`.
+- `SB_PUBLISHABLE_DEFAULT_KEY` required when using auto-refresh
 
 ### `scripts/uk_aq_issue_dev_auth_tokens.py`
 Purpose:
@@ -254,8 +251,7 @@ Notes:
 
 Environment:
 - `SUPABASE_URL` or `SB_SUPABASE_URL`
-- `SB_PUBLISHABLE_DEFAULT_KEY` (or `SB_ANON_JWT`)
-  - Resolution order is `SB_PUBLISHABLE_DEFAULT_KEY` first, then `SB_ANON_JWT`.
+- `SB_PUBLISHABLE_DEFAULT_KEY`
 - `UK_AQ_DEV_USER_EMAIL` + `UK_AQ_DEV_USER_PASSWORD` (for password grant), or `UK_AQ_DEV_REFRESH_TOKEN` (for refresh grant)
 
 ### `dev_dashboards.sh` and `dev_dashboards_stop.sh`
@@ -275,7 +271,7 @@ Notes:
 - `dev_dashboards_stop.sh` only stops exact PIDs listed in `./.dashboards.pids` (no broad `pkill`).
 
 Environment:
-- Required: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and either `UK_AQ_DEV_JWT` or `UK_AQ_DEV_REFRESH_TOKEN`
+- Required: `SUPABASE_URL`, plus either `SUPABASE_ANON_KEY` or `SB_PUBLISHABLE_DEFAULT_KEY`, and either `UK_AQ_DEV_JWT` or `UK_AQ_DEV_REFRESH_TOKEN`
 - Optional overrides: `HOST`, `SCHEDULER_PORT`, `SNAPSHOT_PORT`
 
 ### `scripts/uk_air_sos/uk_air_sos_ingest.py`
@@ -1064,7 +1060,7 @@ python3 scripts/breathelondon/breathelondon_batch.py --connector-code breathelon
 Environment:
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
-- `SB_ANON_JWT` (or `SUPABASE_ANON_KEY`)
+- `SB_PUBLISHABLE_DEFAULT_KEY` (or `SUPABASE_ANON_KEY`)
 - `SB_UK_AQ_CRON_SECRET` (optional)
 - `BREATHELONDON_CONNECTOR_CODE` (optional override)
 - `BREATHELONDON_SERVICE_REF` (optional override)
@@ -1110,7 +1106,7 @@ python3 scripts/uk_aq_invoke_edge.py --function uk_aq_latest --connector-code br
 
 Environment:
 - `SUPABASE_URL`
-- `SB_ANON_JWT` (or `SUPABASE_ANON_KEY`)
+- `SB_PUBLISHABLE_DEFAULT_KEY` (or `SUPABASE_ANON_KEY`)
 - `SB_UK_AQ_CRON_SECRET` (required for ingest functions when set in Supabase)
 
 ## SOS metadata glossary

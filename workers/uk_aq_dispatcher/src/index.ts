@@ -1,6 +1,6 @@
 export interface Env {
   SUPABASE_URL: unknown;
-  SB_ANON_JWT: unknown;
+  SB_PUBLISHABLE_DEFAULT_KEY: unknown;
   SB_UK_AQ_CRON_SECRET?: unknown;
 }
 
@@ -32,10 +32,10 @@ async function invokeDispatch(
   payload: Record<string, unknown> = {},
 ): Promise<{ ok: boolean; status: number; body: unknown }> {
   const supabaseUrl = await readSecret(env.SUPABASE_URL);
-  const supabaseAnonJwt = await readSecret(env.SB_ANON_JWT);
+  const supabasePublishableKey = await readSecret(env.SB_PUBLISHABLE_DEFAULT_KEY);
   const cronSecret = await readSecret(env.SB_UK_AQ_CRON_SECRET ?? "");
-  if (!supabaseUrl || !supabaseAnonJwt) {
-    console.error("Missing SUPABASE_URL or SB_ANON_JWT.");
+  if (!supabaseUrl || !supabasePublishableKey) {
+    console.error("Missing SUPABASE_URL or SB_PUBLISHABLE_DEFAULT_KEY.");
     return {
       ok: false,
       status: 500,
@@ -45,8 +45,8 @@ async function invokeDispatch(
   const url = `${normalizeBaseUrl(supabaseUrl)}/functions/v1/uk_aq_dispatch_polls`;
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
-    Authorization: `Bearer ${supabaseAnonJwt}`,
-    apikey: supabaseAnonJwt,
+    Authorization: `Bearer ${supabasePublishableKey}`,
+    apikey: supabasePublishableKey,
   };
   if (cronSecret) {
     headers["X-Cron-Secret"] = cronSecret;
