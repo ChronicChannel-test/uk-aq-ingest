@@ -528,6 +528,7 @@ jobs:
 
           scheduler_sa="${SCHEDULER_SERVICE_ACCOUNT:-${JOB_SERVICE_ACCOUNT}}"
           run_uri="https://run.googleapis.com/v2/projects/${PROJECT_ID}/locations/${REGION}/jobs/${JOB_NAME}:run"
+          safety_run_body='{"overrides":{"containerOverrides":[{"env":[{"name":"OPENAQ_TRIGGER_MODE","value":"safety"}]}]}}'
 
           gcloud run jobs add-iam-policy-binding "${JOB_NAME}" \
             --region "${REGION}" \
@@ -541,6 +542,8 @@ jobs:
               --time-zone "${SCHEDULER_TIMEZONE}" \
               --uri "${run_uri}" \
               --http-method POST \
+              --headers "Content-Type=application/json" \
+              --message-body "${safety_run_body}" \
               --oauth-service-account-email "${scheduler_sa}" \
               --oauth-token-scope "https://www.googleapis.com/auth/cloud-platform" \
               --max-retry-attempts "${SCHEDULER_MAX_RETRY_ATTEMPTS}"
@@ -552,6 +555,8 @@ jobs:
               --time-zone "${SCHEDULER_TIMEZONE}" \
               --uri "${run_uri}" \
               --http-method POST \
+              --headers "Content-Type=application/json" \
+              --message-body "${safety_run_body}" \
               --oauth-service-account-email "${scheduler_sa}" \
               --oauth-token-scope "https://www.googleapis.com/auth/cloud-platform" \
               --max-retry-attempts "${SCHEDULER_MAX_RETRY_ATTEMPTS}"

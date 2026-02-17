@@ -44,6 +44,13 @@ const OPENAQ_TASKS_ENABLED = parseBool(
   Deno.env.get("OPENAQ_TASKS_ENABLED"),
   true,
 );
+const OPENAQ_TRIGGER_MODE = parseTriggerMode(
+  Deno.env.get("OPENAQ_TRIGGER_MODE"),
+);
+const OPENAQ_SAFETY_SUCCESS_LOOKBACK_MINUTES = parsePositiveInt(
+  Deno.env.get("OPENAQ_SAFETY_SUCCESS_LOOKBACK_MINUTES"),
+  10,
+);
 const OPENAQ_NEXT_CHECK_MIN_SECONDS = parsePositiveInt(
   Deno.env.get("OPENAQ_NEXT_CHECK_MIN_SECONDS"),
   60,
@@ -156,6 +163,16 @@ function parseBool(raw: string | undefined, fallback = false): boolean {
     return fallback;
   }
   return ["1", "true", "yes", "y", "on"].includes(value);
+}
+
+function parseTriggerMode(
+  raw: string | undefined,
+): "safety" | "task" | "manual" | "unknown" {
+  const value = (raw || "").trim().toLowerCase();
+  if (value === "safety" || value === "task" || value === "manual") {
+    return value;
+  }
+  return "unknown";
 }
 
 function parseRequestPayload(raw: string): Record<string, unknown> {
@@ -655,6 +672,26 @@ async function loadConnector(): Promise<ConnectorConfig | null> {
   return row as ConnectorConfig | null;
 }
 
+async function loadLatestSuccessfulRunStartedAt(): Promise<Date | null> {
+  const response = await postgrestRequest("GET", "uk_aq_ingest_runs", {
+    query: {
+      select: "run_started_at",
+      connector_code: `eq.${CONNECTOR_CODE}`,
+      run_status: "in.(succeeded,success)",
+      order: "run_started_at.desc",
+      limit: "1",
+    },
+  });
+  if (!response.ok) {
+    throw new Error(
+      `Failed to load latest successful run (${response.status}): ${response.text}`,
+    );
+  }
+  const rows = Array.isArray(response.data) ? response.data : [];
+  const runStartedAt = toStringOrNull(toObject(rows[0])?.run_started_at);
+  return parseTimestamp(runStartedAt);
+}
+
 async function claimConnector(
   runStartedAtIso: string,
 ): Promise<DispatchClaimRow | null> {
@@ -966,7 +1003,18 @@ async function enqueueSelfRunTask(
         headers: {
           "Content-Type": "application/json",
         },
-        body: btoa("{}"),
+        body: btoa(
+          JSON.stringify({
+            overrides: {
+              containerOverrides: [{
+                env: [{
+                  name: "OPENAQ_TRIGGER_MODE",
+                  value: "task",
+                }],
+              }],
+            },
+          }),
+        ),
         oauthToken: {
           serviceAccountEmail: OPENAQ_TASK_INVOKER_SERVICE_ACCOUNT,
           scope: "https://www.googleapis.com/auth/cloud-platform",
@@ -1109,6 +1157,7 @@ async function main(): Promise<void> {
   if (!eligibility.eligible) {
     logSummary("skipped", {
       reason: eligibility.reason,
+      trigger_mode: OPENAQ_TRIGGER_MODE,
       poll_enabled: connector?.poll_enabled,
       scheduler_backend: toStringOrNull(connector?.scheduler_backend) ||
         SCHEDULER_BACKEND_SUPABASE_FUNCTION,
@@ -1116,10 +1165,36 @@ async function main(): Promise<void> {
     return;
   }
 
+  if (OPENAQ_TRIGGER_MODE === "safety") {
+    const latestSuccessAt = await loadLatestSuccessfulRunStartedAt();
+    const lookbackMs = OPENAQ_SAFETY_SUCCESS_LOOKBACK_MINUTES * 60 * 1000;
+    if (
+      latestSuccessAt &&
+      now.getTime() - latestSuccessAt.getTime() <= lookbackMs
+    ) {
+      logSummary("safety_noop_recent_success", {
+        trigger_mode: OPENAQ_TRIGGER_MODE,
+        lookback_minutes: OPENAQ_SAFETY_SUCCESS_LOOKBACK_MINUTES,
+        last_success_at: latestSuccessAt.toISOString(),
+        minutes_since_last_success: Math.max(
+          0,
+          Math.round((now.getTime() - latestSuccessAt.getTime()) / 60000),
+        ),
+      });
+      return;
+    }
+    logSummary("safety_trigger_run", {
+      trigger_mode: OPENAQ_TRIGGER_MODE,
+      lookback_minutes: OPENAQ_SAFETY_SUCCESS_LOOKBACK_MINUTES,
+      last_success_at: latestSuccessAt ? latestSuccessAt.toISOString() : null,
+    });
+  }
+
   const claim = await claimConnector(runStartedAtIso);
   if (!claim || claim.claimed !== true) {
     logSummary("skipped", {
       reason: "claim_not_acquired",
+      trigger_mode: OPENAQ_TRIGGER_MODE,
       claim,
     });
     return;
@@ -1144,6 +1219,7 @@ async function main(): Promise<void> {
     );
     logSummary("skipped", {
       reason: "no_station_refs",
+      trigger_mode: OPENAQ_TRIGGER_MODE,
       connector_id: connectorId,
       batch_limit: payloadPlan.batchLimit,
       tiered_limit: payloadPlan.tieredLimit,
@@ -1154,6 +1230,7 @@ async function main(): Promise<void> {
   }
 
   logSummary("dispatching", {
+    trigger_mode: OPENAQ_TRIGGER_MODE,
     connector_id: connectorId,
     batch_limit: payloadPlan.batchLimit,
     tiered_limit: payloadPlan.tieredLimit,
@@ -1224,6 +1301,7 @@ async function main(): Promise<void> {
     }
 
     logSummary("success", {
+      trigger_mode: OPENAQ_TRIGGER_MODE,
       run_status: runStatus,
       run_message: runMessage,
       response_status: ingestResponse.status,
@@ -1277,6 +1355,7 @@ async function main(): Promise<void> {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       logSummary("task_schedule_failed", {
+        trigger_mode: OPENAQ_TRIGGER_MODE,
         connector_id: connectorId,
         error: message,
       });
@@ -1290,6 +1369,6 @@ async function main(): Promise<void> {
 
 main().catch((error) => {
   const message = error instanceof Error ? error.message : String(error);
-  logSummary("failure", { error: message });
+  logSummary("failure", { error: message, trigger_mode: OPENAQ_TRIGGER_MODE });
   Deno.exit(1);
 });

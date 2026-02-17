@@ -34,11 +34,21 @@ Run-summary metric note:
 ## Trigger Model (Option 2)
 
 - Primary trigger: self-scheduled one-off Cloud Tasks.
-- Safety trigger: Cloud Scheduler cron every 15 minutes (`*/15 * * * *` by default).
+- Safety trigger: Cloud Scheduler cron (workflow default `*/30 * * * *`).
 
 Each run reads earliest `uk_aq_raw.openaq_station_checkpoints.next_due_at` and enqueues one Cloud Task that calls:
 
 - `https://run.googleapis.com/v2/projects/<project>/locations/<region>/jobs/<job>:run`
+
+Safety trigger mode:
+- Scheduler invocations pass a run override env `OPENAQ_TRIGGER_MODE=safety`.
+- In safety mode, the worker checks the latest successful OpenAQ ingest run.
+- If a successful run exists within `OPENAQ_SAFETY_SUCCESS_LOOKBACK_MINUTES`
+  (default `10`), the safety execution exits early (`safety_noop_recent_success`)
+  and does not write a `uk_aq_ingest_runs` row.
+- If no recent success exists, the same execution continues as a normal ingest
+  run (`safety_trigger_run`), and run rows are written as usual.
+- Self-scheduled Cloud Tasks pass `OPENAQ_TRIGGER_MODE=task`.
 
 If no due checkpoint is available, worker schedules a short fallback recheck.
 When OpenAQ signals rate-limit stop/reset, the worker schedules no earlier than
@@ -65,6 +75,7 @@ Delay floors are outcome-aware:
 - `OPENAQ_NEXT_CHECK_MIN_SECONDS` (default `60`)
 - `OPENAQ_NEXT_CHECK_PARTIAL_MIN_SECONDS` (default `60`)
 - `OPENAQ_NEXT_CHECK_SKIPPED_MIN_SECONDS` (default `60`)
+- `OPENAQ_SAFETY_SUCCESS_LOOKBACK_MINUTES` (default `10`; only used when `OPENAQ_TRIGGER_MODE=safety`)
 - `OPENAQ_LAG_STAT` (default `min`; options `min|median|p25` for OpenAQ lag samples)
 - `OPENAQ_HISTORY_WRITE_MODE` (default in workflow: `pubsub_only`)
 - `GCP_HISTORY_PUBSUB_TOPIC` (default `uk-aq-history-observations`)

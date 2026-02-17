@@ -179,12 +179,13 @@ SB_UK_AQ_CRON_SECRET=...
 
 ### `uk_aq_openaq_cloud_run_deploy.yml`
 - Trigger: push to `main` affecting `workers/uk_aq_openaq_cloud_run/**` or OpenAQ ingest runtime files, or manual dispatch.
-- Purpose: deploy the OpenAQ Cloud Run job + due-driven Cloud Tasks trigger + 15-minute safety Cloud Scheduler trigger.
+- Purpose: deploy the OpenAQ Cloud Run job + due-driven Cloud Tasks trigger + safety Cloud Scheduler trigger.
 - Default job name: `uk-aq-openaq-ingest`.
 - Worker: `workers/uk_aq_openaq_cloud_run`.
 - Trigger model:
   - Primary: one-off Cloud Tasks created by the OpenAQ Cloud Run worker based on earliest due `openaq_station_checkpoints.next_due_at`.
-  - Safety: Cloud Scheduler cron (default `*/15 * * * *`) to recover from missed task creation.
+  - Safety: Cloud Scheduler cron (workflow default `*/30 * * * *`) calls the job with `OPENAQ_TRIGGER_MODE=safety`.
+  - In safety mode, worker checks latest successful OpenAQ run in the last `OPENAQ_SAFETY_SUCCESS_LOOKBACK_MINUTES` (default `10`): recent success => no-op; stale success => run.
 - Required secrets/vars:
   - `GCP_PROJECT_ID`, Google auth secrets (`GCP_WORKLOAD_IDENTITY_PROVIDER` + `GCP_SERVICE_ACCOUNT` or `GCP_SA_KEY`)
   - `GCP_OPENAQ_JOB_SERVICE_ACCOUNT` (repo var or secret)
