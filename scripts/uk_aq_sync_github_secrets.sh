@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# trigger
 set -euo pipefail
 
 readonly SUPABASE_SECRETS_ENV_KEY="SUPABASE_SECRETS_ENV"
