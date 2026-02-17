@@ -30,10 +30,7 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ??
   Deno.env.get("SB_SUPABASE_URL") ??
   "";
 const SB_SECRET_KEY = Deno.env.get("SB_SECRET_KEY") ?? "";
-const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")
-  ?? Deno.env.get("SB_SERVICE_ROLE_KEY")
-  ?? "";
-const SUPABASE_PRIVILEGED_KEY = SB_SECRET_KEY || SUPABASE_SERVICE_ROLE_KEY;
+const SUPABASE_PRIVILEGED_KEY = SB_SECRET_KEY;
 const UK_AQ_PUBLIC_SCHEMA = Deno.env.get("UK_AQ_PUBLIC_SCHEMA") ??
   "uk_aq_public";
 const REST_BASE_URL = SUPABASE_URL
@@ -189,9 +186,6 @@ function postgrestHeaders(
     "Content-Type": "application/json",
     [EGRESS_BYPASS_HEADER]: "1",
   };
-  if (!SB_SECRET_KEY && SUPABASE_SERVICE_ROLE_KEY) {
-    headers["Authorization"] = `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`;
-  }
   if (schema && schema !== "public") {
     headers["Accept-Profile"] = schema;
     headers["Content-Profile"] = schema;
@@ -205,7 +199,7 @@ async function postgrestRpc(fn: string, args: Record<string, unknown>): Promise<
   if (!REST_BASE_URL || !SUPABASE_PRIVILEGED_KEY) {
     return {
       ok: false,
-      message: "Missing SUPABASE_URL or SB_SECRET_KEY or SUPABASE_SERVICE_ROLE_KEY.",
+      message: "Missing SUPABASE_URL or SB_SECRET_KEY.",
     };
   }
   const url = `${REST_BASE_URL}/rpc/${fn}`;

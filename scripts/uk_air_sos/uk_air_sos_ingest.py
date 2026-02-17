@@ -9,7 +9,7 @@ This script:
 
 Environment:
 - SUPABASE_URL
-- SUPABASE_SERVICE_ROLE_KEY
+- SB_SECRET_KEY
 - UK_AIR_SOS_BASE_URL (optional; defaults to https://uk-air.defra.gov.uk/sos-ukair/api/v1)
 - UK_AIR_SOS_SERVICE_LABEL (optional; defaults to UK-AIR-SOS)
 - connectors.poll_timeseries_batch_size (optional; overrides default batch size)

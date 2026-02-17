@@ -45,7 +45,7 @@ Cloud Run deploy idempotency:
 Example `SUPABASE_SECRETS_ENV` content:
 ```
 SB_SUPABASE_URL=...
-SB_SERVICE_ROLE_KEY=...
+SB_SECRET_KEY=...
 SB_SECRET_KEY=...   # preferred for new key model
 SB_PUBLISHABLE_DEFAULT_KEY=...
 SB_UK_AQ_CRON_SECRET=...
@@ -71,7 +71,7 @@ SB_UK_AQ_CRON_SECRET=...
 - Trigger: manual dispatch.
 - Purpose: run a Bristol-only ingest with raw Dropbox upload for debugging/testing.
 - Script: `python3 scripts/uk_air_sos/uk_air_sos_ingest.py --discover --refresh-recent ... --raw-dropbox`.
-- Secrets: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `DROPBOX_APP_KEY`,
+- Secrets: `SUPABASE_URL`, `SB_SECRET_KEY`, `DROPBOX_APP_KEY`,
   `DROPBOX_APP_SECRET`, `DROPBOX_REFRESH_TOKEN`.
 
 ### `uk_aq_breathelondon_batch.yml`
@@ -79,7 +79,7 @@ SB_UK_AQ_CRON_SECRET=...
 - Purpose: batch station refs and invoke `ingest_breathelondon` per chunk for manual runs.
 - Script: `python3 scripts/breathelondon/breathelondon_batch.py --connector-code breathelondon --batch-size 10 --active-only --skip-stations`.
 - Order: `breathelondon_station_checkpoints.last_polled_at` asc (nulls first), then `next_due_at` asc.
-- Secrets: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SB_PUBLISHABLE_DEFAULT_KEY`, `SB_UK_AQ_CRON_SECRET`.
+- Secrets: `SUPABASE_URL`, `SB_SECRET_KEY`, `SB_PUBLISHABLE_DEFAULT_KEY`, `SB_UK_AQ_CRON_SECRET`.
 
 ### `uk_aq_stations_daily.yml`
 - Schedule: daily at 03:00 UTC.
@@ -89,7 +89,7 @@ SB_UK_AQ_CRON_SECRET=...
 - Script: `python3 scripts/uk_aq_refresh_station_geo_aiven.py` (refresh PCON/LA codes from Aiven).
 - Export: `python3 scripts/uk_aq_export_stations_dropbox.py` (uploads `uk_aq_stations_<timestamp>.json`).
 - Optional: Sensor.Community discovery step (disabled by default).
-- Secrets: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `UK_AIR_SOS_BASE_URL`,
+- Secrets: `SUPABASE_URL`, `SB_SECRET_KEY`, `UK_AIR_SOS_BASE_URL`,
   `BREATHELONDON_API_KEY`, `BREATHELONDON_BASE_URL` (optional), `DROPBOX_APP_KEY`,
   `DROPBOX_APP_SECRET`, `DROPBOX_REFRESH_TOKEN`, `UK_AQ_DROPBOX_ROOT`, `UK_AQ_STATIONS_DROPBOX_DIR`,
   `PCON_AIVEN_PG_DSN`.
@@ -137,7 +137,7 @@ SB_UK_AQ_CRON_SECRET=...
   - Small per-batch claims, bounded runtime budget, and retry-aware RPC calls.
   - Scheduler target uses Google Cloud Scheduler -> Cloud Run Jobs API (`:run`).
 - Secrets:
-  - `SUPABASE_URL`, `SB_SECRET_KEY` (preferred; workflow falls back to `SUPABASE_SERVICE_ROLE_KEY`),
+  - `SUPABASE_URL`, `SB_SECRET_KEY` (preferred; workflow falls back to `SB_SECRET_KEY`),
   - `HISTORY_SUPABASE_URL`, `HISTORY_SERVICE_ROLE_KEY`,
   - GCP deploy/auth secrets as in other Cloud Run workflows.
 
@@ -172,7 +172,7 @@ SB_UK_AQ_CRON_SECRET=...
 - Required secrets/vars:
   - `GCP_PROJECT_ID`, Google auth secrets (`GCP_WORKLOAD_IDENTITY_PROVIDER` + `GCP_SERVICE_ACCOUNT` or `GCP_SA_KEY`)
   - `GCP_UK_AIR_SOS_JOB_SERVICE_ACCOUNT` (repo var or secret)
-  - `SUPABASE_URL`, `SB_SECRET_KEY` (preferred; workflow falls back to `SUPABASE_SERVICE_ROLE_KEY`)
+  - `SUPABASE_URL`, `SB_SECRET_KEY` (preferred; workflow falls back to `SB_SECRET_KEY`)
 - Optional:
   - `HISTORY_SUPABASE_URL`, `HISTORY_SERVICE_ROLE_KEY`
   - `SB_UK_AQ_CRON_SECRET`
@@ -190,7 +190,7 @@ SB_UK_AQ_CRON_SECRET=...
 - Required secrets/vars:
   - `GCP_PROJECT_ID`, Google auth secrets (`GCP_WORKLOAD_IDENTITY_PROVIDER` + `GCP_SERVICE_ACCOUNT` or `GCP_SA_KEY`)
   - `GCP_OPENAQ_JOB_SERVICE_ACCOUNT` (repo var or secret)
-  - `SUPABASE_URL`, `SB_SECRET_KEY` (preferred; workflow falls back to `SUPABASE_SERVICE_ROLE_KEY`)
+  - `SUPABASE_URL`, `SB_SECRET_KEY` (preferred; workflow falls back to `SB_SECRET_KEY`)
   - `OPENAQ_API_KEY`
 - Optional:
   - `HISTORY_SUPABASE_URL`, `HISTORY_SERVICE_ROLE_KEY`
@@ -207,7 +207,7 @@ SB_UK_AQ_CRON_SECRET=...
 - Worker: `workers/uk_aq_sensorcommunity_cloud_run`.
 - Required secrets/vars:
   - `GCP_PROJECT_ID`, Google auth secrets (`GCP_WORKLOAD_IDENTITY_PROVIDER` + `GCP_SERVICE_ACCOUNT` or `GCP_SA_KEY`)
-  - `SUPABASE_URL`, `SB_SECRET_KEY` (preferred; workflow falls back to `SUPABASE_SERVICE_ROLE_KEY`)
+  - `SUPABASE_URL`, `SB_SECRET_KEY` (preferred; workflow falls back to `SB_SECRET_KEY`)
 - Optional:
   - `HISTORY_SUPABASE_URL`, `HISTORY_SERVICE_ROLE_KEY`
   - `SCOMM_HISTORY_WRITE_MODE` (workflow default `pubsub_only`)
@@ -232,4 +232,4 @@ SB_UK_AQ_CRON_SECRET=...
 - Output: uploads a timestamped CSV to Dropbox at `network_info/uk_air_sos` and loads it into Supabase.
 - Secrets: `UK_AIR_SOS_SITE_SEARCH_URL`, `UK_AIR_SOS_SITE_SEARCH_USER_AGENT` (optional),
   `UK_AQ_DROPBOX_ROOT`, `DROPBOX_APP_KEY`, `DROPBOX_APP_SECRET`, `DROPBOX_REFRESH_TOKEN`,
-  `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`.
+  `SUPABASE_URL`, `SB_SECRET_KEY`.

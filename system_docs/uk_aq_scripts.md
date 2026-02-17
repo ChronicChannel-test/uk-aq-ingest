@@ -6,7 +6,7 @@ This document summarizes the UK-AQ helper scripts and their inputs/outputs.
 
 **Supabase**
 - `SUPABASE_URL`
-- `SUPABASE_SERVICE_ROLE_KEY`
+- `SB_SECRET_KEY`
 
 **UK-AIR SOS**
 - `UK_AIR_SOS_BASE_URL` (optional; defaults to `https://uk-air.defra.gov.uk/sos-ukair/api/v1`)
@@ -44,7 +44,7 @@ Purpose:
 
 Environment:
 - `SUPABASE_URL`
-- `SUPABASE_SERVICE_ROLE_KEY` (or `SUPABASE_KEY` fallback)
+- `SB_SECRET_KEY` (or `SUPABASE_KEY` fallback)
 - `UK_AQ_CORE_SCHEMA` (optional; defaults to `uk_aq_core`)
 - `UK_AQ_RAW_SCHEMA` (optional; defaults to `uk_aq_raw`)
 - `UK_AQ_POP_SCHEMA` (optional; defaults to `uk_aq_pop`)
@@ -81,7 +81,7 @@ Notes:
 - Exit code `0` = pass (warnings allowed); exit code `1` = one or more failures.
 - Network mode validates:
   - `SUPABASE_ACCESS_TOKEN` against Supabase Management API.
-  - Main/history REST root access with `SB_PUBLISHABLE_DEFAULT_KEY`, main privileged key (`SB_SECRET_KEY` preferred, fallback `SUPABASE_SERVICE_ROLE_KEY`), and `HISTORY_SERVICE_ROLE_KEY`.
+  - Main/history REST root access with `SB_PUBLISHABLE_DEFAULT_KEY`, main privileged key (`SB_SECRET_KEY` preferred, fallback `SB_SECRET_KEY`), and `HISTORY_SERVICE_ROLE_KEY`.
 - Secret values are masked in output.
 
 ### `scripts/uk_aq_sync_github_secrets.sh`
@@ -114,10 +114,10 @@ Purpose:
 
 Common commands:
 ```bash
-printf '%s' "$SUPABASE_SERVICE_ROLE_KEY" | \
+printf '%s' "$SB_SECRET_KEY" | \
   scripts/gcp/uk_aq_secret_upsert_if_changed.sh \
     --project "$GCP_PROJECT_ID" \
-    --secret "SUPABASE_SERVICE_ROLE_KEY" \
+    --secret "SB_SECRET_KEY" \
     --required 1
 
 printf '%s' "$OPENAQ_API_KEY" | \
@@ -186,7 +186,7 @@ Notes:
 
 Environment:
 - `SUPABASE_URL`
-- `SUPABASE_SERVICE_ROLE_KEY`
+- `SB_SECRET_KEY`
 
 ### `scripts/uk_aq_dashboard_local.py`
 Purpose:
@@ -205,7 +205,7 @@ Notes:
 
 Environment:
 - `SUPABASE_URL`
-- `SUPABASE_SERVICE_ROLE_KEY`
+- `SB_SECRET_KEY`
 
 ### `scripts/uk_aq_station_snapshot_local.py`
 Purpose:
@@ -347,7 +347,7 @@ Notes:
 
 Environment:
 - `SUPABASE_URL`
-- `SUPABASE_SERVICE_ROLE_KEY`
+- `SB_SECRET_KEY`
 - `LAQN_BASE_URL` (optional; defaults to `https://api.erg.ic.ac.uk/AirQuality`)
 - `LAQN_DEFAULT_GROUP` (optional; defaults to `London`)
 - `LAQN_MONITORING_SITES_PATHS` (optional; comma-separated API paths to try)
@@ -374,7 +374,7 @@ Notes:
 
 Environment:
 - `SUPABASE_URL`
-- `SUPABASE_SERVICE_ROLE_KEY`
+- `SB_SECRET_KEY`
 - `SUPABASE_DB_URL` (required when using `--to-supabase`)
 - `OPENAQ_BASE_URL` (optional; defaults to `https://api.openaq.org/v3`)
 - `OPENAQ_API_KEY` (required)
@@ -413,7 +413,7 @@ Notes:
 
 Environment:
 - `SUPABASE_URL`
-- `SUPABASE_SERVICE_ROLE_KEY`
+- `SB_SECRET_KEY`
 - `LAQN_BASE_URL` (optional; defaults to `https://api.erg.ic.ac.uk/AirQuality`)
 - `LAQN_RAW_DATA_URL_TEMPLATE` (optional; overrides the raw data endpoint URL template)
 - `LAQN_CONNECTOR_CODE` (optional; defaults to `erg_laqn`)
@@ -481,7 +481,7 @@ Key flags:
 
 Environment:
 - `SUPABASE_URL`
-- `SUPABASE_SERVICE_ROLE_KEY`
+- `SB_SECRET_KEY`
 - `PCON_AIVEN_PG_DSN`
 - `PCON_VERSION` (optional; defaults to latest in Aiven)
 - `LA_VERSION` (optional; defaults to latest in Aiven)
@@ -564,7 +564,7 @@ Key flags:
 
 Environment:
 - `SUPABASE_URL`
-- `SUPABASE_SERVICE_ROLE_KEY`
+- `SB_SECRET_KEY`
 
 ### `scripts/uk_aq_fix_station_geometry.py`
 Purpose:
@@ -577,7 +577,7 @@ python3 scripts/uk_aq_fix_station_geometry.py
 
 Environment:
 - `SUPABASE_URL`
-- `SUPABASE_SERVICE_ROLE_KEY`
+- `SB_SECRET_KEY`
 
 ### `scripts/uk_aq_enrich_station_names.py`
 Purpose:
@@ -619,7 +619,7 @@ python3 scripts/uk_aq_backfill_station_regions.py --apply
 
 Environment:
 - `SUPABASE_URL`
-- `SUPABASE_SERVICE_ROLE_KEY`
+- `SB_SECRET_KEY`
 - Optional Dropbox credentials if `--download-gb-gpkg` is used.
 
 ### `scripts/uk_aq_enrich_test_script.py`
@@ -634,7 +634,7 @@ python3 scripts/uk_aq_enrich_test_script.py --samples 10 --verbose
 
 Environment:
 - `SUPABASE_URL`
-- `SUPABASE_SERVICE_ROLE_KEY`
+- `SB_SECRET_KEY`
 - `--page-size` Supabase pagination batch size.
 - `--gb-gpkg-path` local path for the OS Open Names GB GeoPackage.
 - `--gb-gpkg-dropbox-path` Dropbox path for the GB GPKG (defaults to `UK_AQ_OS_OPEN_NAMES_GB_DROPBOX_PATH` or the local path).
@@ -653,7 +653,7 @@ Environment:
 
 Environment:
 - `SUPABASE_URL`
-- `SUPABASE_SERVICE_ROLE_KEY`
+- `SB_SECRET_KEY`
 - `UK_AQ_OS_OPEN_NAMES_GB_DROPBOX_PATH` (optional Dropbox path for the GB GPKG).
 - `DROPBOX_APP_KEY`, `DROPBOX_APP_SECRET`, `DROPBOX_REFRESH_TOKEN` (needed if a Dropbox download is triggered).
 - `PYPROJ_NETWORK` (optional; set to `ON` if pyproj needs to download grid data).
@@ -695,7 +695,7 @@ Key flags:
 
 Environment:
 - `SUPABASE_URL`
-- `SUPABASE_SERVICE_ROLE_KEY`
+- `SB_SECRET_KEY`
 
 ### `scripts/uk_aq_backfill_station_memberships.py`
 Purpose:
@@ -716,7 +716,7 @@ python3 scripts/uk_aq_backfill_station_memberships.py --source sos
 
 Environment:
 - `SUPABASE_URL`
-- `SUPABASE_SERVICE_ROLE_KEY`
+- `SB_SECRET_KEY`
 - `UK_AIR_SOS_BASE_URL` (optional override)
 Notes:
 - Uses the latest `uk_air_sos_site_register.snapshot_at` by default; use `--snapshot-at` to target a specific snapshot.
@@ -742,7 +742,7 @@ Environment:
 - `UK_AIR_SOS_SITE_SEARCH_USER_AGENT` (optional)
 - `UK_AQ_DROPBOX_ROOT` (required for `--dropbox-upload`)
 - `DROPBOX_APP_KEY`, `DROPBOX_APP_SECRET`, `DROPBOX_REFRESH_TOKEN` (required for `--dropbox-upload`)
-- `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (required for `--load`/`--load-only`)
+- `SUPABASE_URL`, `SB_SECRET_KEY` (required for `--load`/`--load-only`)
 Notes:
 - The script writes a timestamped filename locally and to Dropbox (e.g., `uk_air_sos_site_register_YYYYMMDDTHHMMSSZ.csv`).
 - When `--load` is used, it preserves existing `uk_air_sos_networks.network_display_name` values and upserts `uk_air_sos_network_pollutants`.
@@ -760,7 +760,7 @@ python3 scripts/uk_air_sos/uk_air_sos_membership_report.py --output network_info
 
 Environment:
 - `SUPABASE_URL`
-- `SUPABASE_SERVICE_ROLE_KEY`
+- `SB_SECRET_KEY`
 
 Notes:
 - Defaults to the latest `uk_air_sos_site_register.snapshot_at`.
@@ -881,7 +881,7 @@ python3 scripts/sensorcommunity/sensorcommunity_backfill_timeseries_phenomena.py
 
 Environment:
 - `SUPABASE_URL`
-- `SUPABASE_SERVICE_ROLE_KEY`
+- `SB_SECRET_KEY`
 - `SCOMM_CONNECTOR_CODE` (optional; defaults to `sensorcommunity`)
 - `SCOMM_SERVICE_REF` (optional; defaults to connector code)
 
@@ -930,7 +930,7 @@ Inputs:
 
 Environment:
 - `SUPABASE_URL`
-- `SUPABASE_SERVICE_ROLE_KEY`
+- `SB_SECRET_KEY`
 
 Output:
 - Console report per pollutant (PASS/FAIL) with timestamps/units.
@@ -979,7 +979,7 @@ python3 scripts/uk_aq_check_error_logs.py --source erg_laqn --since-hours 6 --li
 
 Environment:
 - `SUPABASE_URL`
-- `SUPABASE_SERVICE_ROLE_KEY`
+- `SB_SECRET_KEY`
 - Optional `UK_AQ_RAW_SCHEMA` (defaults to `uk_aq_raw`)
 
 ### `scripts/gov_uk_waqn/gov_uk_waqn_ingest.py`
@@ -1033,7 +1033,7 @@ python3 scripts/breathelondon/breathelondon_ingest.py --skip-stations --recent-s
 Environment:
 - `BREATHELONDON_API_KEY`
 - `SUPABASE_URL`
-- `SUPABASE_SERVICE_ROLE_KEY`
+- `SB_SECRET_KEY`
 - `BREATHELONDON_BASE_URL` (optional override)
 - `BREATHELONDON_CONNECTOR_CODE` / `BREATHELONDON_SERVICE_REF` (optional override)
 - `BREATHELONDON_SERVICE_LABEL` (optional override)
@@ -1059,7 +1059,7 @@ python3 scripts/breathelondon/breathelondon_batch.py --connector-code breathelon
 
 Environment:
 - `SUPABASE_URL`
-- `SUPABASE_SERVICE_ROLE_KEY`
+- `SB_SECRET_KEY`
 - `SB_PUBLISHABLE_DEFAULT_KEY` (or `SUPABASE_ANON_KEY`)
 - `SB_UK_AQ_CRON_SECRET` (optional)
 - `BREATHELONDON_CONNECTOR_CODE` (optional override)
@@ -1084,7 +1084,7 @@ python3 scripts/breathelondon/breathelondon_list_stations.py --to-supabase
 Environment:
 - `BREATHELONDON_API_KEY`
 - `SUPABASE_URL` (required for `--to-supabase`)
-- `SUPABASE_SERVICE_ROLE_KEY` (required for `--to-supabase`)
+- `SB_SECRET_KEY` (required for `--to-supabase`)
 - `BREATHELONDON_BASE_URL` (optional override)
 - `BREATHELONDON_CONNECTOR_CODE` / `BREATHELONDON_SERVICE_REF` (optional override)
 - `BREATHELONDON_SERVICE_LABEL` (optional override)

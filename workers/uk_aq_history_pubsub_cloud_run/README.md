@@ -10,7 +10,7 @@ not by connector.
 ## Required env vars / secrets
 
 - `SUPABASE_URL`
-- `SUPABASE_SERVICE_ROLE_KEY`
+- `SB_SECRET_KEY`
 - `HISTORY_SUPABASE_URL`
 - `HISTORY_SERVICE_ROLE_KEY`
 - `GCP_PROJECT_ID` (or `GOOGLE_CLOUD_PROJECT`)

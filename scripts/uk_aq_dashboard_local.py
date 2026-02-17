@@ -996,8 +996,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--service-role-key",
-        default=os.getenv("SUPABASE_SERVICE_ROLE_KEY"),
-        help="Supabase service role key (default: SUPABASE_SERVICE_ROLE_KEY).",
+        default=os.getenv("SB_SECRET_KEY"),
+        help="Supabase service role key (default: SB_SECRET_KEY).",
     )
     return parser.parse_args()
 
@@ -1009,11 +1009,11 @@ def main() -> None:
     supabase_url = (args.supabase_url or "").strip().rstrip("/")
     service_role_key = (args.service_role_key or "").strip()
     if not supabase_url or not service_role_key:
-        raise SystemExit("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required.")
+        raise SystemExit("SUPABASE_URL and SB_SECRET_KEY are required.")
     role = _jwt_role(service_role_key)
     if role and role != "service_role":
         raise SystemExit(
-            "SUPABASE_SERVICE_ROLE_KEY must be a service role key; "
+            "SB_SECRET_KEY must be a service role key; "
             f"current token role is '{role}'."
         )
 

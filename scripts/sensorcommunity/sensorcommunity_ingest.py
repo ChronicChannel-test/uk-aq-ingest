@@ -10,7 +10,7 @@ This script:
 
 Environment:
 - SUPABASE_URL
-- SUPABASE_SERVICE_ROLE_KEY
+- SB_SECRET_KEY
 - SCOMM_BASE_URL (optional; defaults to https://data.sensor.community)
 - SCOMM_CONNECTOR_CODE (optional; defaults to sensorcommunity; legacy SCOMM_CONNECTOR_REF supported)
 - SCOMM_SERVICE_REF (optional; defaults to SCOMM_CONNECTOR_CODE)

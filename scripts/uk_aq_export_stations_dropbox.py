@@ -180,7 +180,7 @@ def _error_log_payload(
         "args": vars(args) if args else {},
         "env": {
             "SUPABASE_URL_set": bool(os.getenv("SUPABASE_URL")),
-            "SUPABASE_SERVICE_ROLE_KEY_set": bool(os.getenv("SUPABASE_SERVICE_ROLE_KEY")),
+            "SB_SECRET_KEY_set": bool(os.getenv("SB_SECRET_KEY")),
             "SUPABASE_DB_URL_set": bool(os.getenv("SUPABASE_DB_URL") or os.getenv("DATABASE_URL")),
             "DROPBOX_APP_KEY_set": bool(os.getenv("DROPBOX_APP_KEY")),
             "DROPBOX_APP_SECRET_set": bool(os.getenv("DROPBOX_APP_SECRET")),

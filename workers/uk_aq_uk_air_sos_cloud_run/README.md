@@ -57,7 +57,7 @@ gcloud run jobs update uk-aq-sos-ingest \
 ## Required env vars / secrets
 
 - `SUPABASE_URL`
-- `SUPABASE_SERVICE_ROLE_KEY`
+- `SB_SECRET_KEY`
 
 ## Optional env vars
 

@@ -13,10 +13,7 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ??
   Deno.env.get("SB_SUPABASE_URL") ??
   "";
 const SB_SECRET_KEY = Deno.env.get("SB_SECRET_KEY") ?? "";
-const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
-  Deno.env.get("SB_SERVICE_ROLE_KEY") ??
-  "";
-const SUPABASE_PRIVILEGED_KEY = SB_SECRET_KEY || SUPABASE_SERVICE_ROLE_KEY;
+const SUPABASE_PRIVILEGED_KEY = SB_SECRET_KEY;
 const SB_UK_AQ_CRON_SECRET = Deno.env.get("SB_UK_AQ_CRON_SECRET") ?? "";
 const UK_AQ_PUBLIC_SCHEMA = Deno.env.get("UK_AQ_PUBLIC_SCHEMA") ?? "uk_aq_public";
 const UK_AQ_RAW_SCHEMA = Deno.env.get("UK_AQ_RAW_SCHEMA") ?? "uk_aq_raw";
@@ -92,9 +89,6 @@ function postgrestHeaders(schema = UK_AQ_PUBLIC_SCHEMA): Record<string, string> 
     "x-ukaq-egress-caller": "uk_aq_egress_monitor",
   };
   // Keep legacy JWT bearer support during migration; non-JWT secret keys use apikey only.
-  if (!SB_SECRET_KEY && SUPABASE_SERVICE_ROLE_KEY) {
-    headers["Authorization"] = `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`;
-  }
   if (schema && schema !== "public") {
     headers["Accept-Profile"] = schema;
     headers["Content-Profile"] = schema;
@@ -112,7 +106,7 @@ async function postgrestRequest<T>(
   if (!REST_BASE_URL || !SUPABASE_PRIVILEGED_KEY) {
     return {
       data: null,
-      error: { message: "Missing SUPABASE_URL or SB_SECRET_KEY or SUPABASE_SERVICE_ROLE_KEY." },
+      error: { message: "Missing SUPABASE_URL or SB_SECRET_KEY." },
     };
   }
   const url = new URL(`${REST_BASE_URL}/${table}`);

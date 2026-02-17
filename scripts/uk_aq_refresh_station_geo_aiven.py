@@ -4,7 +4,7 @@ Refresh station PCON/LA codes using Aiven PostGIS boundaries.
 
 Requires:
 - SUPABASE_URL
-- SUPABASE_SERVICE_ROLE_KEY
+- SB_SECRET_KEY
 - PCON_AIVEN_PG_DSN
 
 Optional:
@@ -179,12 +179,12 @@ def lookup_code(
 def main() -> int:
     args = parse_args()
     supabase_url = os.getenv("SUPABASE_URL")
-    supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+    supabase_key = os.getenv("SB_SECRET_KEY")
     aiven_dsn = os.getenv("PCON_AIVEN_PG_DSN")
     pcon_version = os.getenv("PCON_VERSION")
     la_version = os.getenv("LA_VERSION")
     if not supabase_url or not supabase_key or not aiven_dsn:
-        print("Missing SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, or PCON_AIVEN_PG_DSN.", file=sys.stderr)
+        print("Missing SUPABASE_URL, SB_SECRET_KEY, or PCON_AIVEN_PG_DSN.", file=sys.stderr)
         return 1
 
     stations_url = f"{normalize_base_url(supabase_url)}/rest/v1/stations"

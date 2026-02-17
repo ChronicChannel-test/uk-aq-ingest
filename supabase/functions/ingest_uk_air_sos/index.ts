@@ -60,10 +60,7 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")
   ?? Deno.env.get("SB_SUPABASE_URL")
   ?? "";
 const SB_SECRET_KEY = Deno.env.get("SB_SECRET_KEY") ?? "";
-const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")
-  ?? Deno.env.get("SB_SERVICE_ROLE_KEY")
-  ?? "";
-const SUPABASE_PRIVILEGED_KEY = SB_SECRET_KEY || SUPABASE_SERVICE_ROLE_KEY;
+const SUPABASE_PRIVILEGED_KEY = SB_SECRET_KEY;
 const UK_AQ_CORE_SCHEMA = Deno.env.get("UK_AQ_CORE_SCHEMA")
   ?? "uk_aq_core";
 const UK_AQ_RAW_SCHEMA = Deno.env.get("UK_AQ_RAW_SCHEMA")
@@ -126,9 +123,6 @@ function postgrestHeaders(prefer?: string, schema = UK_AQ_CORE_SCHEMA): Record<s
   if (prefer) {
     headers.Prefer = prefer;
   }
-  if (!SB_SECRET_KEY && SUPABASE_SERVICE_ROLE_KEY) {
-    headers["Authorization"] = `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`;
-  }
   if (schema && schema !== "public") {
     headers["Accept-Profile"] = schema;
     headers["Content-Profile"] = schema;
@@ -161,7 +155,7 @@ async function postgrestRequest<T>(
   schema?: string,
 ): Promise<{ data: T | null; error: { message: string } | null }> {
   if (!REST_BASE_URL || !SUPABASE_PRIVILEGED_KEY) {
-    return { data: null, error: { message: "Missing SUPABASE_URL or SB_SECRET_KEY or SUPABASE_SERVICE_ROLE_KEY." } };
+    return { data: null, error: { message: "Missing SUPABASE_URL or SB_SECRET_KEY." } };
   }
   const url = new URL(`${REST_BASE_URL}/${table}`);
   for (const [key, value] of Object.entries(params ?? {})) {
@@ -291,7 +285,7 @@ serve(async (req) => {
   try {
     if (!SUPABASE_URL || !SUPABASE_PRIVILEGED_KEY) {
       status = 500;
-      responsePayload = { error: "Missing SUPABASE_URL or SB_SECRET_KEY or SUPABASE_SERVICE_ROLE_KEY." };
+      responsePayload = { error: "Missing SUPABASE_URL or SB_SECRET_KEY." };
       log.error("Missing Supabase configuration.");
     } else {
       const payload = await readJson(req);

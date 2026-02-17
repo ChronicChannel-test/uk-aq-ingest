@@ -30,7 +30,7 @@ jobs:
           UK_AIR_SOS_SITE_SEARCH_URL: ${{ secrets.UK_AIR_SOS_SITE_SEARCH_URL }}
           UK_AIR_SOS_SITE_SEARCH_USER_AGENT: ${{ secrets.UK_AIR_SOS_SITE_SEARCH_USER_AGENT }}
           SUPABASE_URL: ${{ vars.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SB_SECRET_KEY: ${{ secrets.SB_SECRET_KEY }}
           UK_AQ_DROPBOX_ROOT: ${{ vars.UK_AQ_DROPBOX_ROOT }}
           DROPBOX_APP_KEY: ${{ secrets.DROPBOX_APP_KEY }}
           DROPBOX_APP_SECRET: ${{ secrets.DROPBOX_APP_SECRET }}

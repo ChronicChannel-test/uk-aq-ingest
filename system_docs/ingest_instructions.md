@@ -12,7 +12,7 @@ python3 -m pip install -r requirements-dev.txt
 ```
 - Provide Supabase credentials via environment variables (a `.env` in repo root is loaded):
   - `SUPABASE_URL`
-  - `SUPABASE_SERVICE_ROLE_KEY`
+  - `SB_SECRET_KEY`
 
 ## Sensor.Community (SCOMM)
 1) (Optional) Set Sensor.Community env vars:

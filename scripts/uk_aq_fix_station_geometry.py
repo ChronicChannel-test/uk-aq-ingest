@@ -4,7 +4,7 @@ Fix swapped station geometry coordinates (lat/lon reversed) in Supabase.
 
 Requires:
 - SUPABASE_URL
-- SUPABASE_SERVICE_ROLE_KEY
+- SB_SECRET_KEY
 """
 
 from __future__ import annotations
@@ -29,9 +29,9 @@ load_dotenv()
 
 def main() -> int:
     supabase_url = os.getenv("SUPABASE_URL")
-    service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+    service_role_key = os.getenv("SB_SECRET_KEY")
     if not supabase_url or not service_role_key:
-        print("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY.", file=sys.stderr)
+        print("Missing SUPABASE_URL or SB_SECRET_KEY.", file=sys.stderr)
         return 1
 
     client: Client = create_supabase_client(supabase_url, service_role_key)

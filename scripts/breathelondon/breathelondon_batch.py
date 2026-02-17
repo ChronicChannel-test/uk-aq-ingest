@@ -91,8 +91,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--service-role-key",
-        default=os.getenv("SUPABASE_SERVICE_ROLE_KEY"),
-        help="Supabase service role key (default: SUPABASE_SERVICE_ROLE_KEY).",
+        default=os.getenv("SB_SECRET_KEY"),
+        help="Supabase service role key (default: SB_SECRET_KEY).",
     )
     parser.add_argument(
         "--publishable-key",
@@ -219,7 +219,7 @@ def main() -> int:
         raise SystemExit("SUPABASE_URL (or --base-url) is required.")
     service_role_key = (args.service_role_key or "").strip()
     if not service_role_key:
-        raise SystemExit("SUPABASE_SERVICE_ROLE_KEY (or --service-role-key) is required.")
+        raise SystemExit("SB_SECRET_KEY (or --service-role-key) is required.")
     publishable_key = (args.publishable_key or "").strip()
     if not publishable_key:
         raise SystemExit("SB_PUBLISHABLE_DEFAULT_KEY (or --publishable-key) is required.")

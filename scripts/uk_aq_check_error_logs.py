@@ -43,8 +43,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--service-role-key",
-        default=os.getenv("SUPABASE_SERVICE_ROLE_KEY"),
-        help="Supabase service role key (default: SUPABASE_SERVICE_ROLE_KEY).",
+        default=os.getenv("SB_SECRET_KEY"),
+        help="Supabase service role key (default: SB_SECRET_KEY).",
     )
     parser.add_argument(
         "--raw-schema",
@@ -78,7 +78,7 @@ def main() -> None:
     raw_schema = (args.raw_schema or "uk_aq_raw").strip() or "uk_aq_raw"
 
     if not supabase_url or not service_role_key:
-        raise SystemExit("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required.")
+        raise SystemExit("SUPABASE_URL and SB_SECRET_KEY are required.")
 
     now = datetime.now(timezone.utc)
     since = now - timedelta(hours=max(0, args.since_hours))

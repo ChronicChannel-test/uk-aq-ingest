@@ -47,12 +47,7 @@ const UK_AIR_SOS_INGEST_SCRIPT_PATH =
 
 const SUPABASE_URL = requiredEnv("SUPABASE_URL");
 const SB_SECRET_KEY = (Deno.env.get("SB_SECRET_KEY") || "").trim();
-const SUPABASE_SERVICE_ROLE_KEY = (Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "")
-  .trim();
-const SUPABASE_PRIVILEGED_KEY = requiredEnvAny([
-  "SB_SECRET_KEY",
-  "SUPABASE_SERVICE_ROLE_KEY",
-]);
+const SUPABASE_PRIVILEGED_KEY = requiredEnvAny(["SB_SECRET_KEY"]);
 const UK_AQ_CORE_SCHEMA = (Deno.env.get("UK_AQ_CORE_SCHEMA") || "uk_aq_core")
   .trim();
 const UK_AQ_RAW_SCHEMA = (Deno.env.get("UK_AQ_RAW_SCHEMA") || "uk_aq_raw")
@@ -291,9 +286,6 @@ function postgrestHeaders(
     Accept: "application/json",
     "Accept-Profile": schema,
   };
-  if (!SB_SECRET_KEY && SUPABASE_SERVICE_ROLE_KEY) {
-    headers["Authorization"] = `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`;
-  }
   if (write) {
     headers["Content-Type"] = "application/json";
     headers["Content-Profile"] = schema;

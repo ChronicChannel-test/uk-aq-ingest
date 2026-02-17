@@ -195,9 +195,9 @@ class LADLookup:
 
 def _fetch_stations(page_size: int) -> List[Dict[str, Any]]:
     supabase_url = os.getenv("SUPABASE_URL")
-    service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+    service_role_key = os.getenv("SB_SECRET_KEY")
     if not supabase_url or not service_role_key:
-        raise RuntimeError("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY.")
+        raise RuntimeError("Missing SUPABASE_URL or SB_SECRET_KEY.")
     client: Client = create_supabase_client(supabase_url, service_role_key)
     schemas = SupabaseSchemas.from_client(client)
     rows: List[Dict[str, Any]] = []
@@ -241,9 +241,9 @@ def _apply_updates(updates: List[Dict[str, Any]], batch_size: int) -> int:
     if not updates:
         return 0
     supabase_url = os.getenv("SUPABASE_URL")
-    service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+    service_role_key = os.getenv("SB_SECRET_KEY")
     if not supabase_url or not service_role_key:
-        raise RuntimeError("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY.")
+        raise RuntimeError("Missing SUPABASE_URL or SB_SECRET_KEY.")
     client: Client = create_supabase_client(supabase_url, service_role_key)
     schemas = SupabaseSchemas.from_client(client)
     applied = 0

@@ -28,7 +28,7 @@ The previous proxy worker (Cloud Run -> Supabase Edge function) is archived at:
 ## Required env vars
 
 - `SUPABASE_URL`
-- `SUPABASE_SERVICE_ROLE_KEY`
+- `SB_SECRET_KEY`
 - `UK_AQ_CORE_SCHEMA` (optional; default `uk_aq_core`)
 - `UK_AQ_RAW_SCHEMA` (optional; default `uk_aq_raw`)
 - `HISTORY_SUPABASE_URL` (required for history dual-write)

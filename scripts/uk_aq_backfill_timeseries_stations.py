@@ -4,7 +4,7 @@ Backfill station/feature mappings for timeseries rows missing station_id.
 
 Requires:
 - SUPABASE_URL
-- SUPABASE_SERVICE_ROLE_KEY
+- SB_SECRET_KEY
 """
 
 from __future__ import annotations

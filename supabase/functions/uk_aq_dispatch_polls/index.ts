@@ -92,10 +92,7 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ??
   Deno.env.get("SB_SUPABASE_URL") ??
   "";
 const SB_SECRET_KEY = Deno.env.get("SB_SECRET_KEY") ?? "";
-const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")
-  ?? Deno.env.get("SB_SERVICE_ROLE_KEY")
-  ?? "";
-const SUPABASE_PRIVILEGED_KEY = SB_SECRET_KEY || SUPABASE_SERVICE_ROLE_KEY;
+const SUPABASE_PRIVILEGED_KEY = SB_SECRET_KEY;
 const SB_PUBLISHABLE_DEFAULT_KEY = Deno.env.get("SB_PUBLISHABLE_DEFAULT_KEY") ??
   "";
 const SB_UK_AQ_CRON_SECRET = Deno.env.get("SB_UK_AQ_CRON_SECRET") ?? "";
@@ -232,9 +229,6 @@ function postgrestHeaders(
   };
   if (options?.preferMinimal) {
     headers["Prefer"] = "return=minimal";
-  }
-  if (!SB_SECRET_KEY && SUPABASE_SERVICE_ROLE_KEY) {
-    headers["Authorization"] = `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`;
   }
   if (schema && schema !== "public") {
     headers["Accept-Profile"] = schema;
@@ -950,7 +944,7 @@ async function postgrestRequest<T>(
   if (!REST_BASE_URL || !SUPABASE_PRIVILEGED_KEY) {
     return {
       data: null,
-      error: { message: "Missing REST_BASE_URL or SB_SECRET_KEY or SUPABASE_SERVICE_ROLE_KEY." },
+      error: { message: "Missing REST_BASE_URL or SB_SECRET_KEY." },
     };
   }
   const url = new URL(`${REST_BASE_URL}/${table}`);
@@ -1314,7 +1308,7 @@ async function callEdgeFunction(
   const authKey = SB_PUBLISHABLE_DEFAULT_KEY || SUPABASE_PRIVILEGED_KEY;
   if (!authKey) {
     throw new Error(
-      "Missing SB_PUBLISHABLE_DEFAULT_KEY or SB_SECRET_KEY or SUPABASE_SERVICE_ROLE_KEY.",
+      "Missing SB_PUBLISHABLE_DEFAULT_KEY or SB_SECRET_KEY.",
     );
   }
   const url = `${SUPABASE_URL.replace(/\/$/, "")}/functions/v1/${path}`;
@@ -1430,7 +1424,7 @@ serve(async (req) => {
     : "enqueue";
   if (!SUPABASE_URL || !SUPABASE_PRIVILEGED_KEY) {
     return jsonResponse({
-      error: "Missing SUPABASE_URL or SB_SECRET_KEY or SUPABASE_SERVICE_ROLE_KEY.",
+      error: "Missing SUPABASE_URL or SB_SECRET_KEY.",
     }, 500);
   }
 

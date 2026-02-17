@@ -7,13 +7,13 @@ const SUPABASE_KEY =
   process.env.SUPABASE_KEY ||
   process.env.SUPABASE_ANON_KEY ||
   process.env.SB_PUBLISHABLE_DEFAULT_KEY ||
-  process.env.SUPABASE_SERVICE_ROLE_KEY;
+  process.env.SB_SECRET_KEY;
 const KEEPALIVE_TABLE = process.env.KEEPALIVE_TABLE || 'keep_alive';
 const KEEPALIVE_SELECT = process.env.KEEPALIVE_SELECT || '*';
 
 if (!SUPABASE_URL || !SUPABASE_KEY) {
   console.error(
-    'Missing SUPABASE_URL or a key (SUPABASE_KEY / SUPABASE_ANON_KEY / SB_PUBLISHABLE_DEFAULT_KEY / SUPABASE_SERVICE_ROLE_KEY).'
+    'Missing SUPABASE_URL or a key (SUPABASE_KEY / SUPABASE_ANON_KEY / SB_PUBLISHABLE_DEFAULT_KEY / SB_SECRET_KEY).'
   );
   process.exit(1);
 }

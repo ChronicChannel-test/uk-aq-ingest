@@ -68,7 +68,7 @@ Delay floors are outcome-aware:
 
 - `GCP_OPENAQ_JOB_SERVICE_ACCOUNT` (runtime service account)
 - `OPENAQ_API_KEY`
-- `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`
+- `SUPABASE_URL`, `SB_SECRET_KEY`
 
 ## Recommended Config
 

@@ -4,7 +4,7 @@ Load WHO GAQG 2021 guideline limits into uk_aq_guidelines.
 
 Requires:
 - SUPABASE_URL
-- SUPABASE_SERVICE_ROLE_KEY
+- SB_SECRET_KEY
 
 CSV columns expected:
 pollutant, averaging_time, unit, AQG_2021, IT1, IT2, IT3, IT4, notes, source
@@ -118,9 +118,9 @@ def build_rows(records: List[Dict[str, Any]], source_override: Optional[str]) ->
 def main() -> int:
     args = parse_args()
     supabase_url = os.getenv("SUPABASE_URL")
-    service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+    service_role_key = os.getenv("SB_SECRET_KEY")
     if not supabase_url or not service_role_key:
-        print("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY.", file=sys.stderr)
+        print("Missing SUPABASE_URL or SB_SECRET_KEY.", file=sys.stderr)
         return 1
 
     csv_path = Path(args.csv)

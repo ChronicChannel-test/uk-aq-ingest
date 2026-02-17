@@ -56,7 +56,7 @@ gcloud run jobs update uk-aq-breathelondon-ingest \
 ## Required env vars / secrets
 
 - `SUPABASE_URL`
-- `SUPABASE_SERVICE_ROLE_KEY`
+- `SB_SECRET_KEY`
 - `BREATHELONDON_API_KEY`
 
 ## Optional but recommended

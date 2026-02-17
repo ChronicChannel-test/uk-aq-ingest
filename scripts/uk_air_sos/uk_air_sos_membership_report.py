@@ -160,10 +160,10 @@ def main() -> None:
     _load_env(Path(".env"))
 
     supabase_url = os.getenv("SUPABASE_URL", "").strip().rstrip("/")
-    supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
+    supabase_key = os.getenv("SB_SECRET_KEY", "").strip()
     core_schema = os.getenv("UK_AQ_CORE_SCHEMA", "uk_aq_core")
     if not supabase_url or not supabase_key:
-        raise SystemExit("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required.")
+        raise SystemExit("SUPABASE_URL and SB_SECRET_KEY are required.")
 
     base_url = f"{supabase_url}/rest/v1"
     headers = {

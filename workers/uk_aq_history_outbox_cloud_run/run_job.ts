@@ -24,12 +24,7 @@ type FlushSummary = HistoryOutboxFlushStats & {
 
 const SUPABASE_URL = requiredEnv("SUPABASE_URL");
 const SB_SECRET_KEY = (Deno.env.get("SB_SECRET_KEY") || "").trim();
-const SUPABASE_SERVICE_ROLE_KEY = (Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "")
-  .trim();
-const SUPABASE_PRIVILEGED_KEY = requiredEnvAny([
-  "SB_SECRET_KEY",
-  "SUPABASE_SERVICE_ROLE_KEY",
-]);
+const SUPABASE_PRIVILEGED_KEY = requiredEnvAny(["SB_SECRET_KEY"]);
 const HISTORY_SUPABASE_URL = (Deno.env.get("HISTORY_SUPABASE_URL") || "").trim();
 const HISTORY_SERVICE_ROLE_KEY = (Deno.env.get("HISTORY_SERVICE_ROLE_KEY") || "")
   .trim();
@@ -109,9 +104,6 @@ async function mainRpc<T>(
     "Content-Profile": MAIN_RPC_SCHEMA,
     "x-ukaq-egress-caller": "uk_aq_history_outbox_cloud_run",
   };
-  if (!SB_SECRET_KEY && SUPABASE_SERVICE_ROLE_KEY) {
-    headers["Authorization"] = `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`;
-  }
 
   for (let attempt = 1; attempt <= MAIN_RPC_RETRIES; attempt += 1) {
     try {

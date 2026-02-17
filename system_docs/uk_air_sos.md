@@ -91,7 +91,7 @@ It does not update `stations.station_name` (station metadata comes from the inge
 
 Environment variables (Supabase secrets):
 - `SB_SUPABASE_URL`
-- `SB_SERVICE_ROLE_KEY`
+- `SB_SECRET_KEY`
 - `UK_AIR_SOS_BASE_URL` (optional override)
 - `UK_AIR_SOS_SERVICE_LABEL` (optional override)
 - `DROPBOX_APP_KEY`, `DROPBOX_APP_SECRET`, `DROPBOX_REFRESH_TOKEN` (optional; enables log upload)
@@ -103,9 +103,9 @@ Env quick reference (Supabase blocks secrets prefixed with `SUPABASE_`):
 
 | Context | Required | Optional |
 | --- | --- | --- |
-| Local scripts (.env) | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | `UK_AIR_SOS_BASE_URL`, `UK_AIR_SOS_SERVICE_LABEL` |
-| Edge function runtime (Supabase secrets) | `SB_SUPABASE_URL`, `SB_SERVICE_ROLE_KEY` | `UK_AIR_SOS_BASE_URL`, `UK_AIR_SOS_SERVICE_LABEL` |
-| GitHub Actions deploy | `SUPABASE_ACCESS_TOKEN`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_PROJECT_REF` (Secrets) | `UK_AIR_SOS_BASE_URL`, `UK_AIR_SOS_SERVICE_LABEL` (Secrets) |
+| Local scripts (.env) | `SUPABASE_URL`, `SB_SECRET_KEY` | `UK_AIR_SOS_BASE_URL`, `UK_AIR_SOS_SERVICE_LABEL` |
+| Edge function runtime (Supabase secrets) | `SB_SUPABASE_URL`, `SB_SECRET_KEY` | `UK_AIR_SOS_BASE_URL`, `UK_AIR_SOS_SERVICE_LABEL` |
+| GitHub Actions deploy | `SUPABASE_ACCESS_TOKEN`, `SUPABASE_URL`, `SB_SECRET_KEY`, `SUPABASE_PROJECT_REF` (Secrets) | `UK_AIR_SOS_BASE_URL`, `UK_AIR_SOS_SERVICE_LABEL` (Secrets) |
 
 Request body options (JSON):
 - `connector_id` (optional; defaults to the `uk_air_sos` connector)

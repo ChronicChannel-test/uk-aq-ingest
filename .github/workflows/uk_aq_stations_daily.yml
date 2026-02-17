@@ -62,7 +62,7 @@ jobs:
       - name: Sync stations
         env:
           SUPABASE_URL: ${{ vars.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SB_SECRET_KEY: ${{ secrets.SB_SECRET_KEY }}
         run: |
           python3 scripts/uk_air_sos/uk_air_sos_list_stations.py --to-supabase
 
@@ -70,16 +70,16 @@ jobs:
         id: check_uk_air_sos_polling
         env:
           SUPABASE_URL: ${{ vars.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SB_SECRET_KEY: ${{ secrets.SB_SECRET_KEY }}
         run: |
           python3 - <<'PY'
           import os
           import requests
 
           supabase_url = os.environ.get("SUPABASE_URL")
-          supabase_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+          supabase_key = os.environ.get("SB_SECRET_KEY")
           if not supabase_url or not supabase_key:
-              raise SystemExit("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required.")
+              raise SystemExit("SUPABASE_URL and SB_SECRET_KEY are required.")
           url = f"{supabase_url}/rest/v1/connectors"
           resp = requests.get(
               url,
@@ -106,16 +106,16 @@ jobs:
         if: steps.check_uk_air_sos_polling.outputs.poll_was_enabled == '1'
         env:
           SUPABASE_URL: ${{ vars.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SB_SECRET_KEY: ${{ secrets.SB_SECRET_KEY }}
         run: |
           python3 - <<'PY'
           import os
           import requests
 
           supabase_url = os.environ.get("SUPABASE_URL")
-          supabase_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+          supabase_key = os.environ.get("SB_SECRET_KEY")
           if not supabase_url or not supabase_key:
-              raise SystemExit("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required.")
+              raise SystemExit("SUPABASE_URL and SB_SECRET_KEY are required.")
           url = f"{supabase_url}/rest/v1/connectors"
           resp = requests.patch(
               url,
@@ -137,7 +137,7 @@ jobs:
       - name: Discover UK-AIR SOS timeseries
         env:
           SUPABASE_URL: ${{ vars.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SB_SECRET_KEY: ${{ secrets.SB_SECRET_KEY }}
         run: |
           python3 scripts/uk_air_sos/uk_air_sos_ingest.py --discover
 
@@ -145,16 +145,16 @@ jobs:
         if: always() && steps.check_uk_air_sos_polling.outputs.poll_was_enabled == '1'
         env:
           SUPABASE_URL: ${{ vars.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SB_SECRET_KEY: ${{ secrets.SB_SECRET_KEY }}
         run: |
           python3 - <<'PY'
           import os
           import requests
 
           supabase_url = os.environ.get("SUPABASE_URL")
-          supabase_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+          supabase_key = os.environ.get("SB_SECRET_KEY")
           if not supabase_url or not supabase_key:
-              raise SystemExit("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required.")
+              raise SystemExit("SUPABASE_URL and SB_SECRET_KEY are required.")
           url = f"{supabase_url}/rest/v1/connectors"
           resp = requests.patch(
               url,
@@ -176,7 +176,7 @@ jobs:
       - name: Sync Breathe London stations
         env:
           SUPABASE_URL: ${{ vars.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SB_SECRET_KEY: ${{ secrets.SB_SECRET_KEY }}
           BREATHELONDON_API_KEY: ${{ secrets.BREATHELONDON_API_KEY }}
         run: |
           python3 scripts/breathelondon/breathelondon_list_stations.py --to-supabase
@@ -185,14 +185,14 @@ jobs:
       # - name: Sync LAQN stations
       #   env:
       #     SUPABASE_URL: ${{ vars.SUPABASE_URL }}
-      #     SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      #     SB_SECRET_KEY: ${{ secrets.SB_SECRET_KEY }}
       #   run: |
       #     python3 scripts/erg_laqn/erg_laqn_list_stations.py --to-supabase
 
       - name: Sync OpenAQ stations
         env:
           SUPABASE_URL: ${{ vars.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SB_SECRET_KEY: ${{ secrets.SB_SECRET_KEY }}
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL || secrets.DATABASE_URL }}
           OPENAQ_API_KEY: ${{ secrets.OPENAQ_API_KEY }}
         run: |
@@ -208,14 +208,14 @@ jobs:
       - name: Backfill Sensor.Community timeseries phenomena
         env:
           SUPABASE_URL: ${{ vars.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SB_SECRET_KEY: ${{ secrets.SB_SECRET_KEY }}
         run: |
           python3 scripts/sensorcommunity/sensorcommunity_backfill_timeseries_phenomena.py
 
       - name: Refresh station PCON/LA from Aiven
         env:
           SUPABASE_URL: ${{ vars.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SB_SECRET_KEY: ${{ secrets.SB_SECRET_KEY }}
           PCON_AIVEN_PG_DSN: ${{ secrets.PCON_AIVEN_PG_DSN }}
         run: |
           python3 scripts/uk_aq_refresh_station_geo_aiven.py
@@ -224,7 +224,7 @@ jobs:
         id: check_null_station_name
         env:
           SUPABASE_URL: ${{ vars.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SB_SECRET_KEY: ${{ secrets.SB_SECRET_KEY }}
         run: |
           python3 - <<'PY'
           import os
@@ -232,10 +232,10 @@ jobs:
           import requests
 
           supabase_url = os.environ.get("SUPABASE_URL")
-          supabase_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+          supabase_key = os.environ.get("SB_SECRET_KEY")
           core_schema = os.environ.get("UK_AQ_CORE_SCHEMA", "uk_aq_core")
           if not supabase_url or not supabase_key:
-            raise SystemExit("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required.")
+            raise SystemExit("SUPABASE_URL and SB_SECRET_KEY are required.")
 
           def count_null(field, require_geometry=False, label=None):
             params = [f"select=id", f"{field}=is.null"]
@@ -311,7 +311,7 @@ jobs:
       - name: Enrich station names
         env:
           SUPABASE_URL: ${{ vars.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SB_SECRET_KEY: ${{ secrets.SB_SECRET_KEY }}
           DROPBOX_APP_KEY: ${{ secrets.DROPBOX_APP_KEY }}
           DROPBOX_APP_SECRET: ${{ secrets.DROPBOX_APP_SECRET }}
           DROPBOX_REFRESH_TOKEN: ${{ secrets.DROPBOX_REFRESH_TOKEN }}
@@ -323,10 +323,10 @@ jobs:
           import requests
 
           supabase_url = os.environ.get("SUPABASE_URL")
-          supabase_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+          supabase_key = os.environ.get("SB_SECRET_KEY")
           core_schema = os.environ.get("UK_AQ_CORE_SCHEMA", "uk_aq_core")
           if not supabase_url or not supabase_key:
-            raise SystemExit("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required.")
+            raise SystemExit("SUPABASE_URL and SB_SECRET_KEY are required.")
 
           def count_null(field, require_geometry=False):
             params = [f"select=id", f"{field}=is.null"]
@@ -368,7 +368,7 @@ jobs:
       - name: Export stations to Dropbox
         env:
           SUPABASE_URL: ${{ vars.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SB_SECRET_KEY: ${{ secrets.SB_SECRET_KEY }}
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL || secrets.DATABASE_URL }}
           DROPBOX_APP_KEY: ${{ secrets.DROPBOX_APP_KEY }}
           DROPBOX_APP_SECRET: ${{ secrets.DROPBOX_APP_SECRET }}

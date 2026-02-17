@@ -149,8 +149,8 @@ echo "Env file: $ENV_FILE"
 
 check_presence_group "Main" "${main_vars[@]}"
 check_presence_group "History" "${history_vars[@]}"
-if [[ -z "${SB_SECRET_KEY:-}" && -z "${SUPABASE_SERVICE_ROLE_KEY:-}" ]]; then
-  fail "Main key check: set SB_SECRET_KEY (preferred) or SUPABASE_SERVICE_ROLE_KEY (fallback)"
+if [[ -z "${SB_SECRET_KEY:-}" ]]; then
+  fail "Main key check: set SB_SECRET_KEY"
 fi
 
 echo
@@ -158,7 +158,6 @@ echo "[Secrets] Masked preview"
 for var in \
   SB_PUBLISHABLE_DEFAULT_KEY \
   SB_SECRET_KEY \
-  SUPABASE_SERVICE_ROLE_KEY \
   SUPABASE_ACCESS_TOKEN \
   SB_UK_AQ_CRON_SECRET \
   HISTORY_SERVICE_ROLE_KEY; do
@@ -224,7 +223,7 @@ def decode_payload(token: str):
     except Exception:
         return None
 
-for key in ("SUPABASE_SERVICE_ROLE_KEY", "HISTORY_SERVICE_ROLE_KEY"):
+for key in ("SB_SECRET_KEY", "HISTORY_SERVICE_ROLE_KEY"):
     token = (os.environ.get(key, "") or "").strip()
     payload = decode_payload(token)
     if not payload:
@@ -253,12 +252,12 @@ if (( NO_NETWORK == 0 )); then
     fail "SB_PUBLISHABLE_DEFAULT_KEY main /rest/v1/ check returned HTTP $code"
   fi
 
-  main_priv_key="${SB_SECRET_KEY:-${SUPABASE_SERVICE_ROLE_KEY:-}}"
+  main_priv_key="${SB_SECRET_KEY:-}"
   code="$(http_code -H "apikey: ${main_priv_key}" "${SUPABASE_URL:-}/rest/v1/")"
   if [[ "$code" == "200" ]]; then
-    ok "Main privileged key (SB_SECRET_KEY/SUPABASE_SERVICE_ROLE_KEY) can access main /rest/v1/ (200)"
+    ok "Main privileged key (SB_SECRET_KEY) can access main /rest/v1/ (200)"
   else
-    fail "Main privileged key (SB_SECRET_KEY/SUPABASE_SERVICE_ROLE_KEY) main /rest/v1/ check returned HTTP $code"
+    fail "Main privileged key (SB_SECRET_KEY) main /rest/v1/ check returned HTTP $code"
   fi
 
   code="$(http_code -H "apikey: ${HISTORY_SERVICE_ROLE_KEY:-}" "${HISTORY_SUPABASE_URL:-}/rest/v1/")"

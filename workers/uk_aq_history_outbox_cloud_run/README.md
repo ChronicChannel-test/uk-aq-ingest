@@ -14,7 +14,7 @@ Design choices:
 ## Required env vars / secrets
 
 - `SUPABASE_URL`
-- `SUPABASE_SERVICE_ROLE_KEY`
+- `SB_SECRET_KEY`
 - `HISTORY_SUPABASE_URL`
 - `HISTORY_SERVICE_ROLE_KEY`
 

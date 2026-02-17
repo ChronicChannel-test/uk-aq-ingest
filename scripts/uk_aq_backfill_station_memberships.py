@@ -8,7 +8,7 @@ Network memberships from the register are filtered by uk_air_sos_network_polluta
 
 Requires:
 - SUPABASE_URL
-- SUPABASE_SERVICE_ROLE_KEY
+- SB_SECRET_KEY
 """
 
 import argparse

@@ -45,7 +45,7 @@ Each issue below includes **fix options with pros/cons**. If only one viable fix
 ## 3) Supabase client created without validating required env vars (Medium)
 **File:** `scripts/purpleair/purpleair_get_uk_sensors.py`【F:scripts/purpleair/purpleair_get_uk_sensors.py†L44-L49】
 
-**Issue:** `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are read, but the script calls `create_client()` without checking for missing values.
+**Issue:** `SUPABASE_URL` and `SB_SECRET_KEY` are read, but the script calls `create_client()` without checking for missing values.
 
 **Fix Options:**
 1) **Validate env vars and exit with a clear error before creating the client**

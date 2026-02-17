@@ -67,9 +67,9 @@ def create_supabase_client(
     supabase_key: Optional[str] = None,
 ) -> Client:
     supabase_url = supabase_url or os.getenv("SUPABASE_URL")
-    supabase_key = supabase_key or os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv(
+    supabase_key = supabase_key or os.getenv("SB_SECRET_KEY") or os.getenv(
         "SUPABASE_KEY"
     )
     if not supabase_url or not supabase_key:
-        raise RuntimeError("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required.")
+        raise RuntimeError("SUPABASE_URL and SB_SECRET_KEY are required.")
     return create_client(supabase_url, supabase_key)

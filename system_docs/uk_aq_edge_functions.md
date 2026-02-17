@@ -72,7 +72,7 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
   - `ingest_erg_laqn` (`station_refs`, `days=ceil(poll_window_hours/24)`, `group=London`)
 - Notes:
   - Requires `X-Cron-Secret` when `SB_UK_AQ_CRON_SECRET` is set.
-  - Uses `SB_SECRET_KEY` (preferred) with fallback to `SUPABASE_SERVICE_ROLE_KEY` for internal PostgREST reads/writes.
+  - Uses `SB_SECRET_KEY` (preferred) with fallback to `SB_SECRET_KEY` for internal PostgREST reads/writes.
   - Calls ingest functions with `SB_PUBLISHABLE_DEFAULT_KEY` (or `SB_SECRET_KEY` fallback) plus `X-Cron-Secret`; `verify_jwt=false` is set for dispatcher/ingest functions.
   - Uses a runtime budget guard to avoid platform timeout overruns:
     - `DISPATCH_TIME_BUDGET_MS` (default `150000`)
@@ -150,8 +150,8 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
 - Auth:
   - Requires `X-Cron-Secret` only when `SB_UK_AQ_CRON_SECRET` is set.
 - Notes:
-  - Internal PostgREST access prefers `SB_SECRET_KEY` (new-style secret key) and falls back to `SUPABASE_SERVICE_ROLE_KEY` during migration.
-  - For migration safety, it only sends `Authorization: Bearer ...` when using legacy `SUPABASE_SERVICE_ROLE_KEY`; `SB_SECRET_KEY` is sent via `apikey` only.
+  - Internal PostgREST access prefers `SB_SECRET_KEY` (new-style secret key) and falls back to `SB_SECRET_KEY` during migration.
+  - For migration safety, it only sends `Authorization: Bearer ...` when using legacy `SB_SECRET_KEY`; `SB_SECRET_KEY` is sent via `apikey` only.
   - Uses `x-ukaq-egress-bypass: 1` on its own PostgREST calls so monitor traffic does not recursively inflate egress metrics.
   - Paginates through `uk_aq_endpoint_egress_metrics_minute` for the lookback window (not capped to a single page).
   - Returns both observed sampled totals and sampling-adjusted estimated totals; alert threshold uses `estimated_mb`.
@@ -457,7 +457,7 @@ curl "https://YOUR_PROJECT.supabase.co/functions/v1/uk_aq_timeseries?timeseries_
 
 Required:
 - `SUPABASE_URL`
-- `SB_SECRET_KEY` (preferred; fallback `SUPABASE_SERVICE_ROLE_KEY` during migration)
+- `SB_SECRET_KEY` (preferred; fallback `SB_SECRET_KEY` during migration)
 - `BREATHELONDON_API_KEY` (required for `ingest_breathelondon`)
 
 Dropbox (raw/log/error uploads):

@@ -1429,7 +1429,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--to-supabase",
         action="store_true",
-        help="Upsert stations into Supabase (requires SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY).",
+        help="Upsert stations into Supabase (requires SUPABASE_URL and SB_SECRET_KEY).",
     )
     parser.add_argument(
         "--skip-metadata",

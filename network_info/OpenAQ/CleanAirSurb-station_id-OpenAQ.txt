@@ -21,8 +21,7 @@ Other TS
   
   
   curl -sS \
-    -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
-    -H "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
+    -H "apikey: ${SB_SECRET_KEY}" \
     -H "x-cron-secret: ${SB_UK_AQ_CRON_SECRET}" \
     -H "Content-Type: application/json" \
     "${SUPABASE_URL}/functions/v1/ingest_openaq" \

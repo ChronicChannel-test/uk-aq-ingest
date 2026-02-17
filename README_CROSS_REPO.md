@@ -25,9 +25,9 @@ This repo houses ingestion, backfill, and connector tooling for UK AQ, plus Supa
 ### Required env vars (names only; discoverable in code)
 Common / core:
 - `SUPABASE_URL`
-- `SUPABASE_SERVICE_ROLE_KEY`
+- `SB_SECRET_KEY`
 - `SB_SUPABASE_URL`
-- `SB_SERVICE_ROLE_KEY`
+- `SB_SECRET_KEY`
 - `SB_UK_AQ_CRON_SECRET`
 
 Source-specific (used by connectors / edge functions):

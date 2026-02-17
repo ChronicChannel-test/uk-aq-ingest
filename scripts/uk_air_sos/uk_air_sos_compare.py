@@ -9,7 +9,7 @@ can be used as a test.
 
 Environment:
 - SUPABASE_URL
-- SUPABASE_SERVICE_ROLE_KEY
+- SB_SECRET_KEY
 
 Examples:
   python3 scripts/uk_air_sos/uk_air_sos_compare.py

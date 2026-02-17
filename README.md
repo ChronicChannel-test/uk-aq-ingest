@@ -16,7 +16,7 @@ Create a `.env` file in the repo root with:
 
 ```
 SUPABASE_URL=your_supabase_url
-SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+SB_SECRET_KEY=your_service_role_key
 # Optional override (default shown)
 UK_AIR_SOS_BASE_URL=https://uk-air.defra.gov.uk/sos-ukair/api/v1
 # Optional override for the service label
@@ -30,9 +30,9 @@ Env quick reference (Supabase blocks secrets prefixed with `SUPABASE_`):
 
 | Context | Required | Optional |
 | --- | --- | --- |
-| Local scripts (.env) | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | `UK_AIR_SOS_BASE_URL`, `UK_AIR_SOS_SERVICE_LABEL` |
-| Edge function runtime (Supabase secrets) | `SB_SUPABASE_URL`, `SB_SERVICE_ROLE_KEY` | `UK_AIR_SOS_BASE_URL`, `UK_AIR_SOS_SERVICE_LABEL`, `HISTORY_SUPABASE_URL`, `HISTORY_SERVICE_ROLE_KEY`, `HISTORY_UPSERT_RPC`, `HISTORY_OUTBOX_FLUSH_LIMIT`, `HISTORY_UPSERT_CHUNK_SIZE`, `UK_AQ_EGRESS_LOG_SAMPLE_RATE`, `UK_AQ_EGRESS_METRICS_DB_ENABLED`, `UK_AQ_EGRESS_METRICS_CLEANUP_SAMPLE_RATE`, `UK_AQ_EGRESS_METRICS_CLEANUP_MIN_INTERVAL_MS`, `UK_AQ_EGRESS_METRICS_AGG_RETENTION_DAYS`, `UK_AQ_EGRESS_METRICS_RAW_RETENTION_DAYS`, `DISPATCH_TIME_BUDGET_MS`, `DISPATCH_SHUTDOWN_BUFFER_MS`, `DISPATCH_EDGE_CALL_TIMEOUT_MS` |
-| GitHub Actions deploy | `SUPABASE_ACCESS_TOKEN`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_PROJECT_REF` (Secrets) | `UK_AIR_SOS_BASE_URL`, `UK_AIR_SOS_SERVICE_LABEL` (Secrets) |
+| Local scripts (.env) | `SUPABASE_URL`, `SB_SECRET_KEY` | `UK_AIR_SOS_BASE_URL`, `UK_AIR_SOS_SERVICE_LABEL` |
+| Edge function runtime (Supabase secrets) | `SB_SUPABASE_URL`, `SB_SECRET_KEY` | `UK_AIR_SOS_BASE_URL`, `UK_AIR_SOS_SERVICE_LABEL`, `HISTORY_SUPABASE_URL`, `HISTORY_SERVICE_ROLE_KEY`, `HISTORY_UPSERT_RPC`, `HISTORY_OUTBOX_FLUSH_LIMIT`, `HISTORY_UPSERT_CHUNK_SIZE`, `UK_AQ_EGRESS_LOG_SAMPLE_RATE`, `UK_AQ_EGRESS_METRICS_DB_ENABLED`, `UK_AQ_EGRESS_METRICS_CLEANUP_SAMPLE_RATE`, `UK_AQ_EGRESS_METRICS_CLEANUP_MIN_INTERVAL_MS`, `UK_AQ_EGRESS_METRICS_AGG_RETENTION_DAYS`, `UK_AQ_EGRESS_METRICS_RAW_RETENTION_DAYS`, `DISPATCH_TIME_BUDGET_MS`, `DISPATCH_SHUTDOWN_BUFFER_MS`, `DISPATCH_EDGE_CALL_TIMEOUT_MS` |
+| GitHub Actions deploy | `SUPABASE_ACCESS_TOKEN`, `SUPABASE_URL`, `SB_SECRET_KEY`, `SUPABASE_PROJECT_REF` (Secrets) | `UK_AIR_SOS_BASE_URL`, `UK_AIR_SOS_SERVICE_LABEL` (Secrets) |
 
 Install dependencies in a virtual environment:
 
@@ -78,7 +78,7 @@ Deploying the Edge Function does not create a schedule; helper RPCs live in `sup
 Supabase secrets required (Edge Function runtime):
 ```
 SB_SUPABASE_URL=your_supabase_url
-SB_SERVICE_ROLE_KEY=your_service_role_key
+SB_SECRET_KEY=your_service_role_key
 UK_AIR_SOS_BASE_URL=https://uk-air.defra.gov.uk/sos-ukair/api/v1
 UK_AIR_SOS_SERVICE_LABEL=UK-AIR-SOS
 ```
@@ -89,7 +89,7 @@ Endpoint egress metrics SQL (minute aggregates + error/304 raw events) lives in 
 GitHub Actions deployment secrets (used by `.github/workflows/supabase_edge_deploy.yml`):
 - `SUPABASE_ACCESS_TOKEN`
 - `SUPABASE_URL`
-- `SUPABASE_SERVICE_ROLE_KEY`
+- `SB_SECRET_KEY`
 - `SUPABASE_PROJECT_REF`
 
 Note: `SUPABASE_ACCESS_TOKEN` is only required for deployments (GitHub Actions or `supabase` CLI). The publishable key is safe to expose; the service role key is not.
