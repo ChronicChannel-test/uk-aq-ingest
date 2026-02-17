@@ -1088,6 +1088,30 @@ async function deletePendingTasks(
   return { deletedCount, deleteErrors };
 }
 
+function hasEarlierOrEqualPendingTask(
+  pendingTasks: PendingOpenAQTask[],
+  requestedScheduleMs: number,
+): boolean {
+  return pendingTasks.some((task) => task.scheduleAtMs <= requestedScheduleMs);
+}
+
+function logTaskEnqueueSkippedExistingEarlier(
+  reason: string,
+  requestedScheduleAtIso: string,
+  pendingTasks: PendingOpenAQTask[],
+  rateLimitResetAt: string | null = null,
+): void {
+  const earliestTask = pendingTasks[0];
+  logSummary("task_enqueue_skipped_existing_earlier", {
+    reason,
+    requested_schedule_at: requestedScheduleAtIso,
+    rate_limit_reset_at: rateLimitResetAt,
+    pending_count: pendingTasks.length,
+    earliest_pending_task_name: earliestTask?.name ?? null,
+    earliest_pending_schedule_at: earliestTask?.scheduleAt ?? null,
+  });
+}
+
 async function enqueueSelfRunTask(
   scheduleAt: Date,
   reason: string,
@@ -1150,35 +1174,31 @@ async function enqueueSelfRunTask(
         });
         pendingTasks = [];
       } else {
-        const hasEarlierOrEqualTask = pendingTasks.some((task) =>
-          task.scheduleAtMs <= requestedScheduleMs
+        const hasEarlierOrEqualTask = hasEarlierOrEqualPendingTask(
+          pendingTasks,
+          requestedScheduleMs,
         );
         if (hasEarlierOrEqualTask) {
-          const earliestTask = pendingTasks[0];
-          logSummary("task_enqueue_skipped_existing_earlier", {
+          logTaskEnqueueSkippedExistingEarlier(
             reason,
-            requested_schedule_at: scheduleAt.toISOString(),
-            rate_limit_reset_at: rateLimitResetAt,
-            pending_count: pendingTasks.length,
-            earliest_pending_task_name: earliestTask?.name ?? null,
-            earliest_pending_schedule_at: earliestTask?.scheduleAt ?? null,
-          });
+            scheduleAt.toISOString(),
+            pendingTasks,
+            rateLimitResetAt,
+          );
           return;
         }
       }
     } else {
-      const hasEarlierOrEqualTask = pendingTasks.some((task) =>
-        task.scheduleAtMs <= requestedScheduleMs
+      const hasEarlierOrEqualTask = hasEarlierOrEqualPendingTask(
+        pendingTasks,
+        requestedScheduleMs,
       );
       if (hasEarlierOrEqualTask) {
-        const earliestTask = pendingTasks[0];
-        logSummary("task_enqueue_skipped_existing_earlier", {
+        logTaskEnqueueSkippedExistingEarlier(
           reason,
-          requested_schedule_at: scheduleAt.toISOString(),
-          pending_count: pendingTasks.length,
-          earliest_pending_task_name: earliestTask?.name ?? null,
-          earliest_pending_schedule_at: earliestTask?.scheduleAt ?? null,
-        });
+          scheduleAt.toISOString(),
+          pendingTasks,
+        );
         return;
       }
     }
@@ -1186,18 +1206,16 @@ async function enqueueSelfRunTask(
 
   if (pendingTasks.length) {
     const requestedScheduleMs = scheduleAt.getTime();
-    const hasEarlierOrEqualTask = pendingTasks.some((task) =>
-      task.scheduleAtMs <= requestedScheduleMs
+    const hasEarlierOrEqualTask = hasEarlierOrEqualPendingTask(
+      pendingTasks,
+      requestedScheduleMs,
     );
     if (hasEarlierOrEqualTask) {
-      const earliestTask = pendingTasks[0];
-      logSummary("task_enqueue_skipped_existing_earlier", {
+      logTaskEnqueueSkippedExistingEarlier(
         reason,
-        requested_schedule_at: scheduleAt.toISOString(),
-        pending_count: pendingTasks.length,
-        earliest_pending_task_name: earliestTask?.name ?? null,
-        earliest_pending_schedule_at: earliestTask?.scheduleAt ?? null,
-      });
+        scheduleAt.toISOString(),
+        pendingTasks,
+      );
       return;
     }
 

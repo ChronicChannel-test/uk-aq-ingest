@@ -1261,17 +1261,28 @@ type RateLimitState = {
   resetAt: string | null;
 };
 
+const UNIX_TIMESTAMP_SECONDS_THRESHOLD = 1e9;
+const UNIX_TIMESTAMP_MILLISECONDS_THRESHOLD = 1e12;
+
+function rateLimitResetToEpochMs(reset: number | null): number | null {
+  if (reset === null || !Number.isFinite(reset)) {
+    return null;
+  }
+  if (reset > UNIX_TIMESTAMP_MILLISECONDS_THRESHOLD) {
+    return reset;
+  }
+  if (reset > UNIX_TIMESTAMP_SECONDS_THRESHOLD) {
+    return reset * 1000;
+  }
+  return Date.now() + Math.max(0, reset * 1000);
+}
+
 function rateLimitDelayMs(reset: number | null): number {
-  if (!Number.isFinite(reset) || reset === null) {
+  const resetMs = rateLimitResetToEpochMs(reset);
+  if (resetMs === null) {
     return 0;
   }
-  if (reset > 1e12) {
-    return Math.max(0, reset - Date.now());
-  }
-  if (reset > 1e9) {
-    return Math.max(0, reset * 1000 - Date.now());
-  }
-  return Math.max(0, reset * 1000);
+  return Math.max(0, resetMs - Date.now());
 }
 
 async function maybeSleepForRateLimit(
@@ -1350,8 +1361,10 @@ async function openaqRequest(
       }
       if (info.reset !== null && Number.isFinite(info.reset)) {
         rateLimitState.reset = info.reset;
-        const delayMs = rateLimitDelayMs(info.reset);
-        rateLimitState.resetAt = new Date(Date.now() + delayMs).toISOString();
+        const resetMs = rateLimitResetToEpochMs(info.reset);
+        rateLimitState.resetAt = resetMs === null
+          ? null
+          : new Date(resetMs).toISOString();
       }
       if (info.remaining <= OPENAQ_RATE_LIMIT_STOP_THRESHOLD) {
         rateLimitState.stop = true;

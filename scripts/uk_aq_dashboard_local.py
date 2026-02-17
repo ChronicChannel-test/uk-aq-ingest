@@ -72,6 +72,16 @@ CACHE_TTL_SECONDS = 20
 UTC_DATETIME_MIN = datetime.min.replace(tzinfo=timezone.utc)
 
 
+def _normalize_token(value: str) -> str:
+    return NON_ALNUM_RE.sub("", value.lower())
+
+
+NORMALIZED_POLLUTANT_TOKENS = {
+    pollutant_key: tuple(_normalize_token(token) for token in config["tokens"])
+    for pollutant_key, config in POLLUTANTS.items()
+}
+
+
 def _load_env(path: Path) -> None:
     if not path.exists():
         return
@@ -126,11 +136,28 @@ def _project_ref_from_base_url(base_url: str) -> Optional[str]:
     return host
 
 
+def _request_path(url: str) -> str:
+    parsed = urlparse(url)
+    return parsed.path or url
+
+
+def _safe_response_text(resp: requests.Response, max_chars: int = 500) -> str:
+    text = (resp.text or "").strip()
+    if len(text) <= max_chars:
+        return text
+    return text[:max_chars] + "...(truncated)"
+
+
 def _fetch_json(url: str, headers: Dict[str, str], params: Dict[str, str]) -> List[Dict[str, Any]]:
     resp = requests.get(url, headers=headers, params=params, timeout=60)
     if not resp.ok:
+        params_keys = sorted(params.keys())
         raise RuntimeError(
-            f"PostgREST GET error {resp.status_code} for {url} with params {params}: {resp.text}"
+            (
+                "PostgREST GET error "
+                f"{resp.status_code} at {_request_path(url)} "
+                f"(params_keys={params_keys}): {_safe_response_text(resp)}"
+            )
         )
     payload = resp.json()
     return payload if isinstance(payload, list) else []
@@ -139,8 +166,13 @@ def _fetch_json(url: str, headers: Dict[str, str], params: Dict[str, str]) -> Li
 def _patch_json(url: str, headers: Dict[str, str], payload: Dict[str, Any]) -> None:
     resp = requests.patch(url, headers=headers, json=payload, timeout=60)
     if not resp.ok:
+        payload_keys = sorted(payload.keys())
         raise RuntimeError(
-            f"PostgREST PATCH error {resp.status_code} for {url} with payload {payload}: {resp.text}"
+            (
+                "PostgREST PATCH error "
+                f"{resp.status_code} at {_request_path(url)} "
+                f"(payload_keys={payload_keys}): {_safe_response_text(resp)}"
+            )
         )
 
 
@@ -364,14 +396,16 @@ def _get_ingest_runs_cached(
     return list(merged)
 
 
-def _normalize_token(value: str) -> str:
-    return NON_ALNUM_RE.sub("", value.lower())
-
-
 def _is_truthy_flag(value: Any) -> bool:
     if value is None:
         return False
-    return str(value).strip().lower() in {"y", "yes", "true", "1"}
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        candidate = value.strip().lower()
+    else:
+        candidate = str(value).strip().lower()
+    return candidate in {"y", "yes", "true", "1"}
 
 
 def _extract_pollutant_key(row: Dict[str, Any]) -> Optional[str]:
@@ -386,9 +420,9 @@ def _extract_pollutant_key(row: Dict[str, Any]) -> Optional[str]:
 
     for candidate in candidates:
         cleaned = _normalize_token(candidate)
-        for pollutant_key, config in POLLUTANTS.items():
-            for token in config["tokens"]:
-                if _normalize_token(token) in cleaned:
+        for pollutant_key, tokens in NORMALIZED_POLLUTANT_TOKENS.items():
+            for token in tokens:
+                if token in cleaned:
                     return pollutant_key
     return None
 
