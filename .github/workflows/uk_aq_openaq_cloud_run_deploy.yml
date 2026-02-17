@@ -542,7 +542,7 @@ jobs:
               --time-zone "${SCHEDULER_TIMEZONE}" \
               --uri "${run_uri}" \
               --http-method POST \
-              --headers "Content-Type=application/json" \
+              --update-headers "Content-Type=application/json" \
               --message-body "${safety_run_body}" \
               --oauth-service-account-email "${scheduler_sa}" \
               --oauth-token-scope "https://www.googleapis.com/auth/cloud-platform" \
