@@ -69,6 +69,7 @@ DISPATCH_RUNS_STATE: Dict[str, Any] = {
     "latest_created_at": None,
 }
 CACHE_TTL_SECONDS = 20
+UTC_DATETIME_MIN = datetime.min.replace(tzinfo=timezone.utc)
 
 
 def _load_env(path: Path) -> None:
@@ -128,7 +129,9 @@ def _project_ref_from_base_url(base_url: str) -> Optional[str]:
 def _fetch_json(url: str, headers: Dict[str, str], params: Dict[str, str]) -> List[Dict[str, Any]]:
     resp = requests.get(url, headers=headers, params=params, timeout=60)
     if not resp.ok:
-        raise RuntimeError(f"PostgREST error {resp.status_code}: {resp.text}")
+        raise RuntimeError(
+            f"PostgREST GET error {resp.status_code} for {url} with params {params}: {resp.text}"
+        )
     payload = resp.json()
     return payload if isinstance(payload, list) else []
 
@@ -136,7 +139,13 @@ def _fetch_json(url: str, headers: Dict[str, str], params: Dict[str, str]) -> Li
 def _patch_json(url: str, headers: Dict[str, str], payload: Dict[str, Any]) -> None:
     resp = requests.patch(url, headers=headers, json=payload, timeout=60)
     if not resp.ok:
-        raise RuntimeError(f"PostgREST error {resp.status_code}: {resp.text}")
+        raise RuntimeError(
+            f"PostgREST PATCH error {resp.status_code} for {url} with payload {payload}: {resp.text}"
+        )
+
+
+def _timestamp_or_min(value: Optional[datetime]) -> datetime:
+    return value if value is not None else UTC_DATETIME_MIN
 
 
 def _fetch_all(
@@ -285,9 +294,7 @@ def _merge_dispatch_runs(
             continue
         current_created = _dispatch_created_timestamp(current)
         row_created = _dispatch_created_timestamp(row)
-        if (row_created or datetime.min.replace(tzinfo=timezone.utc)) >= (
-            current_created or datetime.min.replace(tzinfo=timezone.utc)
-        ):
+        if _timestamp_or_min(row_created) >= _timestamp_or_min(current_created):
             by_key[key] = row
 
     merged = list(by_key.values())
@@ -303,7 +310,7 @@ def _merge_dispatch_runs(
     filtered.sort(
         key=lambda item: _dispatch_run_timestamp(item)
         or _dispatch_created_timestamp(item)
-        or datetime.min.replace(tzinfo=timezone.utc),
+        or UTC_DATETIME_MIN,
         reverse=True,
     )
     if len(filtered) > DISPATCH_MAX_ROWS:
@@ -559,7 +566,7 @@ def _build_dashboard(
     dispatch_runs = in_flight_rows + ingest_runs
     dispatch_runs.sort(
         key=lambda item: _parse_timestamp(item.get("run_timestamp"))
-        or datetime.min.replace(tzinfo=timezone.utc),
+        or UTC_DATETIME_MIN,
         reverse=True,
     )
 
@@ -688,6 +695,14 @@ def _get_dashboard(
     service_role_key: str,
     dispatch_cursor: Optional[datetime] = None,
 ) -> Dict[str, Any]:
+    # Cursor-based requests are incremental and should not be served from the shared cache.
+    if dispatch_cursor is not None:
+        return _build_dashboard(
+            base_url,
+            service_role_key,
+            dispatch_cursor=dispatch_cursor,
+        )
+
     with CACHE_LOCK:
         cached = CACHE_STATE.get("data")
         generated_at = CACHE_STATE.get("generated_at")
@@ -771,10 +786,6 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.wfile.write(payload.encode("utf-8"))
             return
 
-        with CACHE_LOCK:
-            CACHE_STATE["data"] = None
-            CACHE_STATE["generated_at"] = None
-
         payload = json.dumps(data, indent=2)
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", "application/json")
@@ -850,6 +861,10 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(payload.encode("utf-8"))
             return
+
+        with CACHE_LOCK:
+            CACHE_STATE["data"] = None
+            CACHE_STATE["generated_at"] = None
 
         payload = json.dumps({"status": "ok"}, indent=2)
         self.send_response(HTTPStatus.OK)
