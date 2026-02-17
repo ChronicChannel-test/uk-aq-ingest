@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+readonly SUPABASE_SECRETS_ENV_KEY="SUPABASE_SECRETS_ENV"
+readonly WORKFLOW_SECRET_PATTERN='secrets\.[A-Z0-9_]+'
+readonly WORKFLOW_SECRET_SED='s/.*secrets\.([A-Z0-9_]+).*/\1/'
+
 usage() {
   cat <<'EOF'
 Sync GitHub Actions repo secrets from local env files.
@@ -31,11 +35,15 @@ DRY_RUN=0
 SEEN_FILE="$(mktemp)"
 TARGETS_CACHE_FILE="$(mktemp)"
 PROCESSED_KEYS_FILE="$(mktemp)"
+REQUIRED_FILE=""
 
 cleanup() {
   rm -f "${SEEN_FILE}"
   rm -f "${TARGETS_CACHE_FILE}"
   rm -f "${PROCESSED_KEYS_FILE}"
+  if [[ -n "${REQUIRED_FILE}" ]]; then
+    rm -f "${REQUIRED_FILE}"
+  fi
 }
 trap cleanup EXIT
 
@@ -222,10 +230,23 @@ strip_inline_comment() {
 set_secret() {
   local name="$1"
   local value="$2"
+  local tmp_secret_file=""
+  local gh_status=0
   if [[ "${DRY_RUN}" -eq 1 ]]; then
     echo "[dry-run] would set ${name} (len=${#value})"
   else
-    printf '%s' "${value}" | gh secret set "${name}" --repo "${REPO}"
+    tmp_secret_file="$(mktemp)"
+    chmod 600 "${tmp_secret_file}" || true
+    printf '%s' "${value}" > "${tmp_secret_file}"
+    if gh secret set "${name}" --repo "${REPO}" < "${tmp_secret_file}"; then
+      :
+    else
+      gh_status=$?
+    fi
+    rm -f "${tmp_secret_file}"
+    if [[ "${gh_status}" -ne 0 ]]; then
+      return "${gh_status}"
+    fi
     echo "set ${name}"
   fi
   printf '%s\n' "${name}" >> "${SEEN_FILE}"
@@ -268,6 +289,27 @@ resolve_secret_value() {
   local value="$2"
 
   if [[ "${key}" == "GCP_SA_KEY" && -f "${value}" ]]; then
+    if [[ ! -r "${value}" ]]; then
+      echo "Error: GCP_SA_KEY file is not readable: ${value}" >&2
+      exit 1
+    fi
+
+    # Refuse obviously unsafe permissions when we can determine them.
+    # GNU: stat -c %a, BSD/macOS: stat -f %Lp
+    local perms=""
+    if perms="$(stat -c %a -- "${value}" 2>/dev/null)"; then
+      :
+    elif perms="$(stat -f %Lp -- "${value}" 2>/dev/null)"; then
+      :
+    fi
+    if [[ -n "${perms}" ]]; then
+      local others_perm="${perms: -1}"
+      if [[ "${others_perm}" != "0" ]]; then
+        echo "Error: GCP_SA_KEY file must not be world-readable (${value}, mode ${perms})" >&2
+        exit 1
+      fi
+    fi
+
     cat "${value}"
     return 0
   fi
@@ -335,7 +377,7 @@ sync_env_vars() {
       echo "skip invalid key in ${file}: ${key}" >&2
       continue
     fi
-    if [[ "${key}" == "SUPABASE_SECRETS_ENV" ]]; then
+    if [[ "${key}" == "${SUPABASE_SECRETS_ENV_KEY}" ]]; then
       echo "skip reserved ${key} from ${file}; value is built from filtered ${SUPABASE_ENV_FILE}"
       continue
     fi
@@ -399,7 +441,7 @@ build_filtered_supabase_env_payload() {
     if [[ ! "${key}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
       continue
     fi
-    if [[ "${key}" == "SUPABASE_SECRETS_ENV" ]]; then
+    if [[ "${key}" == "${SUPABASE_SECRETS_ENV_KEY}" ]]; then
       continue
     fi
 
@@ -419,23 +461,22 @@ sync_env_vars "${SUPABASE_ENV_FILE}"
 if [[ -f "${SUPABASE_ENV_FILE}" ]]; then
   SUPABASE_SECRETS_ENV_VALUE="$(build_filtered_supabase_env_payload "${SUPABASE_ENV_FILE}")"
   if [[ -n "${SUPABASE_SECRETS_ENV_VALUE}" ]]; then
-    set_secret "SUPABASE_SECRETS_ENV" "${SUPABASE_SECRETS_ENV_VALUE}"
+    set_secret "${SUPABASE_SECRETS_ENV_KEY}" "${SUPABASE_SECRETS_ENV_VALUE}"
   else
-    echo "skip SUPABASE_SECRETS_ENV (no non-local keys found in ${SUPABASE_ENV_FILE})"
+    echo "skip ${SUPABASE_SECRETS_ENV_KEY} (no non-local keys found in ${SUPABASE_ENV_FILE})"
   fi
 fi
 
 WORKFLOW_DIR=".github/workflows"
 if [[ -d "${WORKFLOW_DIR}" ]]; then
   REQUIRED_FILE="$(mktemp)"
-  trap 'cleanup; rm -f "${REQUIRED_FILE}"' EXIT
   if command -v rg >/dev/null 2>&1; then
-    rg -n "secrets\\.[A-Z0-9_]+" "${WORKFLOW_DIR}"/*.yml \
-      | sed -E 's/.*secrets\.([A-Z0-9_]+).*/\1/' \
+    rg -n "${WORKFLOW_SECRET_PATTERN}" "${WORKFLOW_DIR}"/*.yml \
+      | sed -E "${WORKFLOW_SECRET_SED}" \
       | sort -u > "${REQUIRED_FILE}"
   else
-    grep -RnoE "secrets\\.[A-Z0-9_]+" "${WORKFLOW_DIR}" --include="*.yml" \
-      | sed -E 's/.*secrets\.([A-Z0-9_]+).*/\1/' \
+    grep -RnoE "${WORKFLOW_SECRET_PATTERN}" "${WORKFLOW_DIR}" --include="*.yml" \
+      | sed -E "${WORKFLOW_SECRET_SED}" \
       | sort -u > "${REQUIRED_FILE}"
   fi
 
