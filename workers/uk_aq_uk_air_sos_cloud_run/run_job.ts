@@ -41,6 +41,9 @@ const REQUEST_PAYLOAD_RAW = (Deno.env.get("UK_AIR_SOS_REQUEST_PAYLOAD") ||
   "{}").trim();
 const REQUEST_PAYLOAD_OVERRIDES = parseRequestPayload(REQUEST_PAYLOAD_RAW);
 const CRON_SECRET = (Deno.env.get("SB_UK_AQ_CRON_SECRET") || "").trim();
+const UK_AIR_SOS_INGEST_SCRIPT_PATH =
+  (Deno.env.get("UK_AIR_SOS_INGEST_SCRIPT_PATH") ||
+    "/app/runtime/ingest_uk_air_sos/index.ts").trim();
 
 const SUPABASE_URL = requiredEnv("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = requiredEnv("SUPABASE_SERVICE_ROLE_KEY");
@@ -1082,7 +1085,7 @@ async function main(): Promise<void> {
       "--allow-net",
       "--allow-read",
       "--allow-write",
-      "/app/runtime/ingest_uk_air_sos/index.ts",
+      UK_AIR_SOS_INGEST_SCRIPT_PATH,
     ],
     env: {
       ...Deno.env.toObject(),
@@ -1162,8 +1165,9 @@ async function main(): Promise<void> {
   } finally {
     try {
       server.kill("SIGTERM");
-    } catch {
-      // Process may already be closed.
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logSummary("server_kill_failed", { error: message });
     }
     try {
       await Promise.race([

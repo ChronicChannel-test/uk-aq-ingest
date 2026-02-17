@@ -71,6 +71,7 @@ gcloud run jobs update uk-aq-sos-ingest \
 - `UK_AIR_SOS_DEFAULT_TIMESERIES_LIMIT` (default `100`)
 - `UK_AIR_SOS_STATION_BATCH_LIMIT` (default `100`)
 - `UK_AIR_SOS_STALE_LIMIT` (default `4`)
+- `UK_AIR_SOS_INGEST_SCRIPT_PATH` (default `/app/runtime/ingest_uk_air_sos/index.ts`)
 - `UK_AIR_SOS_MAX_RUNTIME_SECONDS` (ingest runtime budget inside handler)
 - `SB_UK_AQ_CRON_SECRET` (if set, local call sends `x-cron-secret`)
 - `HISTORY_SUPABASE_URL`, `HISTORY_SERVICE_ROLE_KEY`, `HISTORY_SCHEMA`

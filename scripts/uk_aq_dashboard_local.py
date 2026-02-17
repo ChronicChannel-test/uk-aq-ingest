@@ -362,7 +362,12 @@ def _get_ingest_runs_cached(
         latest_created_at = DISPATCH_RUNS_STATE.get("latest_created_at")
 
     created_since: Optional[datetime]
-    if isinstance(latest_created_at, datetime):
+    # On cold start (no cached rows), always hydrate the full lookback window.
+    # Otherwise a persisted UI cursor from a previous session can cause a partial
+    # incremental fetch that misses quieter connectors.
+    if not cached_rows:
+        created_since = window_start
+    elif isinstance(latest_created_at, datetime):
         created_since = latest_created_at - timedelta(
             seconds=DISPATCH_INCREMENTAL_OVERLAP_SECONDS
         )

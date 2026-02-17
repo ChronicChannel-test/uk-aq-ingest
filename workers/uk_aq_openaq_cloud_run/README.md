@@ -86,6 +86,7 @@ gcloud run jobs update uk-aq-openaq-ingest \
 - `OPENAQ_CLOUD_RUN_JOB_NAME` (default `uk-aq-openaq-ingest`)
 - `OPENAQ_TASK_QUEUE_ID` (default `uk-aq-openaq-trigger-queue`)
 - `OPENAQ_TASK_INVOKER_SERVICE_ACCOUNT` (service account Cloud Tasks uses to call `jobs:run`)
+- `OPENAQ_INGEST_SCRIPT_PATH` (default `/app/runtime/ingest_openaq/index.ts`)
 - `OPENAQ_DROPBOX_UPLOAD_SOURCE` (default `cloud_run` for this worker)
 - `SB_UK_AQ_CRON_SECRET` (if set, local call sends `x-cron-secret`)
 - `HISTORY_SUPABASE_URL`, `HISTORY_SERVICE_ROLE_KEY`, `HISTORY_SCHEMA`

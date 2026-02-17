@@ -81,6 +81,7 @@ Delay floors are outcome-aware:
 - `OPENAQ_NEXT_CHECK_MIN_SECONDS` (default `60`)
 - `OPENAQ_NEXT_CHECK_PARTIAL_MIN_SECONDS` (default `60`)
 - `OPENAQ_NEXT_CHECK_SKIPPED_MIN_SECONDS` (default `60`)
+- `OPENAQ_INGEST_SCRIPT_PATH` (default `/app/runtime/ingest_openaq/index.ts`)
 - `OPENAQ_SAFETY_SUCCESS_LOOKBACK_MINUTES` (default `10`; only used when `OPENAQ_TRIGGER_MODE=safety`; applies to recent `succeeded|success|partial|skipped` runs)
 - `OPENAQ_LAG_STAT` (default `min`; options `min|median|p25` for OpenAQ lag samples)
 - `OPENAQ_HISTORY_WRITE_MODE` (default in workflow: `pubsub_only`)

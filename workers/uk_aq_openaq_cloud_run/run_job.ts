@@ -96,6 +96,9 @@ const OPENAQ_TASK_INVOKER_SERVICE_ACCOUNT = (
   Deno.env.get("GCP_OPENAQ_SCHEDULER_SERVICE_ACCOUNT") ||
   ""
 ).trim();
+const OPENAQ_INGEST_SCRIPT_PATH =
+  (Deno.env.get("OPENAQ_INGEST_SCRIPT_PATH") ||
+    "/app/runtime/ingest_openaq/index.ts").trim();
 
 const SUPABASE_URL = requiredEnv("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = requiredEnv("SUPABASE_SERVICE_ROLE_KEY");
@@ -110,6 +113,24 @@ type IngestResponse = {
   status: number;
   body: unknown;
   raw: string;
+};
+
+type IngestPayloadSummary = Record<string, unknown> & {
+  connector_id?: number | string | null;
+  run_status?: string;
+  run_message?: string;
+  partial?: boolean;
+  stopped_reason?: string;
+  rate_limit_stop?: boolean;
+  rate_limit_stop_reason?: string;
+  rate_limit_reset?: number | string | null;
+  rate_limit_reset_at?: string;
+};
+
+type RunSummary = {
+  runStatus: string;
+  runMessage: string;
+  payload: IngestPayloadSummary | null;
 };
 
 type ConnectorConfig = {
@@ -508,12 +529,8 @@ async function buildIngestPayload(
   };
 }
 
-function deriveRunSummary(ingestResponse: IngestResponse): {
-  runStatus: string;
-  runMessage: string;
-  payload: Record<string, unknown> | null;
-} {
-  const payload = toObject(ingestResponse.body);
+function deriveRunSummary(ingestResponse: IngestResponse): RunSummary {
+  const payload = toObject(ingestResponse.body) as IngestPayloadSummary | null;
   if (!ingestResponse.ok) {
     return {
       runStatus: "failed",
@@ -1490,7 +1507,7 @@ async function main(): Promise<void> {
       "--allow-net",
       "--allow-read",
       "--allow-write",
-      "/app/runtime/ingest_openaq/index.ts",
+      OPENAQ_INGEST_SCRIPT_PATH,
     ],
     env: {
       ...Deno.env.toObject(),
@@ -1575,8 +1592,12 @@ async function main(): Promise<void> {
   } finally {
     try {
       server.kill("SIGTERM");
-    } catch {
-      // Process may already be closed.
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logSummary("server_kill_failed", {
+        trigger_mode: OPENAQ_TRIGGER_MODE,
+        error: message,
+      });
     }
     try {
       await Promise.race([

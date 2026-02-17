@@ -71,3 +71,4 @@ gcloud run jobs update uk-aq-breathelondon-ingest \
 - `SB_UK_AQ_CRON_SECRET`
 - `BREATHELONDON_REQUEST_PAYLOAD` (JSON object overrides; dynamic connector-derived station/window/batch still apply)
 - `BREATHELONDON_ENFORCE_RUNTIME_BUDGET` (optional; defaults to `false` in Cloud Run)
+- `BREATHELONDON_INGEST_SCRIPT_PATH` (default `/app/runtime/ingest_breathelondon/index.ts`)
