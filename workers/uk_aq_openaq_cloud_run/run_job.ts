@@ -1064,9 +1064,34 @@ async function deleteCloudTask(taskName: string, token: string): Promise<void> {
   throw new Error(`Cloud Tasks delete failed (${response.status}): ${text}`);
 }
 
+async function deletePendingTasks(
+  pendingTasks: PendingOpenAQTask[],
+  token: string,
+  reason: string,
+): Promise<{ deletedCount: number; deleteErrors: number }> {
+  let deletedCount = 0;
+  let deleteErrors = 0;
+  for (const task of pendingTasks) {
+    try {
+      await deleteCloudTask(task.name, token);
+      deletedCount += 1;
+    } catch (error) {
+      deleteErrors += 1;
+      logSummary("task_delete_failed", {
+        reason,
+        task_name: task.name,
+        task_schedule_at: task.scheduleAt,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+  return { deletedCount, deleteErrors };
+}
+
 async function enqueueSelfRunTask(
   scheduleAt: Date,
   reason: string,
+  rateLimitResetAt: string | null,
 ): Promise<void> {
   const tasksState = effectiveTasksEnabled();
   if (!tasksState.enabled) {
@@ -1101,6 +1126,66 @@ async function enqueueSelfRunTask(
 
   if (pendingTasks.length) {
     const requestedScheduleMs = scheduleAt.getTime();
+    const rateLimitResetMs = rateLimitResetAt
+      ? Date.parse(rateLimitResetAt)
+      : Number.NaN;
+    const hasRateLimitGuard = Number.isFinite(rateLimitResetMs);
+    if (hasRateLimitGuard) {
+      const hasBeforeResetTask = pendingTasks.some((task) =>
+        task.scheduleAtMs < rateLimitResetMs
+      );
+      if (hasBeforeResetTask) {
+        const { deletedCount, deleteErrors } = await deletePendingTasks(
+          pendingTasks,
+          token,
+          reason,
+        );
+        logSummary("task_reconciled_rate_limit_guard", {
+          reason,
+          requested_schedule_at: scheduleAt.toISOString(),
+          rate_limit_reset_at: rateLimitResetAt,
+          pending_count: pendingTasks.length,
+          deleted_count: deletedCount,
+          delete_errors: deleteErrors,
+        });
+        pendingTasks = [];
+      } else {
+        const hasEarlierOrEqualTask = pendingTasks.some((task) =>
+          task.scheduleAtMs <= requestedScheduleMs
+        );
+        if (hasEarlierOrEqualTask) {
+          const earliestTask = pendingTasks[0];
+          logSummary("task_enqueue_skipped_existing_earlier", {
+            reason,
+            requested_schedule_at: scheduleAt.toISOString(),
+            rate_limit_reset_at: rateLimitResetAt,
+            pending_count: pendingTasks.length,
+            earliest_pending_task_name: earliestTask?.name ?? null,
+            earliest_pending_schedule_at: earliestTask?.scheduleAt ?? null,
+          });
+          return;
+        }
+      }
+    } else {
+      const hasEarlierOrEqualTask = pendingTasks.some((task) =>
+        task.scheduleAtMs <= requestedScheduleMs
+      );
+      if (hasEarlierOrEqualTask) {
+        const earliestTask = pendingTasks[0];
+        logSummary("task_enqueue_skipped_existing_earlier", {
+          reason,
+          requested_schedule_at: scheduleAt.toISOString(),
+          pending_count: pendingTasks.length,
+          earliest_pending_task_name: earliestTask?.name ?? null,
+          earliest_pending_schedule_at: earliestTask?.scheduleAt ?? null,
+        });
+        return;
+      }
+    }
+  }
+
+  if (pendingTasks.length) {
+    const requestedScheduleMs = scheduleAt.getTime();
     const hasEarlierOrEqualTask = pendingTasks.some((task) =>
       task.scheduleAtMs <= requestedScheduleMs
     );
@@ -1116,22 +1201,11 @@ async function enqueueSelfRunTask(
       return;
     }
 
-    let deletedCount = 0;
-    let deleteErrors = 0;
-    for (const task of pendingTasks) {
-      try {
-        await deleteCloudTask(task.name, token);
-        deletedCount += 1;
-      } catch (error) {
-        deleteErrors += 1;
-        logSummary("task_delete_failed", {
-          reason,
-          task_name: task.name,
-          task_schedule_at: task.scheduleAt,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
-    }
+    const { deletedCount, deleteErrors } = await deletePendingTasks(
+      pendingTasks,
+      token,
+      reason,
+    );
     logSummary("task_reconciled_later_tasks", {
       reason,
       requested_schedule_at: scheduleAt.toISOString(),
@@ -1228,7 +1302,7 @@ async function scheduleNextCheck(
     runStatus,
     failure,
   );
-  await enqueueSelfRunTask(scheduleAt, reason);
+  await enqueueSelfRunTask(scheduleAt, reason, rateLimitResetAt);
 }
 
 function deriveRateLimitResetAt(

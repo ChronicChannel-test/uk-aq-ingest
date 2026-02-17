@@ -95,3 +95,9 @@ gcloud run jobs update uk-aq-openaq-ingest \
 - `DROPBOX_APP_KEY`, `DROPBOX_APP_SECRET`, `DROPBOX_REFRESH_TOKEN`
 - `OPENAQ_RAW_DROPBOX_ALLOWED_SUPABASE_URL` (or `UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL`)
 - `UK_AQ_DROPBOX_ROOT` (default `/CIC-Test`)
+
+## Task Queue Reconciliation
+
+- If an earlier/equal pending OpenAQ self-task exists, enqueue is skipped.
+- If only later pending OpenAQ self-task(s) exist, those later tasks are deleted and the newly computed earlier task is enqueued.
+- If a run returns `rate_limit_reset_at`, any pending self-task scheduled before that reset time is deleted and replaced with a post-reset task.

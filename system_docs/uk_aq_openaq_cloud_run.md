@@ -42,6 +42,7 @@ Each run reads earliest `uk_aq_raw.openaq_station_checkpoints.next_due_at` and e
 - Queue reconciliation rule:
   - If an earlier/equal pending OpenAQ task exists, the worker skips enqueue.
   - If only later pending OpenAQ task(s) exist, the worker deletes those later task(s) and enqueues the newly computed earlier task.
+  - If `rate_limit_reset_at` is present for the completed run, any pending OpenAQ task scheduled before that reset time is deleted and replaced with the computed post-reset task.
 
 Safety trigger mode:
 - Scheduler invocations pass a run override env `OPENAQ_TRIGGER_MODE=safety`.
@@ -89,6 +90,7 @@ Delay floors are outcome-aware:
 ## IAM Notes
 
 - Job runtime SA needs `roles/cloudtasks.enqueuer` on the OpenAQ queue.
+- Job runtime SA needs `roles/cloudtasks.viewer` and `roles/cloudtasks.taskDeleter` on the OpenAQ queue for task reconciliation.
 - Job runtime SA needs `roles/pubsub.publisher` on `GCP_HISTORY_PUBSUB_TOPIC` when using `HISTORY_WRITE_MODE=pubsub_only`.
 - Task invoker SA needs `roles/run.invoker` on the OpenAQ Cloud Run Job.
 - Cloud Tasks service agent (`service-<project-number>@gcp-sa-cloudtasks.iam.gserviceaccount.com`) needs `roles/iam.serviceAccountTokenCreator` on the task invoker SA.

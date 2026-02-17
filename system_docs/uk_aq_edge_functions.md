@@ -258,7 +258,7 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
   - Runtime-vs-rate-limit stop signaling is explicit: `partial=true` is only set when the runtime deadline is reached; rate-limit/request-budget early stops are reported via `stopped_reason` without forcing `partial=true`.
   - Requires `X-Cron-Secret` when `SB_UK_AQ_CRON_SECRET` is set.
   - Stops issuing new requests when rate-limit remaining drops below the threshold (default 5), on HTTP 429, on OpenAQ HTTP 401, or when the per-run request budget is exhausted.
-  - Response metadata includes `rate_limit_reset` and `rate_limit_reset_at` so Cloud Run scheduling can defer next run until reset when throttled.
+  - Response metadata includes `rate_limit_reset` and `rate_limit_reset_at` so Cloud Run scheduling can defer next run until reset when throttled; if a pending self-task exists before reset, Cloud Run now replaces it with a post-reset task.
 - Logs:
   - Filename prefixes are runtime-specific via `OPENAQ_DROPBOX_UPLOAD_SOURCE`:
     - Edge runtime (default): `uk_aq_log_edge_openaq_`, `uk_aq_raw_edge_openaq_`, `uk_aq_error_edge_openaq_`.
