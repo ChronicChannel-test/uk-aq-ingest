@@ -260,7 +260,7 @@ jobs:
           gcloud run jobs add-iam-policy-binding "${JOB_NAME}" \
             --region "${REGION}" \
             --member "serviceAccount:${task_invoker_sa}" \
-            --role "roles/run.invoker" >/dev/null
+            --role "roles/run.jobsExecutorWithOverrides" >/dev/null
 
           project_number="$(gcloud projects describe "${PROJECT_ID}" --format='value(projectNumber)')"
           cloud_tasks_sa="service-${project_number}@gcp-sa-cloudtasks.iam.gserviceaccount.com"
@@ -533,7 +533,7 @@ jobs:
           gcloud run jobs add-iam-policy-binding "${JOB_NAME}" \
             --region "${REGION}" \
             --member "serviceAccount:${scheduler_sa}" \
-            --role "roles/run.invoker" >/dev/null
+            --role "roles/run.jobsExecutorWithOverrides" >/dev/null
 
           if gcloud scheduler jobs describe "${SCHEDULER_JOB_NAME}" --location "${REGION}" >/dev/null 2>&1; then
             gcloud scheduler jobs update http "${SCHEDULER_JOB_NAME}" \
