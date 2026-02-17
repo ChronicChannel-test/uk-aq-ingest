@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# trigger2
+# trigger3
 set -euo pipefail
 
 readonly SUPABASE_SECRETS_ENV_KEY="SUPABASE_SECRETS_ENV"
