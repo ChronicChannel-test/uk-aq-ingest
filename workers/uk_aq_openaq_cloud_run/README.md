@@ -1,6 +1,6 @@
-# uk_aq OpenAQ Cloud Run job
+# uk_aq OpenAQ Cloud Run service
 
-This Cloud Run job runs OpenAQ ingest in Google Cloud using the existing
+This Cloud Run service runs OpenAQ ingest in Google Cloud using the existing
 `supabase/functions/ingest_openaq/index.ts` logic.
 
 ## How it works
@@ -46,14 +46,18 @@ docker build -f workers/uk_aq_openaq_cloud_run/Dockerfile -t "${IMAGE}" .
 docker push "${IMAGE}"
 ```
 
-## Cloud Run job update
+## Cloud Run service deploy
 
 ```bash
-gcloud run jobs update uk-aq-openaq-ingest \
+gcloud run deploy uk-aq-openaq-ingest \
   --region europe-west2 \
   --image "${IMAGE}" \
-  --task-timeout 900s \
-  --max-retries 0
+  --cpu 0.5 \
+  --memory 512Mi \
+  --concurrency 1 \
+  --max-instances 1 \
+  --min-instances 0 \
+  --no-allow-unauthenticated
 ```
 
 ## Required env vars / secrets
@@ -83,9 +87,13 @@ gcloud run jobs update uk-aq-openaq-ingest \
 - `OPENAQ_FAILURE_RETRY_SECONDS` (default `120`)
 - `OPENAQ_LAG_STAT` (default `min`; options: `min`, `median`, `p25` for non-gap checkpoint lag scheduling)
 - `OPENAQ_GCP_PROJECT_ID`, `OPENAQ_GCP_REGION`
+- `OPENAQ_CLOUD_RUN_TARGET` (recommended: `service`)
 - `OPENAQ_CLOUD_RUN_JOB_NAME` (default `uk-aq-openaq-ingest`)
+- `OPENAQ_CLOUD_RUN_SERVICE_NAME` (default falls back to `OPENAQ_CLOUD_RUN_JOB_NAME`)
+- `OPENAQ_CLOUD_RUN_SERVICE_URL` (optional explicit service URL; otherwise resolved via Run API)
 - `OPENAQ_TASK_QUEUE_ID` (default `uk-aq-openaq-trigger-queue`)
-- `OPENAQ_TASK_INVOKER_SERVICE_ACCOUNT` (service account Cloud Tasks uses to call `jobs:run`)
+- `OPENAQ_TASK_INVOKER_SERVICE_ACCOUNT` (service account Cloud Tasks uses for authenticated service requests)
+- `OPENAQ_LOCAL_PORT` (default `8000`; local ingest server port, separate from Cloud Run `PORT`)
 - `OPENAQ_INGEST_SCRIPT_PATH` (default `/app/runtime/ingest_openaq/index.ts`)
 - `OPENAQ_DROPBOX_UPLOAD_SOURCE` (default `cloud_run` for this worker)
 - `SB_UK_AQ_CRON_SECRET` (if set, local call sends `x-cron-secret`)

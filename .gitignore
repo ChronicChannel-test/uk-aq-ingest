@@ -17,3 +17,6 @@ network_info/OpenAQ/docs.openaq.org/
 .dashboards.pids
 workers/uk_aq_sensorcommunity_cloud_run/*.json
 data/gpkg/OS/os_open_names_gpkg/Data/opname_gb.gpkg
+plans/json_aurn_within_30m_all_matches.csv
+plans/uk_aq_station_duplicate_candidates_rows.csv
+plans/uk_aq_station_duplicate_candidates_stations.csv

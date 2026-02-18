@@ -69,6 +69,9 @@ const OPENAQ_FAILURE_RETRY_SECONDS = parsePositiveInt(
 );
 const OPENAQ_TASK_NAME_PREFIX =
   (Deno.env.get("OPENAQ_TASK_NAME_PREFIX") || "uk-aq-openaq-next").trim();
+const OPENAQ_CLOUD_RUN_TARGET = parseRunTarget(
+  Deno.env.get("OPENAQ_CLOUD_RUN_TARGET"),
+);
 const OPENAQ_GCP_PROJECT_ID = (
   Deno.env.get("OPENAQ_GCP_PROJECT_ID") ||
   Deno.env.get("GCP_PROJECT_ID") ||
@@ -84,6 +87,14 @@ const OPENAQ_CLOUD_RUN_JOB_NAME = (
   Deno.env.get("OPENAQ_CLOUD_RUN_JOB_NAME") ||
   Deno.env.get("GCP_OPENAQ_JOB_NAME") ||
   "uk-aq-openaq-ingest"
+).trim();
+const OPENAQ_CLOUD_RUN_SERVICE_NAME = (
+  Deno.env.get("OPENAQ_CLOUD_RUN_SERVICE_NAME") ||
+  Deno.env.get("GCP_OPENAQ_SERVICE_NAME") ||
+  OPENAQ_CLOUD_RUN_JOB_NAME
+).trim();
+const OPENAQ_CLOUD_RUN_SERVICE_URL = (
+  Deno.env.get("OPENAQ_CLOUD_RUN_SERVICE_URL") || ""
 ).trim();
 const OPENAQ_TASK_QUEUE_ID = (
   Deno.env.get("OPENAQ_TASK_QUEUE_ID") ||
@@ -213,6 +224,14 @@ function parseTriggerMode(
     return value;
   }
   return "unknown";
+}
+
+function parseRunTarget(raw: string | undefined): "job" | "service" {
+  const value = (raw || "").trim().toLowerCase();
+  if (value === "service") {
+    return "service";
+  }
+  return "job";
 }
 
 function parseRequestPayload(raw: string): Record<string, unknown> {
@@ -963,8 +982,18 @@ function effectiveTasksEnabled(): {
   if (!OPENAQ_GCP_REGION) {
     return { enabled: false, reason: "missing_region" };
   }
-  if (!OPENAQ_CLOUD_RUN_JOB_NAME) {
+  if (
+    OPENAQ_CLOUD_RUN_TARGET === "job" &&
+    !OPENAQ_CLOUD_RUN_JOB_NAME
+  ) {
     return { enabled: false, reason: "missing_job_name" };
+  }
+  if (
+    OPENAQ_CLOUD_RUN_TARGET === "service" &&
+    !OPENAQ_CLOUD_RUN_SERVICE_NAME &&
+    !OPENAQ_CLOUD_RUN_SERVICE_URL
+  ) {
+    return { enabled: false, reason: "missing_service_name_or_url" };
   }
   if (!OPENAQ_TASK_QUEUE_ID) {
     return { enabled: false, reason: "missing_queue_id" };
@@ -973,6 +1002,74 @@ function effectiveTasksEnabled(): {
     return { enabled: false, reason: "missing_task_invoker_service_account" };
   }
   return { enabled: true, reason: "enabled" };
+}
+
+async function resolveCloudRunServiceUrl(token: string): Promise<string> {
+  if (OPENAQ_CLOUD_RUN_SERVICE_URL) {
+    return OPENAQ_CLOUD_RUN_SERVICE_URL;
+  }
+  const response = await fetch(
+    `https://run.googleapis.com/v2/projects/${OPENAQ_GCP_PROJECT_ID}/locations/${OPENAQ_GCP_REGION}/services/${OPENAQ_CLOUD_RUN_SERVICE_NAME}`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    },
+  );
+  const text = await response.text();
+  if (!response.ok) {
+    throw new Error(
+      `Cloud Run service lookup failed (${response.status}): ${text}`,
+    );
+  }
+  let payload: unknown = null;
+  if (text) {
+    try {
+      payload = JSON.parse(text);
+    } catch {
+      payload = null;
+    }
+  }
+  const uri = toStringOrNull(toObject(payload)?.uri);
+  if (!uri) {
+    throw new Error("Cloud Run service URI missing in service lookup response");
+  }
+  return uri;
+}
+
+async function resolveTaskTarget(
+  token: string,
+): Promise<{
+  url: string;
+  body: Record<string, unknown>;
+  auth: "oauth" | "oidc";
+}> {
+  if (OPENAQ_CLOUD_RUN_TARGET === "service") {
+    const serviceUrl = await resolveCloudRunServiceUrl(token);
+    return {
+      url: serviceUrl,
+      body: {
+        trigger_mode: "task",
+      },
+      auth: "oidc",
+    };
+  }
+  return {
+    url:
+      `https://run.googleapis.com/v2/projects/${OPENAQ_GCP_PROJECT_ID}/locations/${OPENAQ_GCP_REGION}/jobs/${OPENAQ_CLOUD_RUN_JOB_NAME}:run`,
+    body: {
+      overrides: {
+        containerOverrides: [{
+          env: [{
+            name: "OPENAQ_TRIGGER_MODE",
+            value: "task",
+          }],
+        }],
+      },
+    },
+    auth: "oauth",
+  };
 }
 
 function computeNextCheckTime(
@@ -1155,8 +1252,6 @@ async function enqueueSelfRunTask(
     return;
   }
 
-  const runUri =
-    `https://run.googleapis.com/v2/projects/${OPENAQ_GCP_PROJECT_ID}/locations/${OPENAQ_GCP_REGION}/jobs/${OPENAQ_CLOUD_RUN_JOB_NAME}:run`;
   const queueUri =
     `https://cloudtasks.googleapis.com/v2/projects/${OPENAQ_GCP_PROJECT_ID}/locations/${OPENAQ_GCP_REGION}/queues/${OPENAQ_TASK_QUEUE_ID}/tasks`;
 
@@ -1165,6 +1260,7 @@ async function enqueueSelfRunTask(
     `${OPENAQ_TASK_NAME_PREFIX}-${CONNECTOR_CODE}-${taskMinuteBucket}`;
   const taskName = buildTaskResourceName(taskId);
   const token = await fetchGoogleAccessToken();
+  const target = await resolveTaskTarget(token);
 
   let pendingTasks: PendingOpenAQTask[] = [];
   try {
@@ -1268,26 +1364,24 @@ async function enqueueSelfRunTask(
       scheduleTime: scheduleAt.toISOString(),
       httpRequest: {
         httpMethod: "POST",
-        url: runUri,
+        url: target.url,
         headers: {
           "Content-Type": "application/json",
         },
-        body: btoa(
-          JSON.stringify({
-            overrides: {
-              containerOverrides: [{
-                env: [{
-                  name: "OPENAQ_TRIGGER_MODE",
-                  value: "task",
-                }],
-              }],
+        body: btoa(JSON.stringify(target.body)),
+        ...(target.auth === "oidc"
+          ? {
+            oidcToken: {
+              serviceAccountEmail: OPENAQ_TASK_INVOKER_SERVICE_ACCOUNT,
+              audience: target.url,
+            },
+          }
+          : {
+            oauthToken: {
+              serviceAccountEmail: OPENAQ_TASK_INVOKER_SERVICE_ACCOUNT,
+              scope: "https://www.googleapis.com/auth/cloud-platform",
             },
           }),
-        ),
-        oauthToken: {
-          serviceAccountEmail: OPENAQ_TASK_INVOKER_SERVICE_ACCOUNT,
-          scope: "https://www.googleapis.com/auth/cloud-platform",
-        },
       },
     },
   };

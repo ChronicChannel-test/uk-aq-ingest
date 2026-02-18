@@ -202,6 +202,7 @@ select
   case when observed_requests > 0 then round((duration_ms_sum::numeric / observed_requests), 2) else 0 end as duration_ms_avg,
   updated_at
 from uk_aq_raw.endpoint_egress_metrics_minute;
+alter view if exists uk_aq_public.uk_aq_endpoint_egress_metrics_minute set (security_invoker = true);
 
 revoke all on function uk_aq_public.uk_aq_record_endpoint_metric(
   text,
