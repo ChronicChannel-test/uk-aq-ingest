@@ -28,13 +28,10 @@ set +a
 if [[ -z "${SUPABASE_URL:-}" && -n "${SB_SUPABASE_URL:-}" ]]; then
   export SUPABASE_URL="$SB_SUPABASE_URL"
 fi
-if [[ -z "${SUPABASE_ANON_KEY:-}" && -n "${SB_PUBLISHABLE_DEFAULT_KEY:-}" ]]; then
-  export SUPABASE_ANON_KEY="$SB_PUBLISHABLE_DEFAULT_KEY"
-fi
 
 missing_vars=()
 [[ -n "${SUPABASE_URL:-}" ]] || missing_vars+=("SUPABASE_URL")
-[[ -n "${SUPABASE_ANON_KEY:-}" ]] || missing_vars+=("SUPABASE_ANON_KEY")
+[[ -n "${SB_PUBLISHABLE_DEFAULT_KEY:-}" ]] || missing_vars+=("SB_PUBLISHABLE_DEFAULT_KEY")
 if [[ -z "${UK_AQ_DEV_JWT:-}" && -z "${UK_AQ_DEV_REFRESH_TOKEN:-}" ]]; then
   missing_vars+=("UK_AQ_DEV_JWT or UK_AQ_DEV_REFRESH_TOKEN")
 fi

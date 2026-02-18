@@ -44,7 +44,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--publishable-key",
-        default=os.getenv("SB_PUBLISHABLE_DEFAULT_KEY") or os.getenv("SUPABASE_ANON_KEY"),
+        default=os.getenv("SB_PUBLISHABLE_DEFAULT_KEY"),
         help="Supabase publishable key (defaults to SB_PUBLISHABLE_DEFAULT_KEY).",
     )
     parser.add_argument(

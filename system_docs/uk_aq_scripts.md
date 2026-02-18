@@ -271,7 +271,7 @@ Notes:
 - `dev_dashboards_stop.sh` only stops exact PIDs listed in `./.dashboards.pids` (no broad `pkill`).
 
 Environment:
-- Required: `SUPABASE_URL`, plus either `SUPABASE_ANON_KEY` or `SB_PUBLISHABLE_DEFAULT_KEY`, and either `UK_AQ_DEV_JWT` or `UK_AQ_DEV_REFRESH_TOKEN`
+- Required: `SUPABASE_URL`, `SB_PUBLISHABLE_DEFAULT_KEY`, and either `UK_AQ_DEV_JWT` or `UK_AQ_DEV_REFRESH_TOKEN`
 - Optional overrides: `HOST`, `SCHEDULER_PORT`, `SNAPSHOT_PORT`
 
 ### `scripts/uk_air_sos/uk_air_sos_ingest.py`
@@ -1060,7 +1060,7 @@ python3 scripts/breathelondon/breathelondon_batch.py --connector-code breathelon
 Environment:
 - `SUPABASE_URL`
 - `SB_SECRET_KEY`
-- `SB_PUBLISHABLE_DEFAULT_KEY` (or `SUPABASE_ANON_KEY`)
+- `SB_PUBLISHABLE_DEFAULT_KEY`
 - `SB_UK_AQ_CRON_SECRET` (optional)
 - `BREATHELONDON_CONNECTOR_CODE` (optional override)
 - `BREATHELONDON_SERVICE_REF` (optional override)
@@ -1106,7 +1106,7 @@ python3 scripts/uk_aq_invoke_edge.py --function uk_aq_latest --connector-code br
 
 Environment:
 - `SUPABASE_URL`
-- `SB_PUBLISHABLE_DEFAULT_KEY` (or `SUPABASE_ANON_KEY`)
+- `SB_PUBLISHABLE_DEFAULT_KEY`
 - `SB_UK_AQ_CRON_SECRET` (required for ingest functions when set in Supabase)
 
 ## SOS metadata glossary

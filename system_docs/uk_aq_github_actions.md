@@ -67,6 +67,15 @@ SB_UK_AQ_CRON_SECRET=...
   - `secrets.HISTORY_PUBLISHABLE_DEFAULT_KEY`
   - optional `secrets.SB_UK_AQ_CRON_SECRET` header.
 
+### `uk_aq_history_edge_deploy.yml`
+- Trigger: manual dispatch; push to `supabase/functions/uk_aq_egress_monitor/**`, `supabase/config.toml`, or this workflow.
+- Purpose: deploy `uk_aq_egress_monitor` to the history Supabase project with `verify_jwt` disabled (`--no-verify-jwt`) so monitor invocations can use publishable key + cron secret only.
+- Auth/config:
+  - `secrets.SUPABASE_ACCESS_TOKEN`
+  - `vars.HISTORY_SUPABASE_URL`
+  - `secrets.HISTORY_SECRET_KEY` (preferred) or `secrets.HISTORY_SERVICE_ROLE_KEY` (fallback during migration)
+  - optional `secrets.SB_UK_AQ_CRON_SECRET`
+
 ### `uk_aq_raw_dropbox.yml`
 - Trigger: manual dispatch.
 - Purpose: run a Bristol-only ingest with raw Dropbox upload for debugging/testing.

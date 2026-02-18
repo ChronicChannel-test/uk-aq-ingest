@@ -1,0 +1,59 @@
+name: UK-AQ History Edge Deploy
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "supabase/functions/uk_aq_egress_monitor/**"
+      - "supabase/config.toml"
+      - ".github/workflows/uk_aq_history_edge_deploy.yml"
+
+jobs:
+  deploy-history-egress-monitor:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Deploy uk_aq_egress_monitor to history project
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          HISTORY_SUPABASE_URL: ${{ vars.HISTORY_SUPABASE_URL }}
+          HISTORY_SECRET_KEY: ${{ secrets.HISTORY_SECRET_KEY }}
+          HISTORY_SERVICE_ROLE_KEY: ${{ secrets.HISTORY_SERVICE_ROLE_KEY }}
+          SB_UK_AQ_CRON_SECRET: ${{ secrets.SB_UK_AQ_CRON_SECRET }}
+        run: |
+          set -euo pipefail
+          if [ -z "${HISTORY_SUPABASE_URL:-}" ]; then
+            echo "Missing HISTORY_SUPABASE_URL." >&2
+            exit 1
+          fi
+          HISTORY_PROJECT_REF="${HISTORY_SUPABASE_URL#https://}"
+          HISTORY_PROJECT_REF="${HISTORY_PROJECT_REF%%.*}"
+          if [ -z "${HISTORY_PROJECT_REF:-}" ]; then
+            echo "Could not derive history project ref from HISTORY_SUPABASE_URL." >&2
+            exit 1
+          fi
+
+          HISTORY_PRIV_KEY="${HISTORY_SECRET_KEY:-${HISTORY_SERVICE_ROLE_KEY:-}}"
+          if [ -z "${HISTORY_PRIV_KEY:-}" ]; then
+            echo "Missing HISTORY_SECRET_KEY (preferred) or HISTORY_SERVICE_ROLE_KEY." >&2
+            exit 1
+          fi
+
+          supabase secrets set --project-ref "${HISTORY_PROJECT_REF}" \
+            SUPABASE_URL="${HISTORY_SUPABASE_URL}" \
+            SB_SUPABASE_URL="${HISTORY_SUPABASE_URL}" \
+            SB_SECRET_KEY="${HISTORY_PRIV_KEY}" \
+            SB_UK_AQ_CRON_SECRET="${SB_UK_AQ_CRON_SECRET:-}"
+
+          supabase functions deploy uk_aq_egress_monitor \
+            --project-ref "${HISTORY_PROJECT_REF}" \
+            --no-verify-jwt

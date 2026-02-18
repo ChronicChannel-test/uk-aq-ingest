@@ -194,7 +194,7 @@ Stop both servers cleanly:
 
 Required environment variables:
 - `SUPABASE_URL`
-- `SUPABASE_ANON_KEY`
+- `SB_PUBLISHABLE_DEFAULT_KEY`
 - `UK_AQ_DEV_JWT` or `UK_AQ_DEV_REFRESH_TOKEN`
 
 Override host/ports:
