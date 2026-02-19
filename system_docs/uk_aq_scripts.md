@@ -342,8 +342,7 @@ Key flags:
 
 Notes:
 - Connector upserts preserve existing `poll_enabled`; new connectors default to `poll_enabled=false`.
-- Requests are rate-limited to `OPENAQ_RATE_LIMIT_PER_MIN` (default 60/min) and will pause when the OpenAQ rate-limit headers indicate low remaining budget.
-- Use `--toggle-polling` with `--to-supabase` to temporarily disable OpenAQ polling during the run (restored on exit).
+
 
 Environment:
 - `SUPABASE_URL`

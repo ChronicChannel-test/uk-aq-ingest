@@ -369,6 +369,7 @@ curl "https://YOUR_PROJECT.supabase.co/functions/v1/uk_aq_latest?region=London&p
 - Triggered by: Web requests (read-only, no writes).
 - Params: `station_like` (or `q`) required, `pollutant`, `connector_id`, `window` (`3h|6h|1d|7d|all`, default `all`), `limit`, optional incremental cursor (`since`, `since_id`).
 - Returns: flattened latest rows for chart pages with cursor fields (`next_since`, `next_since_id`) and map-compatible labels.
+  - Row fields include `network_name` resolved from primary station network membership when available, with fallback to connector label/code.
 - `display_name` logic matches `uk_aq_latest`.
 - Conditional requests: supports `If-None-Match`; returns `304 Not Modified` with `ETag` when payload is unchanged.
 - Cache-Control: success responses use `public, max-age=60, s-maxage=300, stale-while-revalidate=300, stale-if-error=86400`; errors use `no-store`.

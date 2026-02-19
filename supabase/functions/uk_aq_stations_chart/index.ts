@@ -282,6 +282,11 @@ async function loadLatest(
         })
         .filter((entry: any) => Boolean(entry))
       : [];
+    const networkName = deriveNetworkName(
+      stationMemberships,
+      connector?.display_name ?? connector?.label ?? null,
+      connector?.connector_code ?? null,
+    );
 
     return {
       id: row.id ?? null,
@@ -300,6 +305,7 @@ async function loadLatest(
       ),
       pcon_code: station?.pcon_code ?? null,
       la_code: station?.la_code ?? null,
+      network_name: networkName,
       station_network_memberships: stationMemberships,
       phenomenon_label: pollutantLabel,
       pollutant_label: pollutantLabel,
@@ -710,6 +716,25 @@ function normalizeNonEmptyText(value: string | null | undefined): string | null 
   }
   const trimmed = String(value).trim();
   return trimmed ? trimmed : null;
+}
+
+function deriveNetworkName(
+  stationMemberships: Array<{ network_label?: string | null; network_code?: string | null; is_primary?: boolean }>,
+  connectorLabel: string | null | undefined,
+  connectorCode: string | null | undefined,
+): string | null {
+  const memberships = Array.isArray(stationMemberships) ? stationMemberships : [];
+  const primary = memberships.find((entry) => Boolean(entry?.is_primary));
+  const primaryLabel = normalizeNonEmptyText(primary?.network_label ?? primary?.network_code ?? null);
+  if (primaryLabel) {
+    return primaryLabel;
+  }
+  const first = memberships[0];
+  const firstLabel = normalizeNonEmptyText(first?.network_label ?? first?.network_code ?? null);
+  if (firstLabel) {
+    return firstLabel;
+  }
+  return normalizeNonEmptyText(connectorLabel) ?? normalizeNonEmptyText(connectorCode);
 }
 
 function passesOutlierThreshold(row: any): boolean {
