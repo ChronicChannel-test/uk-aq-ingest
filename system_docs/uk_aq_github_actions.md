@@ -211,17 +211,22 @@ SB_UK_AQ_CRON_SECRET=...
 
 ### `uk_aq_scomm_cloud_run_deploy.yml`
 - Trigger: push to `main` affecting `workers/uk_aq_sensorcommunity_cloud_run/**`, or manual dispatch.
-- Purpose: deploy the Sensor.Community Cloud Run job and configure history write mode/env.
-- Default job name: `uk-aq-scomm-ingest`.
+- Purpose: deploy the Sensor.Community Cloud Run service and configure history write mode/env.
+- Default service name: `uk-aq-scomm-ingest`.
 - Worker: `workers/uk_aq_sensorcommunity_cloud_run`.
+- Scheduler:
+  - Uses Google Cloud Scheduler -> Cloud Run Service URL with OIDC auth.
+  - Reuses existing scheduler cadence/timezone where present, otherwise creates `uk-aq-scomm-trigger` on `*/2 * * * *` UTC.
+- Labels:
+  - Sets and verifies `job_name=uk-aq-scomm-ingest-service` on the service for billing/report grouping.
 - Required secrets/vars:
   - `GCP_PROJECT_ID`, Google auth secrets (`GCP_WORKLOAD_IDENTITY_PROVIDER` + `GCP_SERVICE_ACCOUNT` or `GCP_SA_KEY`)
+  - `GCP_SCOMM_JOB_SERVICE_ACCOUNT` (runtime service account used by Cloud Run service)
   - `SUPABASE_URL`, `SB_SECRET_KEY` (preferred; workflow falls back to `SB_SECRET_KEY`)
 - Optional:
   - `HISTORY_SUPABASE_URL`, `HISTORY_SERVICE_ROLE_KEY`
   - `SCOMM_HISTORY_WRITE_MODE` (workflow default `pubsub_only`)
   - `GCP_HISTORY_PUBSUB_TOPIC`, `HISTORY_PUBSUB_PUBLISH_BATCH_SIZE`
-  - `GCP_SCOMM_JOB_SERVICE_ACCOUNT` (fallback runtime SA used for Pub/Sub publisher IAM binding if Cloud Run job describe does not return a service account)
   - Dropbox secrets (`DROPBOX_*`) and raw-upload allowlist env (`SCOMM_RAW_DROPBOX_ALLOWED_SUPABASE_URL` / `UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL`)
 
 ### `uk_aq_validate_github_env_targets.yml`

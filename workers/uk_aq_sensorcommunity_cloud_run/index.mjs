@@ -37,6 +37,7 @@ const SCOMM_BASE_URL = (process.env.SCOMM_BASE_URL || "https://data.sensor.commu
 const SCOMM_SERVICE_REF = process.env.SCOMM_SERVICE_REF || CONNECTOR_CODE;
 const SCOMM_USER_AGENT = process.env.SCOMM_USER_AGENT || "uk-air-quality-networks";
 const SCOMM_INGEST_MET_FIELDS = parseBool(process.env.SCOMM_INGEST_MET_FIELDS, false);
+const SCOMM_TRIGGER_MODE = parseTriggerMode(process.env.SCOMM_TRIGGER_MODE);
 
 const SUPABASE_URL = requiredEnv("SUPABASE_URL");
 const SB_SECRET_KEY = (process.env.SB_SECRET_KEY || "").trim();
@@ -223,6 +224,14 @@ function parseBool(raw, fallback = false) {
     return fallback;
   }
   return ["1", "true", "yes", "y", "on"].includes(value);
+}
+
+function parseTriggerMode(raw) {
+  const value = String(raw || "").trim().toLowerCase();
+  if (value === "safety" || value === "task" || value === "manual") {
+    return value;
+  }
+  return "manual";
 }
 
 function normalizeHistoryRpcSchema(raw) {
@@ -1940,6 +1949,7 @@ function logSummary(message, details) {
     JSON.stringify({
       ts: new Date().toISOString(),
       connector_code: CONNECTOR_CODE,
+      trigger_mode: SCOMM_TRIGGER_MODE,
       message,
       ...details,
     }),

@@ -1,6 +1,6 @@
-# uk_aq Sensor.Community Cloud Run job
+# uk_aq Sensor.Community Cloud Run service
 
-This worker now runs Sensor.Community ingest directly in Cloud Run Jobs
+This worker runs Sensor.Community ingest directly in Cloud Run Service
 (without calling the Supabase Edge function).
 
 ## Behavior
@@ -54,6 +54,7 @@ The previous proxy worker (Cloud Run -> Supabase Edge function) is archived at:
 - `SCOMM_SOURCE_TIMEOUT_MS` (default `90000`)
 - `SCOMM_SOURCE_RETRIES` (default `3`)
 - `SCOMM_UPSERT_CHUNK_SIZE` (default `500`)
+- `SCOMM_TRIGGER_MODE` (default `manual`; set by service wrapper for observability)
 - `HISTORY_UPSERT_RPC` (default `uk_aq_rpc_history_observations_upsert`)
 - `HISTORY_UPSERT_CHUNK_SIZE` (default `5000`)
 - `HISTORY_WRITE_MODE` (default `outbox_only`; supports `outbox_only`, `direct`, `pubsub_only`)
@@ -75,31 +76,36 @@ cd workers/uk_aq_sensorcommunity_cloud_run
 gcloud builds submit --tag "${IMAGE}" .
 ```
 
-## Create/update Cloud Run Job
+## Create/update Cloud Run Service
 
 ```bash
 PROJECT_ID="your-gcp-project"
 REGION="europe-west2"
 IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/uk-aq/uk-aq-scomm:latest"
 
-# Create (first time)
-gcloud run jobs create uk-aq-scomm-ingest \
+# Create or update
+gcloud run deploy uk-aq-scomm-ingest \
   --region "${REGION}" \
   --image "${IMAGE}" \
-  --task-timeout 600s \
-  --max-retries 0 \
-  --set-env-vars "SUPABASE_URL=https://<project-ref>.supabase.co,UK_AQ_CORE_SCHEMA=uk_aq_core,UK_AQ_RAW_SCHEMA=uk_aq_raw,SCOMM_COUNTRY=GB,HISTORY_SUPABASE_URL=https://<history-project-ref>.supabase.co,HISTORY_SCHEMA=uk_aq_public"
-
-# Update (later)
-gcloud run jobs update uk-aq-scomm-ingest \
-  --region "${REGION}" \
-  --image "${IMAGE}" \
-  --task-timeout 600s \
-  --max-retries 0
+  --service-account "uk-aq-scomm-job@${PROJECT_ID}.iam.gserviceaccount.com" \
+  --cpu "1" \
+  --memory "512Mi" \
+  --timeout "600" \
+  --concurrency "1" \
+  --max-instances "1" \
+  --min-instances "0" \
+  --no-allow-unauthenticated
 ```
 
-## Manual run
+## Manual trigger
 
 ```bash
-gcloud run jobs execute uk-aq-scomm-ingest --region "${REGION}" --wait
+REGION="europe-west2"
+SERVICE_URL="https://uk-aq-scomm-ingest-<hash>-nw.a.run.app"
+
+TOKEN="$(gcloud auth print-identity-token)"
+curl -i -X POST "${SERVICE_URL}" \
+  -H "Authorization: Bearer ${TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{"trigger_mode":"manual"}'
 ```

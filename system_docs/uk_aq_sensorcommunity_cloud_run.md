@@ -6,8 +6,8 @@ This document covers the Cloud Run path for Sensor.Community ingest.
 
 - Connector: `sensorcommunity`
 - Worker: `workers/uk_aq_sensorcommunity_cloud_run`
-- Scheduler: Google Cloud Scheduler -> Cloud Run Job
-- Retry policy: `0` (no automatic retry)
+- Scheduler: Google Cloud Scheduler -> Cloud Run Service
+- Retry policy: Scheduler retry is `0` by default (no automatic retry)
 
 ## Connector toggle
 
@@ -31,6 +31,7 @@ This means cadence remains dashboard-controlled even when Cloud Scheduler freque
 - Worker claims connector via `uk_aq_public.uk_aq_rpc_dispatch_claim`.
 - If claim is not acquired, the run exits without dispatch.
 - In-flight guard and claim timeout prevent overlap under normal operation.
+- Service wrapper passes `SCOMM_TRIGGER_MODE` (`safety`, `manual`, or `task`) into worker logs.
 
 ## Runtime writes
 
