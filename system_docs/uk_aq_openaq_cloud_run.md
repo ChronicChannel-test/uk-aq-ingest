@@ -43,6 +43,7 @@ Each run reads earliest `uk_aq_raw.openaq_station_checkpoints.next_due_at` and e
   - If an earlier/equal pending OpenAQ task exists, the worker skips enqueue.
   - If only later pending OpenAQ task(s) exist, the worker deletes those later task(s) and enqueues the newly computed earlier task.
   - If `rate_limit_reset_at` is present for the completed run, any pending OpenAQ task scheduled before that reset time is deleted and replaced with the computed post-reset task.
+  - The currently executing Cloud Task (`x-cloudtasks-taskname`) is excluded from pending-task checks (supports bare task IDs and full task resource names) to avoid false `task_enqueue_skipped_existing_earlier` decisions.
 
 Safety trigger mode:
 - Scheduler invocations pass a run override env `OPENAQ_TRIGGER_MODE=safety`.

@@ -107,6 +107,8 @@ const OPENAQ_TASK_INVOKER_SERVICE_ACCOUNT = (
   Deno.env.get("GCP_OPENAQ_SCHEDULER_SERVICE_ACCOUNT") ||
   ""
 ).trim();
+const OPENAQ_CURRENT_TASK_NAME =
+  (Deno.env.get("OPENAQ_CURRENT_TASK_NAME") || "").trim() || null;
 const OPENAQ_INGEST_SCRIPT_PATH =
   (Deno.env.get("OPENAQ_INGEST_SCRIPT_PATH") ||
     "/app/runtime/ingest_openaq/index.ts").trim();
@@ -1114,6 +1116,20 @@ function isOpenaqSelfTaskName(taskName: string): boolean {
   );
 }
 
+function isCurrentOpenaqTaskName(taskName: string): boolean {
+  if (!OPENAQ_CURRENT_TASK_NAME) {
+    return false;
+  }
+  if (taskName === OPENAQ_CURRENT_TASK_NAME) {
+    return true;
+  }
+  if (OPENAQ_CURRENT_TASK_NAME.includes("/tasks/")) {
+    const currentTaskId = OPENAQ_CURRENT_TASK_NAME.split("/tasks/").pop();
+    return Boolean(currentTaskId && taskName.endsWith(`/tasks/${currentTaskId}`));
+  }
+  return taskName.endsWith(`/tasks/${OPENAQ_CURRENT_TASK_NAME}`);
+}
+
 async function listPendingOpenaqTasks(
   queueUri: string,
   token: string,
@@ -1150,7 +1166,13 @@ async function listPendingOpenaqTasks(
     for (const row of rows) {
       const obj = toObject(row);
       const name = toStringOrNull(obj?.name);
-      if (!name || !isOpenaqSelfTaskName(name)) {
+      if (!name) {
+        continue;
+      }
+      if (isCurrentOpenaqTaskName(name)) {
+        continue;
+      }
+      if (!isOpenaqSelfTaskName(name)) {
         continue;
       }
       const scheduleAt = toStringOrNull(obj?.scheduleTime);
