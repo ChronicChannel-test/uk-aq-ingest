@@ -6,8 +6,8 @@ This document covers the Cloud Run path for UK-AIR SOS ingest.
 
 - Connector: `uk_air_sos`
 - Worker: `workers/uk_aq_uk_air_sos_cloud_run`
-- Scheduler: Google Cloud Scheduler -> Cloud Run Job
-- Default job name: `uk-aq-sos-ingest`
+- Scheduler: Google Cloud Scheduler -> Cloud Run Service
+- Default service name: `uk-aq-sos-ingest`
 
 ## Connector toggle
 
@@ -30,7 +30,7 @@ Use `connectors.scheduler_backend` in the dashboard:
 - Edge path (unchanged):
   - selector: `uk_aq_core.uk_air_sos_select_timeseries_ids`
   - checkpoint table: `uk_aq_raw.uk_air_sos_timeseries_checkpoints`
-- Cloud Run path (new):
+- Cloud Run path:
   - selector: `uk_aq_core.uk_air_sos_select_station_refs`
   - checkpoint table: `uk_aq_raw.uk_air_sos_station_checkpoints`
 
@@ -38,6 +38,7 @@ Cloud Run picks due stations first, then scopes timeseries to those stations.
 
 ## Run safety
 
+- Service entrypoint (`run_service.ts`) allows only one in-flight run per container.
 - Worker claims connector via `uk_aq_public.uk_aq_rpc_dispatch_claim`.
 - If claim is not acquired, the run exits without dispatch.
 - In-flight guard + claim timeout prevent overlap under normal operation.
@@ -52,6 +53,7 @@ Per run, worker updates:
     `max(timeseries.last_value_at)` across selected timeseries ids.
 - `uk_aq_raw.error_logs` on ingest failure
 - `uk_aq_raw.uk_air_sos_station_checkpoints` after successful/partial runs
+- History observations via shared history mode (`HISTORY_WRITE_MODE`, default `pubsub_only`)
 - Dropbox artifacts use `uk_aq_*_cloud_run_*` filename prefixes
   (`UK_AIR_SOS_DROPBOX_UPLOAD_SOURCE=cloud_run`).
 

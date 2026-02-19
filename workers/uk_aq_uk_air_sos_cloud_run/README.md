@@ -1,6 +1,6 @@
-# uk_aq UK-AIR SOS Cloud Run job
+# uk_aq UK-AIR SOS Cloud Run service
 
-This Cloud Run job runs UK-AIR SOS ingest in Google Cloud using the existing
+This Cloud Run service runs UK-AIR SOS ingest in Google Cloud using the existing
 `supabase/functions/ingest_uk_air_sos/index.ts` logic.
 
 ## How it works
@@ -11,6 +11,7 @@ This Cloud Run job runs UK-AIR SOS ingest in Google Cloud using the existing
 4. Resolves scoped `timeseries_ids` for those stations and invokes local SOS ingest once.
 5. Records run status in `connectors` + `uk_aq_ingest_runs` (+ `error_logs` on failure).
 6. Updates `uk_aq_raw.uk_air_sos_station_checkpoints` after successful/partial runs.
+7. Writes history via shared history client mode (`HISTORY_WRITE_MODE`, workflow default `pubsub_only`).
 
 Run feed note:
 - If the ingest response omits `last_observed_at`, the worker derives it from
@@ -44,14 +45,18 @@ docker build -f workers/uk_aq_uk_air_sos_cloud_run/Dockerfile -t "${IMAGE}" .
 docker push "${IMAGE}"
 ```
 
-## Cloud Run job update
+## Cloud Run service deploy
 
 ```bash
-gcloud run jobs update uk-aq-sos-ingest \
+gcloud run deploy uk-aq-sos-ingest \
   --region europe-west2 \
   --image "${IMAGE}" \
-  --task-timeout 900s \
-  --max-retries 0
+  --cpu 0.25 \
+  --memory 256Mi \
+  --concurrency 1 \
+  --max-instances 1 \
+  --min-instances 0 \
+  --no-allow-unauthenticated
 ```
 
 ## Required env vars / secrets
@@ -73,7 +78,11 @@ gcloud run jobs update uk-aq-sos-ingest \
 - `UK_AIR_SOS_STALE_LIMIT` (default `4`)
 - `UK_AIR_SOS_INGEST_SCRIPT_PATH` (default `/app/runtime/ingest_uk_air_sos/index.ts`)
 - `UK_AIR_SOS_MAX_RUNTIME_SECONDS` (ingest runtime budget inside handler)
+- `UK_AIR_SOS_LOCAL_PORT` (default `8000`; local ingest server port, separate from Cloud Run `PORT`)
 - `SB_UK_AQ_CRON_SECRET` (if set, local call sends `x-cron-secret`)
+- `HISTORY_WRITE_MODE` (workflow default: `pubsub_only`)
+- `GCP_HISTORY_PUBSUB_TOPIC` (required for `HISTORY_WRITE_MODE=pubsub_only`)
+- `HISTORY_PUBSUB_PUBLISH_BATCH_SIZE` (default `500`)
 - `HISTORY_SUPABASE_URL`, `HISTORY_SERVICE_ROLE_KEY`, `HISTORY_SCHEMA`
 - `DROPBOX_APP_KEY`, `DROPBOX_APP_SECRET`, `DROPBOX_REFRESH_TOKEN`
 - `UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL`
