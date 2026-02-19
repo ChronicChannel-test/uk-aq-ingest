@@ -31,7 +31,17 @@ function resolveTriggerMode(req: Request, body: unknown): string {
   return "manual";
 }
 
-async function runJob(triggerMode: string): Promise<Deno.CommandStatus> {
+async function runJob(
+  triggerMode: string,
+  currentTaskName: string | null,
+): Promise<Deno.CommandStatus> {
+  const childEnv: Record<string, string> = {
+    ...Deno.env.toObject(),
+    OPENAQ_TRIGGER_MODE: triggerMode,
+  };
+  if (currentTaskName) {
+    childEnv.OPENAQ_CURRENT_TASK_NAME = currentTaskName;
+  }
   const child = new Deno.Command("deno", {
     args: [
       "run",
@@ -42,10 +52,7 @@ async function runJob(triggerMode: string): Promise<Deno.CommandStatus> {
       "--allow-run",
       RUN_JOB_SCRIPT,
     ],
-    env: {
-      ...Deno.env.toObject(),
-      OPENAQ_TRIGGER_MODE: triggerMode,
-    },
+    env: childEnv,
     stdout: "inherit",
     stderr: "inherit",
   }).spawn();
@@ -88,13 +95,16 @@ serve(async (req: Request) => {
     body = null;
   }
   const triggerMode = resolveTriggerMode(req, body);
+  const currentTaskName =
+    (req.headers.get("x-cloudtasks-taskname") || "").trim() || null;
   inFlight = true;
   try {
-    const status = await runJob(triggerMode);
+    const status = await runJob(triggerMode, currentTaskName);
     return new Response(
       JSON.stringify({
         ok: status.success,
         trigger_mode: triggerMode,
+        current_task_name: currentTaskName,
         code: status.code,
       }),
       {
