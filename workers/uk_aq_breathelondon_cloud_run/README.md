@@ -1,12 +1,12 @@
-# uk_aq Breathe London Cloud Run job
+# uk_aq Breathe London Cloud Run service
 
-This Cloud Run job runs Breathe London ingest in Google Cloud using the
+This Cloud Run service runs Breathe London ingest in Google Cloud using the
 existing `supabase/functions/ingest_breathelondon/index.ts` logic.
 
 It keeps behavior aligned with the Edge function path:
 
 - station/timeseries/observation ingest
-- history dual-write with outbox fallback
+- history dual-write via shared mode (workflow default `HISTORY_WRITE_MODE=pubsub_only`)
 - Dropbox raw/log/error uploads
 - connector run status updates
 - `uk_aq_ingest_runs` run row insert
@@ -14,12 +14,13 @@ It keeps behavior aligned with the Edge function path:
 
 ## How it works
 
-1. Starts the BL ingest handler locally inside the container.
-2. Builds payload from connector settings (`poll_window_hours`, `poll_timeseries_batch_size`)
+1. Service wrapper (`run_service.ts`) invokes the worker (`run_job.ts`) per POST.
+2. Worker starts the BL ingest handler locally inside the container.
+3. Worker builds payload from connector settings (`poll_window_hours`, `poll_timeseries_batch_size`)
    plus fresh station refs from `uk_aq_core.breathelondon_select_station_refs`.
-3. Sends one local POST request (with `x-cron-secret` when configured).
-4. Parses response and writes run telemetry into main DB.
-5. Exits non-zero if ingest failed.
+4. Worker sends one local POST request (with `x-cron-secret` when configured).
+5. Worker parses response and writes run telemetry into main DB.
+6. Worker exits non-zero if ingest failed.
 
 If no station refs are due, the run is recorded as `skipped` (`no_station_refs`)
 and no local ingest call is made.
@@ -43,14 +44,18 @@ docker build -f workers/uk_aq_breathelondon_cloud_run/Dockerfile -t "${IMAGE}" .
 docker push "${IMAGE}"
 ```
 
-## Cloud Run job update
+## Cloud Run service deploy
 
 ```bash
-gcloud run jobs update uk-aq-breathelondon-ingest \
+gcloud run deploy uk-aq-breathelondon-ingest \
   --region europe-west2 \
   --image "${IMAGE}" \
-  --task-timeout 600s \
-  --max-retries 0
+  --cpu 0.25 \
+  --memory 256Mi \
+  --concurrency 1 \
+  --max-instances 1 \
+  --min-instances 0 \
+  --no-allow-unauthenticated
 ```
 
 ## Required env vars / secrets
@@ -61,6 +66,9 @@ gcloud run jobs update uk-aq-breathelondon-ingest \
 
 ## Optional but recommended
 
+- `HISTORY_WRITE_MODE` (workflow default: `pubsub_only`)
+- `GCP_HISTORY_PUBSUB_TOPIC` (required for `HISTORY_WRITE_MODE=pubsub_only`)
+- `HISTORY_PUBSUB_PUBLISH_BATCH_SIZE` (default `500`)
 - `HISTORY_SUPABASE_URL`
 - `HISTORY_SERVICE_ROLE_KEY`
 - `HISTORY_SCHEMA`
@@ -71,4 +79,5 @@ gcloud run jobs update uk-aq-breathelondon-ingest \
 - `SB_UK_AQ_CRON_SECRET`
 - `BREATHELONDON_REQUEST_PAYLOAD` (JSON object overrides; dynamic connector-derived station/window/batch still apply)
 - `BREATHELONDON_ENFORCE_RUNTIME_BUDGET` (optional; defaults to `false` in Cloud Run)
+- `BREATHELONDON_LOCAL_PORT` (default `8000`; local ingest server port, separate from Cloud Run `PORT`)
 - `BREATHELONDON_INGEST_SCRIPT_PATH` (default `/app/runtime/ingest_breathelondon/index.ts`)

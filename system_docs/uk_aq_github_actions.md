@@ -170,20 +170,42 @@ SB_UK_AQ_CRON_SECRET=...
   - Uses Google Cloud Scheduler -> Cloud Run Jobs API (`:run`).
   - Default cron is hourly (`0 * * * *`).
 
+### `uk_aq_breathelondon_cloud_run_deploy.yml`
+- Trigger: push to `main` affecting `workers/uk_aq_breathelondon_cloud_run/**` or Breathe London ingest runtime files, or manual dispatch.
+- Purpose: deploy the Breathe London Cloud Run service + optional Cloud Scheduler trigger.
+- Default service name: `uk-aq-breathelondon-ingest`.
+- Worker: `workers/uk_aq_breathelondon_cloud_run`.
+- Scheduler:
+  - Uses Google Cloud Scheduler -> Cloud Run Service URL with OIDC auth.
+  - Frequency is configurable (`GCP_BREATHELONDON_SCHEDULER_CRON`), while effective poll cadence still comes from connector interval checks in the worker.
+- Required secrets/vars:
+  - `GCP_PROJECT_ID`, Google auth secrets (`GCP_WORKLOAD_IDENTITY_PROVIDER` + `GCP_SERVICE_ACCOUNT` or `GCP_SA_KEY`)
+  - `GCP_BREATHELONDON_SERVICE_ACCOUNT` (or legacy `GCP_BREATHELONDON_JOB_SERVICE_ACCOUNT`)
+  - `SUPABASE_URL`, `SB_SECRET_KEY` (preferred; workflow falls back to `SB_SECRET_KEY`)
+  - `BREATHELONDON_API_KEY`
+- Optional:
+  - `HISTORY_SUPABASE_URL`, `HISTORY_SERVICE_ROLE_KEY`
+  - `BREATHELONDON_HISTORY_WRITE_MODE` (workflow default `pubsub_only`)
+  - `GCP_HISTORY_PUBSUB_TOPIC`, `HISTORY_PUBSUB_PUBLISH_BATCH_SIZE`
+  - `SB_UK_AQ_CRON_SECRET`
+  - Dropbox secrets (`DROPBOX_*`) and raw-upload allowlist env (`BREATHELONDON_RAW_DROPBOX_ALLOWED_SUPABASE_URL` or legacy `UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL`)
+
 ### `uk_aq_uk_air_sos_cloud_run_deploy.yml`
 - Trigger: push to `main` affecting `workers/uk_aq_uk_air_sos_cloud_run/**` or SOS ingest runtime files, or manual dispatch.
-- Purpose: deploy the UK-AIR SOS Cloud Run job + optional Cloud Scheduler trigger.
-- Default job name: `uk-aq-sos-ingest`.
+- Purpose: deploy the UK-AIR SOS Cloud Run service + optional Cloud Scheduler trigger.
+- Default service name: `uk-aq-sos-ingest`.
 - Worker: `workers/uk_aq_uk_air_sos_cloud_run`.
 - Scheduler:
-  - Uses Google Cloud Scheduler -> Cloud Run Jobs API (`:run`).
+  - Uses Google Cloud Scheduler -> Cloud Run Service URL with OIDC auth.
   - Frequency is configurable (`GCP_UK_AIR_SOS_SCHEDULER_CRON`), while effective poll cadence still comes from connector interval checks in the worker.
 - Required secrets/vars:
   - `GCP_PROJECT_ID`, Google auth secrets (`GCP_WORKLOAD_IDENTITY_PROVIDER` + `GCP_SERVICE_ACCOUNT` or `GCP_SA_KEY`)
-  - `GCP_UK_AIR_SOS_JOB_SERVICE_ACCOUNT` (repo var or secret)
+  - `GCP_UK_AIR_SOS_SERVICE_ACCOUNT` (or legacy `GCP_UK_AIR_SOS_JOB_SERVICE_ACCOUNT`)
   - `SUPABASE_URL`, `SB_SECRET_KEY` (preferred; workflow falls back to `SB_SECRET_KEY`)
 - Optional:
   - `HISTORY_SUPABASE_URL`, `HISTORY_SERVICE_ROLE_KEY`
+  - `UK_AIR_SOS_HISTORY_WRITE_MODE` (workflow default `pubsub_only`)
+  - `GCP_HISTORY_PUBSUB_TOPIC`, `HISTORY_PUBSUB_PUBLISH_BATCH_SIZE`
   - `SB_UK_AQ_CRON_SECRET`
   - Dropbox secrets (`DROPBOX_*`) and raw-upload allowlist env (`UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL`).
 
