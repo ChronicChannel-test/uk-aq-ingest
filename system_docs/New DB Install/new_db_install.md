@@ -147,7 +147,7 @@ Use dedicated service accounts (not default compute SAs) for deploy and runtime.
    - Required roles/bindings:
      - Secret Manager access to runtime secrets (`roles/secretmanager.secretAccessor`).
 
-7. History Pub/Sub writer runtime SA (`GCP_HISTORY_PUBSUB_JOB_SERVICE_ACCOUNT`, e.g. `uk-aq-history-pubsub-job@...`)
+7. History Pub/Sub writer runtime SA (`GCP_HISTORY_PUBSUB_SERVICE_ACCOUNT` or legacy `GCP_HISTORY_PUBSUB_JOB_SERVICE_ACCOUNT`, e.g. `uk-aq-history-pubsub@...`)
    - Required roles/bindings:
      - Secret Manager access to runtime secrets (`roles/secretmanager.secretAccessor`).
      - `roles/pubsub.subscriber` on history subscription (`uk-aq-history-observations-sub` by default).
@@ -157,12 +157,12 @@ Use dedicated service accounts (not default compute SAs) for deploy and runtime.
      - Shared: `uk-aq-scheduler-invoker@...`
      - OpenAQ-specific: `GCP_OPENAQ_SCHEDULER_SERVICE_ACCOUNT`
      - History Pub/Sub specific: `GCP_HISTORY_PUBSUB_SCHEDULER_SERVICE_ACCOUNT`
-   - Required roles/bindings:
-     - `roles/run.invoker` on each target Cloud Run Job.
+  - Required roles/bindings:
+     - `roles/run.invoker` on each target Cloud Run service/job.
 
 9. OpenAQ task invoker SA (`GCP_OPENAQ_TASK_INVOKER_SERVICE_ACCOUNT`, defaults to scheduler SA or OpenAQ job SA)
-   - Required roles/bindings:
-     - `roles/run.invoker` on OpenAQ Cloud Run Job.
+  - Required roles/bindings:
+     - `roles/run.invoker` on OpenAQ Cloud Run service.
      - The Google Cloud Tasks service agent must have `roles/iam.serviceAccountTokenCreator` on this SA.
 
 10. Google-managed Cloud Tasks service agent (`service-<PROJECT_NUMBER>@gcp-sa-cloudtasks.iam.gserviceaccount.com`)

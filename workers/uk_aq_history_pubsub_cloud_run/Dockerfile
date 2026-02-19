@@ -1,15 +1,14 @@
 FROM denoland/deno:2.1.4
 
-ENV DENO_DIR=/deno-dir
-ENV DENO_NET_ALLOW=
-
 WORKDIR /app
 
 COPY workers/uk_aq_history_pubsub_cloud_run/run_job.ts /app/workers/uk_aq_history_pubsub_cloud_run/run_job.ts
+COPY workers/uk_aq_history_pubsub_cloud_run/run_service.ts /app/workers/uk_aq_history_pubsub_cloud_run/run_service.ts
 COPY supabase/functions/_shared/fetch_egress_patch.ts /app/supabase/functions/_shared/fetch_egress_patch.ts
 COPY supabase/functions/_shared/egress_metrics.ts /app/supabase/functions/_shared/egress_metrics.ts
 COPY supabase/functions/_shared/history_client.ts /app/supabase/functions/_shared/history_client.ts
 
-RUN deno cache /app/workers/uk_aq_history_pubsub_cloud_run/run_job.ts
+ENV PORT=8000
+ENV HISTORY_PUBSUB_LOCAL_PORT=8000
 
-CMD ["sh", "-c", "set -eu; NET_ALLOW=\"${DENO_NET_ALLOW:-}\"; if [ -z \"$NET_ALLOW\" ]; then MAIN_HOST=\"${SUPABASE_URL#*://}\"; MAIN_HOST=\"${MAIN_HOST%%/*}\"; HISTORY_HOST=\"${HISTORY_SUPABASE_URL#*://}\"; HISTORY_HOST=\"${HISTORY_HOST%%/*}\"; if [ -z \"$MAIN_HOST\" ] || [ -z \"$HISTORY_HOST\" ]; then echo \"Missing host allowlist values (SUPABASE_URL/HISTORY_SUPABASE_URL).\" >&2; exit 1; fi; NET_ALLOW=\"${MAIN_HOST},${HISTORY_HOST},pubsub.googleapis.com,metadata.google.internal\"; fi; deno run --cached-only --allow-env --allow-net=\"$NET_ALLOW\" /app/workers/uk_aq_history_pubsub_cloud_run/run_job.ts"]
+CMD ["deno", "run", "--allow-env", "--allow-net", "--allow-read", "--allow-write", "--allow-run", "/app/workers/uk_aq_history_pubsub_cloud_run/run_service.ts"]

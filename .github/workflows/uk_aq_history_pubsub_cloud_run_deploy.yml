@@ -1,4 +1,4 @@
-name: Deploy History Pub/Sub Cloud Run Job
+name: Deploy History Pub/Sub Cloud Run Service
 
 on:
   push:
@@ -14,7 +14,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  deploy-history-pubsub-job:
+  deploy-history-pubsub-service:
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -23,10 +23,15 @@ jobs:
       PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
       REGION: ${{ vars.GCP_REGION || 'europe-west2' }}
       REPO: ${{ vars.GCP_ARTIFACT_REPO || 'uk-aq' }}
-      JOB_NAME: ${{ vars.GCP_HISTORY_PUBSUB_JOB_NAME || 'uk-aq-history-pubsub-writer' }}
-      JOB_SERVICE_ACCOUNT: ${{ vars.GCP_HISTORY_PUBSUB_JOB_SERVICE_ACCOUNT || '' }}
-      JOB_TIMEOUT_SECONDS: ${{ vars.GCP_HISTORY_PUBSUB_JOB_TIMEOUT_SECONDS || '1500' }}
-      JOB_MAX_RETRIES: ${{ vars.GCP_HISTORY_PUBSUB_JOB_MAX_RETRIES || '0' }}
+      SERVICE_NAME: ${{ vars.GCP_HISTORY_PUBSUB_SERVICE_NAME || vars.GCP_HISTORY_PUBSUB_JOB_NAME || 'uk-aq-history-pubsub-writer' }}
+      HISTORY_PUBSUB_SERVICE_ACCOUNT: ${{ vars.GCP_HISTORY_PUBSUB_SERVICE_ACCOUNT || vars.GCP_HISTORY_PUBSUB_JOB_SERVICE_ACCOUNT || '' }}
+      RESOURCE_LABEL: uk-aq-history-pubsub-writer-service
+      SERVICE_TIMEOUT_SECONDS: ${{ vars.GCP_HISTORY_PUBSUB_SERVICE_TIMEOUT_SECONDS || vars.GCP_HISTORY_PUBSUB_JOB_TIMEOUT_SECONDS || '1500' }}
+      SERVICE_CPU: ${{ vars.GCP_HISTORY_PUBSUB_SERVICE_CPU || '0.25' }}
+      SERVICE_MEMORY: ${{ vars.GCP_HISTORY_PUBSUB_SERVICE_MEMORY || '256Mi' }}
+      SERVICE_CONCURRENCY: ${{ vars.GCP_HISTORY_PUBSUB_SERVICE_CONCURRENCY || '1' }}
+      SERVICE_MAX_INSTANCES: ${{ vars.GCP_HISTORY_PUBSUB_SERVICE_MAX_INSTANCES || '1' }}
+      SERVICE_MIN_INSTANCES: ${{ vars.GCP_HISTORY_PUBSUB_SERVICE_MIN_INSTANCES || '0' }}
       SCHEDULER_ENABLED: ${{ vars.GCP_HISTORY_PUBSUB_SCHEDULER_ENABLED || 'true' }}
       SCHEDULER_JOB_NAME: ${{ vars.GCP_HISTORY_PUBSUB_SCHEDULER_JOB_NAME || 'uk-aq-history-pubsub-hourly' }}
       SCHEDULER_CRON: ${{ vars.GCP_HISTORY_PUBSUB_SCHEDULER_CRON || '0 * * * *' }}
@@ -65,13 +70,13 @@ jobs:
             echo "Missing required secret: GCP_PROJECT_ID"
             exit 1
           fi
-          if [ -z "${JOB_SERVICE_ACCOUNT:-}" ]; then
+          if [ -z "${HISTORY_PUBSUB_SERVICE_ACCOUNT:-}" ]; then
             echo "Missing required service account setting."
-            echo "Set repo variable: GCP_HISTORY_PUBSUB_JOB_SERVICE_ACCOUNT"
+            echo "Set repo variable: GCP_HISTORY_PUBSUB_SERVICE_ACCOUNT (or legacy GCP_HISTORY_PUBSUB_JOB_SERVICE_ACCOUNT)"
             exit 1
           fi
-          if [[ "${JOB_SERVICE_ACCOUNT}" == *"-compute@developer.gserviceaccount.com" ]]; then
-            echo "Invalid GCP_HISTORY_PUBSUB_JOB_SERVICE_ACCOUNT: default compute service account is not allowed."
+          if [[ "${HISTORY_PUBSUB_SERVICE_ACCOUNT}" == *"-compute@developer.gserviceaccount.com" ]]; then
+            echo "Invalid history Pub/Sub runtime service account: default compute service account is not allowed."
             exit 1
           fi
           if [ -z "${SUPABASE_URL:-}" ]; then
@@ -164,23 +169,8 @@ jobs:
 
           gcloud pubsub subscriptions add-iam-policy-binding "${PUBSUB_SUBSCRIPTION}" \
             --project "${PUBSUB_PROJECT_ID}" \
-            --member "serviceAccount:${JOB_SERVICE_ACCOUNT}" \
+            --member "serviceAccount:${HISTORY_PUBSUB_SERVICE_ACCOUNT}" \
             --role "roles/pubsub.subscriber" >/dev/null
-
-      - name: Ensure Cloud Run job exists
-        run: |
-          set -euo pipefail
-          if gcloud run jobs describe "${JOB_NAME}" --region "${REGION}" >/dev/null 2>&1; then
-            echo "Cloud Run job exists: ${JOB_NAME}"
-            exit 0
-          fi
-
-          gcloud run jobs create "${JOB_NAME}" \
-            --region "${REGION}" \
-            --image "${{ steps.build.outputs.image }}" \
-            --task-timeout "${JOB_TIMEOUT_SECONDS}s" \
-            --max-retries "${JOB_MAX_RETRIES}" \
-            --service-account "${JOB_SERVICE_ACCOUNT}"
 
       - name: Sync GitHub secrets to GCP Secret Manager
         run: |
@@ -275,6 +265,7 @@ jobs:
           add_env HISTORY_PUBSUB_WRITER_SHUTDOWN_BUFFER_SECONDS
           add_env HISTORY_PUBSUB_WRITER_RPC_RETRIES
           add_env HISTORY_PUBSUB_WRITER_PUBSUB_RETRIES
+          env_updates+=("HISTORY_PUBSUB_LOCAL_PORT=8000")
           env_updates+=("GCP_PROJECT_ID=${PROJECT_ID}")
           env_updates+=("HISTORY_PUBSUB_SUBSCRIPTION=${PUBSUB_SUBSCRIPTION}")
 
@@ -295,42 +286,25 @@ jobs:
           echo "env_file=${env_file}" >> "${GITHUB_OUTPUT}"
           echo "secret_csv=${secret_csv}" >> "${GITHUB_OUTPUT}"
 
-      - name: Determine whether Cloud Run update is required
-        id: cloudrun_diff
-        run: |
-          set -euo pipefail
-          ENV_FILE='${{ steps.cloudrun_args.outputs.env_file }}'
-          SECRET_CSV='${{ steps.cloudrun_args.outputs.secret_csv }}'
-          JOB_JSON="${RUNNER_TEMP}/${JOB_NAME}-current.json"
-          gcloud run jobs describe "${JOB_NAME}" --region "${REGION}" --format=json > "${JOB_JSON}"
-
-          needs_update="$(python3 scripts/gcp/uk_aq_cloud_run_job_has_changes.py \
-            --job-json "${JOB_JSON}" \
-            --image "${{ steps.build.outputs.image }}" \
-            --task-timeout-seconds "${JOB_TIMEOUT_SECONDS}" \
-            --max-retries "${JOB_MAX_RETRIES}" \
-            --service-account "${JOB_SERVICE_ACCOUNT}" \
-            --env-file "${ENV_FILE}" \
-            --secret-csv "${SECRET_CSV}" \
-            --label-csv "job_name=${JOB_NAME}" \
-            --verbose)"
-          echo "needs_update=${needs_update}" >> "${GITHUB_OUTPUT}"
-
-      - name: Update Cloud Run job image
-        if: ${{ steps.cloudrun_diff.outputs.needs_update == 'true' }}
+      - name: Deploy Cloud Run service
         run: |
           set -euo pipefail
           ENV_FILE='${{ steps.cloudrun_args.outputs.env_file }}'
           SECRET_CSV='${{ steps.cloudrun_args.outputs.secret_csv }}'
 
           CMD=(
-            gcloud run jobs update "${JOB_NAME}"
+            gcloud run deploy "${SERVICE_NAME}"
             --region "${REGION}"
             --image "${{ steps.build.outputs.image }}"
-            --task-timeout "${JOB_TIMEOUT_SECONDS}s"
-            --max-retries "${JOB_MAX_RETRIES}"
-            --service-account "${JOB_SERVICE_ACCOUNT}"
-            --update-labels "job_name=${JOB_NAME}"
+            --service-account "${HISTORY_PUBSUB_SERVICE_ACCOUNT}"
+            --timeout "${SERVICE_TIMEOUT_SECONDS}"
+            --cpu "${SERVICE_CPU}"
+            --memory "${SERVICE_MEMORY}"
+            --concurrency "${SERVICE_CONCURRENCY}"
+            --max-instances "${SERVICE_MAX_INSTANCES}"
+            --min-instances "${SERVICE_MIN_INSTANCES}"
+            --labels "job_name=${RESOURCE_LABEL}"
+            --no-allow-unauthenticated
           )
           if [ -n "${ENV_FILE}" ]; then
             CMD+=(--env-vars-file "${ENV_FILE}")
@@ -340,20 +314,15 @@ jobs:
           fi
           "${CMD[@]}"
 
-      - name: Skip Cloud Run job update
-        if: ${{ steps.cloudrun_diff.outputs.needs_update != 'true' }}
-        run: |
-          echo "Cloud Run job is already up to date; skipping update."
-
-      - name: Verify Cloud Run job labels
+      - name: Verify service labels
         run: |
           set -euo pipefail
-          labels_json="$(gcloud run jobs describe "${JOB_NAME}" --region "${REGION}" --format="json(metadata.labels)")"
+          labels_json="$(gcloud run services describe "${SERVICE_NAME}" --region "${REGION}" --format="json(metadata.labels)")"
           job_name_label="$(
             python3 -c 'import json,sys; print(((json.loads(sys.stdin.read()) or {}).get("metadata", {}) or {}).get("labels", {}).get("job_name", ""))' <<<"${labels_json}"
           )"
-          if [ "${job_name_label}" != "${JOB_NAME}" ]; then
-            echo "job_name label mismatch: expected ${JOB_NAME}, got ${job_name_label:-<missing>}"
+          if [ "${job_name_label}" != "${RESOURCE_LABEL}" ]; then
+            echo "job_name label mismatch: expected ${RESOURCE_LABEL}, got ${job_name_label:-<missing>}"
             exit 1
           fi
           echo "Verified label job_name=${job_name_label}"
@@ -368,10 +337,11 @@ jobs:
             exit 0
           fi
 
-          scheduler_sa="${SCHEDULER_SERVICE_ACCOUNT:-${JOB_SERVICE_ACCOUNT}}"
-          run_uri="https://run.googleapis.com/v2/projects/${PROJECT_ID}/locations/${REGION}/jobs/${JOB_NAME}:run"
+          scheduler_sa="${SCHEDULER_SERVICE_ACCOUNT:-${HISTORY_PUBSUB_SERVICE_ACCOUNT}}"
+          service_uri="$(gcloud run services describe "${SERVICE_NAME}" --region "${REGION}" --format='value(status.url)')"
+          scheduler_body='{"trigger_mode":"scheduler"}'
 
-          gcloud run jobs add-iam-policy-binding "${JOB_NAME}" \
+          gcloud run services add-iam-policy-binding "${SERVICE_NAME}" \
             --region "${REGION}" \
             --member "serviceAccount:${scheduler_sa}" \
             --role "roles/run.invoker" >/dev/null
@@ -381,25 +351,31 @@ jobs:
               --location "${REGION}" \
               --schedule "${SCHEDULER_CRON}" \
               --time-zone "${SCHEDULER_TIMEZONE}" \
-              --uri "${run_uri}" \
+              --uri "${service_uri}" \
               --http-method POST \
-              --oauth-service-account-email "${scheduler_sa}" \
-              --oauth-token-scope "https://www.googleapis.com/auth/cloud-platform" \
+              --update-headers "Content-Type=application/json" \
+              --message-body "${scheduler_body}" \
+              --oidc-service-account-email "${scheduler_sa}" \
+              --oidc-token-audience "${service_uri}" \
               --max-retry-attempts "${SCHEDULER_MAX_RETRY_ATTEMPTS}"
+            echo "Updated Cloud Scheduler job: ${SCHEDULER_JOB_NAME}"
           else
             gcloud scheduler jobs create http "${SCHEDULER_JOB_NAME}" \
               --location "${REGION}" \
               --schedule "${SCHEDULER_CRON}" \
               --time-zone "${SCHEDULER_TIMEZONE}" \
-              --uri "${run_uri}" \
+              --uri "${service_uri}" \
               --http-method POST \
-              --oauth-service-account-email "${scheduler_sa}" \
-              --oauth-token-scope "https://www.googleapis.com/auth/cloud-platform" \
+              --headers "Content-Type=application/json" \
+              --message-body "${scheduler_body}" \
+              --oidc-service-account-email "${scheduler_sa}" \
+              --oidc-token-audience "${service_uri}" \
               --max-retry-attempts "${SCHEDULER_MAX_RETRY_ATTEMPTS}"
+            echo "Created Cloud Scheduler job: ${SCHEDULER_JOB_NAME}"
           fi
 
-      - name: Show deployed job
+      - name: Show deployed service
         run: |
-          gcloud run jobs describe "${JOB_NAME}" \
+          gcloud run services describe "${SERVICE_NAME}" \
             --region "${REGION}" \
-            --format="yaml(name,template.template.serviceAccount,template.template.containers[0].image,template.template.timeoutSeconds)"
+            --format="yaml(metadata.name,metadata.labels,spec.template.spec.serviceAccountName,spec.template.spec.containerConcurrency,spec.template.spec.containers[0].image,spec.template.spec.containers[0].resources,status.url)"

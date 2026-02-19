@@ -131,7 +131,7 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
 
 ### History Pub/Sub Writer (Cloud Run)
 - Purpose: Pull history messages from Pub/Sub and write merged mixed-row batches to history DB.
-- Triggered by: Cloud Scheduler -> Cloud Run job (`workers/uk_aq_history_pubsub_cloud_run`).
+- Triggered by: Cloud Scheduler -> Cloud Run service (`workers/uk_aq_history_pubsub_cloud_run`).
 - Notes:
   - This is external to edge runtime; edge/shared ingest logic publishes when `HISTORY_WRITE_MODE=pubsub_only`.
   - Writer dedupes by `(connector_id, timeseries_id, observed_at)` before upsert and writes sync receipts to main DB.

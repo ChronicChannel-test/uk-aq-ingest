@@ -1,11 +1,13 @@
-# uk_aq history Pub/Sub Cloud Run job
+# uk_aq history Pub/Sub Cloud Run service
 
-This Cloud Run job drains history observation messages from Pub/Sub, merges all
+This Cloud Run service drains history observation messages from Pub/Sub, merges all
 connectors into mixed batches, deduplicates by
 `(connector_id, timeseries_id, observed_at)`, and upserts to history DB.
 
 This supports the hourly mixed-row model so calls are chunked by total rows,
 not by connector.
+
+Scheduler triggers the service with an authenticated POST request.
 
 ## Required env vars / secrets
 

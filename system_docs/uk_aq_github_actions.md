@@ -156,8 +156,8 @@ SB_UK_AQ_CRON_SECRET=...
   - `supabase/functions/_shared/fetch_egress_patch.ts`
   - `supabase/functions/_shared/egress_metrics.ts`
   - `supabase/functions/_shared/history_client.ts`
-- Purpose: deploy the hourly Cloud Run job that drains history Pub/Sub messages and writes mixed-row batches to history DB.
-- Default job name: `uk-aq-history-pubsub-writer`.
+- Purpose: deploy the hourly-triggered Cloud Run service that drains history Pub/Sub messages and writes mixed-row batches to history DB.
+- Default service name: `uk-aq-history-pubsub-writer`.
 - Worker: `workers/uk_aq_history_pubsub_cloud_run`.
 - Runtime:
   - Pulls from one Pub/Sub subscription.
@@ -165,9 +165,9 @@ SB_UK_AQ_CRON_SECRET=...
   - Acknowledges messages only after successful upsert + receipt write.
 - Pub/Sub setup:
   - Ensures topic + subscription exist.
-  - Grants writer job service account `roles/pubsub.subscriber` on the subscription.
+  - Grants writer runtime service account `roles/pubsub.subscriber` on the subscription.
 - Scheduler:
-  - Uses Google Cloud Scheduler -> Cloud Run Jobs API (`:run`).
+  - Uses Google Cloud Scheduler -> Cloud Run service URL with OIDC auth.
   - Default cron is hourly (`0 * * * *`).
 
 ### `uk_aq_breathelondon_cloud_run_deploy.yml`
