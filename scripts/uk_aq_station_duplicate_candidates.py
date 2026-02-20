@@ -209,6 +209,12 @@ def _float_or_none(value: object) -> Optional[float]:
         return None
 
 
+def _text_or_blank(value: object) -> str:
+    if value is None:
+        return ""
+    return str(value)
+
+
 def _format_lat_lon(lat: Optional[float], lon: Optional[float]) -> str:
     if lat is None or lon is None:
         return ""
@@ -386,8 +392,8 @@ def _resolve_supabase_db_url(explicit_db_url: str) -> str:
 def _load_station_timeseries_rows(
     supabase_db_url: str,
     station_ids: Sequence[str],
-) -> Dict[str, List[Tuple[str, str, str, str, str]]]:
-    """Map station_id -> list of (timeseries_id, timeseries_ref, pollutant_key, last_value, last_value_at)."""
+) -> Dict[str, List[Tuple[str, str, str, str, str, str]]]:
+    """Map station_id -> list of (timeseries_id, timeseries_ref, pollutant_key, last_value, last_value_at, timeseries_label)."""
     unique_ids = sorted({int(item) for item in station_ids if str(item).isdigit()})
     if not unique_ids:
         return {}
@@ -403,6 +409,7 @@ def _load_station_timeseries_rows(
         "select t.id::text as timeseries_id, "
         "t.station_id::text as station_id, "
         "coalesce(t.timeseries_ref::text, '') as timeseries_ref, "
+        "coalesce(t.label::text, '') as timeseries_label, "
         "coalesce(t.last_value::text, '') as last_value, "
         "coalesce(t.last_value_at::text, '') as last_value_at, "
         "coalesce(p.notation::text, '') as notation, "
@@ -412,7 +419,7 @@ def _load_station_timeseries_rows(
         "where t.station_id = any(%s)"
     )
 
-    output: Dict[str, List[Tuple[str, str, str, str, str]]] = {}
+    output: Dict[str, List[Tuple[str, str, str, str, str, str]]] = {}
     with psycopg2.connect(supabase_db_url) as conn:  # type: ignore[arg-type]
         with conn.cursor() as cur:
             cur.execute(sql, (unique_ids,))
@@ -420,6 +427,7 @@ def _load_station_timeseries_rows(
                 timeseries_id,
                 station_id,
                 timeseries_ref,
+                timeseries_label,
                 last_value,
                 last_value_at,
                 notation,
@@ -430,11 +438,12 @@ def _load_station_timeseries_rows(
                     pollutant = _pollutant_key_from_text(str(phenomenon_label or ""))
                 output.setdefault(str(station_id), []).append(
                     (
-                        str(timeseries_id),
-                        str(timeseries_ref or ""),
+                        _text_or_blank(timeseries_id),
+                        _text_or_blank(timeseries_ref),
                         pollutant or "unknown",
-                        str(last_value or ""),
-                        str(last_value_at or ""),
+                        _text_or_blank(last_value),
+                        _text_or_blank(last_value_at),
+                        _text_or_blank(timeseries_label),
                     )
                 )
     for station_id in output:
@@ -444,7 +453,7 @@ def _load_station_timeseries_rows(
 
 def _apply_db_ids_to_json_rows(
     json_rows: Sequence[JsonTimeseries],
-    station_timeseries_rows: Dict[str, List[Tuple[str, str, str, str, str]]],
+    station_timeseries_rows: Dict[str, List[Tuple[str, str, str, str, str, str]]],
 ) -> List[JsonTimeseries]:
     output: List[JsonTimeseries] = []
     missing_station_timeseries = 0
@@ -472,35 +481,32 @@ def _apply_db_ids_to_json_rows(
             )
             continue
 
-        pollutant_matches = [
-            item for item in station_candidates if item[2] == row.pollutant_key
-        ]
-        chosen = pollutant_matches[0] if pollutant_matches else station_candidates[0]
-        (
+        for (
             mapped_timeseries_id,
             mapped_timeseries_ref,
             mapped_pollutant_key,
             mapped_last_value,
             mapped_last_value_at,
-        ) = chosen
-        output.append(
-            JsonTimeseries(
-                node_id=f"json:{mapped_timeseries_id}",
-                connector_code=row.connector_code,
-                station_id=row.station_id,
-                station_ref=row.station_ref,
-                station_name=row.station_name,
-                timeseries_id=mapped_timeseries_id,
-                timeseries_ref=mapped_timeseries_ref or row.timeseries_ref,
-                timeseries_label=row.timeseries_label,
-                pollutant_key=mapped_pollutant_key or row.pollutant_key,
-                lat=row.lat,
-                lon=row.lon,
-                detected_uk_air_id=row.detected_uk_air_id,
-                last_value=mapped_last_value,
-                last_value_at=mapped_last_value_at,
+            mapped_timeseries_label,
+        ) in station_candidates:
+            output.append(
+                JsonTimeseries(
+                    node_id=f"json:{mapped_timeseries_id}",
+                    connector_code=row.connector_code,
+                    station_id=row.station_id,
+                    station_ref=row.station_ref,
+                    station_name=row.station_name,
+                    timeseries_id=mapped_timeseries_id,
+                    timeseries_ref=mapped_timeseries_ref or row.timeseries_ref,
+                    timeseries_label=mapped_timeseries_label or row.timeseries_label,
+                    pollutant_key=mapped_pollutant_key or row.pollutant_key,
+                    lat=row.lat,
+                    lon=row.lon,
+                    detected_uk_air_id=row.detected_uk_air_id,
+                    last_value=mapped_last_value,
+                    last_value_at=mapped_last_value_at,
+                )
             )
-        )
     if missing_station_timeseries:
         print(
             "warning: no timeseries row found for "
@@ -887,6 +893,11 @@ def _build_output_rows(
         if not provisional_rows:
             continue
         if not any(row.timeseries_id for row in provisional_rows):
+            continue
+        if not any(row.last_value.strip() != "" for row in provisional_rows):
+            continue
+        connector_codes = {row.connector_code for row in provisional_rows if row.connector_code}
+        if len(connector_codes) < 2:
             continue
 
         dup_counter += 1

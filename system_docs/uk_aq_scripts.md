@@ -1110,29 +1110,24 @@ Environment:
 
 ### `scripts/uk_aq_station_duplicate_candidates.py`
 Purpose:
-- Build pollutant-aware possible duplicate station candidates from a spatial match CSV.
-- Combines `aurn-json` rows from `json_aurn_within_30m_all_matches.csv` with AURN register metadata.
-- Produces row-level and station-level outputs with pollutant match status.
+- Build pollutant-aware possible duplicate station/timeseries groups from latest station JSON + latest AURN register CSV.
+- Uses DB-backed station/timeseries IDs (`uk_aq_core.timeseries`) and writes one long-format CSV for review.
 
 Common commands:
 ```bash
 python3 scripts/uk_aq_station_duplicate_candidates.py
 python3 scripts/uk_aq_station_duplicate_candidates.py \
-  --matches-csv plans/json_aurn_within_30m_all_matches.csv \
-  --aurn-register-csv plans/gov_uk_aurn_site_register_20260117T154937Z.csv \
-  --distance-threshold-m 30
+  --distance-m 30 \
+  --min-group-size 2
 ```
 
 Output:
-- `plans/uk_aq_station_duplicate_candidates_rows.csv`
-- `plans/uk_aq_station_duplicate_candidates_stations.csv`
+- `plans/uk_aq_station_duplicate_candidates_long.csv`
 
 Notes:
-- `pollutant_match_status` values:
-  - `matched`
-  - `mismatch`
-  - `unknown_aurn_pollutants` (AURN register has no pollutant list for that station).
-- Station summary applies a name-similarity guard so low-name-confidence pairs are not marked as possible duplicates.
+- JSON station rows are expanded to all DB timeseries for that station before duplicate grouping.
+- Duplicate groups are pollutant-aware and must contain at least two different connectors.
+- Groups are excluded when every row has blank `last_value`.
 
 ## SOS metadata glossary
 - `phenomenon`: The observed property (pollutant/parameter), e.g., NO2, O3, PM2.5.
