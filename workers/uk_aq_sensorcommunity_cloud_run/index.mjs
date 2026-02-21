@@ -48,9 +48,7 @@ const REST_BASE_URL = buildRestBaseUrl(SUPABASE_URL);
 
 const HISTORY_SUPABASE_URL = (process.env.HISTORY_SUPABASE_URL || "").trim();
 const HISTORY_SECRET_KEY = (
-  process.env.HISTORY_SECRET_KEY ||
-  process.env.HISTORY_SERVICE_ROLE_KEY ||
-  ""
+  process.env.HISTORY_SECRET_KEY || ""
 ).trim();
 const HISTORY_SCHEMA = (
   process.env.HISTORY_SCHEMA ||

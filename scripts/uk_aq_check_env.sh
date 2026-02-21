@@ -151,18 +151,12 @@ check_presence_group "History" "${history_vars[@]}"
 if [[ -z "${SB_SECRET_KEY:-}" ]]; then
   fail "Main key check: set SB_SECRET_KEY"
 fi
-if [[ -z "${HISTORY_SECRET_KEY:-}" && -z "${HISTORY_SERVICE_ROLE_KEY:-}" ]]; then
+if [[ -z "${HISTORY_SECRET_KEY:-}" ]]; then
   fail "History key check: set HISTORY_SECRET_KEY"
 fi
 
-HISTORY_PRIV_KEY="${HISTORY_SECRET_KEY:-${HISTORY_SERVICE_ROLE_KEY:-}}"
+HISTORY_PRIV_KEY="${HISTORY_SECRET_KEY:-}"
 HISTORY_PRIV_KEY_NAME="HISTORY_SECRET_KEY"
-if [[ -n "${HISTORY_SECRET_KEY:-}" && -n "${HISTORY_SERVICE_ROLE_KEY:-}" ]]; then
-  warn "Both HISTORY_SECRET_KEY and HISTORY_SERVICE_ROLE_KEY are set; using HISTORY_SECRET_KEY."
-elif [[ -z "${HISTORY_SECRET_KEY:-}" && -n "${HISTORY_SERVICE_ROLE_KEY:-}" ]]; then
-  HISTORY_PRIV_KEY_NAME="HISTORY_SERVICE_ROLE_KEY"
-  warn "Using legacy HISTORY_SERVICE_ROLE_KEY; migrate to HISTORY_SECRET_KEY."
-fi
 
 echo
 echo "[Secrets] Masked preview"
@@ -171,8 +165,7 @@ for var in \
   SB_SECRET_KEY \
   SUPABASE_ACCESS_TOKEN \
   SB_UK_AQ_CRON_SECRET \
-  HISTORY_SECRET_KEY \
-  HISTORY_SERVICE_ROLE_KEY; do
+  HISTORY_SECRET_KEY; do
   value="${!var:-}"
   printf "%-32s len=%-4s value=%s\n" "$var" "${#value}" "$(mask_value "$value")"
 done
@@ -219,7 +212,7 @@ fi
 
 echo
 echo "[JWT] Token claims (JWT-formatted keys)"
-export HISTORY_PRIV_KEY HISTORY_PRIV_KEY_NAME
+export HISTORY_PRIV_KEY
 python3 - <<'PY'
 import base64
 import json
@@ -246,15 +239,14 @@ for key in ("SB_SECRET_KEY",):
     ref = payload.get("ref")
     print(f"OK    {key} role={role} ref={ref}")
 
-history_key_name = (os.environ.get("HISTORY_PRIV_KEY_NAME", "HISTORY_SECRET_KEY") or "HISTORY_SECRET_KEY").strip()
 history_token = (os.environ.get("HISTORY_PRIV_KEY", "") or "").strip()
 history_payload = decode_payload(history_token)
 if not history_payload:
-    print(f"WARN  {history_key_name} is not a JWT payload (or invalid)")
+    print("WARN  HISTORY_SECRET_KEY is not a JWT payload (or invalid)")
 else:
     role = history_payload.get("role")
     ref = history_payload.get("ref")
-    print(f"OK    {history_key_name} role={role} ref={ref}")
+    print(f"OK    HISTORY_SECRET_KEY role={role} ref={ref}")
 PY
 
 if (( NO_NETWORK == 0 )); then

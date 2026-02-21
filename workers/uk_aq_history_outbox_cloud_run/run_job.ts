@@ -27,9 +27,7 @@ const SB_SECRET_KEY = (Deno.env.get("SB_SECRET_KEY") || "").trim();
 const SUPABASE_PRIVILEGED_KEY = requiredEnvAny(["SB_SECRET_KEY"]);
 const HISTORY_SUPABASE_URL = (Deno.env.get("HISTORY_SUPABASE_URL") || "").trim();
 const HISTORY_SECRET_KEY = (
-  Deno.env.get("HISTORY_SECRET_KEY") ??
-    Deno.env.get("HISTORY_SERVICE_ROLE_KEY") ??
-    ""
+  Deno.env.get("HISTORY_SECRET_KEY") ?? ""
 ).trim();
 const MAIN_RPC_SCHEMA = (Deno.env.get("UK_AQ_PUBLIC_SCHEMA") || "uk_aq_public")
   .trim();

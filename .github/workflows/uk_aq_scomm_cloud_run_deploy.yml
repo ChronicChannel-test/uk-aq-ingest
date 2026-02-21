@@ -50,7 +50,7 @@ jobs:
       SCOMM_RAW_DROPBOX_FOLDER: ${{ vars.SCOMM_RAW_DROPBOX_FOLDER || '/connectors/sensorcommunity/raw_data' }}
       UK_AIR_RAW_DROPBOX_FOLDER: ${{ vars.UK_AIR_RAW_DROPBOX_FOLDER || '/connectors/sensorcommunity/raw_data' }}
       SB_SECRET_KEY: ${{ secrets.SB_SECRET_KEY }}
-      HISTORY_SECRET_KEY: ${{ secrets.HISTORY_SECRET_KEY || secrets.HISTORY_SERVICE_ROLE_KEY }}
+      HISTORY_SECRET_KEY: ${{ secrets.HISTORY_SECRET_KEY }}
       DROPBOX_APP_KEY: ${{ secrets.DROPBOX_APP_KEY }}
       DROPBOX_APP_SECRET: ${{ secrets.DROPBOX_APP_SECRET }}
       DROPBOX_REFRESH_TOKEN: ${{ secrets.DROPBOX_REFRESH_TOKEN }}
@@ -85,6 +85,15 @@ jobs:
           if [ "${history_mode}" = "pubsub_only" ]; then
             if [ -z "${GCP_HISTORY_PUBSUB_TOPIC:-}" ]; then
               echo "HISTORY_WRITE_MODE=pubsub_only requires GCP_HISTORY_PUBSUB_TOPIC."
+              exit 1
+            fi
+          elif [ "${history_mode}" = "direct" ]; then
+            if [ -z "${HISTORY_SUPABASE_URL:-}" ]; then
+              echo "HISTORY_WRITE_MODE=direct requires HISTORY_SUPABASE_URL."
+              exit 1
+            fi
+            if [ -z "${HISTORY_SECRET_KEY:-}" ]; then
+              echo "HISTORY_WRITE_MODE=direct requires HISTORY_SECRET_KEY."
               exit 1
             fi
           fi
@@ -194,7 +203,12 @@ jobs:
           }
 
           upsert_secret "${SB_SECRET_KEY_SECRET_NAME}" "${SB_SECRET_KEY}" 1
-          upsert_secret "${HISTORY_SECRET_KEY_SECRET_NAME}" "${HISTORY_SECRET_KEY}" 0
+          history_mode="$(printf '%s' "${HISTORY_WRITE_MODE:-}" | tr '[:upper:]' '[:lower:]')"
+          if [ "${history_mode}" = "direct" ]; then
+            upsert_secret "${HISTORY_SECRET_KEY_SECRET_NAME}" "${HISTORY_SECRET_KEY}" 1
+          else
+            echo "Skipping HISTORY_SECRET_KEY secret sync (HISTORY_WRITE_MODE=${HISTORY_WRITE_MODE})."
+          fi
           upsert_secret "${DROPBOX_APP_KEY_SECRET_NAME}" "${DROPBOX_APP_KEY}" 0
           upsert_secret "${DROPBOX_APP_SECRET_SECRET_NAME}" "${DROPBOX_APP_SECRET}" 0
           upsert_secret "${DROPBOX_REFRESH_TOKEN_SECRET_NAME}" "${DROPBOX_REFRESH_TOKEN}" 0
@@ -269,9 +283,14 @@ jobs:
             add_env HISTORY_SCHEMA
           fi
 
+          history_mode="$(printf '%s' "${HISTORY_WRITE_MODE:-}" | tr '[:upper:]' '[:lower:]')"
           secret_updates=()
           add_secret_binding "SB_SECRET_KEY" "${SB_SECRET_KEY_SECRET_NAME}" 1
-          add_secret_binding "HISTORY_SECRET_KEY" "${HISTORY_SECRET_KEY_SECRET_NAME}" 0
+          if [ "${history_mode}" = "direct" ]; then
+            add_secret_binding "HISTORY_SECRET_KEY" "${HISTORY_SECRET_KEY_SECRET_NAME}" 1
+          else
+            echo "Skipping HISTORY_SECRET_KEY secret binding (HISTORY_WRITE_MODE=${HISTORY_WRITE_MODE})."
+          fi
           add_secret_binding "DROPBOX_APP_KEY" "${DROPBOX_APP_KEY_SECRET_NAME}" 0
           add_secret_binding "DROPBOX_APP_SECRET" "${DROPBOX_APP_SECRET_SECRET_NAME}" 0
           add_secret_binding "DROPBOX_REFRESH_TOKEN" "${DROPBOX_REFRESH_TOKEN_SECRET_NAME}" 0

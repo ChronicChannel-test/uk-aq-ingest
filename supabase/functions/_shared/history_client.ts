@@ -75,9 +75,7 @@ const HISTORY_SUPABASE_URL = (
 ).trim();
 
 const HISTORY_SECRET_KEY = (
-  Deno.env.get("HISTORY_SECRET_KEY") ??
-    Deno.env.get("HISTORY_SERVICE_ROLE_KEY") ??
-    ""
+  Deno.env.get("HISTORY_SECRET_KEY") ?? ""
 ).trim();
 
 const HISTORY_SCHEMA = (

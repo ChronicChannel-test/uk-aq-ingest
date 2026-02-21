@@ -27,7 +27,6 @@ jobs:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           HISTORY_SUPABASE_URL: ${{ vars.HISTORY_SUPABASE_URL }}
           HISTORY_SECRET_KEY: ${{ secrets.HISTORY_SECRET_KEY }}
-          HISTORY_SERVICE_ROLE_KEY: ${{ secrets.HISTORY_SERVICE_ROLE_KEY }}
           SB_UK_AQ_CRON_SECRET: ${{ secrets.SB_UK_AQ_CRON_SECRET }}
         run: |
           set -euo pipefail
@@ -42,9 +41,9 @@ jobs:
             exit 1
           fi
 
-          HISTORY_PRIV_KEY="${HISTORY_SECRET_KEY:-${HISTORY_SERVICE_ROLE_KEY:-}}"
+          HISTORY_PRIV_KEY="${HISTORY_SECRET_KEY:-}"
           if [ -z "${HISTORY_PRIV_KEY:-}" ]; then
-            echo "Missing HISTORY_SECRET_KEY (preferred) or HISTORY_SERVICE_ROLE_KEY." >&2
+            echo "Missing HISTORY_SECRET_KEY." >&2
             exit 1
           fi
 
