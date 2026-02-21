@@ -106,6 +106,33 @@ Notes:
 - Any `SUPABASE_SECRETS_ENV=...` line in env files is ignored; the value is always rebuilt by the script.
 - Keep `config/uk_aq_github_env_targets.csv` aligned with workflow `vars.*` / `secrets.*` references.
 
+### `scripts/uk_aq_run_ingestdb_prune.sh`
+Purpose:
+- Invoke `uk-aq-ingestdb-prune-service` with window controls (`retentionDays`, `maxHours`).
+- Support local user-friendly auth via `gcloud run services proxy` (default).
+- Optionally call with service-account identity tokens via impersonation.
+
+Common commands:
+```bash
+scripts/uk_aq_run_ingestdb_prune.sh --dry-run --start-date 2026-02-10 --max-hours 48
+scripts/uk_aq_run_ingestdb_prune.sh --dry-run --retention-days 9 --max-hours 48
+scripts/uk_aq_run_ingestdb_prune.sh --live --window-start 2026-02-10 --window-end 2026-02-12
+scripts/uk_aq_run_ingestdb_prune.sh --auth-mode impersonate \
+  --impersonate-service-account uk-aq-ops-job@astute-lyceum-484111-k5.iam.gserviceaccount.com
+```
+
+Notes:
+- Defaults:
+  - `--project`: `GCP_PROJECT_ID` or `astute-lyceum-484111-k5`
+  - `--region`: `GCP_REGION` or `europe-west2`
+  - `--service`: `uk-aq-ingestdb-prune-service`
+  - `--auth-mode`: `proxy`
+- `--proxy-timeout-seconds` controls proxy readiness wait (default `60`).
+- `--window-start/--window-end` computes `retentionDays` + `maxHours` automatically (UTC), with `window-end` treated as inclusive.
+- `--start-date` + `--max-hours` computes `retentionDays` automatically.
+- With current prune API, start-date mode requires `start-date + max-hours` to land on `00:00 UTC` (for example 24/48/72 hours).
+- `proxy` mode avoids the common user-account `print-identity-token --audiences` error.
+
 ### `scripts/gcp/uk_aq_secret_upsert_if_changed.sh`
 Purpose:
 - Upsert one GCP Secret Manager secret from stdin.
