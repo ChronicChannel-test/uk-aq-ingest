@@ -23,6 +23,10 @@ cutover).
 History outbox flush note: claimed outbox payloads are merged per flush batch
 before a single history upsert call, which cuts history RPC call count and
 egress overhead.
+History value precision note: history write payloads now carry
+`value_float8_hex` (bit-exact float representation) alongside `value` across
+outbox/pubsub/direct routes. Writers and upsert paths prefer this field when
+present so history values can be restored byte-identically.
 
 Endpoint egress observability note: public read endpoints emit sampled egress
 metrics and persist them via RPCs defined in `supabase/uk_aq_egress_metrics.sql`

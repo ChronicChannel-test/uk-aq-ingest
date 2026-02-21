@@ -1213,6 +1213,51 @@ function normalizeObservedAtIso(value) {
   return parsed.toISOString();
 }
 
+function float64ToHex(value) {
+  const buffer = new ArrayBuffer(8);
+  const view = new DataView(buffer);
+  view.setFloat64(0, value, false);
+  const bytes = new Uint8Array(buffer);
+  return Array.from(bytes).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function float64FromHex(value) {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const hex = value.trim().toLowerCase();
+  if (!/^[0-9a-f]{16}$/.test(hex)) {
+    return null;
+  }
+  const bytes = new Uint8Array(8);
+  for (let i = 0; i < 8; i += 1) {
+    bytes[i] = Number.parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+  }
+  const parsed = new DataView(bytes.buffer).getFloat64(0, false);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function normalizeHistoryValue(value, valueFloat8Hex) {
+  const fromHex = float64FromHex(valueFloat8Hex);
+  if (fromHex !== null) {
+    return {
+      value: fromHex,
+      value_float8_hex: float64ToHex(fromHex),
+    };
+  }
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return {
+      value: null,
+      value_float8_hex: null,
+    };
+  }
+  return {
+    value: numeric,
+    value_float8_hex: float64ToHex(numeric),
+  };
+}
+
 function prepareHistoryRows(historyRows) {
   if (!Array.isArray(historyRows) || historyRows.length === 0) {
     return [];
@@ -1229,13 +1274,17 @@ function prepareHistoryRows(historyRows) {
     ) {
       continue;
     }
-    const numericValue = Number(row?.value);
+    const normalizedValue = normalizeHistoryValue(
+      row?.value,
+      row?.value_float8_hex,
+    );
     const key = `${connectorId}:${timeseriesId}:${observedAt}`;
     dedup.set(key, {
       connector_id: connectorId,
       timeseries_id: timeseriesId,
       observed_at: observedAt,
-      value: Number.isFinite(numericValue) ? numericValue : null,
+      value: normalizedValue.value,
+      value_float8_hex: normalizedValue.value_float8_hex,
       status: normalizeHistoryStatus(row?.status),
     });
   }

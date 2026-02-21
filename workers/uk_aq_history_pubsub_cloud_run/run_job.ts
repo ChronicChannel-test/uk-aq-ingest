@@ -350,6 +350,10 @@ function decodeMessageRow(message: PubsubPullMessage): {
       value: valueRaw === null || valueRaw === undefined
         ? null
         : Number(valueRaw),
+      value_float8_hex: record.value_float8_hex === null ||
+          record.value_float8_hex === undefined
+        ? null
+        : String(record.value_float8_hex),
       status: statusRaw === null || statusRaw === undefined
         ? null
         : String(statusRaw),
