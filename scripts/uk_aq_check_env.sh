@@ -67,7 +67,6 @@ main_vars=(
 history_vars=(
   HISTORY_SUPABASE_URL
   HISTORY_SUPABASE_PROJECT_REF
-  HISTORY_SERVICE_ROLE_KEY
   HISTORY_SCHEMA
 )
 
@@ -152,6 +151,18 @@ check_presence_group "History" "${history_vars[@]}"
 if [[ -z "${SB_SECRET_KEY:-}" ]]; then
   fail "Main key check: set SB_SECRET_KEY"
 fi
+if [[ -z "${HISTORY_SECRET_KEY:-}" && -z "${HISTORY_SERVICE_ROLE_KEY:-}" ]]; then
+  fail "History key check: set HISTORY_SECRET_KEY"
+fi
+
+HISTORY_PRIV_KEY="${HISTORY_SECRET_KEY:-${HISTORY_SERVICE_ROLE_KEY:-}}"
+HISTORY_PRIV_KEY_NAME="HISTORY_SECRET_KEY"
+if [[ -n "${HISTORY_SECRET_KEY:-}" && -n "${HISTORY_SERVICE_ROLE_KEY:-}" ]]; then
+  warn "Both HISTORY_SECRET_KEY and HISTORY_SERVICE_ROLE_KEY are set; using HISTORY_SECRET_KEY."
+elif [[ -z "${HISTORY_SECRET_KEY:-}" && -n "${HISTORY_SERVICE_ROLE_KEY:-}" ]]; then
+  HISTORY_PRIV_KEY_NAME="HISTORY_SERVICE_ROLE_KEY"
+  warn "Using legacy HISTORY_SERVICE_ROLE_KEY; migrate to HISTORY_SECRET_KEY."
+fi
 
 echo
 echo "[Secrets] Masked preview"
@@ -160,6 +171,7 @@ for var in \
   SB_SECRET_KEY \
   SUPABASE_ACCESS_TOKEN \
   SB_UK_AQ_CRON_SECRET \
+  HISTORY_SECRET_KEY \
   HISTORY_SERVICE_ROLE_KEY; do
   value="${!var:-}"
   printf "%-32s len=%-4s value=%s\n" "$var" "${#value}" "$(mask_value "$value")"
@@ -207,6 +219,7 @@ fi
 
 echo
 echo "[JWT] Token claims (JWT-formatted keys)"
+export HISTORY_PRIV_KEY HISTORY_PRIV_KEY_NAME
 python3 - <<'PY'
 import base64
 import json
@@ -223,7 +236,7 @@ def decode_payload(token: str):
     except Exception:
         return None
 
-for key in ("SB_SECRET_KEY", "HISTORY_SERVICE_ROLE_KEY"):
+for key in ("SB_SECRET_KEY",):
     token = (os.environ.get(key, "") or "").strip()
     payload = decode_payload(token)
     if not payload:
@@ -232,6 +245,16 @@ for key in ("SB_SECRET_KEY", "HISTORY_SERVICE_ROLE_KEY"):
     role = payload.get("role")
     ref = payload.get("ref")
     print(f"OK    {key} role={role} ref={ref}")
+
+history_key_name = (os.environ.get("HISTORY_PRIV_KEY_NAME", "HISTORY_SECRET_KEY") or "HISTORY_SECRET_KEY").strip()
+history_token = (os.environ.get("HISTORY_PRIV_KEY", "") or "").strip()
+history_payload = decode_payload(history_token)
+if not history_payload:
+    print(f"WARN  {history_key_name} is not a JWT payload (or invalid)")
+else:
+    role = history_payload.get("role")
+    ref = history_payload.get("ref")
+    print(f"OK    {history_key_name} role={role} ref={ref}")
 PY
 
 if (( NO_NETWORK == 0 )); then
@@ -260,11 +283,11 @@ if (( NO_NETWORK == 0 )); then
     fail "Main privileged key (SB_SECRET_KEY) main /rest/v1/ check returned HTTP $code"
   fi
 
-  code="$(http_code -H "apikey: ${HISTORY_SERVICE_ROLE_KEY:-}" "${HISTORY_SUPABASE_URL:-}/rest/v1/")"
+  code="$(http_code -H "apikey: ${HISTORY_PRIV_KEY:-}" "${HISTORY_SUPABASE_URL:-}/rest/v1/")"
   if [[ "$code" == "200" ]]; then
-    ok "HISTORY_SERVICE_ROLE_KEY can access history /rest/v1/ (200)"
+    ok "${HISTORY_PRIV_KEY_NAME} can access history /rest/v1/ (200)"
   else
-    fail "HISTORY_SERVICE_ROLE_KEY history /rest/v1/ check returned HTTP $code"
+    fail "${HISTORY_PRIV_KEY_NAME} history /rest/v1/ check returned HTTP $code"
   fi
 else
   echo

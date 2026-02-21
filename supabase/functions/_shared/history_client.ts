@@ -74,8 +74,10 @@ const HISTORY_SUPABASE_URL = (
   Deno.env.get("HISTORY_SUPABASE_URL") ?? ""
 ).trim();
 
-const HISTORY_SERVICE_ROLE_KEY = (
-  Deno.env.get("HISTORY_SERVICE_ROLE_KEY") ?? ""
+const HISTORY_SECRET_KEY = (
+  Deno.env.get("HISTORY_SECRET_KEY") ??
+    Deno.env.get("HISTORY_SERVICE_ROLE_KEY") ??
+    ""
 ).trim();
 
 const HISTORY_SCHEMA = (
@@ -357,20 +359,20 @@ function countRowsFromPayload<T extends string>(
 }
 
 function historyConfigured(): boolean {
-  return Boolean(HISTORY_SUPABASE_URL && HISTORY_SERVICE_ROLE_KEY);
+  return Boolean(HISTORY_SUPABASE_URL && HISTORY_SECRET_KEY);
 }
 
 export function createSupabaseHistoryClient(): ReturnType<typeof createClient> {
   if (!historyConfigured()) {
     throw new Error(
-      "History client is not configured (missing HISTORY_SUPABASE_URL or HISTORY_SERVICE_ROLE_KEY)",
+      "History client is not configured (missing HISTORY_SUPABASE_URL or HISTORY_SECRET_KEY)",
     );
   }
   if (!historyClientCache) {
     const schema = HISTORY_RPC_SCHEMA || "uk_aq_public";
     historyClientCache = createClient(
       HISTORY_SUPABASE_URL,
-      HISTORY_SERVICE_ROLE_KEY,
+      HISTORY_SECRET_KEY,
       ({
         auth: { persistSession: false, autoRefreshToken: false },
         db: { schema: schema as never },

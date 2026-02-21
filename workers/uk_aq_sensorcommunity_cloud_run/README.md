@@ -32,7 +32,7 @@ The previous proxy worker (Cloud Run -> Supabase Edge function) is archived at:
 - `UK_AQ_CORE_SCHEMA` (optional; default `uk_aq_core`)
 - `UK_AQ_RAW_SCHEMA` (optional; default `uk_aq_raw`)
 - `HISTORY_SUPABASE_URL` (required for history dual-write)
-- `HISTORY_SERVICE_ROLE_KEY` (required for history dual-write)
+- `HISTORY_SECRET_KEY` (required for history dual-write)
 - `HISTORY_SCHEMA` (optional; default `uk_aq_public`)
 - `DROPBOX_APP_KEY` (required for Dropbox upload)
 - `DROPBOX_APP_SECRET` (required for Dropbox upload)

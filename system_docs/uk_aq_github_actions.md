@@ -147,7 +147,7 @@ SB_UK_AQ_CRON_SECRET=...
   - Scheduler target uses Google Cloud Scheduler -> Cloud Run Jobs API (`:run`).
 - Secrets:
   - `SUPABASE_URL`, `SB_SECRET_KEY` (preferred; workflow falls back to `SB_SECRET_KEY`),
-  - `HISTORY_SUPABASE_URL`, `HISTORY_SERVICE_ROLE_KEY`,
+  - `HISTORY_SUPABASE_URL`, `HISTORY_SECRET_KEY`,
   - GCP deploy/auth secrets as in other Cloud Run workflows.
 
 ### `uk_aq_history_pubsub_cloud_run_deploy.yml`
@@ -184,7 +184,7 @@ SB_UK_AQ_CRON_SECRET=...
   - `SUPABASE_URL`, `SB_SECRET_KEY` (preferred; workflow falls back to `SB_SECRET_KEY`)
   - `BREATHELONDON_API_KEY`
 - Optional:
-  - `HISTORY_SUPABASE_URL`, `HISTORY_SERVICE_ROLE_KEY`
+  - `HISTORY_SUPABASE_URL`, `HISTORY_SECRET_KEY`
   - `BREATHELONDON_HISTORY_WRITE_MODE` (workflow default `pubsub_only`)
   - `GCP_HISTORY_PUBSUB_TOPIC`, `HISTORY_PUBSUB_PUBLISH_BATCH_SIZE`
   - `SB_UK_AQ_CRON_SECRET`
@@ -203,7 +203,7 @@ SB_UK_AQ_CRON_SECRET=...
   - `GCP_UK_AIR_SOS_SERVICE_ACCOUNT` (or legacy `GCP_UK_AIR_SOS_JOB_SERVICE_ACCOUNT`)
   - `SUPABASE_URL`, `SB_SECRET_KEY` (preferred; workflow falls back to `SB_SECRET_KEY`)
 - Optional:
-  - `HISTORY_SUPABASE_URL`, `HISTORY_SERVICE_ROLE_KEY`
+  - `HISTORY_SUPABASE_URL`, `HISTORY_SECRET_KEY`
   - `UK_AIR_SOS_HISTORY_WRITE_MODE` (workflow default `pubsub_only`)
   - `GCP_HISTORY_PUBSUB_TOPIC`, `HISTORY_PUBSUB_PUBLISH_BATCH_SIZE`
   - `SB_UK_AQ_CRON_SECRET`
@@ -224,7 +224,7 @@ SB_UK_AQ_CRON_SECRET=...
   - `SUPABASE_URL`, `SB_SECRET_KEY` (preferred; workflow falls back to `SB_SECRET_KEY`)
   - `OPENAQ_API_KEY`
 - Optional:
-  - `HISTORY_SUPABASE_URL`, `HISTORY_SERVICE_ROLE_KEY`
+  - `HISTORY_SUPABASE_URL`, `HISTORY_SECRET_KEY`
   - `OPENAQ_HISTORY_WRITE_MODE` (workflow default `pubsub_only` for direct history Pub/Sub publishing)
   - `GCP_HISTORY_PUBSUB_TOPIC`, `HISTORY_PUBSUB_PUBLISH_BATCH_SIZE`
   - `SB_UK_AQ_CRON_SECRET`
@@ -246,7 +246,7 @@ SB_UK_AQ_CRON_SECRET=...
   - `GCP_SCOMM_JOB_SERVICE_ACCOUNT` (runtime service account used by Cloud Run service)
   - `SUPABASE_URL`, `SB_SECRET_KEY` (preferred; workflow falls back to `SB_SECRET_KEY`)
 - Optional:
-  - `HISTORY_SUPABASE_URL`, `HISTORY_SERVICE_ROLE_KEY`
+  - `HISTORY_SUPABASE_URL`, `HISTORY_SECRET_KEY`
   - `SCOMM_HISTORY_WRITE_MODE` (workflow default `pubsub_only`)
   - `GCP_HISTORY_PUBSUB_TOPIC`, `HISTORY_PUBSUB_PUBLISH_BATCH_SIZE`
   - Dropbox secrets (`DROPBOX_*`) and raw-upload allowlist env (`SCOMM_RAW_DROPBOX_ALLOWED_SUPABASE_URL` / `UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL`)

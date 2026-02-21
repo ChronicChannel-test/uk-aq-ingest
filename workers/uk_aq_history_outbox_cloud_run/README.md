@@ -16,7 +16,7 @@ Design choices:
 - `SUPABASE_URL`
 - `SB_SECRET_KEY`
 - `HISTORY_SUPABASE_URL`
-- `HISTORY_SERVICE_ROLE_KEY`
+- `HISTORY_SECRET_KEY`
 
 ## Optional env vars
 
