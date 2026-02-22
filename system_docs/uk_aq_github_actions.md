@@ -134,6 +134,29 @@ SB_UK_AQ_CRON_SECRET=...
 - Why bulk secrets: avoids Cloudflare Worker Versions failure seen with multiple sequential
   `wrangler secret put` calls in one run.
 
+### `uk_aq_cache_proxy_deploy.yml`
+- Trigger: push to `main` affecting `workers/uk_aq_cache_proxy/**`, or manual dispatch.
+- Purpose: deploy the Cloudflare cache proxy Worker used by website read endpoints.
+- Worker: `workers/uk_aq_cache_proxy`.
+- Secrets: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`,
+  `SUPABASE_URL`, `SB_PUBLISHABLE_DEFAULT_KEY`.
+- Deploy sequence:
+  1. Deploy current Worker code (`Deploy Worker (base)`).
+  2. Apply Worker secrets in one `wrangler secret bulk` call (with retry).
+  3. Deploy again (`Deploy Worker`) so code + updated secrets are active together.
+- Route shape (Option 2 baseline):
+  - `/api/aq/latest` -> `uk_aq_latest` (`realtime` cache profile).
+  - `/api/aq/timeseries` -> `uk_aq_timeseries` (`realtime` cache profile).
+  - `/api/aq/stations-chart` -> `uk_aq_stations_chart` (`realtime` cache profile).
+  - `/api/aq/stations` -> `uk_aq_stations` (`metadata` cache profile).
+  - `/api/aq/la-hex` -> `uk_aq_la_hex` (`metadata` cache profile).
+  - `/api/aq/pcon-hex` -> `uk_aq_pcon_hex` (`metadata` cache profile).
+- Cache profile defaults:
+  - `realtime`: edge TTL 60s, browser TTL 30s.
+  - `metadata`: edge TTL 6h, browser TTL 1h.
+- Cache bypass:
+  - Append `?cache=bypass` for request-level cache bypass.
+
 ### `uk_aq_history_outbox_cloud_run_deploy.yml`
 - Trigger: push to `main` affecting `workers/uk_aq_history_outbox_cloud_run/**`, or manual dispatch.
 - Also watches shared egress patch/runtime files:

@@ -5,3 +5,4 @@
 - Look at lag/interval samples on OpenAQ gap mode. st_checkpoints isn't getting updated.
 - Tidy up pollutants/phenomena. Mapping table from connectors version to phenomena.
 - Investigate prune-repair edge case where `history_count > ingest_count` for a `(connector_id, hour_start)` bucket. Confirm if this can occur with current pipeline ordering/duplication behavior, and if needed add safe remediation path (history-side dedupe/remove or strict guardrail workflow).
+- Route-shape follow-up (Option 3 after Option 2 baseline): split cache profiles into `/api/aq/meta/*` (long TTL) and `/api/aq/realtime/*` (short TTL). Use `realtime` naming (not `live`) to avoid confusion with test/live environments.

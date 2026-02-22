@@ -1,0 +1,11 @@
+name = "uk-aq-cache-proxy"
+main = "src/index.ts"
+compatibility_date = "2026-02-22"
+
+[observability]
+enabled = true
+
+# Route binding is configured in Cloudflare dashboard or via wrangler CLI.
+# Recommended hostnames:
+# - uk-aq-cache-cic-test.chronicillnesschannel.co.uk
+# - uk-aq-cache.chronicillnesschannel.co.uk
