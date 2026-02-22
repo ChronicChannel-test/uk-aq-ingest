@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import "../_shared/fetch_egress_patch.ts";
 import { cacheControlHeaders, CACHE_CONTROL_SUCCESS_SMAXAGE_300 } from "../_shared/cache.ts";
+import { validateWorkerUpstreamAuth } from "../_shared/worker_auth.ts";
 
 const DEFAULT_PAGE_SIZE = 1000;
 const MAX_PAGE_SIZE = 5000;
@@ -85,6 +86,10 @@ serve(async (req) => {
       status: 405,
       headers: { ...CORS_HEADERS, ...cacheControlHeaders(405, CACHE_CONTROL_SUCCESS_SMAXAGE_300) },
     });
+  }
+  const auth = validateWorkerUpstreamAuth(req);
+  if (!auth.ok) {
+    return json({ error: auth.error }, auth.status);
   }
   if (!SUPABASE_URL || !SUPABASE_PRIVILEGED_KEY) {
     return json({ error: "Missing SUPABASE_URL or SB_SECRET_KEY." }, 500);

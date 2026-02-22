@@ -4,6 +4,7 @@ import "../_shared/fetch_egress_patch.ts";
 import { cacheControlHeaders, CACHE_CONTROL_SUCCESS_SMAXAGE_300 } from "../_shared/cache.ts";
 import { createWeakEtag, ifNoneMatchMatches } from "../_shared/etag.ts";
 import { logEndpointEgress } from "../_shared/egress_metrics.ts";
+import { validateWorkerUpstreamAuth } from "../_shared/worker_auth.ts";
 
 const DEFAULT_WINDOW = "24h";
 const DEFAULT_FORMAT = "objects";
@@ -99,6 +100,13 @@ serve(async (req) => {
   const startedAtMs = Date.now();
   const finish = (response: Response, fields: Record<string, unknown> = {}) =>
     logEndpointEgress(req, "uk_aq_timeseries", startedAtMs, response, fields);
+  const auth = validateWorkerUpstreamAuth(req);
+  if (!auth.ok) {
+    return await finish(json({ error: auth.error }, auth.status), {
+      error_type: "upstream_auth",
+      auth_status: auth.status,
+    });
+  }
   if (!SUPABASE_URL || !SUPABASE_PRIVILEGED_KEY) {
     return await finish(json({ error: "Missing SUPABASE_URL or SB_SECRET_KEY." }, 500), {
       error_type: "missing_env",

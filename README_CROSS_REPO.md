@@ -74,7 +74,7 @@ Dropbox/logging (used by multiple ingests):
 - Edge functions: `supabase/functions/`
 - System docs: `system_docs/`
 - Naming conventions: `AGENTS.md`
-- Schema repo (sibling): `../CIC-test-uk-aq-schema/uk-aq-schema`
+- Schema repo (sibling): `../CIC-Test-UK-AQ-Schema/CIC-test-uk-aq-schema`
 - History repo (sibling): `../CIC-test-uk-aq-history/uk-aq-history`
 
 ## WORKING STYLE (IMPORTANT)
