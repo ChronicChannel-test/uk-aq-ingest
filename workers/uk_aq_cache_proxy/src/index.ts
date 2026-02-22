@@ -3,24 +3,33 @@ export interface Env {
   SB_PUBLISHABLE_DEFAULT_KEY: unknown;
 }
 
-type CacheProfileName = "realtime" | "metadata";
+type CacheProfileName = "realtime" | "metadata" | "stations_metadata";
 
 type CacheProfile = {
   edgeTtlSeconds: number;
   browserTtlSeconds: number;
   staleWhileRevalidateSeconds: number;
+  staleIfErrorSeconds: number;
 };
 
 const CACHE_PROFILES: Record<CacheProfileName, CacheProfile> = {
   realtime: {
     edgeTtlSeconds: 60,
-    browserTtlSeconds: 30,
+    browserTtlSeconds: 60,
     staleWhileRevalidateSeconds: 30,
+    staleIfErrorSeconds: 300,
   },
   metadata: {
-    edgeTtlSeconds: 21600,
-    browserTtlSeconds: 3600,
+    edgeTtlSeconds: 60,
+    browserTtlSeconds: 60,
+    staleWhileRevalidateSeconds: 30,
+    staleIfErrorSeconds: 1800,
+  },
+  stations_metadata: {
+    edgeTtlSeconds: 86400,
+    browserTtlSeconds: 86400,
     staleWhileRevalidateSeconds: 86400,
+    staleIfErrorSeconds: 604800,
   },
 };
 
@@ -28,7 +37,7 @@ const FUNCTION_PROFILE_MAP: Record<string, CacheProfileName> = {
   uk_aq_latest: "realtime",
   uk_aq_timeseries: "realtime",
   uk_aq_stations_chart: "realtime",
-  uk_aq_stations: "metadata",
+  uk_aq_stations: "stations_metadata",
   uk_aq_la_hex: "metadata",
   uk_aq_pcon_hex: "metadata",
 };
@@ -82,6 +91,7 @@ function buildCacheControl(profile: CacheProfile): string {
     `max-age=${profile.browserTtlSeconds}`,
     `s-maxage=${profile.edgeTtlSeconds}`,
     `stale-while-revalidate=${profile.staleWhileRevalidateSeconds}`,
+    `stale-if-error=${profile.staleIfErrorSeconds}`,
   ].join(", ");
 }
 

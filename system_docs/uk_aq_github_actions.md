@@ -150,12 +150,13 @@ SB_UK_AQ_CRON_SECRET=...
   - `/api/aq/latest` -> `uk_aq_latest` (`realtime` cache profile).
   - `/api/aq/timeseries` -> `uk_aq_timeseries` (`realtime` cache profile).
   - `/api/aq/stations-chart` -> `uk_aq_stations_chart` (`realtime` cache profile).
-  - `/api/aq/stations` -> `uk_aq_stations` (`metadata` cache profile).
+  - `/api/aq/stations` -> `uk_aq_stations` (`stations_metadata` cache profile).
   - `/api/aq/la-hex` -> `uk_aq_la_hex` (`metadata` cache profile).
   - `/api/aq/pcon-hex` -> `uk_aq_pcon_hex` (`metadata` cache profile).
 - Cache profile defaults:
-  - `realtime`: edge TTL 60s, browser TTL 30s.
-  - `metadata`: edge TTL 6h, browser TTL 1h.
+  - `realtime`: edge TTL 60s, browser TTL 60s, `stale-while-revalidate=30`, `stale-if-error=300`.
+  - `stations_metadata`: edge TTL 24h, browser TTL 24h, `stale-while-revalidate=24h`, `stale-if-error=7d`.
+  - `metadata` (`la-hex` / `pcon-hex`): edge TTL 60s, browser TTL 60s, `stale-while-revalidate=30`, `stale-if-error=30m`.
 - Cache bypass:
   - Append `?cache=bypass` for request-level cache bypass.
 
