@@ -7,6 +7,15 @@ verify_jwt = false
 [functions.uk_aq_latest]
 verify_jwt = false
 
+[functions.uk_aq_stations_chart]
+verify_jwt = false
+
+[functions.uk_aq_stations]
+verify_jwt = false
+
+[functions.uk_aq_timeseries]
+verify_jwt = false
+
 [functions.uk_aq_station_snapshot]
 verify_jwt = false
 

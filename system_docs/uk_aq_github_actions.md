@@ -31,7 +31,7 @@ Cloud Run deploy idempotency:
 - Secrets: `SUPABASE_URL`, `SB_PUBLISHABLE_DEFAULT_KEY`, `KEEPALIVE_TABLE`, `KEEPALIVE_SELECT`.
 
 ### `supabase_edge_deploy.yml`
-- Trigger: push to `main` affecting `supabase/functions/**`, or manual dispatch.
+- Trigger: push to `main` affecting `supabase/functions/**` or `supabase/config.toml`, or manual dispatch.
 - Purpose: inject Supabase project ref into the web page, set Supabase secrets, deploy edge functions.
 - Deployed functions: `ingest_uk_air_sos`, `ingest_breathelondon`, `ingest_sensorcommunity`,
   `uk_aq_dispatch_polls`, `uk_aq_latest`,
@@ -39,6 +39,8 @@ Cloud Run deploy idempotency:
   `uk_aq_stations`, `uk_aq_timeseries`.
 - Secrets: `SUPABASE_PROJECT_REF`, `SB_PUBLISHABLE_DEFAULT_KEY`, `SUPABASE_ACCESS_TOKEN`,
   `SUPABASE_SECRETS_ENV` (newline-delimited env file contents).
+- Public read functions are deployed with `--no-verify-jwt` in workflow to keep website/cache access JWT-free:
+  `uk_aq_latest`, `uk_aq_stations_chart`, `uk_aq_la_hex`, `uk_aq_pcon_hex`, `uk_aq_stations`, `uk_aq_timeseries`.
 - Supabase secret names cannot start with `SUPABASE_`. Use `SB_` (or another prefix) in
   `SUPABASE_SECRETS_ENV`.
 

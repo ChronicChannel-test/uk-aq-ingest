@@ -349,6 +349,7 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
 ### uk_aq_latest
 - Purpose: Serve the latest values across all stations (optionally filtered by region/station/pollutant).
 - Triggered by: Web requests (read-only, no writes).
+- Auth mode: deployed as public (`verify_jwt=false`).
 - Returns: flattened latest rows optimized for map clients: `id`, `last_value`, `last_value_at`, `display_name`, `connector_code`, `connector_label`, `station_id`, `station_ref`, `station_label`, `station_name`, `pcon_code`, `la_code`, `station_network_memberships`, `phenomenon_label`, `pollutant_label`, `pollutant_notation`, `uom_display`.
 - Params: `region`, `station_like`, `pollutant`, `connector_id`, `limit`, `pcon_code`, `window` (`3h|6h|1d|7d|all`, default `all`).
 - Notes:
@@ -371,6 +372,7 @@ curl "https://YOUR_PROJECT.supabase.co/functions/v1/uk_aq_latest?region=London&p
 ### uk_aq_stations_chart
 - Purpose: Serve latest values for station-search chart pages (for example Bristol/Surbiton queries) with one shared endpoint.
 - Triggered by: Web requests (read-only, no writes).
+- Auth mode: deployed as public (`verify_jwt=false`).
 - Params: `station_like` (or `q`) required, `pollutant`, `connector_id`, `window` (`3h|6h|1d|7d|all`, default `all`), `limit`, optional incremental cursor (`since`, `since_id`).
 - Returns: flattened latest rows for chart pages with cursor fields (`next_since`, `next_since_id`) and map-compatible labels.
   - Row fields include `network_name` resolved from primary station network membership when available, with fallback to connector label/code.
@@ -384,6 +386,7 @@ curl "https://YOUR_PROJECT.supabase.co/functions/v1/uk_aq_latest?region=London&p
 ### uk_aq_stations
 - Purpose: Serve station geometry for the hex map (bypasses RLS via service role).
 - Triggered by: Web requests (read-only, no writes).
+- Auth mode: deployed as public (`verify_jwt=false`).
 - Returns: stations with geometry (id, station_ref, label, geometry) plus `station_network_memberships` (network codes, labels, primary flag).
 - Params: `connector_id`, `region`, `station_like`, `limit`, `page_size`.
 - RPC backing: `uk_aq_stations_rpc` via `/rest/v1/rpc/uk_aq_stations_rpc`.
@@ -394,6 +397,7 @@ curl "https://YOUR_PROJECT.supabase.co/functions/v1/uk_aq_latest?region=London&p
 ### uk_aq_la_hex
 - Purpose: Serve LA-level latest PM2.5 summaries (median + mean) for the hex cartogram.
 - Triggered by: Web requests (read-only, no writes).
+- Auth mode: deployed as public (`verify_jwt=false`).
 - Returns: rows keyed by `la_code` with `station_count`, `single_site`, `median_value`, `mean_value`, `latest_value_at` (expands `la_codes` arrays into per-code rows when present).
 - Params: `region`, `la_version`, `limit`, optional `since` (ISO-8601 timestamp; returns changed LA rows only).
 - RPC backing: `uk_aq_la_hex_rpc` via `/rest/v1/rpc/uk_aq_la_hex_rpc`.
@@ -405,6 +409,7 @@ curl "https://YOUR_PROJECT.supabase.co/functions/v1/uk_aq_latest?region=London&p
 ### uk_aq_pcon_hex
 - Purpose: Serve constituency-level latest PM2.5 summaries (median + mean) for the hex cartogram.
 - Triggered by: Web requests (read-only, no writes).
+- Auth mode: deployed as public (`verify_jwt=false`).
 - Returns: rows keyed by `pcon_code` with `station_count`, `single_site`, `median_value`, `mean_value`, `latest_value_at`.
 - Params: `pcon_version`, `limit`, optional `since` (ISO-8601 timestamp; returns changed PCON rows only).
 - RPC backing: `uk_aq_pcon_hex_rpc` via `/rest/v1/rpc/uk_aq_pcon_hex_rpc`.
@@ -416,6 +421,7 @@ curl "https://YOUR_PROJECT.supabase.co/functions/v1/uk_aq_latest?region=London&p
 ### uk_aq_timeseries
 - Purpose: Serve raw observation points for a single timeseries.
 - Triggered by: Web requests (read-only, no writes).
+- Auth mode: deployed as public (`verify_jwt=false`).
 - Params: `timeseries_id` (required), `window` (`12h|24h|7d|30d`, default `24h`), optional `limit` (positive integer), optional `since` (ISO-8601 timestamp for incremental fetch), optional `include_status` (`true|false`, default `true`), optional `format` (`objects|compact`, default `objects`).
 - Returns:
   - `data_format=objects`: row objects (`observed_at`, `value`, optional `status`)
