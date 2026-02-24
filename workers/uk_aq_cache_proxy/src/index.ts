@@ -94,6 +94,8 @@ const TOKEN_MAX_LIFETIME_SECONDS = 86400;
 const DEFAULT_SESSION_MAX_AGE_SECONDS = 900;
 const MIN_SESSION_MAX_AGE_SECONDS = 60;
 const MAX_SESSION_MAX_AGE_SECONDS = 86400;
+const UPSTREAM_RETRY_DELAY_MS = 300;
+const UPSTREAM_RETRY_STATUSES = new Set([502, 503, 504]);
 
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
@@ -266,6 +268,49 @@ function isCacheableUpstreamResponse(response: Response): boolean {
   }
   const cacheControl = (response.headers.get("Cache-Control") ?? "").toLowerCase();
   return !(cacheControl.includes("no-store") || cacheControl.includes("private"));
+}
+
+function isSafeRequestMethod(method: string): boolean {
+  const normalized = method.toUpperCase();
+  return normalized === "GET" || normalized === "HEAD";
+}
+
+function shouldRetryUpstreamStatus(status: number): boolean {
+  return UPSTREAM_RETRY_STATUSES.has(status);
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+type UpstreamFetchResult = {
+  response: Response;
+  retried: boolean;
+  retryReason: "status" | "network";
+};
+
+async function fetchUpstreamWithRetry(
+  url: string,
+  init: RequestInit,
+  method: string,
+): Promise<UpstreamFetchResult> {
+  const canRetry = isSafeRequestMethod(method);
+  try {
+    const firstResponse = await fetch(url, init);
+    if (!canRetry || !shouldRetryUpstreamStatus(firstResponse.status)) {
+      return { response: firstResponse, retried: false, retryReason: "status" };
+    }
+    await sleep(UPSTREAM_RETRY_DELAY_MS);
+    const secondResponse = await fetch(url, init);
+    return { response: secondResponse, retried: true, retryReason: "status" };
+  } catch (firstError) {
+    if (!canRetry) {
+      throw firstError;
+    }
+    await sleep(UPSTREAM_RETRY_DELAY_MS);
+    const secondResponse = await fetch(url, init);
+    return { response: secondResponse, retried: true, retryReason: "network" };
+  }
 }
 
 function resolveUpstreamFunction(pathname: string): string | null {
@@ -746,15 +791,32 @@ export default {
       upstreamHeaders.set("If-Modified-Since", ifModifiedSince);
     }
 
-    const upstreamResponse = await fetch(upstreamUrl.toString(), {
-      method: request.method,
-      headers: upstreamHeaders,
-    });
+    let upstreamResponse: Response;
+    let upstreamRetried = false;
+    let upstreamRetryReason: "status" | "network" = "status";
+    try {
+      const fetchResult = await fetchUpstreamWithRetry(
+        upstreamUrl.toString(),
+        {
+          method: request.method,
+          headers: upstreamHeaders,
+        },
+        request.method,
+      );
+      upstreamResponse = fetchResult.response;
+      upstreamRetried = fetchResult.retried;
+      upstreamRetryReason = fetchResult.retryReason;
+    } catch (_err) {
+      return makeErrorResponse(502, "upstream_fetch_failed", requestOrigin, allowedOrigins);
+    }
 
     const responseHeaders = new Headers(upstreamResponse.headers);
     responseHeaders.delete("Set-Cookie");
     responseHeaders.set("X-UK-AQ-Cache", shouldUseCache ? "MISS" : "BYPASS");
     responseHeaders.set("X-UK-AQ-Cache-Profile", profileName);
+    if (upstreamRetried) {
+      responseHeaders.set("X-UK-AQ-Upstream-Retry", upstreamRetryReason);
+    }
     if (upstreamResponse.status === 200) {
       responseHeaders.set("Cache-Control", buildCacheControl(profile));
     }

@@ -1,0 +1,34 @@
+scope,raw_field_path,normalized_field,db_target_now,transform_now,raw_non_null,raw_total,normalized_non_null,normalized_total,recommended_storage,recommended_metadata_key_if_metadata,notes
+station,id,station_ref,uk_aq_core.stations.station_ref,string(id),768,768,768,768,core,,station identity
+station,name,label,uk_aq_core.stations.label,"label = name; fallback to ""OpenAQ {id}"" if null",767,768,768,768,core,,main source label
+station,name,station_name,uk_aq_core.stations.station_name,station_name builder input #1,767,768,767,768,core,,combined with provider.name and owner/owner.name in buildStationName
+station,provider.name,station_name,uk_aq_core.stations.station_name,station_name builder input #2 (provider shortname mapping applied),768,768,767,768,core,,combined with name and owner/owner.name in buildStationName
+station,owner,station_name,uk_aq_core.stations.station_name,station_name builder input #3 when owner is string,0,768,767,768,core,,owner string variant
+station,owner.name,station_name,uk_aq_core.stations.station_name,station_name builder input #3 when owner is object.name,768,768,767,768,core,,owner object variant
+station,isMobile,station_type,uk_aq_core.stations.station_type,"station_type = ""mobile"" if true else ""fixed""",768,768,768,768,core,,derived station type
+station,locality,region,uk_aq_core.stations.region,region uses locality first,310,768,768,768,core (current); canonical region strategy pending,,priority source for region in current logic
+station,country.name,region,uk_aq_core.stations.region,region fallback when locality is null/blank,768,768,768,768,metadata candidate (source) + canonical region in core,country.name,fallback source for region in current logic
+station,coordinates.longitude,geometry,uk_aq_core.stations.geometry,used with coordinates.latitude to build SRID=4326 POINT,768,768,768,768,core,,required with latitude for geometry
+station,coordinates.latitude,geometry,uk_aq_core.stations.geometry,used with coordinates.longitude to build SRID=4326 POINT,768,768,768,768,core,,required with longitude for geometry
+station,datetimeLast.utc,last_seen_at,uk_aq_core.stations.last_seen_at,last_seen_at = datetimeLast.utc; fallback now() if missing,767,768,767,768,core,,used by station upsert
+station,country.code,country_code,openaq_stations.json only (not persisted to uk_aq_core),pass-through,768,768,768,768,metadata candidate,country.code,source country code
+station,country.name,country_name,openaq_stations.json only (not persisted to uk_aq_core),pass-through,768,768,768,768,metadata candidate,country.name,source country name
+station,provider.name,provider,openaq_stations.json only (not persisted to uk_aq_core),provider shortname mapping for some values,768,768,768,768,metadata candidate,provider.name,source provider name
+station,owner,owner,uk_aq_core.station_metadata.attributes (as openaq_owner),normalize owner string,0,768,768,768,metadata (already),owner,currently stored as attributes.openaq_owner (when owner is string)
+station,owner.name,owner,uk_aq_core.station_metadata.attributes (as openaq_owner),normalize owner.name,768,768,768,768,metadata (already),owner.name,currently stored as attributes.openaq_owner (when owner is object)
+station,isMonitor,is_monitor,openaq_stations.json only (not persisted to uk_aq_core),pass-through,768,768,768,768,metadata candidate,isMonitor,source monitor flag
+station,isMobile,is_mobile,openaq_stations.json only (not persisted to uk_aq_core),pass-through,768,768,768,768,metadata candidate,isMobile,source mobile flag
+station,sensors[].parameter.name,sensor_parameters,openaq_stations.json only (not persisted to uk_aq_core),"distinct parameter names, sorted, comma-joined",2612,2612,768,768,not needed in core; optional metadata,sensors.parameter.name,summary string used in export JSON
+station,sensors[],sensors_count,openaq_stations.json only (not persisted to uk_aq_core),len(sensors array),768,768,768,768,not needed in core; optional metadata,sensors_count,summary count used in export JSON
+station,datetimeFirst.utc,datetime_first_utc,openaq_stations.json only (not persisted to uk_aq_core),pass-through,767,768,767,768,metadata candidate,datetimeFirst.utc,source first timestamp
+station,datetimeLast.utc,datetime_last_utc,openaq_stations.json only (not persisted to uk_aq_core),pass-through,767,768,767,768,metadata candidate,datetimeLast.utc,source last timestamp
+timeseries,sensors[].id,timeseries_ref,uk_aq_core.timeseries.timeseries_ref,string(sensor.id),2612,2612,,,core,,timeseries identity
+timeseries,sensors[].parameter.name,phenomena.pollutant_label + eionet_uri,uk_aq_core.phenomena,pollutant_label=name; eionet_uri=openaq:{name},2612,2612,,,core,,phenomena key
+timeseries,sensors[].parameter.displayName,phenomena.label/notation + timeseries.label,uk_aq_core.phenomena + uk_aq_core.timeseries,fallback to parameter.name when null,2612,2612,,,core,,display labels
+timeseries,sensors[].parameter.units,timeseries.uom,uk_aq_core.timeseries.uom,pass-through units,2612,2612,,,core,,unit of measure
+timeseries,sensors[].name,none currently,not persisted,unused,2612,2612,,,metadata candidate (timeseries-level),sensors.name,store only if source provenance needed
+station,bounds,not mapped,not persisted,n/a,768,768,,,metadata candidate (only if required),bounds,unused by current ingest/list pipeline
+station,distance,not mapped,not persisted,n/a,0,768,,,metadata candidate (only if required),distance,unused by current ingest/list pipeline
+station,instruments,not mapped,not persisted,n/a,768,768,,,metadata candidate (only if required),instruments,unused by current ingest/list pipeline
+station,licenses,not mapped,not persisted,n/a,634,768,,,metadata candidate (only if required),licenses,unused by current ingest/list pipeline
+station,timezone,not mapped,not persisted,n/a,768,768,,,metadata candidate (only if required),timezone,unused by current ingest/list pipeline
