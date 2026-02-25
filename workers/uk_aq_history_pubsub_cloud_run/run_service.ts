@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 
-const PORT = Number(Deno.env.get("PORT") || "8080");
+const PORT = Number(Deno.env.get("PORT") || "8000");
 const RUN_JOB_SCRIPT = "/app/workers/uk_aq_history_pubsub_cloud_run/run_job.ts";
 const ALLOWED_TRIGGER_MODES = new Set(["scheduler", "manual"]);
 
