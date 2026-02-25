@@ -109,20 +109,21 @@ async function readSecret(value: unknown): Promise<string> {
     return value;
   }
   if (value && typeof value === "object") {
-    const record = value as { get?: () => Promise<string>; then?: (cb: (v: unknown) => void) => void };
-    if (typeof record.get === "function") {
-      const resolved = await record.get();
+    const withGet = value as { get?: () => Promise<unknown> };
+    if (typeof withGet.get === "function") {
+      const resolved = await withGet.get();
       return typeof resolved === "string" ? resolved : String(resolved ?? "");
     }
-    if (typeof record.then === "function") {
-      const resolved = await (value as Promise<unknown>);
+    const thenable = value as PromiseLike<unknown>;
+    if (typeof thenable.then === "function") {
+      const resolved = await thenable;
       return typeof resolved === "string" ? resolved : String(resolved ?? "");
     }
   }
   return value ? String(value) : "";
 }
 
-function parsePositiveInt(value: string, fallback: number, min: number, max: number): number {
+function parseIntInRange(value: string, fallback: number, min: number, max: number): number {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) {
     return fallback;
@@ -626,7 +627,7 @@ export default {
     }
 
     if (isSessionRoute(url.pathname)) {
-      if (requestOrigin == null) {
+      if (requestOrigin === null) {
         return makeErrorResponse(400, "origin_required", requestOrigin, allowedOrigins);
       }
       if (!isOriginAllowed(requestOrigin, allowedOrigins)) {
@@ -671,7 +672,7 @@ export default {
         return makeErrorResponse(status, turnstileCheck.reason, requestOrigin, allowedOrigins);
       }
 
-      const sessionMaxAgeSeconds = parsePositiveInt(
+      const sessionMaxAgeSeconds = parseIntInRange(
         await readSecret(env.UK_AQ_EDGE_SESSION_MAX_AGE_SECONDS),
         DEFAULT_SESSION_MAX_AGE_SECONDS,
         MIN_SESSION_MAX_AGE_SECONDS,
@@ -704,7 +705,7 @@ export default {
       return makeErrorResponse(404, "route_not_found", requestOrigin, allowedOrigins);
     }
 
-    if (requestOrigin == null) {
+    if (requestOrigin === null) {
       return makeErrorResponse(400, "origin_required", requestOrigin, allowedOrigins);
     }
     if (!isOriginAllowed(requestOrigin, allowedOrigins)) {
