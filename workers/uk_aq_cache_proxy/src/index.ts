@@ -283,11 +283,16 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-type UpstreamFetchResult = {
-  response: Response;
-  retried: boolean;
-  retryReason: "status" | "network";
-};
+type UpstreamFetchResult =
+  | {
+    response: Response;
+    retried: false;
+  }
+  | {
+    response: Response;
+    retried: true;
+    retryReason: "status" | "network";
+  };
 
 async function fetchUpstreamWithRetry(
   url: string,
@@ -298,7 +303,7 @@ async function fetchUpstreamWithRetry(
   try {
     const firstResponse = await fetch(url, init);
     if (!canRetry || !shouldRetryUpstreamStatus(firstResponse.status)) {
-      return { response: firstResponse, retried: false, retryReason: "status" };
+      return { response: firstResponse, retried: false };
     }
     await sleep(UPSTREAM_RETRY_DELAY_MS);
     const secondResponse = await fetch(url, init);
@@ -351,10 +356,7 @@ function makeOptionsResponse(requestOrigin: string | null, allowedOrigins: Set<s
 
 function encodeBase64UrlFromText(value: string): string {
   const bytes = textEncoder.encode(value);
-  let binary = "";
-  for (let i = 0; i < bytes.length; i += 1) {
-    binary += String.fromCharCode(bytes[i]);
-  }
+  const binary = Array.from(bytes, (byte) => String.fromCharCode(byte)).join("");
   return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
 }
 
@@ -380,11 +382,8 @@ async function signHmac(data: string, secret: string): Promise<string> {
     ["sign"],
   );
   const signature = await crypto.subtle.sign("HMAC", key, textEncoder.encode(data));
-  let binary = "";
   const bytes = new Uint8Array(signature);
-  for (let i = 0; i < bytes.length; i += 1) {
-    binary += String.fromCharCode(bytes[i]);
-  }
+  const binary = Array.from(bytes, (byte) => String.fromCharCode(byte)).join("");
   return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
 }
 
@@ -627,9 +626,13 @@ export default {
     }
 
     if (isSessionRoute(url.pathname)) {
+      if (requestOrigin == null) {
+        return makeErrorResponse(400, "origin_required", requestOrigin, allowedOrigins);
+      }
       if (!isOriginAllowed(requestOrigin, allowedOrigins)) {
         return makeErrorResponse(403, "origin_not_allowed", requestOrigin, allowedOrigins);
       }
+      const origin = requestOrigin;
 
       if (url.pathname === SESSION_END_PATH) {
         if (request.method !== "POST") {
@@ -675,7 +678,7 @@ export default {
         MAX_SESSION_MAX_AGE_SECONDS,
       );
 
-      const issuedToken = await mintAccessToken(tokenSecret, requestOrigin as string, sessionMaxAgeSeconds);
+      const issuedToken = await mintAccessToken(tokenSecret, origin, sessionMaxAgeSeconds);
       const headers = new Headers({
         "Content-Type": "application/json; charset=utf-8",
         "Cache-Control": "no-store",
@@ -701,16 +704,20 @@ export default {
       return makeErrorResponse(404, "route_not_found", requestOrigin, allowedOrigins);
     }
 
+    if (requestOrigin == null) {
+      return makeErrorResponse(400, "origin_required", requestOrigin, allowedOrigins);
+    }
     if (!isOriginAllowed(requestOrigin, allowedOrigins)) {
       return makeErrorResponse(403, "origin_not_allowed", requestOrigin, allowedOrigins);
     }
+    const origin = requestOrigin;
 
     const sessionToken = getCookieValue(request.headers.get("Cookie"), SESSION_COOKIE_NAME);
     if (!sessionToken) {
       return makeErrorResponse(401, "missing_session_cookie", requestOrigin, allowedOrigins);
     }
 
-    const authCheck = await verifyAccessToken(sessionToken, tokenSecret, requestOrigin as string);
+    const authCheck = await verifyAccessToken(sessionToken, tokenSecret, origin);
     if (!authCheck.ok) {
       return makeErrorResponse(401, authCheck.error, requestOrigin, allowedOrigins);
     }
@@ -793,7 +800,7 @@ export default {
 
     let upstreamResponse: Response;
     let upstreamRetried = false;
-    let upstreamRetryReason: "status" | "network" = "status";
+    let upstreamRetryReason: "status" | "network" | null = null;
     try {
       const fetchResult = await fetchUpstreamWithRetry(
         upstreamUrl.toString(),
@@ -805,7 +812,9 @@ export default {
       );
       upstreamResponse = fetchResult.response;
       upstreamRetried = fetchResult.retried;
-      upstreamRetryReason = fetchResult.retryReason;
+      if (fetchResult.retried) {
+        upstreamRetryReason = fetchResult.retryReason;
+      }
     } catch (_err) {
       return makeErrorResponse(502, "upstream_fetch_failed", requestOrigin, allowedOrigins);
     }
@@ -814,7 +823,7 @@ export default {
     responseHeaders.delete("Set-Cookie");
     responseHeaders.set("X-UK-AQ-Cache", shouldUseCache ? "MISS" : "BYPASS");
     responseHeaders.set("X-UK-AQ-Cache-Profile", profileName);
-    if (upstreamRetried) {
+    if (upstreamRetried && upstreamRetryReason) {
       responseHeaders.set("X-UK-AQ-Upstream-Retry", upstreamRetryReason);
     }
     if (upstreamResponse.status === 200) {
