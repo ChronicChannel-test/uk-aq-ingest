@@ -1166,3 +1166,47 @@ Notes:
 - `timeseries` uses bigint `id` with `timeseries_ref` for upstream identifiers (unique by `connector_id, service_ref, timeseries_ref`).
 - `observations` references `timeseries.id` (bigint) and uses `(connector_id, timeseries_id, observed_at)` as the primary key.
 - External identifiers that arrive as text (even if numeric) use `*_ref`; internal joins always use bigint `*_id`.
+
+### `scripts/codeql_alerts_export.py`
+Purpose:
+- Export open GitHub CodeQL code-scanning alerts and per-alert instance locations using the REST API.
+- Write deterministic local snapshots for batching/remediation planning.
+
+Common commands:
+```bash
+python3 scripts/codeql_alerts_export.py
+python3 scripts/codeql_alerts_export.py --repo ChronicChannel-test/uk-aq-ingest --state open --per-page 100
+```
+
+Notes:
+- Auth order: `GITHUB_TOKEN` env var, then `gh auth token` fallback.
+- Output defaults to `.codeql/exports/<YYYY-MM-DD>/alerts.json` plus `instances/<alert_number>.json`.
+
+### `scripts/codeql_batch.py`
+Purpose:
+- Convert exported CodeQL alerts into deterministic remediation batches.
+- Sort by severity, then rule ID, then alert number.
+
+Common commands:
+```bash
+python3 scripts/codeql_batch.py --batch-size 10
+python3 scripts/codeql_batch.py --batch-size 10 --max-batches 2
+```
+
+Notes:
+- Uses `most_recent_instance` when available, else falls back to exported instance files.
+- Output defaults to `.codeql/batches/<YYYY-MM-DD>/batch-XX.json`.
+
+### `scripts/codeql_make_task_specs.py`
+Purpose:
+- Generate per-batch markdown remediation specs to seed follow-up Codex fix tasks.
+
+Common commands:
+```bash
+python3 scripts/codeql_make_task_specs.py --batches-dir .codeql/batches/<YYYY-MM-DD>
+python3 scripts/codeql_make_task_specs.py --batches-dir .codeql/batches/<YYYY-MM-DD> --batch batch-01.json
+```
+
+Notes:
+- Output defaults to `.codeql/task-specs/<YYYY-MM-DD>/batch-XX.md`.
+- Specs include scope, strict change rules, verification steps, and PR instructions.
