@@ -1,0 +1,64 @@
+Pager usage is off.
+Timing is on.
+=== baseline index size/stats ===
+          checked_at           
+-------------------------------
+ 2026-02-26 13:55:05.617057+00
+(1 row)
+
+Time: 26.300 ms
+    index_name     | index_size | index_bytes 
+-------------------+------------+-------------
+ observations_pkey | 165 MB     |   172834816
+(1 row)
+
+Time: 59.844 ms
+ idx_scan | idx_tup_read | idx_tup_fetch 
+----------+--------------+---------------
+  4145832 |      5268441 |       1711943
+(1 row)
+
+Time: 49.602 ms
+=== ensure pgstattuple for pgstatindex ===
+CREATE EXTENSION
+Time: 217.576 ms
+=== baseline pgstatindex ===
+ version | tree_level | index_size | root_block_no | internal_pages | leaf_pages | empty_pages | deleted_pages | avg_leaf_density | leaf_fragmentation 
+---------+------------+------------+---------------+----------------+------------+-------------+---------------+------------------+--------------------
+       4 |          2 |  172834816 |           164 |            125 |      20972 |           0 |             0 |            68.22 |              16.35
+(1 row)
+
+Time: 11416.090 ms (00:11.416)
+=== reindex concurrently start ===
+2026-02-26T13:55:17Z
+REINDEX
+=== reindex concurrently end ===
+2026-02-26T13:55:38Z
+Pager usage is off.
+Timing is on.
+=== after reindex: size/stats ===
+          checked_at           
+-------------------------------
+ 2026-02-26 13:55:38.316351+00
+(1 row)
+
+Time: 22.665 ms
+    index_name     | index_size | index_bytes 
+-------------------+------------+-------------
+ observations_pkey | 125 MB     |   130654208
+(1 row)
+
+Time: 35.911 ms
+ idx_scan | idx_tup_read | idx_tup_fetch 
+----------+--------------+---------------
+  4145832 |      5268441 |       1711943
+(1 row)
+
+Time: 36.649 ms
+=== after reindex pgstatindex ===
+ version | tree_level | index_size | root_block_no | internal_pages | leaf_pages | empty_pages | deleted_pages | avg_leaf_density | leaf_fragmentation 
+---------+------------+------------+---------------+----------------+------------+-------------+---------------+------------------+--------------------
+       4 |          2 |  130654208 |           165 |            102 |      15846 |           0 |             0 |            90.13 |                  0
+(1 row)
+
+Time: 2189.641 ms (00:02.190)

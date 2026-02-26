@@ -3,6 +3,7 @@
 Date: 2026-02-02
 Scope: Analysis and plan only; no code changes performed.
 Status update: 2026-02-13 (tracked against current repos and live queue behavior, including history-project parity actions).
+Policy note: HistoryDB must preserve raw observation granularity. Aggregation/downsampling/rollups are out of scope unless explicitly requested.
 
 Status markers:
 - ✅ Done
@@ -249,9 +250,9 @@ One row per Supabase-related call site (active code + notable test/demo scripts)
    - Pros: cheaper reads; stable output size.
    - Cons: requires refresh strategy.
    - Risk: med; Impact: high.
-2) **RPC for aggregation with fixed outputs**
+2) **RPC for fixed-output summaries (aggregation only if explicitly requested)**
    - Pros: precise control over data shape; easy cache.
-   - Cons: new SQL and API surface.
+   - Cons: new SQL and API surface; aggregation reduces granularity.
    - Risk: med; Impact: med/high.
 3) **Add “since” or “updated_at” indexes for incremental fetching**
    - Pros: enables delta fetches.
@@ -259,7 +260,7 @@ One row per Supabase-related call site (active code + notable test/demo scripts)
    - Risk: med; Impact: med.
 
 **Recommendation**
-- Plan for (1) in Phase 2; use (2) for endpoints where payloads are large and repetitive.
+- Plan for (1) in Phase 2; use (2) only for non-timeseries summary endpoints by default.
 
 ---
 
@@ -268,9 +269,9 @@ One row per Supabase-related call site (active code + notable test/demo scripts)
 - `uk_aq_timeseries` returns raw observations up to 20k+ rows.
 
 **Options**
-1) **Server-side downsampling (bucketed aggregates)**
+1) **Server-side downsampling (bucketed aggregates; only if explicitly requested)**
    - Pros: huge response reduction; faster UI.
-   - Cons: requires schema/RPC changes.
+   - Cons: requires schema/RPC changes; reduces data granularity.
    - Risk: med; Impact: high.
 2) **Incremental fetch: `since=last_observed_at`**
    - Pros: minimal transfer after initial load.
@@ -282,8 +283,8 @@ One row per Supabase-related call site (active code + notable test/demo scripts)
    - Risk: low/med; Impact: med.
 
 **Recommendation**
-- Phase 1: reduce default window and cap to needed points.
-- Phase 2: add server-side downsampling or `since` support.
+- Phase 1: keep raw timeseries fidelity and reduce transfer with caching + incremental fetch.
+- Phase 2: continue with `since`/delta support; only add downsampling if explicitly requested.
 
 ---
 
@@ -438,7 +439,7 @@ One row per Supabase-related call site (active code + notable test/demo scripts)
 
 ### Phase 2 (medium effort)
 1) ⏳ Add ETag/If-None-Match support for Edge Function responses.
-2) ⏳ Add server-side downsampling / aggregation for timeseries.
+2) ⏳ Add server-side downsampling / aggregation for timeseries only if explicitly requested.
 3) ✅ Introduce “since” incremental fetch for `uk_aq_latest` and `uk_aq_timeseries`.
 4) ⏳ Remove row-level `updated_at` from `uk_aq_latest` public payloads (keep server-side cursoring and `next_since` / `next_since_id`).
 5) ⏳ Apply history schema migration to remove duplicate PK-like btree index where present; keep BRIN time index for scan efficiency.

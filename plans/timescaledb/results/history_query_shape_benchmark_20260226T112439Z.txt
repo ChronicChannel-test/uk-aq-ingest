@@ -1,0 +1,132 @@
+Pager usage is off.
+=== busiest series ===
+ connector_id | timeseries_id | row_count 
+--------------+---------------+-----------
+            7 |          7635 |      3045
+            7 |          7420 |      3045
+            7 |          7617 |      3045
+(3 rows)
+
+=== choose top series for explain ===
+ connector_id | timeseries_id 
+--------------+---------------
+            7 |          7420
+(1 row)
+
+=== EXPLAIN: timeseries + 30d (without connector filter) ===
+                                                                                 QUERY PLAN                                                                                 
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort  (cost=117958.35..117961.12 rows=1109 width=48) (actual time=12000.457..12008.756 rows=3045 loops=1)
+   Sort Key: o.observed_at
+   Sort Method: quicksort  Memory: 192kB
+   Buffers: shared hit=27145 read=23340
+   ->  Nested Loop  (cost=62019.61..117902.26 rows=1109 width=48) (actual time=3762.081..12000.191 rows=3045 loops=1)
+         Buffers: shared hit=27142 read=23340
+         ->  Limit  (cost=62019.17..62019.18 rows=1 width=24) (actual time=1253.972..1258.329 rows=1 loops=1)
+               Buffers: shared hit=18611 read=8025
+               ->  Sort  (cost=62019.17..62047.94 rows=11508 width=24) (actual time=1253.970..1258.326 rows=1 loops=1)
+                     Sort Key: (count(*)) DESC
+                     Sort Method: top-N heapsort  Memory: 25kB
+                     Buffers: shared hit=18611 read=8025
+                     ->  Finalize HashAggregate  (cost=61846.55..61961.63 rows=11508 width=24) (actual time=1252.958..1257.364 rows=3151 loops=1)
+                           Group Key: observations.connector_id, observations.timeseries_id
+                           Batches: 1  Memory Usage: 657kB
+                           Buffers: shared hit=18611 read=8025
+                           ->  Gather  (cost=60494.36..61760.24 rows=11508 width=24) (actual time=1234.978..1253.618 rows=6291 loops=1)
+                                 Workers Planned: 1
+                                 Workers Launched: 1
+                                 Buffers: shared hit=18611 read=8025
+                                 ->  Partial HashAggregate  (cost=59494.36..59609.44 rows=11508 width=24) (actual time=1231.594..1232.289 rows=3146 loops=2)
+                                       Group Key: observations.connector_id, observations.timeseries_id
+                                       Batches: 1  Memory Usage: 657kB
+                                       Buffers: shared hit=18611 read=8025
+                                       Worker 0:  Batches: 1  Memory Usage: 657kB
+                                       ->  Parallel Seq Scan on observations  (cost=0.00..45412.21 rows=1877621 width=16) (actual time=0.009..699.317 rows=1597946 loops=2)
+                                             Buffers: shared hit=18611 read=8025
+         ->  Index Scan using observations_pkey on observations o  (cost=0.43..55871.99 rows=1109 width=56) (actual time=2508.097..10740.763 rows=3045 loops=1)
+               Index Cond: ((timeseries_id = observations.timeseries_id) AND (observed_at >= (now() - '30 days'::interval)))
+               Buffers: shared hit=8531 read=15315
+ Planning:
+   Buffers: shared hit=30
+ Planning Time: 3.837 ms
+ Execution Time: 12013.024 ms
+(34 rows)
+
+=== EXPLAIN: connector + timeseries + 30d ===
+                                                                                 QUERY PLAN                                                                                  
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort  (cost=62264.66..62265.35 rows=277 width=48) (actual time=1851.893..1944.083 rows=3045 loops=1)
+   Sort Key: o.observed_at
+   Sort Method: quicksort  Memory: 192kB
+   Buffers: shared hit=9845 read=19815
+   ->  Nested Loop  (cost=62019.61..62253.42 rows=277 width=48) (actual time=1844.243..1943.151 rows=3045 loops=1)
+         Buffers: shared hit=9845 read=19815
+         ->  Limit  (cost=62019.17..62019.18 rows=1 width=24) (actual time=1840.501..1932.495 rows=1 loops=1)
+               Buffers: shared hit=6821 read=19815
+               ->  Sort  (cost=62019.17..62047.94 rows=11508 width=24) (actual time=1840.500..1932.493 rows=1 loops=1)
+                     Sort Key: (count(*)) DESC
+                     Sort Method: top-N heapsort  Memory: 25kB
+                     Buffers: shared hit=6821 read=19815
+                     ->  Finalize HashAggregate  (cost=61846.55..61961.63 rows=11508 width=24) (actual time=1839.493..1932.045 rows=3151 loops=1)
+                           Group Key: observations.connector_id, observations.timeseries_id
+                           Batches: 1  Memory Usage: 657kB
+                           Buffers: shared hit=6821 read=19815
+                           ->  Gather  (cost=60494.36..61760.24 rows=11508 width=24) (actual time=1835.646..1928.923 rows=6259 loops=1)
+                                 Workers Planned: 1
+                                 Workers Launched: 1
+                                 Buffers: shared hit=6821 read=19815
+                                 ->  Partial HashAggregate  (cost=59494.36..59609.44 rows=11508 width=24) (actual time=1763.569..1764.220 rows=3130 loops=2)
+                                       Group Key: observations.connector_id, observations.timeseries_id
+                                       Batches: 1  Memory Usage: 657kB
+                                       Buffers: shared hit=6821 read=19815
+                                       Worker 0:  Batches: 1  Memory Usage: 657kB
+                                       ->  Parallel Seq Scan on observations  (cost=0.00..45412.21 rows=1877621 width=16) (actual time=0.294..1241.090 rows=1597946 loops=2)
+                                             Buffers: shared hit=6821 read=19815
+         ->  Index Scan using observations_pkey on observations o  (cost=0.43..231.47 rows=277 width=64) (actual time=3.732..10.183 rows=3045 loops=1)
+               Index Cond: ((connector_id = observations.connector_id) AND (timeseries_id = observations.timeseries_id) AND (observed_at >= (now() - '30 days'::interval)))
+               Buffers: shared hit=3024
+ Planning:
+   Buffers: shared hit=4
+ Planning Time: 1.598 ms
+ Execution Time: 1944.827 ms
+(34 rows)
+
+=== EXPLAIN: connector + timeseries + 90d ===
+                                                                                 QUERY PLAN                                                                                  
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort  (cost=62264.66..62265.35 rows=277 width=48) (actual time=1483.072..1556.105 rows=3045 loops=1)
+   Sort Key: o.observed_at
+   Sort Method: quicksort  Memory: 192kB
+   Buffers: shared hit=9909 read=19751
+   ->  Nested Loop  (cost=62019.61..62253.42 rows=277 width=48) (actual time=1478.763..1555.158 rows=3045 loops=1)
+         Buffers: shared hit=9909 read=19751
+         ->  Limit  (cost=62019.17..62019.18 rows=1 width=24) (actual time=1478.659..1551.512 rows=1 loops=1)
+               Buffers: shared hit=6885 read=19751
+               ->  Sort  (cost=62019.17..62047.94 rows=11508 width=24) (actual time=1478.657..1551.510 rows=1 loops=1)
+                     Sort Key: (count(*)) DESC
+                     Sort Method: top-N heapsort  Memory: 25kB
+                     Buffers: shared hit=6885 read=19751
+                     ->  Finalize HashAggregate  (cost=61846.55..61961.63 rows=11508 width=24) (actual time=1477.642..1551.073 rows=3151 loops=1)
+                           Group Key: observations.connector_id, observations.timeseries_id
+                           Batches: 1  Memory Usage: 657kB
+                           Buffers: shared hit=6885 read=19751
+                           ->  Gather  (cost=60494.36..61760.24 rows=11508 width=24) (actual time=1474.478..1548.500 rows=6291 loops=1)
+                                 Workers Planned: 1
+                                 Workers Launched: 1
+                                 Buffers: shared hit=6885 read=19751
+                                 ->  Partial HashAggregate  (cost=59494.36..59609.44 rows=11508 width=24) (actual time=1468.531..1469.121 rows=3146 loops=2)
+                                       Group Key: observations.connector_id, observations.timeseries_id
+                                       Batches: 1  Memory Usage: 657kB
+                                       Buffers: shared hit=6885 read=19751
+                                       Worker 0:  Batches: 1  Memory Usage: 657kB
+                                       ->  Parallel Seq Scan on observations  (cost=0.00..45412.21 rows=1877621 width=16) (actual time=0.592..1058.151 rows=1597946 loops=2)
+                                             Buffers: shared hit=6885 read=19751
+         ->  Index Scan using observations_pkey on observations o  (cost=0.43..231.47 rows=277 width=64) (actual time=0.094..3.165 rows=3045 loops=1)
+               Index Cond: ((connector_id = observations.connector_id) AND (timeseries_id = observations.timeseries_id) AND (observed_at >= (now() - '90 days'::interval)))
+               Buffers: shared hit=3024
+ Planning:
+   Buffers: shared hit=4
+ Planning Time: 0.243 ms
+ Execution Time: 1556.853 ms
+(34 rows)
+

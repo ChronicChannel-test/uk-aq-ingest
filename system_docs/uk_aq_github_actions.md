@@ -69,6 +69,22 @@ UK_AQ_EDGE_UPSTREAM_SECRET=...
   - `secrets.HISTORY_PUBLISHABLE_DEFAULT_KEY`
   - optional `secrets.SB_UK_AQ_CRON_SECRET` header.
 
+### `uk_aq_monthly_index_maintenance.yml`
+- Trigger: monthly on day 1 at 05:35 UTC, or manual dispatch.
+- Purpose: check btree index health on observations tables in both DBs and run `REINDEX INDEX CONCURRENTLY` only when thresholds are exceeded.
+- Scope:
+  - Main DB: btree indexes on `uk_aq_core.observations*` leaf/default tables.
+  - History DB: btree indexes on `uk_aq_history.observations`.
+- Thresholds:
+  - `avg_leaf_density < 80` OR `leaf_fragmentation > 15` (from `pgstatindex`).
+- Safety:
+  - Enables `pgstattuple` (`create extension if not exists pgstattuple`) if missing.
+  - Supports manual `run_mode=dry_run` via workflow_dispatch.
+  - Uses concurrent reindex to avoid long blocking table locks.
+- Required secrets:
+  - `SUPABASE_DB_URL` (main DB direct connection string)
+  - `HISTORY_SUPABASE_DB_URL` (history DB direct connection string)
+
 ### `uk_aq_history_edge_deploy.yml`
 - Trigger: manual dispatch; push to `supabase/functions/uk_aq_egress_monitor/**`, `supabase/config.toml`, or this workflow.
 - Purpose: deploy `uk_aq_egress_monitor` to the history Supabase project with `verify_jwt` disabled (`--no-verify-jwt`) so monitor invocations can use publishable key + cron secret only.

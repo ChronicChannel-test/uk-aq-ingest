@@ -1,0 +1,53 @@
+Pager usage is off.
+=== direct EXPLAIN: connector=7 timeseries=7420 window=24h ===
+                                                            QUERY PLAN                                                             
+-----------------------------------------------------------------------------------------------------------------------------------
+ Index Scan using observations_pkey on observations  (cost=0.43..2.66 rows=1 width=48) (actual time=0.084..1.144 rows=235 loops=1)
+   Index Cond: ((connector_id = 7) AND (timeseries_id = 7420) AND (observed_at >= (now() - '24:00:00'::interval)))
+   Buffers: shared hit=243
+ Planning:
+   Buffers: shared hit=130
+ Planning Time: 10.760 ms
+ Execution Time: 2.113 ms
+(7 rows)
+
+=== direct EXPLAIN: connector=7 timeseries=7420 window=7d ===
+                                                               QUERY PLAN                                                               
+----------------------------------------------------------------------------------------------------------------------------------------
+ Index Scan using observations_pkey on observations  (cost=0.43..344.39 rows=414 width=48) (actual time=0.041..4.132 rows=1674 loops=1)
+   Index Cond: ((connector_id = 7) AND (timeseries_id = 7420) AND (observed_at >= (now() - '7 days'::interval)))
+   Buffers: shared hit=1686
+ Planning:
+   Buffers: shared hit=1
+ Planning Time: 0.126 ms
+ Execution Time: 4.242 ms
+(7 rows)
+
+=== direct EXPLAIN: connector=7 timeseries=7420 window=30d ===
+                                                               QUERY PLAN                                                               
+----------------------------------------------------------------------------------------------------------------------------------------
+ Index Scan using observations_pkey on observations  (cost=0.43..679.92 rows=824 width=48) (actual time=0.033..6.722 rows=3045 loops=1)
+   Index Cond: ((connector_id = 7) AND (timeseries_id = 7420) AND (observed_at >= (now() - '30 days'::interval)))
+   Buffers: shared hit=3024
+ Planning:
+   Buffers: shared hit=1
+ Planning Time: 0.110 ms
+ Execution Time: 6.904 ms
+(7 rows)
+
+=== direct EXPLAIN: timeseries only window=30d (no connector filter) ===
+                                                                      QUERY PLAN                                                                       
+-------------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort  (cost=55842.18..55844.70 rows=1007 width=48) (actual time=6071.673..6072.885 rows=3045 loops=1)
+   Sort Key: observed_at
+   Sort Method: quicksort  Memory: 192kB
+   Buffers: shared hit=22482 read=1367
+   ->  Index Scan using observations_pkey on observations  (cost=0.43..55791.96 rows=1007 width=48) (actual time=1558.842..6069.610 rows=3045 loops=1)
+         Index Cond: ((timeseries_id = 7420) AND (observed_at >= (now() - '30 days'::interval)))
+         Buffers: shared hit=22479 read=1367
+ Planning:
+   Buffers: shared hit=1
+ Planning Time: 0.157 ms
+ Execution Time: 6093.434 ms
+(11 rows)
+

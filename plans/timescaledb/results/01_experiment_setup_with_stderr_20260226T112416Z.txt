@@ -1,0 +1,4 @@
+BEGIN
+psql:plans/timescaledb/01_experiment_setup.sql:8: ERROR:  extension "timescaledb" is not available
+DETAIL:  Could not open extension control file "/usr/lib/postgresql/share/postgresql/extension/timescaledb.control": No such file or directory.
+HINT:  The extension must first be installed on the system where PostgreSQL is running.

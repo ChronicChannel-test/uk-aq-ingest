@@ -1,0 +1,5 @@
+    name     | default_version | installed_version 
+-------------+-----------------+-------------------
+ pgstattuple | 1.5             | 
+(1 row)
+

@@ -62,3 +62,8 @@
 ## Website Polling Policy
 - Never suggest reducing website polling frequency below 1 minute.
 - Treat 1-minute website polling as a fixed requirement when proposing egress optimizations.
+
+## HistoryDB Granularity Policy
+- HistoryDB must preserve raw observation granularity at all times; do not propose aggregation/downsampling/rollups as the default storage strategy.
+- Do not suggest rollups, downsampling, or any aggregation-based size reduction unless the user explicitly asks for aggregation.
+- If aggregation is explicitly requested, state clearly that it reduces query granularity and keep raw-history preservation options separate.

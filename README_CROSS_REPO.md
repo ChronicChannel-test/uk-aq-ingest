@@ -89,3 +89,4 @@ Verification checklist (clear pass/fail)
 
 Planning requirement:
 - In planning work, always evaluate egress and database-size implications up front. Each option should include egress/DB-size pros and cons, and the recommendation should reference those impacts explicitly.
+- HistoryDB must not reduce observation granularity. Do not propose rollups/downsampling/aggregation unless explicitly requested by the user, and if requested call out the granularity tradeoff clearly.

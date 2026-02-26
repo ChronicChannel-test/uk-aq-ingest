@@ -1,0 +1,54 @@
+Pager usage is off.
+=== columns ===
+ ordinal_position |  column_name  |        data_type         | is_nullable | column_default 
+------------------+---------------+--------------------------+-------------+----------------
+                1 | connector_id  | bigint                   | NO          | 
+                2 | timeseries_id | bigint                   | NO          | 
+                3 | observed_at   | timestamp with time zone | NO          | 
+                4 | value         | double precision         | YES         | 
+                5 | status        | text                     | YES         | 
+                6 | created_at    | timestamp with time zone | NO          | now()
+(6 rows)
+
+=== pg_stats (null_frac, avg_width, n_distinct) ===
+  column_name  | null_frac | avg_width | n_distinct 
+---------------+-----------+-----------+------------
+ connector_id  |         0 |         8 |          4
+ created_at    |         0 |         8 |       4619
+ observed_at   |         0 |         8 |      92776
+ status        |         1 |         0 |          0
+ timeseries_id |         0 |         8 |       2877
+ value         |         0 |         8 |      14267
+(6 rows)
+
+=== indexes ===
+                  indexname                  |                                                          indexdef                                                          
+---------------------------------------------+----------------------------------------------------------------------------------------------------------------------------
+ observations_pkey                           | CREATE UNIQUE INDEX observations_pkey ON uk_aq_history.observations USING btree (connector_id, timeseries_id, observed_at)
+ uk_aq_history_observations_observed_at_brin | CREATE INDEX uk_aq_history_observations_observed_at_brin ON uk_aq_history.observations USING brin (observed_at)
+(2 rows)
+
+=== per-column null/non-null counts ===
+ total_rows | value_null | value_not_null | status_null | status_not_null | created_at_null | created_at_not_null 
+------------+------------+----------------+-------------+-----------------+-----------------+---------------------
+    3216545 |          0 |        3216545 |     3216545 |               0 |               0 |             3216545
+(1 row)
+
+=== status value distribution ===
+ status_bucket |  rows   
+---------------+---------
+ <NULL>        | 3216545
+(1 row)
+
+=== created_at lag from observed_at ===
+   p50_sec   |   p90_sec   |    p99_sec    |  min_sec  |    max_sec    
+-------------+-------------+---------------+-----------+---------------
+ 2216.053714 | 5184.250742 | 687111.549473 | 10.587054 | 720807.784331
+(1 row)
+
+=== approximate row width checks ===
+ avg_row_bytes | avg_projected_row_bytes 
+---------------+-------------------------
+         64.00 |                   64.00
+(1 row)
+
