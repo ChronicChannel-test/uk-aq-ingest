@@ -229,6 +229,27 @@ UK_AQ_EDGE_UPSTREAM_SECRET=...
   - Uses Google Cloud Scheduler -> Cloud Run service URL with OIDC auth.
   - Default cron is hourly (`0 * * * *`).
 
+### `uk_aq_db_size_logger_cloud_run_deploy.yml`
+- Trigger: push to `main` affecting `workers/uk_aq_db_size_logger_cloud_run/**`, or manual dispatch.
+- Also watches shared egress patch/runtime files:
+  - `supabase/functions/_shared/fetch_egress_patch.ts`
+  - `supabase/functions/_shared/egress_metrics.ts`
+- Purpose: deploy the hourly Cloud Run service that samples ingest/history DB size and writes hourly points to ingest DB.
+- Default service name: `uk-aq-db-size-logger`.
+- Worker: `workers/uk_aq_db_size_logger_cloud_run`.
+- Scheduler:
+  - Uses Google Cloud Scheduler -> Cloud Run service URL with OIDC auth.
+  - Default cron is hourly (`0 * * * *`).
+- Required secrets/vars:
+  - `GCP_PROJECT_ID`, Google auth secrets (`GCP_WORKLOAD_IDENTITY_PROVIDER` + `GCP_SERVICE_ACCOUNT` or `GCP_SA_KEY`)
+  - `GCP_DB_SIZE_LOGGER_SERVICE_ACCOUNT`
+  - `SUPABASE_URL`, `HISTORY_SUPABASE_URL`
+  - `SB_SECRET_KEY`, `HISTORY_SECRET_KEY`
+- Optional:
+  - Service sizing controls: `GCP_DB_SIZE_LOGGER_SERVICE_CPU`, `GCP_DB_SIZE_LOGGER_SERVICE_MEMORY`, `GCP_DB_SIZE_LOGGER_SERVICE_CONCURRENCY`, `GCP_DB_SIZE_LOGGER_SERVICE_TIMEOUT_SECONDS`
+  - Scheduler controls: `GCP_DB_SIZE_LOGGER_SCHEDULER_*`
+  - RPC/config controls: `UK_AQ_DB_SIZE_RPC`, `UK_AQ_DB_SIZE_UPSERT_RPC`, `UK_AQ_DB_SIZE_CLEANUP_RPC`, `UK_AQ_DB_SIZE_RETENTION_DAYS`, `UK_AQ_DB_SIZE_RPC_RETRIES`, `UK_AQ_INGEST_DB_LABEL`, `UK_AQ_HISTORY_DB_LABEL`
+
 ### `uk_aq_breathelondon_cloud_run_deploy.yml`
 - Trigger: push to `main` affecting `workers/uk_aq_breathelondon_cloud_run/**` or Breathe London ingest runtime files, or manual dispatch.
 - Purpose: deploy the Breathe London Cloud Run service + optional Cloud Scheduler trigger.

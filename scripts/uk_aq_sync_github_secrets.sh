@@ -83,12 +83,27 @@ while [[ $# -gt 0 ]]; do
 done
 
 HAS_GH=1
+GH_USE_LOGIN_AUTH=0
 if ! command -v gh >/dev/null 2>&1; then
   HAS_GH=0
 fi
 
+if [[ "${HAS_GH}" -eq 1 ]]; then
+  if env -u GH_TOKEN -u GITHUB_TOKEN gh auth status >/dev/null 2>&1; then
+    GH_USE_LOGIN_AUTH=1
+  fi
+fi
+
+gh_cmd() {
+  if [[ "${GH_USE_LOGIN_AUTH}" -eq 1 ]]; then
+    env -u GH_TOKEN -u GITHUB_TOKEN gh "$@"
+  else
+    gh "$@"
+  fi
+}
+
 if [[ -z "${REPO}" && "${HAS_GH}" -eq 1 ]]; then
-  REPO="$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null || true)"
+  REPO="$(gh_cmd repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null || true)"
 fi
 if [[ -z "${REPO}" ]]; then
   echo "Could not determine GitHub repo. Pass --repo owner/name." >&2
@@ -101,7 +116,7 @@ if [[ "${HAS_GH}" -eq 0 && "${DRY_RUN}" -eq 0 ]]; then
 fi
 
 if [[ "${DRY_RUN}" -eq 0 ]]; then
-  gh auth status >/dev/null
+  gh_cmd auth status >/dev/null
 fi
 
 load_targets_map() {
@@ -239,7 +254,7 @@ set_secret() {
     tmp_secret_file="$(mktemp)"
     chmod 600 "${tmp_secret_file}" || true
     printf '%s' "${value}" > "${tmp_secret_file}"
-    if gh secret set "${name}" --repo "${REPO}" < "${tmp_secret_file}"; then
+    if gh_cmd secret set "${name}" --repo "${REPO}" < "${tmp_secret_file}"; then
       :
     else
       gh_status=$?
@@ -259,7 +274,7 @@ set_variable() {
   if [[ "${DRY_RUN}" -eq 1 ]]; then
     echo "[dry-run] would set variable ${name} (len=${#value})"
   else
-    gh variable set "${name}" --repo "${REPO}" --body "${value}"
+    gh_cmd variable set "${name}" --repo "${REPO}" --body "${value}"
     echo "set variable ${name}"
   fi
 }

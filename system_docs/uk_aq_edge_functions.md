@@ -141,6 +141,22 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
   - Writer dedupes by `(connector_id, timeseries_id, observed_at)` before upsert and writes sync receipts to main DB.
   - Mixed rows across connectors are processed in the same batch, reducing history RPC call overhead.
 
+### DB Size Logger (Cloud Run)
+- Purpose: Sample current DB size from both ingest DB and history DB once per run, then upsert hourly points into ingest DB.
+- Triggered by: Cloud Scheduler -> Cloud Run service (`workers/uk_aq_db_size_logger_cloud_run`).
+- Reads:
+  - Ingest DB RPC: `uk_aq_public.uk_aq_rpc_database_size_bytes`
+  - History DB RPC: `uk_aq_public.uk_aq_rpc_database_size_bytes`
+- Writes (ingest DB):
+  - RPC: `uk_aq_public.uk_aq_rpc_db_size_metric_upsert`
+  - RPC: `uk_aq_public.uk_aq_rpc_db_size_metric_cleanup`
+  - Table: `uk_aq_raw.db_size_metrics_hourly`
+  - View: `uk_aq_public.uk_aq_db_size_metrics_hourly`
+- Notes:
+  - Upsert key is `(bucket_hour, database_label)` with labels `ingestdb` and `historydb`.
+  - Cleanup RPC trims old rows by retention days (`UK_AQ_DB_SIZE_RETENTION_DAYS`, default `120`).
+  - Cloud Run CPU/memory/concurrency are managed in deploy workflow vars (`GCP_DB_SIZE_LOGGER_*`).
+
 ### uk_aq_egress_monitor
 - Purpose: Lightweight monitor endpoint that summarizes egress metrics and raises a warning when total MB over a lookback window exceeds a threshold.
 - Triggered by:
@@ -501,6 +517,13 @@ Optional:
 - `HISTORY_OUTBOX_CLOUD_RUN_BUDGET_SECONDS` (optional; defaults to `540`; Cloud Run runtime budget)
 - `HISTORY_OUTBOX_CLOUD_RUN_SHUTDOWN_BUFFER_SECONDS` (optional; defaults to `20`; reserved buffer before timeout)
 - `HISTORY_OUTBOX_CLOUD_RUN_RPC_RETRIES` (optional; defaults to `3`; main RPC retry count)
+- `UK_AQ_DB_SIZE_RPC` (optional; defaults to `uk_aq_rpc_database_size_bytes`; Cloud Run DB-size read RPC name)
+- `UK_AQ_DB_SIZE_UPSERT_RPC` (optional; defaults to `uk_aq_rpc_db_size_metric_upsert`; ingest DB write RPC name)
+- `UK_AQ_DB_SIZE_CLEANUP_RPC` (optional; defaults to `uk_aq_rpc_db_size_metric_cleanup`; ingest DB retention cleanup RPC name)
+- `UK_AQ_DB_SIZE_RETENTION_DAYS` (optional; defaults to `120`; DB-size metrics retention)
+- `UK_AQ_DB_SIZE_RPC_RETRIES` (optional; defaults to `3`; DB-size logger RPC retry count)
+- `UK_AQ_INGEST_DB_LABEL` (optional; defaults to `ingestdb`; label stored for ingest DB points)
+- `UK_AQ_HISTORY_DB_LABEL` (optional; defaults to `historydb`; label stored for history DB points)
 - `HISTORY_WRITE_MODE` (optional; defaults to `outbox_only`; `outbox_only` queues history rows to main outbox for asynchronous flush, `direct` attempts immediate history upsert then falls back to outbox, `pubsub_only` publishes rows to Pub/Sub and does not use main DB outbox)
 - `GCP_PROJECT_ID` (required when `HISTORY_WRITE_MODE=pubsub_only` unless `GOOGLE_CLOUD_PROJECT` is set)
 - `GCP_HISTORY_PUBSUB_TOPIC` (optional; required when `HISTORY_WRITE_MODE=pubsub_only`; accepts topic id or full `projects/.../topics/...` path)
