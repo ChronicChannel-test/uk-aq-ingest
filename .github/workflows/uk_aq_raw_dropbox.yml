@@ -3,6 +3,9 @@ name: UK-AQ Raw Dropbox Snapshot
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   raw-dropbox:
     runs-on: ubuntu-latest

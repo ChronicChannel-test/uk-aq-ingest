@@ -549,7 +549,15 @@ function jsonResponse(
 }
 
 function quotePostgrestValue(value: string): string {
-  return `"${value.replace(/"/g, '\\"')}"`;
+  const escaped = value
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"')
+    .replace(/,/g, "\\,")
+    .replace(/\(/g, "\\(")
+    .replace(/\)/g, "\\)")
+    .replace(/\r/g, "\\r")
+    .replace(/\n/g, "\\n");
+  return `"${escaped}"`;
 }
 
 function postgrestIn(values: string[]): string {
@@ -1343,12 +1351,10 @@ async function callEdgeFunction(
     path,
     timeout_ms: timeoutMs,
     remaining_budget_ms: remainingMs,
-    has_cron_secret: Boolean(SB_UK_AQ_CRON_SECRET),
-    cron_secret_length: SB_UK_AQ_CRON_SECRET ? SB_UK_AQ_CRON_SECRET.length : 0,
-    auth_key_type: SB_PUBLISHABLE_DEFAULT_KEY
+    cron_auth_configured: Boolean(SB_UK_AQ_CRON_SECRET),
+    auth_key_source: SB_PUBLISHABLE_DEFAULT_KEY
       ? "publishable"
       : "service_role",
-    auth_key_length: authKey.length,
   });
   let resp: Response;
   try {
@@ -1428,9 +1434,8 @@ serve(async (req) => {
     }, 500);
   }
 
-  console.log("uk_aq_dispatch_polls cron secret", {
-    has_cron_secret: Boolean(SB_UK_AQ_CRON_SECRET),
-    cron_secret_length: SB_UK_AQ_CRON_SECRET ? SB_UK_AQ_CRON_SECRET.length : 0,
+  console.log("uk_aq_dispatch_polls auth mode", {
+    cron_auth_configured: Boolean(SB_UK_AQ_CRON_SECRET),
     dispatch_mode: dispatchMode,
   });
   if (DISPATCH_EFFECTIVE_SHUTDOWN_BUFFER_MS !== DISPATCH_SHUTDOWN_BUFFER_MS) {
@@ -2127,18 +2132,23 @@ serve(async (req) => {
         });
       }
     } catch (error) {
+      const runtimeMessage = error instanceof Error ? error.message : String(error);
       runStatus = "failed";
-      runMessage = error instanceof Error ? error.message : String(error);
+      runMessage = "dispatch_failed";
       await logError({
         severity: "error",
-        message: error instanceof Error ? error.message : String(error),
+        message: runtimeMessage,
         connector_id: connector?.id ?? null,
-        context: { connector_code: connectorCode, step: "dispatch" },
+        context: {
+          connector_code: connectorCode,
+          step: "dispatch",
+          error: runtimeMessage,
+        },
       });
       results.set(connectorCode, {
         connector_code: connectorCode,
         status: "error",
-        detail: error instanceof Error ? error.message : String(error),
+        detail: "dispatch_failed",
       });
     } finally {
       const runEnd = new Date();

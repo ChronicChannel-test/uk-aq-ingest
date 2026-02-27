@@ -188,7 +188,15 @@ function parseTimestamp(value: unknown): Date | null {
 }
 
 function quotePostgrestValue(value: string): string {
-  return `"${value.replace(/"/g, '\\"')}"`;
+  const escaped = value
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"')
+    .replace(/,/g, "\\,")
+    .replace(/\(/g, "\\(")
+    .replace(/\)/g, "\\)")
+    .replace(/\r/g, "\\r")
+    .replace(/\n/g, "\\n");
+  return `"${escaped}"`;
 }
 
 function postgrestIn(values: Array<string | number>): string {

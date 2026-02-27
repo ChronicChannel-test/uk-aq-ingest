@@ -79,13 +79,17 @@ def main() -> int:
     uri_values = list(POLLUTANT_SUFFIXES.values())
     phenomena_resp = (
         core.table("phenomena")
-        .select("id,eionet_uri")
+        .select("id,source_label")
         .eq("connector_id", connector_id)
-        .in_("eionet_uri", uri_values)
+        .in_("source_label", uri_values)
         .execute()
     )
     phenomena_rows = phenomena_resp.data if hasattr(phenomena_resp, "data") else phenomena_resp.get("data")
-    phen_by_uri = {str(row["eionet_uri"]): int(row["id"]) for row in (phenomena_rows or []) if row.get("eionet_uri")}
+    phen_by_uri = {
+        str(row["source_label"]): int(row["id"])
+        for row in (phenomena_rows or [])
+        if row.get("source_label")
+    }
 
     missing_uris = [uri for uri in uri_values if uri not in phen_by_uri]
     if missing_uris:

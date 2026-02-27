@@ -118,13 +118,13 @@ VALUE_TYPE_MAP = {
 
 SCOMM_PHENOMENA = {
     "pm10": {
-        "eionet_uri": "sensorcommunity:pm10",
+        "source_label": "sensorcommunity:pm10",
         "label": "PM10",
         "notation": "PM10",
         "pollutant_label": "pm10",
     },
     "pm2.5": {
-        "eionet_uri": "sensorcommunity:pm2.5",
+        "source_label": "sensorcommunity:pm2.5",
         "label": "PM2.5",
         "notation": "PM2.5",
         "pollutant_label": "pm2.5",
@@ -142,19 +142,19 @@ if SCOMM_INGEST_MET_FIELDS:
     SCOMM_PHENOMENA.update(
         {
             "temperature": {
-                "eionet_uri": "sensorcommunity:temperature",
+                "source_label": "sensorcommunity:temperature",
                 "label": "Temperature",
                 "notation": "temperature",
                 "pollutant_label": "temperature",
             },
             "humidity": {
-                "eionet_uri": "sensorcommunity:humidity",
+                "source_label": "sensorcommunity:humidity",
                 "label": "Humidity",
                 "notation": "humidity",
                 "pollutant_label": "humidity",
             },
             "pressure": {
-                "eionet_uri": "sensorcommunity:pressure",
+                "source_label": "sensorcommunity:pressure",
                 "label": "Pressure",
                 "notation": "pressure",
                 "pollutant_label": "pressure",
@@ -876,29 +876,29 @@ class SupabaseWriter:
             payload.append(
                 {
                     "connector_id": connector_id,
-                    "eionet_uri": meta["eionet_uri"],
+                    "source_label": meta["source_label"],
                     "label": meta["label"],
                     "notation": meta["notation"],
                     "pollutant_label": meta["pollutant_label"],
                 }
             )
         self.core.table("phenomena").upsert(
-            payload, on_conflict="connector_id,eionet_uri"
+            payload, on_conflict="connector_id,source_label"
         ).execute()
         rows = (
             self.core.table("phenomena")
-            .select("id,eionet_uri")
+            .select("id,source_label")
             .eq("connector_id", connector_id)
-            .in_("eionet_uri", [meta["eionet_uri"] for meta in SCOMM_PHENOMENA.values()])
+            .in_("source_label", [meta["source_label"] for meta in SCOMM_PHENOMENA.values()])
             .execute()
         )
         data = rows.data if hasattr(rows, "data") else rows.get("data")
-        ids_by_uri: Dict[str, int] = {}
+        ids_by_source_label: Dict[str, int] = {}
         for row in data or []:
-            ids_by_uri[str(row["eionet_uri"])] = int(row["id"])
+            ids_by_source_label[str(row["source_label"])] = int(row["id"])
         ids_by_pollutant: Dict[str, int] = {}
         for pollutant, meta in SCOMM_PHENOMENA.items():
-            phen_id = ids_by_uri.get(meta["eionet_uri"])
+            phen_id = ids_by_source_label.get(meta["source_label"])
             if phen_id:
                 ids_by_pollutant[pollutant] = phen_id
         return ids_by_pollutant

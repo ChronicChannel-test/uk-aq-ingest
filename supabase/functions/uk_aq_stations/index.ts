@@ -114,7 +114,8 @@ serve(async (req) => {
     return json(rows);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    return json({ error: message }, 500);
+    console.error("uk_aq_stations runtime failure", { message });
+    return json({ error: "Internal server error." }, 500);
   }
 });
 

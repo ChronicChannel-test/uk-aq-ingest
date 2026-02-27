@@ -236,7 +236,11 @@ serve(async (req) => {
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    return await finish(json({ error: message }, 500), { ...requestFields, error_type: "runtime" });
+    console.error("uk_aq_latest runtime failure", { message });
+    return await finish(json({ error: "Internal server error." }, 500), {
+      ...requestFields,
+      error_type: "runtime",
+    });
   }
 });
 
@@ -582,11 +586,25 @@ function renderDisplayTemplate(
     .replace(/\(\s*\)/g, "")
     .replace(/\[\s*\]/g, "")
     .replace(/\s+-\s+/g, " - ")
-    .replace(/\s+/g, " ")
-    .replace(/(?:\s*[-,:;|/]\s*)+$/g, "")
-    .replace(/^(?:\s*[-,:;|/]\s*)+/g, "")
-    .trim();
-  return cleaned ? cleaned : null;
+    .replace(/\s+/g, " ");
+  const trimmed = trimBoundaryDelimiters(cleaned).trim();
+  return trimmed ? trimmed : null;
+}
+
+function isTemplateBoundaryChar(char: string): boolean {
+  return /\s|[-,:;|/]/.test(char);
+}
+
+function trimBoundaryDelimiters(value: string): string {
+  let start = 0;
+  let end = value.length;
+  while (start < end && isTemplateBoundaryChar(value[start])) {
+    start += 1;
+  }
+  while (end > start && isTemplateBoundaryChar(value[end - 1])) {
+    end -= 1;
+  }
+  return value.slice(start, end);
 }
 
 function parseLimit(value: string | null, fallback: number): number {

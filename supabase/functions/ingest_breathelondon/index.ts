@@ -233,9 +233,7 @@ function requireCronSecret(req: Request): Response | null {
   const header = req.headers.get("x-cron-secret");
   if (!header || header !== SB_UK_AQ_CRON_SECRET) {
     console.warn("cron_secret_mismatch", {
-      has_cron_secret: Boolean(SB_UK_AQ_CRON_SECRET),
-      header_present: Boolean(header),
-      header_length: header ? header.length : 0,
+      cron_auth_configured: Boolean(SB_UK_AQ_CRON_SECRET),
     });
     return new Response("Unauthorized", { status: 401 });
   }
@@ -510,7 +508,15 @@ function maxTimestampIso(current: string | null, candidate: string | null): stri
 }
 
 function quotePostgrestValue(value: string): string {
-  return `"${value.replace(/"/g, '\\"')}"`;
+  const escaped = value
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"')
+    .replace(/,/g, "\\,")
+    .replace(/\(/g, "\\(")
+    .replace(/\)/g, "\\)")
+    .replace(/\r/g, "\\r")
+    .replace(/\n/g, "\\n");
+  return `"${escaped}"`;
 }
 
 function postgrestIn(values: string[]): string {
@@ -1074,7 +1080,7 @@ async function updateTimeseriesLastValues(
     );
     if (error) {
       const message = `timeseries update failed id=${row.id}: ${error.message}`;
-      errors.push(message);
+      errors.push(`timeseries update failed id=${row.id}`);
       console.warn(message);
       continue;
     }
@@ -1713,14 +1719,9 @@ function summarizeStationRefs(refs: string[]): { count: number; refs: string[]; 
 }
 
 serve(async (req) => {
-  const cronHeader = req.headers.get("x-cron-secret");
   console.log("ingest_breathelondon request", {
     method: req.method,
-    has_cron_secret: Boolean(SB_UK_AQ_CRON_SECRET),
-    header_present: Boolean(cronHeader),
-    header_length: cronHeader ? cronHeader.length : 0,
-    has_authorization: Boolean(req.headers.get("authorization")),
-    has_apikey: Boolean(req.headers.get("apikey")),
+    cron_auth_configured: Boolean(SB_UK_AQ_CRON_SECRET),
   });
   if (req.method !== "POST") {
     return new Response("Method not allowed", { status: 405 });
@@ -2045,7 +2046,7 @@ serve(async (req) => {
                         rows: rows.length,
                         reason,
                       });
-                      errors.push(`history_dual_write: ${message}`);
+                      errors.push("history_dual_write");
                     },
                   );
                   historyFlushes += 1;
@@ -2059,7 +2060,7 @@ serve(async (req) => {
                     rows: rows.length,
                     reason,
                   });
-                  errors.push(`history_dual_write_flush: ${message}`);
+                  errors.push("history_dual_write_flush");
                 }
               };
 
@@ -2368,7 +2369,7 @@ serve(async (req) => {
   } catch (error) {
     status = 500;
     const message = error instanceof Error ? error.message : String(error);
-    responsePayload = { error: message };
+    responsePayload = { error: "Internal server error." };
     log.error("Breathe London ingest failed.", { error: message });
     await errorLogger.logError({
       source: "edge",

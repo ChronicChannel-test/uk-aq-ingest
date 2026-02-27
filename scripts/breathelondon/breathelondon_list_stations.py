@@ -502,28 +502,28 @@ class SupabaseWriter:
         if not payload:
             return 0
         self.core.table("phenomena").upsert(
-            payload, on_conflict="connector_id,eionet_uri"
+            payload, on_conflict="connector_id,source_label"
         ).execute()
         return len(payload)
 
     def fetch_phenomena_ids(
-        self, connector_id: int, eionet_uris: Iterable[str]
+        self, connector_id: int, source_labels: Iterable[str]
     ) -> Dict[str, int]:
-        refs = [str(ref) for ref in eionet_uris if ref]
+        refs = [str(ref) for ref in source_labels if ref]
         if not refs:
             return {}
         mapping: Dict[str, int] = {}
         for chunk in chunked(refs, 200):
             resp = (
                 self.core.table("phenomena")
-                .select("id,eionet_uri")
+                .select("id,source_label")
                 .eq("connector_id", connector_id)
-                .in_("eionet_uri", list(chunk))
+                .in_("source_label", list(chunk))
                 .execute()
             )
             rows = resp.data if hasattr(resp, "data") else resp.get("data")
             for row in rows or []:
-                mapping[str(row["eionet_uri"])] = int(row["id"])
+                mapping[str(row["source_label"])] = int(row["id"])
         return mapping
 
     def upsert_timeseries(self, rows: Iterable[Dict[str, Any]]) -> int:

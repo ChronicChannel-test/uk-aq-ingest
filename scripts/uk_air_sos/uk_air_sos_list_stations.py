@@ -715,7 +715,7 @@ class SupabaseWriter:
     def upsert_phenomena(self, items: Iterable[Dict[str, Any]], connector_id: int) -> int:
         payload_by_uri: Dict[str, Dict[str, Any]] = {}
         for item in items:
-            uri = item.get("eionet_uri") or item.get("id")
+            uri = item.get("source_label") or item.get("eionet_uri") or item.get("id")
             label = _item_label(item)
             if not uri or not label:
                 continue
@@ -724,7 +724,7 @@ class SupabaseWriter:
             row = payload_by_uri.get(uri_value)
             if row is None:
                 payload_by_uri[uri_value] = {
-                    "eionet_uri": uri_value,
+                    "source_label": uri_value,
                     "label": label,
                     "notation": notation,
                     "connector_id": connector_id,
@@ -738,7 +738,7 @@ class SupabaseWriter:
         if rows:
             self.core.table("phenomena").upsert(
                 rows,
-                on_conflict="connector_id,eionet_uri",
+                on_conflict="connector_id,source_label",
             ).execute()
         return len(rows)
 
@@ -898,6 +898,7 @@ def _item_label(item: Dict[str, Any]) -> Optional[str]:
         or item.get("name")
         or item.get("title")
         or item.get("notation")
+        or item.get("source_label")
         or item.get("eionet_uri")
     )
 

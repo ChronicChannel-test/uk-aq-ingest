@@ -338,7 +338,7 @@ Stations bbox:
 Timeseries station filter:
 - If `connectors.timeseries_station_filter_supported` is false, the script skips station filtering for `/timeseries`.
 Phenomenon lookup:
-- If a timeseries label contains a `dd.eionet.europa.eu/vocabulary/aq/pollutant/` URL and `phenomenon` is missing, the script resolves Eionet metadata and stores `phenomena.eionet_uri` + `phenomena.notation` (shortname), with `label` falling back to `prefLabel`.
+- If a timeseries label contains a `dd.eionet.europa.eu/vocabulary/aq/pollutant/` URL and `phenomenon` is missing, the script resolves Eionet metadata and stores `phenomena.source_label` + `phenomena.notation` (shortname), with `label` falling back to `prefLabel`.
 
 Raw payloads (testing only):
 - Raw payload uploads are disabled unless `SUPABASE_URL` matches `UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL`.

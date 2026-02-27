@@ -54,14 +54,14 @@ SPECIES_CONFIG = {
     "IPM25": {
         "label": "PM2.5",
         "uom": "ug/m3",
-        "eionet_uri": "breathelondon:pm2.5",
+        "source_label": "breathelondon:pm2.5",
         "notation": "PM2.5",
         "pollutant_label": "pm2.5",
     },
     "INO2": {
         "label": "NO2",
         "uom": "ug/m3",
-        "eionet_uri": "breathelondon:no2",
+        "source_label": "breathelondon:no2",
         "notation": "NO2",
         "pollutant_label": "no2",
     },
@@ -349,7 +349,7 @@ def main() -> int:
             {
                 "connector_id": connector_id,
                 "label": config["label"],
-                "eionet_uri": config["eionet_uri"],
+                "source_label": config["source_label"],
                 "notation": config["notation"],
                 "pollutant_label": config["pollutant_label"],
             }
@@ -357,7 +357,7 @@ def main() -> int:
     if not args.dry_run:
         writer.upsert_phenomena(phenomena_rows)
     phenomenon_ids = writer.fetch_phenomena_ids(
-        connector_id, [row["eionet_uri"] for row in phenomena_rows]
+        connector_id, [row["source_label"] for row in phenomena_rows]
     )
 
     timeseries_rows = []
@@ -377,7 +377,7 @@ def main() -> int:
                     "station_id": station_id,
                     "service_ref": BREATHELONDON_SERVICE_REF,
                     "connector_id": connector_id,
-                    "phenomenon_id": phenomenon_ids.get(config["eionet_uri"]),
+                    "phenomenon_id": phenomenon_ids.get(config["source_label"]),
                     "extras": {"site_code": station_ref, "species": species},
                 }
             )

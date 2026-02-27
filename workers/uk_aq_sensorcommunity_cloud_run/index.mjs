@@ -148,13 +148,13 @@ const VALUE_TYPE_MAP = {
 
 const BASE_SCOMM_PHENOMENA = {
   pm10: {
-    eionet_uri: "sensorcommunity:pm10",
+    source_label: "sensorcommunity:pm10",
     label: "PM10",
     notation: "PM10",
     pollutant_label: "pm10",
   },
   "pm2.5": {
-    eionet_uri: "sensorcommunity:pm2.5",
+    source_label: "sensorcommunity:pm2.5",
     label: "PM2.5",
     notation: "PM2.5",
     pollutant_label: "pm2.5",
@@ -166,19 +166,19 @@ const SCOMM_PHENOMENA = {
   ...(SCOMM_INGEST_MET_FIELDS
     ? {
         temperature: {
-          eionet_uri: "sensorcommunity:temperature",
+          source_label: "sensorcommunity:temperature",
           label: "Temperature",
           notation: "temperature",
           pollutant_label: "temperature",
         },
         humidity: {
-          eionet_uri: "sensorcommunity:humidity",
+          source_label: "sensorcommunity:humidity",
           label: "Humidity",
           notation: "humidity",
           pollutant_label: "humidity",
         },
         pressure: {
-          eionet_uri: "sensorcommunity:pressure",
+          source_label: "sensorcommunity:pressure",
           label: "Pressure",
           notation: "pressure",
           pollutant_label: "pressure",
@@ -999,7 +999,7 @@ async function fetchStationIds(connectorId, serviceRef, stationRefs) {
 async function upsertPhenomena(connectorId) {
   const payload = Object.values(SCOMM_PHENOMENA).map((meta) => ({
     connector_id: connectorId,
-    eionet_uri: meta.eionet_uri,
+    source_label: meta.source_label,
     label: meta.label,
     notation: meta.notation,
     pollutant_label: meta.pollutant_label,
@@ -1008,16 +1008,16 @@ async function upsertPhenomena(connectorId) {
   await upsertRows(
     "phenomena",
     payload,
-    "connector_id,eionet_uri",
+    "connector_id,source_label",
     UK_AQ_CORE_SCHEMA,
   );
 
-  const uris = payload.map((row) => row.eionet_uri);
+  const sourceLabels = payload.map((row) => row.source_label);
   const response = await postgrestRequest("GET", "phenomena", {
     query: {
-      select: "id,eionet_uri",
+      select: "id,source_label",
       connector_id: `eq.${connectorId}`,
-      eionet_uri: `in.${encodeInFilter(uris)}`,
+      source_label: `in.${encodeInFilter(sourceLabels)}`,
     },
   });
   if (!response.ok) {
@@ -1027,19 +1027,19 @@ async function upsertPhenomena(connectorId) {
   }
 
   const rows = Array.isArray(response.data) ? response.data : [];
-  const idsByUri = {};
+  const idsBySourceLabel = {};
   for (const row of rows) {
-    const uri = toStringOrNull(row?.eionet_uri);
+    const sourceLabel = toStringOrNull(row?.source_label);
     const id = toIntegerOrNull(row?.id);
-    if (!uri || id === null) {
+    if (!sourceLabel || id === null) {
       continue;
     }
-    idsByUri[uri] = id;
+    idsBySourceLabel[sourceLabel] = id;
   }
 
   const idsByPollutant = {};
   for (const [pollutant, meta] of Object.entries(SCOMM_PHENOMENA)) {
-    const id = idsByUri[meta.eionet_uri];
+    const id = idsBySourceLabel[meta.source_label];
     if (id !== undefined) {
       idsByPollutant[pollutant] = id;
     }

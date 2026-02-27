@@ -359,7 +359,7 @@ serve(async (req) => {
             historyEnqueued += stats.enqueued;
           } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
-            errors.push(`history_flush_failed: ${message}`);
+            errors.push("history_flush_failed");
             log.warn("History dual-write flush failed.", {
               message,
               rows: rows.length,
@@ -560,7 +560,7 @@ serve(async (req) => {
               polled += 1;
             } catch (err) {
               const message = err instanceof Error ? err.message : String(err);
-              errors.push(`${row.id}: ${message}`);
+              errors.push(`${row.id}: upsert_failed`);
               console.warn(`Poll failed for ${row.id}: ${message}`);
               await errorLogger.logError({
                 source: "edge",
@@ -604,7 +604,7 @@ serve(async (req) => {
             "return=minimal",
           );
           if (pollUpdateError) {
-            errors.push(`connector last_polled_at update failed: ${pollUpdateError.message}`);
+            errors.push("connector last_polled_at update failed");
             await errorLogger.logError({
               source: "edge",
               severity: "error",
@@ -639,7 +639,7 @@ serve(async (req) => {
     const message = err instanceof Error ? err.message : String(err);
     errors.push(message);
     status = 500;
-    responsePayload = { error: "Unhandled error", message };
+    responsePayload = { error: "Internal server error." };
     log.error("Unhandled error during poll.", { message });
     await errorLogger.logError({
       source: "edge",

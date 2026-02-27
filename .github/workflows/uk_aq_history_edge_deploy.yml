@@ -10,6 +10,9 @@ on:
       - "supabase/config.toml"
       - ".github/workflows/uk_aq_history_edge_deploy.yml"
 
+permissions:
+  contents: read
+
 jobs:
   deploy-history-egress-monitor:
     runs-on: ubuntu-latest

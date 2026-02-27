@@ -949,7 +949,6 @@ class SupabaseWriter:
             label = (
                 item.get("label")
                 or item.get("notation")
-                or item.get("source_label")
                 or item.get("eionet_uri")
                 or ref_value
             )
@@ -977,34 +976,34 @@ class SupabaseWriter:
         items: Iterable[Dict[str, Any]],
         connector_id: int,
     ) -> Dict[str, int]:
-        payload_by_source_label: Dict[str, Dict[str, Any]] = {}
+        payload_by_uri: Dict[str, Dict[str, Any]] = {}
         for item in items:
             if not item or not isinstance(item, dict):
                 continue
-            source_label = item.get("source_label") or item.get("eionet_uri") or item.get("id")
-            if not source_label:
+            uri = item.get("eionet_uri") or item.get("id")
+            if not uri:
                 continue
-            source_label_value = str(source_label)
-            label = item.get("label") or item.get("notation") or source_label_value
+            uri_value = str(uri)
+            label = item.get("label") or item.get("notation") or uri_value
             notation = item.get("notation")
-            row = payload_by_source_label.get(source_label_value)
+            row = payload_by_uri.get(uri_value)
             if row is None:
                 row = {
-                    "source_label": source_label_value,
+                    "eionet_uri": uri_value,
                     "label": label,
                     "notation": notation,
                     "connector_id": connector_id,
                 }
-                payload_by_source_label[source_label_value] = row
+                payload_by_uri[uri_value] = row
                 continue
-            if label and (not row.get("label") or row.get("label") == source_label_value):
+            if label and (not row.get("label") or row.get("label") == uri_value):
                 row["label"] = label
             if notation and not row.get("notation"):
                 row["notation"] = notation
-        payload = list(payload_by_source_label.values())
+        payload = list(payload_by_uri.values())
         if payload:
-            self.core.table("phenomena").upsert(payload, on_conflict="connector_id,source_label").execute()
-        return self.get_phenomena_id_map(list(payload_by_source_label.keys()), connector_id)
+            self.core.table("phenomena").upsert(payload, on_conflict="connector_id,eionet_uri").execute()
+        return self.get_phenomena_id_map(list(payload_by_uri.keys()), connector_id)
 
     def get_ref_id_map(
         self,
@@ -1034,24 +1033,24 @@ class SupabaseWriter:
                 mapping[str(row[ref_key])] = int(row["id"])
         return mapping
 
-    def get_phenomena_id_map(self, source_labels: Sequence[str], connector_id: int) -> Dict[str, int]:
+    def get_phenomena_id_map(self, eionet_uris: Sequence[str], connector_id: int) -> Dict[str, int]:
         mapping: Dict[str, int] = {}
-        if not source_labels:
+        if not eionet_uris:
             return mapping
-        for chunk in _chunked(list(source_labels), 500):
+        for chunk in _chunked(list(eionet_uris), 500):
             resp = (
                 self.core.table("phenomena")
-                .select("id,source_label")
+                .select("id,eionet_uri")
                 .eq("connector_id", connector_id)
-                .in_("source_label", chunk)
+                .in_("eionet_uri", chunk)
                 .execute()
             )
             rows = resp.data if hasattr(resp, "data") else resp.get("data")
             if not rows:
                 continue
             for row in rows:
-                if row.get("source_label"):
-                    mapping[str(row["source_label"])] = int(row["id"])
+                if row.get("eionet_uri"):
+                    mapping[str(row["eionet_uri"])] = int(row["id"])
         return mapping
 
     def upsert_stations(
@@ -1144,10 +1143,7 @@ class SupabaseWriter:
             category_ref = ts.get("category", {}).get("id") if isinstance(ts.get("category"), dict) else None
             procedure_ref = ts.get("procedure", {}).get("id") if isinstance(ts.get("procedure"), dict) else None
             offering_ref = ts.get("offering", {}).get("id") if isinstance(ts.get("offering"), dict) else None
-            phen_source_label = None
-            if isinstance(ts.get("phenomenon"), dict):
-                phenomenon = ts["phenomenon"]
-                phen_source_label = phenomenon.get("source_label") or phenomenon.get("eionet_uri")
+            phen_uri = ts.get("phenomenon", {}).get("eionet_uri") if isinstance(ts.get("phenomenon"), dict) else None
             rows.append(
                 {
                     "timeseries_ref": str(ts.get("id")) if ts.get("id") is not None else None,
@@ -1159,9 +1155,7 @@ class SupabaseWriter:
                     "offering_id": offering_id_map.get(str(offering_ref)) if offering_ref is not None else None,
                     "feature_id": feature_id_map.get(str(feature_ref)) if feature_ref is not None else None,
                     "procedure_id": procedure_id_map.get(str(procedure_ref)) if procedure_ref is not None else None,
-                    "phenomenon_id": (
-                        phenomenon_id_map.get(str(phen_source_label)) if phen_source_label else None
-                    ),
+                    "phenomenon_id": phenomenon_id_map.get(str(phen_uri)) if phen_uri else None,
                     "category_id": category_id_map.get(str(category_ref)) if category_ref is not None else None,
                     "first_value_at": _parse_timestamp(ts.get("firstValueTimestamp")),
                     "last_value_at": _parse_timestamp(ts.get("lastValueTimestamp")),
@@ -2370,9 +2364,7 @@ def _summarize_timeseries(ts: Dict[str, Any]) -> Dict[str, Any]:
             "id": phenomenon.get("id") if phenomenon else None,
             "label": phenomenon.get("label") if phenomenon else None,
             "notation": phenomenon.get("notation") if phenomenon else None,
-            "source_label": (
-                (phenomenon.get("source_label") or phenomenon.get("eionet_uri")) if phenomenon else None
-            ),
+            "eionet_uri": phenomenon.get("eionet_uri") if phenomenon else None,
         },
         "category": {
             "id": category.get("id") if category else None,
@@ -2465,7 +2457,7 @@ def _extract_pollutant_uri(ts: Dict[str, Any]) -> Optional[str]:
     phenomenon = ts.get("phenomenon")
     if isinstance(phenomenon, dict):
         candidates.extend(
-            [phenomenon.get("id"), phenomenon.get("source_label"), phenomenon.get("eionet_uri"), phenomenon.get("label")]
+            [phenomenon.get("id"), phenomenon.get("eionet_uri"), phenomenon.get("label")]
         )
     candidates.extend([ts.get("label"), ts.get("id")])
     for candidate in candidates:
@@ -2483,15 +2475,13 @@ def _ensure_phenomenon(ts: Dict[str, Any], resolver: EionetPollutantResolver) ->
         phenomenon = {}
     phen_id = phenomenon.get("id")
     phen_label = phenomenon.get("label")
-    phen_source_label = phenomenon.get("source_label") or phenomenon.get("eionet_uri")
+    phen_uri = phenomenon.get("eionet_uri")
     phen_notation = phenomenon.get("notation")
     uri = _extract_pollutant_uri(ts)
     if not phen_id and uri:
         phenomenon["id"] = uri
-    if uri and not phen_source_label:
-        phenomenon["source_label"] = uri
-    elif not phenomenon.get("source_label") and phenomenon.get("eionet_uri"):
-        phenomenon["source_label"] = phenomenon.get("eionet_uri")
+    if uri and not phen_uri:
+        phenomenon["eionet_uri"] = uri
     if uri and (not phen_label or not phen_notation):
         resolved = resolver.resolve(uri)
         if not phen_notation and resolved.get("notation"):
@@ -2499,12 +2489,7 @@ def _ensure_phenomenon(ts: Dict[str, Any], resolver: EionetPollutantResolver) ->
         if not phen_label and resolved.get("label"):
             phenomenon["label"] = resolved["label"]
     if not phenomenon.get("label"):
-        fallback = (
-            phenomenon.get("notation")
-            or phenomenon.get("id")
-            or phenomenon.get("source_label")
-            or phenomenon.get("eionet_uri")
-        )
+        fallback = phenomenon.get("notation") or phenomenon.get("id") or phenomenon.get("eionet_uri")
         if fallback:
             phenomenon["label"] = fallback
     if phenomenon:

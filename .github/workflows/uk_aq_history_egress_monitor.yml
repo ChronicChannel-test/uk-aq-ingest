@@ -5,6 +5,8 @@ on:
     - cron: "*/5 * * * *"
   workflow_dispatch:
 
+permissions: {}
+
 jobs:
   egress-monitor-history:
     runs-on: ubuntu-latest

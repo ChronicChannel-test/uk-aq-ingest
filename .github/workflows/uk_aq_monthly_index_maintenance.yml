@@ -10,6 +10,10 @@ on:
         required: false
         default: "apply"
 
+permissions:
+  actions: write
+  contents: read
+
 jobs:
   monthly-index-maintenance:
     runs-on: ubuntu-latest

@@ -745,7 +745,15 @@ function parseTimestamp(value: unknown): string | null {
 }
 
 function quotePostgrestValue(value: string): string {
-  return `"${value.replace(/"/g, '\\"')}"`;
+  const escaped = value
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"')
+    .replace(/,/g, "\\,")
+    .replace(/\(/g, "\\(")
+    .replace(/\)/g, "\\)")
+    .replace(/\r/g, "\\r")
+    .replace(/\n/g, "\\n");
+  return `"${escaped}"`;
 }
 
 function postgrestIn(values: string[]): string {
@@ -1850,8 +1858,10 @@ serve(async (req) => {
           );
         } catch (err) {
           status = 500;
-          responsePayload = { ok: false, error: String(err) };
-          log.error("Failed to load connector.", { message: String(err) });
+          responsePayload = { ok: false, error: "Failed to load connector." };
+          log.error("Failed to load connector.", {
+            message: err instanceof Error ? err.message : String(err),
+          });
           await errorLogger.logError({
             source: "edge",
             severity: "error",
@@ -1918,7 +1928,7 @@ serve(async (req) => {
                 };
               } else {
                 status = 502;
-                responsePayload = { ok: false, error: message };
+                responsePayload = { ok: false, error: "Sensor.Community fetch failed." };
                 log.error("Sensor.Community fetch failed.", { message });
                 await errorLogger.logError({
                   source: "edge",
@@ -2248,7 +2258,7 @@ serve(async (req) => {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     status = 500;
-    responsePayload = { ok: false, error: "Unhandled error", message };
+    responsePayload = { ok: false, error: "Internal server error." };
     log.error("Unhandled error during poll.", { message });
     if (!shouldStop()) {
       await errorLogger.logError({

@@ -10,6 +10,9 @@ on:
       - "supabase/config.toml"
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   deploy-edge-function:
     runs-on: ubuntu-latest

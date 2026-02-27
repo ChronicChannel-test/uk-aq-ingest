@@ -2471,7 +2471,10 @@ serve(async (req) => {
   try {
     bbox = parseBbox(OPENAQ_BBOX);
   } catch (err) {
-    return jsonResponse({ error: String(err) }, 500);
+    logLine("ERROR", "Invalid OPENAQ_BBOX value", {
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return jsonResponse({ error: "Invalid OPENAQ_BBOX configuration." }, 500);
   }
   rawRecorder?.recordEvent("context", {
     connector_code: connectorCode,
@@ -2501,7 +2504,7 @@ serve(async (req) => {
         connector_id: connector.id,
         context: { error: String(err) },
       });
-      return jsonResponse({ error: String(err) }, 502);
+      return jsonResponse({ error: "OpenAQ station selection failed." }, 502);
     }
     rawRecorder?.recordEvent("selection", {
       tiered_limit: tieredLimit,
@@ -2531,7 +2534,7 @@ serve(async (req) => {
         connector_id: connector.id,
         context: { error: String(err) },
       });
-      return jsonResponse({ error: String(err) }, 502);
+      return jsonResponse({ error: "OpenAQ location fetch failed." }, 502);
     }
     logLine("INFO", "Fetched OpenAQ locations", { count: locations.length });
   }

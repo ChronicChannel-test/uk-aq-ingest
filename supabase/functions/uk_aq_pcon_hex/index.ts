@@ -156,7 +156,11 @@ serve(async (req) => {
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    return await finish(json({ error: message }, 500), { ...requestFields, error_type: "runtime" });
+    console.error("uk_aq_pcon_hex runtime failure", { message });
+    return await finish(json({ error: "Internal server error." }, 500), {
+      ...requestFields,
+      error_type: "runtime",
+    });
   }
 });
 

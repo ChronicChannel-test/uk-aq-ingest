@@ -452,7 +452,7 @@ def _fetch_station_pollutants(station_ids: Sequence[int]) -> Dict[int, List[str]
         return {}
     response = (
         schemas.core.table("phenomena")
-        .select("id,label,notation,source_label")
+        .select("id,label,notation,eionet_uri")
         .in_("id", list(phenomenon_ids))
         .execute()
     )
@@ -463,7 +463,7 @@ def _fetch_station_pollutants(station_ids: Sequence[int]) -> Dict[int, List[str]
             phen_id = int(row.get("id"))
         except (TypeError, ValueError):
             continue
-        label = row.get("label") or row.get("notation") or row.get("source_label")
+        label = row.get("label") or row.get("notation") or row.get("eionet_uri")
         if label:
             label_by_id[phen_id] = str(label)
     result: Dict[int, List[str]] = {}
@@ -516,7 +516,7 @@ def _fetch_station_latest_observations(
     if phenomenon_ids:
         response = (
             schemas.core.table("phenomena")
-            .select("id,label,notation,source_label")
+            .select("id,label,notation,eionet_uri")
             .in_("id", list(phenomenon_ids))
             .execute()
         )
@@ -526,7 +526,7 @@ def _fetch_station_latest_observations(
                 phen_id = int(row.get("id"))
             except (TypeError, ValueError):
                 continue
-            label = row.get("label") or row.get("notation") or row.get("source_label")
+            label = row.get("label") or row.get("notation") or row.get("eionet_uri")
             if label:
                 label_by_id[phen_id] = str(label)
     response = (

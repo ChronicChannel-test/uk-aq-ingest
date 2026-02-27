@@ -2173,7 +2173,7 @@ serve(async (req) => {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     status = 500;
-    responsePayload = { error: message };
+    responsePayload = { error: "Internal server error." };
     log.error("Poll failed.", { error: message });
     await errorLogger.logError({
       source: "edge",

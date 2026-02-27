@@ -520,39 +520,39 @@ class DbWriter:
         insert_sql = """
             insert into uk_aq_core.phenomena (
               connector_id,
-              eionet_uri,
+              source_label,
               label,
               notation,
               pollutant_label
             )
             values %s
-            on conflict (connector_id, eionet_uri) do update set
+            on conflict (connector_id, source_label) do update set
               label = excluded.label,
               notation = excluded.notation,
               pollutant_label = excluded.pollutant_label
         """
-        eionet_uris = [row[1] for row in rows]
-        ids_by_uri: Dict[str, int] = {}
+        source_labels = [row[1] for row in rows]
+        ids_by_source_label: Dict[str, int] = {}
         with self.conn, self.conn.cursor() as cursor:
             self._execute_values(cursor, insert_sql, rows)
-            for chunk in chunked(eionet_uris, 200):
+            for chunk in chunked(source_labels, 200):
                 cursor.execute(
                     """
-                    select id, eionet_uri
+                    select id, source_label
                     from uk_aq_core.phenomena
                     where connector_id = %s
-                      and eionet_uri = any(%s)
+                      and source_label = any(%s)
                     """,
                     (connector_id, chunk),
                 )
                 for row in cursor.fetchall():
-                    ids_by_uri[str(row[1])] = int(row[0])
+                    ids_by_source_label[str(row[1])] = int(row[0])
         ids_by_name: Dict[str, int] = {}
         for meta in parameters.values():
             name = str(meta.get("name") or "").strip()
             if not name:
                 continue
-            phen_id = ids_by_uri.get(f"openaq:{name}")
+            phen_id = ids_by_source_label.get(f"openaq:{name}")
             if phen_id:
                 ids_by_name[name] = phen_id
         return ids_by_name

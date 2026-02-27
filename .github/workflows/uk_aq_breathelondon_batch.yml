@@ -3,6 +3,9 @@ name: UK-AQ Breathe London Batch Ingest
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 concurrency:
   group: uk-aq-breathelondon-batch
   cancel-in-progress: false
