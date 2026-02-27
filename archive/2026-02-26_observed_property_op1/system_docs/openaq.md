@@ -21,7 +21,7 @@ This network uses OpenAQ's API to pull UK monitoring locations and latest values
   - `station_metadata.attributes.openaq_owner` stores the owner when it is present and not `Unknown*`
   - `station_type` = `mobile` when `isMobile=true`, else `fixed`
   - `geometry` = point from `coordinates`
-- Phenomena rows are created using `source_label = openaq:{parameter}` and are mapped to canonical `observed_properties` codes/domains during upsert.
+- Phenomena rows are created using `eionet_uri = openaq:{parameter}` and `pollutant_label` set to the OpenAQ parameter name.
 - Timeseries rows use `timeseries_ref` = OpenAQ sensor id and `phenomenon_id` resolved from the parameter name.
 - Observations are inserted for the latest values per sensor with `observed_at` from the OpenAQ payload.
 - Edge ingest uses public RPCs for DB writes because `uk_aq_core`/`uk_aq_raw` are not exposed via PostgREST.

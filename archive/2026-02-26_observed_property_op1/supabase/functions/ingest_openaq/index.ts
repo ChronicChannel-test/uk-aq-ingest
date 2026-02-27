@@ -1907,64 +1907,17 @@ type ParameterMeta = {
   units: string | null;
 };
 
-function canonicalObservedPropertyCode(raw: string): string {
-  const normalized = raw.trim().toLowerCase();
-  const compact = normalized.replace(/[^a-z0-9]+/g, "");
-  if (compact === "pm25") {
-    return "pm25";
-  }
-  if (compact === "pm10") {
-    return "pm10";
-  }
-  if (compact === "no2") {
-    return "no2";
-  }
-  if (compact === "o3") {
-    return "o3";
-  }
-  if (compact === "so2") {
-    return "so2";
-  }
-  if (compact === "co") {
-    return "co";
-  }
-  if (compact === "temperature" || compact === "temp") {
-    return "temperature";
-  }
-  if (compact === "humidity" || compact === "relativehumidity") {
-    return "humidity";
-  }
-  if (compact === "pressure" || compact === "airpressure") {
-    return "pressure";
-  }
-  return normalized.replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
-}
-
-function observedPropertyDomain(code: string): "aq" | "met" {
-  if (["temperature", "humidity", "pressure"].includes(code)) {
-    return "met";
-  }
-  return "aq";
-}
-
 async function upsertPhenomena(
   connectorId: string,
   parameters: Record<string, ParameterMeta>,
 ): Promise<Record<string, number>> {
-  const payload = Object.values(parameters).map((meta) => {
-    const code = canonicalObservedPropertyCode(meta.name);
-    return {
-      connector_id: connectorId,
-      source_label: `openaq:${meta.name}`,
-      label: meta.displayName ?? meta.name,
-      notation: meta.displayName ?? meta.name,
-      pollutant_label: meta.name,
-      observed_property_code: code,
-      observed_property_display_name: meta.displayName ?? meta.name,
-      observed_property_domain: observedPropertyDomain(code),
-      canonical_uom: meta.units ?? null,
-    };
-  });
+  const payload = Object.values(parameters).map((meta) => ({
+    connector_id: connectorId,
+    eionet_uri: `openaq:${meta.name}`,
+    label: meta.displayName ?? meta.name,
+    notation: meta.displayName ?? meta.name,
+    pollutant_label: meta.name,
+  }));
   if (payload.length) {
     const { error } = await rpcRequest<Array<{ phenomena_upserted: number }>>(
       "uk_aq_rpc_phenomena_upsert",
@@ -1974,24 +1927,23 @@ async function upsertPhenomena(
       throw new Error(`Phenomena upsert failed: ${error.message}`);
     }
   }
-  const sourceLabels = Object.values(parameters).map((meta) =>
+  const eionetUris = Object.values(parameters).map((meta) =>
     `openaq:${meta.name}`
   );
-  if (!sourceLabels.length) {
+  if (!eionetUris.length) {
     return {};
   }
-  const { data } = await rpcRequest<Array<{ id: number; source_label?: string; eionet_uri?: string }>>(
+  const { data } = await rpcRequest<Array<{ id: number; eionet_uri: string }>>(
     "uk_aq_rpc_phenomena_ids",
     {
       connector_id: Number(connectorId),
-      eionet_uris: sourceLabels,
+      eionet_uris: eionetUris,
     },
   );
   const idsByUri: Record<string, number> = {};
   for (const row of data ?? []) {
-    const sourceLabel = row?.source_label ?? row?.eionet_uri;
-    if (sourceLabel) {
-      idsByUri[sourceLabel] = Number(row.id);
+    if (row?.eionet_uri) {
+      idsByUri[row.eionet_uri] = Number(row.id);
     }
   }
   const idsByName: Record<string, number> = {};

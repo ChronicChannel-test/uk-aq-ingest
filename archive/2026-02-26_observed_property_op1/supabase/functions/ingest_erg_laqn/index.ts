@@ -78,20 +78,14 @@ const UPSERT_PREFER = "resolution=merge-duplicates,return=minimal";
 
 const SPECIES_CONFIG: Record<
   string,
-  {
-    label: string;
-    uom: string;
-    pollutant_label: string;
-    observed_property_code: string;
-    observed_property_domain: "aq" | "met";
-  }
+  { label: string; uom: string; pollutant_label: string }
 > = {
-  NO2: { label: "NO2", uom: "ug/m3", pollutant_label: "no2", observed_property_code: "no2", observed_property_domain: "aq" },
-  PM10: { label: "PM10", uom: "ug/m3", pollutant_label: "pm10", observed_property_code: "pm10", observed_property_domain: "aq" },
-  PM25: { label: "PM2.5", uom: "ug/m3", pollutant_label: "pm2.5", observed_property_code: "pm25", observed_property_domain: "aq" },
-  O3: { label: "O3", uom: "ug/m3", pollutant_label: "o3", observed_property_code: "o3", observed_property_domain: "aq" },
-  SO2: { label: "SO2", uom: "ug/m3", pollutant_label: "so2", observed_property_code: "so2", observed_property_domain: "aq" },
-  CO: { label: "CO", uom: "mg/m3", pollutant_label: "co", observed_property_code: "co", observed_property_domain: "aq" },
+  NO2: { label: "NO2", uom: "ug/m3", pollutant_label: "no2" },
+  PM10: { label: "PM10", uom: "ug/m3", pollutant_label: "pm10" },
+  PM25: { label: "PM2.5", uom: "ug/m3", pollutant_label: "pm2.5" },
+  O3: { label: "O3", uom: "ug/m3", pollutant_label: "o3" },
+  SO2: { label: "SO2", uom: "ug/m3", pollutant_label: "so2" },
+  CO: { label: "CO", uom: "mg/m3", pollutant_label: "co" },
 };
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")
@@ -802,24 +796,21 @@ async function upsertPhenomena(
       label: species,
       uom: null,
       pollutant_label: species.toLowerCase(),
-      observed_property_code: species.toLowerCase().replace(/[^a-z0-9]+/g, "_"),
-      observed_property_domain: "aq" as const,
     };
     return {
       connector_id: connectorId,
       label: config.label,
-      source_label: `laqn:${species}`,
+      eionet_uri: `laqn:${species}`,
       notation: species,
       pollutant_label: config.pollutant_label,
-      observed_property_code: config.observed_property_code,
-      observed_property_display_name: config.label,
-      observed_property_domain: config.observed_property_domain,
-      canonical_uom: config.uom,
     };
   });
-  const { error } = await publicRpcRequest<Array<{ phenomena_upserted: number }>>(
-    "uk_aq_rpc_phenomena_upsert",
-    { rows: payload },
+  const { error } = await postgrestRequest(
+    "POST",
+    "phenomena",
+    { on_conflict: "connector_id,eionet_uri" },
+    payload,
+    UPSERT_PREFER,
   );
   if (error) {
     throw new Error(`Phenomena upsert failed: ${error.message}`);
@@ -831,24 +822,21 @@ async function fetchPhenomenaIds(
   speciesList: string[],
 ): Promise<Record<string, number>> {
   const mapping: Record<string, number> = {};
-  const sourceLabels = speciesList.map((species) => `laqn:${species}`);
-  const { data, error } = await publicRpcRequest<
-    Array<{ id: number; source_label?: string; eionet_uri?: string }>
-  >(
-    "uk_aq_rpc_phenomena_ids",
+  const uris = speciesList.map((species) => `"laqn:${species}"`);
+  const { data, error } = await postgrestRequest<Array<{ id: number; eionet_uri: string }>>(
+    "GET",
+    "phenomena",
     {
-      connector_id: connectorId,
-      eionet_uris: sourceLabels,
+      select: "id,eionet_uri",
+      connector_id: `eq.${connectorId}`,
+      eionet_uri: `in.(${uris.join(",")})`,
     },
   );
   if (error) {
     throw new Error(`Phenomena fetch failed: ${error.message}`);
   }
   for (const row of data ?? []) {
-    const sourceLabel = row.source_label ?? row.eionet_uri;
-    if (sourceLabel) {
-      mapping[String(sourceLabel)] = Number(row.id);
-    }
+    mapping[String(row.eionet_uri)] = Number(row.id);
   }
   return mapping;
 }

@@ -286,18 +286,10 @@ async function loadLatest(
     const station = row.station ?? null;
     const stationLabel = resolveStationLabel(station?.label, station?.station_ref, row.label);
     const pollutantLabel = resolvePhenomenonLabel(
-      row.phenomenon?.observed_property_display_name,
       row.phenomenon?.pollutant_label,
       row.phenomenon?.label,
       row.phenomenon?.notation,
-      row.phenomenon?.source_label ?? row.phenomenon?.eionet_uri,
-    );
-    const observedPropertyCode = normalizePollutant(
-      row.phenomenon?.observed_property_code
-        ?? row.phenomenon?.notation
-        ?? row.phenomenon?.pollutant_label
-        ?? row.phenomenon?.label
-        ?? null,
+      row.phenomenon?.eionet_uri,
     );
     const connector = row.connector ?? null;
     const stationMemberships = Array.isArray(station?.station_network_memberships)
@@ -336,7 +328,6 @@ async function loadLatest(
       station_network_memberships: stationMemberships,
       phenomenon_label: pollutantLabel,
       pollutant_label: pollutantLabel,
-      observed_property_code: observedPropertyCode,
       uom_display: formatUnit(row.uom),
     };
   }).sort((a, b) => {
@@ -732,15 +723,11 @@ function resolveStationLabel(
 }
 
 function resolvePhenomenonLabel(
-  observedPropertyDisplayName: string | null | undefined,
   pollutantLabel: string | null | undefined,
   label: string | null | undefined,
   notation: string | null | undefined,
-  sourceLabel: string | null | undefined,
+  eionetUri: string | null | undefined,
 ): string | null {
-  if (observedPropertyDisplayName) {
-    return observedPropertyDisplayName;
-  }
   if (notation) {
     return notation;
   }
@@ -753,8 +740,8 @@ function resolvePhenomenonLabel(
   if (notation) {
     return notation;
   }
-  if (sourceLabel) {
-    return sourceLabel.split(/[:/]/).filter(Boolean).pop() ?? null;
+  if (eionetUri) {
+    return eionetUri.split("/").filter(Boolean).pop() ?? null;
   }
   return null;
 }
@@ -797,8 +784,7 @@ function passesOutlierThreshold(row: any): boolean {
     return false;
   }
   const pollutant = normalizePollutant(
-    row?.phenomenon?.observed_property_code
-      ?? row?.phenomenon?.notation
+    row?.phenomenon?.notation
       ?? row?.phenomenon?.pollutant_label
       ?? row?.phenomenon?.label
       ?? row?.phenomenon_label

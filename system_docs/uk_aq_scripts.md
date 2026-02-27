@@ -1179,7 +1179,8 @@ python3 scripts/codeql_alerts_export.py --repo ChronicChannel-test/uk-aq-ingest 
 ```
 
 Notes:
-- Auth order: `GITHUB_TOKEN` env var, then `gh auth token` fallback.
+- Auth order: `GITHUB_TOKEN`, then `GH_TOKEN`, then `gh auth token` fallback.
+- Permission diagnostics are explicit for GitHub API failures (401/403/404) with fine-grained PAT guidance.
 - Output defaults to `.codeql/exports/<YYYY-MM-DD>/alerts.json` plus `instances/<alert_number>.json`.
 
 ### `scripts/codeql_batch.py`

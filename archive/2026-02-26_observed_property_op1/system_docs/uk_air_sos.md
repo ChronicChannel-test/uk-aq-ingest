@@ -79,7 +79,6 @@ python3 scripts/uk_air_sos/uk_air_sos_ingest.py --station-type AURN --region Bri
 The Edge Function `ingest_uk_air_sos` polls recent observations using the existing `timeseries` rows.
 It does not update `stations.station_name` (station metadata comes from the ingest/list scripts).
 `uk_air_sos_timeseries_checkpoints` tracks the last poll attempt per timeseries so the dispatcher can rotate batches.
-Pollutant filters now match canonical observed-property codes/display names (via `phenomena.observed_property_id -> observed_properties`) with fallback to legacy `notation`/`label`/`source_label`.
 
 ## Cloud Run polling
 - Cloud Run worker: `workers/uk_aq_uk_air_sos_cloud_run/run_job.ts`

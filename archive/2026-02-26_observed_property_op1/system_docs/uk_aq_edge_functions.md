@@ -237,8 +237,7 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
   - Hourly gap observations are keyed to the requested `timeseries_ref` (sensor id) to avoid payload `sensorsId` mismatches.
   - Hourly `observed_at` is derived from `coverage.datetimeTo.utc` when available; otherwise uses `period.datetimeTo.utc` (fallbacks to `datetime.utc` / `period.datetimeFrom.utc`) and clamps future timestamps back to `period.datetimeFrom.utc` or `now` to avoid future `last_observed_at`.
   - When `locations_fetched=false`, loads timeseries refs for all selected stations via `uk_aq_rpc_timeseries_refs_by_station_ids` so timeseries checkpoints can always be updated.
-  - Uses sensor IDs as `timeseries_ref` and `openaq:{parameter}` as `phenomena.source_label`.
-  - Phenomena upserts include canonical observed-property mapping (`observed_property_code`, domain, optional canonical unit) via `uk_aq_rpc_phenomena_upsert`.
+  - Uses sensor IDs as `timeseries_ref` and `openaq:{parameter}` as `phenomena.eionet_uri`.
   - If `station_refs` are provided, limits polling to those location ids; otherwise uses a tiered selector (`uk_aq_rpc_openaq_select_station_refs`) that returns both station refs and station ids.
   - Uses `batch_size` (from dispatcher `connectors.poll_timeseries_batch_size`) as `OPENAQ_MAX_REQUESTS_PER_RUN`.
   - Uses stale cap 4 and tiered cap up to 52 (`tier1` first, then `tier2`) for automatic station selection.
@@ -292,7 +291,6 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
   - Supports `skip_stations` to avoid station upserts; when set, stations are loaded from Supabase instead of `ListSensors`.
   - Supports `active_only` to limit polling to stations marked `enabled` or `site_active` in metadata.
   - Supports `station_refs` to limit polling to a specific set of station refs.
-  - Phenomena upserts use `source_label` keys (for example `breathelondon:pm2.5`) and map to canonical observed-property codes/domains via `uk_aq_rpc_phenomena_upsert`.
   - Uses `uk_aq_raw.breathelondon_station_checkpoints` for per-station scheduling (`next_due_at`, `ingest_lag_samples`).
   - `breathelondon_select_station_refs` stale selection excludes future-due rows (`due_at > now()`).
   - Supports `debug=true` to include a debug block in the response (Dropbox config status, no secrets).
@@ -334,7 +332,6 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
   - Request body supports `group`, `station_refs`, `species`, `days`, `start_date`, `end_date`, `batch_size`, `sleep_seconds`, `dry_run`, `csv_station_id`, and `csv_station_ref`.
   - Uses `/Information/MonitoringSites/GroupName={group}/Json` for stations.
   - Uses `/Data/SiteSpecies/SiteCode={code}/SpeciesCode={species}/StartDate={YYYY-MM-DD}/EndDate={YYYY-MM-DD}/Json` for raw data.
-  - Phenomena upserts use `source_label` keys (for example `laqn:NO2`) and map to canonical observed-property codes/domains via `uk_aq_rpc_phenomena_upsert`.
   - Dates are treated as UTC/GMT; when `end_date` is omitted, the edge function sets `EndDate` to tomorrow's UTC date so "today" is included.
   - Skips per-site/species ERG responses that return HTTP 400 (logs a warning; continues).
   - Includes zero-valued observations (no zero-value filtering).
@@ -353,7 +350,7 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
 - Purpose: Serve the latest values across all stations (optionally filtered by region/station/pollutant).
 - Triggered by: Web requests (read-only, no writes).
 - Auth mode: deployed with `verify_jwt=false` plus required header `X-UK-AQ-Upstream-Auth` (shared secret checked in-function).
-- Returns: flattened latest rows optimized for map clients: `id`, `last_value`, `last_value_at`, `display_name`, `connector_code`, `connector_label`, `station_id`, `station_ref`, `station_label`, `station_name`, `pcon_code`, `la_code`, `station_network_memberships`, `phenomenon_label`, `pollutant_label`, `observed_property_code`, `uom_display`.
+- Returns: flattened latest rows optimized for map clients: `id`, `last_value`, `last_value_at`, `display_name`, `connector_code`, `connector_label`, `station_id`, `station_ref`, `station_label`, `station_name`, `pcon_code`, `la_code`, `station_network_memberships`, `phenomenon_label`, `pollutant_label`, `pollutant_notation`, `uom_display`.
 - Params: `region`, `station_like`, `pollutant`, `connector_id`, `limit`, `pcon_code`, `window` (`3h|6h|1d|7d|all`, default `all`).
 - Notes:
   - The edge response intentionally omits nested `station` / `connector` / `phenomenon` objects to reduce payload size.

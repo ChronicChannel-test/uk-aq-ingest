@@ -103,33 +103,21 @@ const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
 
 const SPECIES_CONFIG: Record<
   string,
-  {
-    label: string;
-    uom: string;
-    source_label: string;
-    notation: string;
-    pollutant_label: string;
-    observed_property_code: string;
-    observed_property_domain: "aq" | "met";
-  }
+  { label: string; uom: string; eionet_uri: string; notation: string; pollutant_label: string }
 > = {
   IPM25: {
     label: "PM2.5",
     uom: "ug/m3",
-    source_label: "breathelondon:pm2.5",
+    eionet_uri: "breathelondon:pm2.5",
     notation: "PM2.5",
     pollutant_label: "pm2.5",
-    observed_property_code: "pm25",
-    observed_property_domain: "aq",
   },
   INO2: {
     label: "NO2",
     uom: "ug/m3",
-    source_label: "breathelondon:no2",
+    eionet_uri: "breathelondon:no2",
     notation: "NO2",
     pollutant_label: "no2",
-    observed_property_code: "no2",
-    observed_property_domain: "aq",
   },
 };
 
@@ -844,25 +832,19 @@ async function fetchPhenomenaIds(
   if (!speciesList.length) {
     return {};
   }
-  const sourceLabels = speciesList.map((species) => SPECIES_CONFIG[species].source_label);
-  const { data, error } = await publicRpcRequest<
-    Array<{ id: number; source_label?: string; eionet_uri?: string }>
-  >(
-    "uk_aq_rpc_phenomena_ids",
+  const eionetUris = speciesList.map((species) => SPECIES_CONFIG[species].eionet_uri);
+  const { data } = await postgrestRequest<Array<{ id: number; eionet_uri: string }>>(
+    "GET",
+    "phenomena",
     {
-      connector_id: Number(connectorId),
-      eionet_uris: sourceLabels,
+      select: "id,eionet_uri",
+      connector_id: `eq.${connectorId}`,
+      eionet_uri: postgrestIn(eionetUris),
     },
   );
-  if (error) {
-    throw new Error(`Phenomena id lookup failed: ${error.message}`);
-  }
   const mapping: Record<string, number> = {};
   for (const row of data ?? []) {
-    const sourceLabel = row.source_label ?? row.eionet_uri;
-    if (sourceLabel) {
-      mapping[String(sourceLabel)] = Number(row.id);
-    }
+    mapping[String(row.eionet_uri)] = Number(row.id);
   }
   return mapping;
 }
@@ -873,22 +855,18 @@ async function upsertPhenomena(connectorId: string, speciesList: string[]): Prom
     return {
       connector_id: connectorId,
       label: config.label,
-      source_label: config.source_label,
+      eionet_uri: config.eionet_uri,
       notation: config.notation,
       pollutant_label: config.pollutant_label,
-      observed_property_code: config.observed_property_code,
-      observed_property_display_name: config.label,
-      observed_property_domain: config.observed_property_domain,
-      canonical_uom: config.uom,
     };
   });
-  const { error } = await publicRpcRequest<Array<{ phenomena_upserted: number }>>(
-    "uk_aq_rpc_phenomena_upsert",
-    { rows: payload },
+  await postgrestRequest(
+    "POST",
+    "phenomena",
+    { on_conflict: "connector_id,eionet_uri" },
+    payload,
+    "resolution=merge-duplicates,return=minimal",
   );
-  if (error) {
-    throw new Error(`Phenomena upsert failed: ${error.message}`);
-  }
   return await fetchPhenomenaIds(connectorId, speciesList);
 }
 
@@ -2080,7 +2058,7 @@ serve(async (req) => {
                     station_id: stationId,
                     service_ref: serviceRef,
                     connector_id: connector.id,
-                    phenomenon_id: phenomenonIds[config.source_label],
+                    phenomenon_id: phenomenonIds[config.eionet_uri],
                     extras: { site_code: stationRef, species },
                   });
                 }

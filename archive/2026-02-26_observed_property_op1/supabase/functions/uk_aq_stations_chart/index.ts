@@ -6,7 +6,6 @@ import { createWeakEtag, ifNoneMatchMatches } from "../_shared/etag.ts";
 import { logEndpointEgress } from "../_shared/egress_metrics.ts";
 import { validateWorkerUpstreamAuth } from "../_shared/worker_auth.ts";
 
-const DEFAULT_STATION_LIKE = null;
 const DEFAULT_LIMIT = 1000;
 const MAX_LIMIT = 10000;
 const DEFAULT_WINDOW = "all";
@@ -36,7 +35,7 @@ function postgrestHeaders(schema = UK_AQ_CORE_SCHEMA): Record<string, string> {
   const headers: Record<string, string> = {
     apikey: SUPABASE_PRIVILEGED_KEY,
     "Content-Type": "application/json",
-    "x-ukaq-egress-caller": "uk_aq_latest",
+    "x-ukaq-egress-caller": "uk_aq_stations_chart",
   };
   if (schema && schema !== "public") {
     headers["Accept-Profile"] = schema;
@@ -90,7 +89,7 @@ serve(async (req) => {
   }
   const startedAtMs = Date.now();
   const finish = (response: Response, fields: Record<string, unknown> = {}) =>
-    logEndpointEgress(req, "uk_aq_latest", startedAtMs, response, fields);
+    logEndpointEgress(req, "uk_aq_stations_chart", startedAtMs, response, fields);
   const auth = validateWorkerUpstreamAuth(req);
   if (!auth.ok) {
     return await finish(json({ error: auth.error }, auth.status), {
@@ -105,16 +104,14 @@ serve(async (req) => {
   }
 
   const url = new URL(req.url);
-  const region = normalizeText(url.searchParams.get("region"));
-  const pconCode = normalizeText(url.searchParams.get("pcon_code"));
-  const stationLikeParam = normalizeText(url.searchParams.get("station_like"));
-  const scopeParam = normalizeText(url.searchParams.get("scope"));
-  const includeAll = scopeParam === "all" || stationLikeParam === "all";
-  const stationLike = includeAll
-    ? stationLikeParam && stationLikeParam !== "all"
-      ? stationLikeParam
-      : null
-    : stationLikeParam ?? (region ? null : DEFAULT_STATION_LIKE);
+  const stationLike = normalizeText(
+    url.searchParams.get("station_like") ?? url.searchParams.get("q"),
+  );
+  if (!stationLike) {
+    return await finish(json({ error: "Missing station_like (or q)." }, 400), {
+      error_type: "missing_station_like",
+    });
+  }
   const connectorId = normalizeText(url.searchParams.get("connector_id"));
   const pollutant = normalizePollutant(url.searchParams.get("pollutant"));
   const windowLabel = normalizeWindow(url.searchParams.get("window"));
@@ -142,9 +139,7 @@ serve(async (req) => {
   const ifNoneMatch = req.headers.get("if-none-match");
   const effectiveSinceId = since ? (sinceId ?? 0) : null;
   const requestFields = {
-    has_region: Boolean(region),
-    has_pcon_code: Boolean(pconCode),
-    has_station_like: Boolean(stationLike),
+    station_like: stationLike,
     has_connector_id: Boolean(connectorId),
     pollutant: pollutant ?? null,
     window: windowLabel,
@@ -157,8 +152,6 @@ serve(async (req) => {
   try {
     if (since && ifNoneMatch) {
       const hasDelta = await hasLatestDelta({
-        region,
-        pconCode,
         stationLike,
         connectorId,
         pollutant,
@@ -169,8 +162,7 @@ serve(async (req) => {
       });
       if (!hasDelta) {
         const emptyPayload = {
-          region,
-          pcon_code: pconCode,
+          station_like: stationLike,
           pollutant,
           window: windowLabel,
           since,
@@ -181,7 +173,7 @@ serve(async (req) => {
           data: [],
         };
         const emptyEtag = await createWeakEtag({
-          endpoint: "uk_aq_latest",
+          endpoint: "uk_aq_stations_chart",
           version: 1,
           payload: emptyPayload,
         });
@@ -199,8 +191,6 @@ serve(async (req) => {
       }
     }
     const result = await loadLatest({
-      region,
-      pconCode,
       stationLike,
       connectorId,
       pollutant,
@@ -210,8 +200,7 @@ serve(async (req) => {
       sinceId: effectiveSinceId,
     });
     const payload = {
-      region,
-      pcon_code: pconCode,
+      station_like: stationLike,
       pollutant,
       window: windowLabel,
       since,
@@ -222,7 +211,7 @@ serve(async (req) => {
       data: result.rows,
     };
     const etag = await createWeakEtag({
-      endpoint: "uk_aq_latest",
+      endpoint: "uk_aq_stations_chart",
       version: 1,
       payload,
     });
@@ -241,8 +230,6 @@ serve(async (req) => {
 });
 
 type LoadOptions = {
-  region: string | null;
-  pconCode: string | null;
   stationLike: string | null;
   connectorId: string | null;
   pollutant: string | null;
@@ -253,13 +240,11 @@ type LoadOptions = {
 };
 
 async function loadLatest(
-  { region, pconCode, stationLike, connectorId, pollutant, windowLabel, limit, since, sinceId }:
+  { stationLike, connectorId, pollutant, windowLabel, limit, since, sinceId }:
     LoadOptions,
 ) {
   const pollutantKey = normalizePollutant(pollutant);
   const { data, error } = await callLatestRpc({
-    region,
-    pconCode,
     stationLike,
     connectorId,
     pollutant: pollutantKey,
@@ -275,9 +260,7 @@ async function loadLatest(
   const rows = data ?? [];
   const nextCursor = deriveNextCursor(rows, since, sinceId);
 
-  const filtered = rows
-    .filter(passesOutlierThreshold)
-    .filter(hasAssignedGeoCode);
+  const filtered = rows.filter(passesOutlierThreshold);
 
   return {
     nextSince: nextCursor.since,
@@ -286,18 +269,10 @@ async function loadLatest(
     const station = row.station ?? null;
     const stationLabel = resolveStationLabel(station?.label, station?.station_ref, row.label);
     const pollutantLabel = resolvePhenomenonLabel(
-      row.phenomenon?.observed_property_display_name,
       row.phenomenon?.pollutant_label,
       row.phenomenon?.label,
       row.phenomenon?.notation,
-      row.phenomenon?.source_label ?? row.phenomenon?.eionet_uri,
-    );
-    const observedPropertyCode = normalizePollutant(
-      row.phenomenon?.observed_property_code
-        ?? row.phenomenon?.notation
-        ?? row.phenomenon?.pollutant_label
-        ?? row.phenomenon?.label
-        ?? null,
+      row.phenomenon?.eionet_uri,
     );
     const connector = row.connector ?? null;
     const stationMemberships = Array.isArray(station?.station_network_memberships)
@@ -315,6 +290,11 @@ async function loadLatest(
         })
         .filter((entry: any) => Boolean(entry))
       : [];
+    const networkName = deriveNetworkName(
+      stationMemberships,
+      connector?.display_name ?? connector?.label ?? null,
+      connector?.connector_code ?? null,
+    );
 
     return {
       id: row.id ?? null,
@@ -333,10 +313,10 @@ async function loadLatest(
       ),
       pcon_code: station?.pcon_code ?? null,
       la_code: station?.la_code ?? null,
+      network_name: networkName,
       station_network_memberships: stationMemberships,
       phenomenon_label: pollutantLabel,
       pollutant_label: pollutantLabel,
-      observed_property_code: observedPropertyCode,
       uom_display: formatUnit(row.uom),
     };
   }).sort((a, b) => {
@@ -354,8 +334,6 @@ async function loadLatest(
 }
 
 type LatestRpcCallOptions = {
-  region: string | null;
-  pconCode: string | null;
   stationLike: string | null;
   connectorId: string | null;
   pollutant: string | null;
@@ -368,8 +346,6 @@ type LatestRpcCallOptions = {
 
 async function callLatestRpc(options: LatestRpcCallOptions) {
   const {
-    region,
-    pconCode,
     stationLike,
     connectorId,
     pollutant,
@@ -381,8 +357,8 @@ async function callLatestRpc(options: LatestRpcCallOptions) {
   } = options;
   const limitRows = useLimitOne ? 1 : limit;
   const cursorBody = {
-    region,
-    pcon_code: pconCode,
+    region: null,
+    pcon_code: null,
     station_like: stationLike,
     connector_id: connectorId,
     pollutant,
@@ -410,8 +386,8 @@ async function callLatestRpc(options: LatestRpcCallOptions) {
     undefined,
     UK_AQ_PUBLIC_SCHEMA,
     {
-      region,
-      pcon_code: pconCode,
+      region: null,
+      pcon_code: null,
       station_like: stationLike,
       connector_id: connectorId,
       pollutant,
@@ -428,19 +404,8 @@ function looksLikeCursorSignatureMismatch(message: string): boolean {
     normalized.includes("uk_aq_latest_rpc");
 }
 
-function hasAssignedGeoCode(row: any): boolean {
-  const station = row?.station ?? null;
-  const pconCode = typeof station?.pcon_code === "string"
-    ? station.pcon_code.trim()
-    : "";
-  const laCode = typeof station?.la_code === "string"
-    ? station.la_code.trim()
-    : "";
-  return Boolean(pconCode || laCode);
-}
-
 async function hasLatestDelta(
-  { region, pconCode, stationLike, connectorId, pollutant, windowLabel, since, sinceId }:
+  { stationLike, connectorId, pollutant, windowLabel, since, sinceId }:
     LoadOptions,
 ): Promise<boolean> {
   if (!since) {
@@ -448,8 +413,6 @@ async function hasLatestDelta(
   }
   const pollutantKey = normalizePollutant(pollutant);
   const { data, error } = await callLatestRpc({
-    region,
-    pconCode,
     stationLike,
     connectorId,
     pollutant: pollutantKey,
@@ -559,33 +522,10 @@ function renderDisplayTemplate(
   template: string,
   tokens: Record<string, string>,
 ): string | null {
-  const normalizedStationName = normalizeNonEmptyText(tokens.station_name ?? null);
-  const normalizedStationRef = normalizeNonEmptyText(tokens.station_ref ?? null);
-  const hasStationNameToken = /\{station_name\}/i.test(template);
-  const hasStationRefToken = /\{station_ref\}/i.test(template);
-  const safeTokens = { ...tokens };
-  // Avoid duplicate refs for templates like "{station_name} - {station_ref}"
-  // when station_name already includes the station_ref.
-  if (
-    hasStationNameToken &&
-    hasStationRefToken &&
-    normalizedStationName &&
-    normalizedStationRef &&
-    normalizedStationName.toLowerCase().includes(normalizedStationRef.toLowerCase())
-  ) {
-    safeTokens.station_ref = "";
-  }
   const rendered = template.replace(/\{(station_name|station_label|station_ref)\}/g, (_, key) => {
-    return safeTokens[key] ?? "";
+    return tokens[key] ?? "";
   });
-  const cleaned = rendered
-    .replace(/\(\s*\)/g, "")
-    .replace(/\[\s*\]/g, "")
-    .replace(/\s+-\s+/g, " - ")
-    .replace(/\s+/g, " ")
-    .replace(/(?:\s*[-,:;|/]\s*)+$/g, "")
-    .replace(/^(?:\s*[-,:;|/]\s*)+/g, "")
-    .trim();
+  const cleaned = rendered.replace(/\s+-\s+/g, " - ").replace(/\s+/g, " ").trim();
   return cleaned ? cleaned : null;
 }
 
@@ -732,15 +672,11 @@ function resolveStationLabel(
 }
 
 function resolvePhenomenonLabel(
-  observedPropertyDisplayName: string | null | undefined,
   pollutantLabel: string | null | undefined,
   label: string | null | undefined,
   notation: string | null | undefined,
-  sourceLabel: string | null | undefined,
+  eionetUri: string | null | undefined,
 ): string | null {
-  if (observedPropertyDisplayName) {
-    return observedPropertyDisplayName;
-  }
   if (notation) {
     return notation;
   }
@@ -753,8 +689,8 @@ function resolvePhenomenonLabel(
   if (notation) {
     return notation;
   }
-  if (sourceLabel) {
-    return sourceLabel.split(/[:/]/).filter(Boolean).pop() ?? null;
+  if (eionetUri) {
+    return eionetUri.split("/").filter(Boolean).pop() ?? null;
   }
   return null;
 }
@@ -790,6 +726,25 @@ function normalizeNonEmptyText(value: string | null | undefined): string | null 
   return trimmed ? trimmed : null;
 }
 
+function deriveNetworkName(
+  stationMemberships: Array<{ network_label?: string | null; network_code?: string | null; is_primary?: boolean }>,
+  connectorLabel: string | null | undefined,
+  connectorCode: string | null | undefined,
+): string | null {
+  const memberships = Array.isArray(stationMemberships) ? stationMemberships : [];
+  const primary = memberships.find((entry) => Boolean(entry?.is_primary));
+  const primaryLabel = normalizeNonEmptyText(primary?.network_label ?? primary?.network_code ?? null);
+  if (primaryLabel) {
+    return primaryLabel;
+  }
+  const first = memberships[0];
+  const firstLabel = normalizeNonEmptyText(first?.network_label ?? first?.network_code ?? null);
+  if (firstLabel) {
+    return firstLabel;
+  }
+  return normalizeNonEmptyText(connectorLabel) ?? normalizeNonEmptyText(connectorCode);
+}
+
 function passesOutlierThreshold(row: any): boolean {
   const rawValue = row?.last_value;
   const value = Number(rawValue);
@@ -797,8 +752,7 @@ function passesOutlierThreshold(row: any): boolean {
     return false;
   }
   const pollutant = normalizePollutant(
-    row?.phenomenon?.observed_property_code
-      ?? row?.phenomenon?.notation
+    row?.phenomenon?.notation
       ?? row?.phenomenon?.pollutant_label
       ?? row?.phenomenon?.label
       ?? row?.phenomenon_label

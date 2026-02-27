@@ -73,29 +73,23 @@ const BASE_VALUE_TYPE_MAP: Record<
 const BASE_SCOMM_PHENOMENA: Record<
   string,
   {
-    source_label: string;
+    eionet_uri: string;
     label: string;
     notation: string;
     pollutant_label: string;
-    observed_property_code: string;
-    observed_property_domain: "aq" | "met";
   }
 > = {
   pm10: {
-    source_label: "sensorcommunity:pm10",
+    eionet_uri: "sensorcommunity:pm10",
     label: "PM10",
     notation: "PM10",
     pollutant_label: "pm10",
-    observed_property_code: "pm10",
-    observed_property_domain: "aq",
   },
   "pm2.5": {
-    source_label: "sensorcommunity:pm2.5",
+    eionet_uri: "sensorcommunity:pm2.5",
     label: "PM2.5",
     notation: "PM2.5",
     pollutant_label: "pm2.5",
-    observed_property_code: "pm25",
-    observed_property_domain: "aq",
   },
 };
 
@@ -159,40 +153,32 @@ const VALUE_TYPE_MAP: Record<
 const SCOMM_PHENOMENA: Record<
   string,
   {
-    source_label: string;
+    eionet_uri: string;
     label: string;
     notation: string;
     pollutant_label: string;
-    observed_property_code: string;
-    observed_property_domain: "aq" | "met";
   }
 > = {
   ...BASE_SCOMM_PHENOMENA,
   ...(SCOMM_INGEST_MET_FIELDS
     ? {
       temperature: {
-        source_label: "sensorcommunity:temperature",
+        eionet_uri: "sensorcommunity:temperature",
         label: "Temperature",
         notation: "temperature",
         pollutant_label: "temperature",
-        observed_property_code: "temperature",
-        observed_property_domain: "met",
       },
       humidity: {
-        source_label: "sensorcommunity:humidity",
+        eionet_uri: "sensorcommunity:humidity",
         label: "Humidity",
         notation: "humidity",
         pollutant_label: "humidity",
-        observed_property_code: "humidity",
-        observed_property_domain: "met",
       },
       pressure: {
-        source_label: "sensorcommunity:pressure",
+        eionet_uri: "sensorcommunity:pressure",
         label: "Pressure",
         notation: "pressure",
         pollutant_label: "pressure",
-        observed_property_code: "pressure",
-        observed_property_domain: "met",
       },
     }
     : {}),
@@ -795,45 +781,40 @@ async function upsertPhenomena(
 ): Promise<Record<string, number>> {
   const payload = Object.values(SCOMM_PHENOMENA).map((meta) => ({
     connector_id: connectorId,
-    source_label: meta.source_label,
+    eionet_uri: meta.eionet_uri,
     label: meta.label,
     notation: meta.notation,
     pollutant_label: meta.pollutant_label,
-    observed_property_code: meta.observed_property_code,
-    observed_property_display_name: meta.label,
-    observed_property_domain: meta.observed_property_domain,
   }));
-  const { error: upsertError } = await publicRpcRequest<
-    Array<{ phenomena_upserted: number }>
-  >(
-    "uk_aq_rpc_phenomena_upsert",
-    { rows: payload },
+  await postgrestRequest(
+    "POST",
+    "phenomena",
+    { on_conflict: "connector_id,eionet_uri" },
+    payload,
+    "resolution=merge-duplicates,return=minimal",
   );
-  if (upsertError) {
-    throw new Error(`Phenomena upsert failed: ${upsertError.message}`);
-  }
-  const { data, error: idsError } = await publicRpcRequest<
-    Array<{ id: number; source_label?: string; eionet_uri?: string }>
+  const { data } = await postgrestRequest<
+    Array<{ id: number; eionet_uri: string }>
   >(
-    "uk_aq_rpc_phenomena_ids",
+    "GET",
+    "phenomena",
     {
-      connector_id: Number(connectorId),
-      eionet_uris: Object.values(SCOMM_PHENOMENA).map((meta) => meta.source_label),
+      select: "id,eionet_uri",
+      connector_id: `eq.${connectorId}`,
+      eionet_uri: postgrestIn(
+        Object.values(SCOMM_PHENOMENA).map((meta) => meta.eionet_uri),
+      ),
     },
   );
-  if (idsError) {
-    throw new Error(`Phenomena id lookup failed: ${idsError.message}`);
-  }
   const idsByUri: Record<string, number> = {};
   for (const row of data ?? []) {
-    const sourceLabel = row?.source_label ?? row?.eionet_uri;
-    if (sourceLabel) {
-      idsByUri[sourceLabel] = Number(row.id);
+    if (row?.eionet_uri) {
+      idsByUri[row.eionet_uri] = Number(row.id);
     }
   }
   const idsByPollutant: Record<string, number> = {};
   for (const [pollutant, meta] of Object.entries(SCOMM_PHENOMENA)) {
-    const phenId = idsByUri[meta.source_label];
+    const phenId = idsByUri[meta.eionet_uri];
     if (phenId) {
       idsByPollutant[pollutant] = phenId;
     }

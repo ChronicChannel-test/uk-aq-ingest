@@ -1548,21 +1548,10 @@ async function loadTimeseries(
 
 async function loadPhenomena(connectorId: string, filters: string[]): Promise<Set<string>> {
   const needle = new Set(filters.map((value) => value.toLowerCase()));
-  const canonicalNeedle = new Set(
-    filters
-      .map((value) => value.toLowerCase().replace(/[^a-z0-9]+/g, ""))
-      .filter(Boolean),
-  );
   const { data, error } = await postgrestRequest<
-    Array<{
-      id: string;
-      label: string | null;
-      notation: string | null;
-      source_label: string | null;
-      observed_property?: { code?: string | null; display_name?: string | null } | null;
-    }>
+    Array<{ id: string; label: string | null; notation: string | null; eionet_uri: string | null }>
   >("GET", "phenomena", {
-    select: "id,label,notation,source_label,observed_property:observed_properties(code,display_name)",
+    select: "id,label,notation,eionet_uri",
     connector_id: `eq.${connectorId}`,
   });
   if (error) {
@@ -1573,24 +1562,12 @@ async function loadPhenomena(connectorId: string, filters: string[]): Promise<Se
     const id = row.id ? String(row.id) : "";
     const label = row.label ? String(row.label) : "";
     const notation = row.notation ? String(row.notation) : "";
-    const sourceLabel = row.source_label ? String(row.source_label) : "";
-    const observedPropertyCode = row.observed_property?.code
-      ? String(row.observed_property.code)
-      : "";
-    const observedPropertyDisplay = row.observed_property?.display_name
-      ? String(row.observed_property.display_name)
-      : "";
-    const observedPropertyCanonical = observedPropertyCode
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "");
+    const uri = row.eionet_uri ? String(row.eionet_uri) : "";
     if (
       (id && needle.has(id.toLowerCase())) ||
       (label && needle.has(label.toLowerCase())) ||
       (notation && needle.has(notation.toLowerCase())) ||
-      (sourceLabel && needle.has(sourceLabel.toLowerCase())) ||
-      (observedPropertyDisplay && needle.has(observedPropertyDisplay.toLowerCase())) ||
-      (observedPropertyCode && needle.has(observedPropertyCode.toLowerCase())) ||
-      (observedPropertyCanonical && canonicalNeedle.has(observedPropertyCanonical))
+      (uri && needle.has(uri.toLowerCase()))
     ) {
       if (id) {
         matches.add(id);
