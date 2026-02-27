@@ -1457,13 +1457,14 @@ serve(async (req) => {
     connectors = await loadConnectorConfigs();
     latestRuns = await loadLatestIngestRuns();
   } catch (error) {
+    const runtimeMessage = error instanceof Error ? error.message : String(error);
     await logError({
       severity: "error",
-      message: error instanceof Error ? error.message : String(error),
+      message: runtimeMessage,
       context: { component: "uk_aq_dispatch_polls", step: "load_connectors" },
     });
     return jsonResponse({
-      error: error instanceof Error ? error.message : String(error),
+      error: "load_connectors_failed",
       history_outbox: historyOutbox,
     }, 500);
   }
@@ -1511,16 +1512,17 @@ serve(async (req) => {
     try {
       queueClaimRows = await claimDispatchQueueJobs(runQueueClaimLimit);
     } catch (error) {
+      const runtimeMessage = error instanceof Error ? error.message : String(error);
       await logError({
         severity: "error",
-        message: error instanceof Error ? error.message : String(error),
+        message: runtimeMessage,
         context: {
           component: "uk_aq_dispatch_polls",
           step: "queue_claim",
         },
       });
       return jsonResponse({
-        error: error instanceof Error ? error.message : String(error),
+        error: "dispatch_queue_claim_failed",
         dispatch_mode: dispatchMode,
         history_outbox: historyOutbox,
       }, 500);
@@ -1771,9 +1773,10 @@ serve(async (req) => {
         selected.map((item) => item.connectorCode),
       );
     } catch (error) {
+      const runtimeMessage = error instanceof Error ? error.message : String(error);
       await logError({
         severity: "error",
-        message: error instanceof Error ? error.message : String(error),
+        message: runtimeMessage,
         context: {
           component: "uk_aq_dispatch_polls",
           step: "queue_enqueue",
@@ -1781,7 +1784,7 @@ serve(async (req) => {
         },
       });
       return jsonResponse({
-        error: error instanceof Error ? error.message : String(error),
+        error: "dispatch_queue_enqueue_failed",
         dispatch_mode: dispatchMode,
         history_outbox: historyOutbox,
       }, 500);
@@ -1932,7 +1935,7 @@ serve(async (req) => {
           connector_code: connectorCode,
           status: resp.ok ? "triggered" : "error",
           response_status: resp.status,
-          detail: resp.ok ? "dispatched" : JSON.stringify(resp.body),
+          detail: resp.ok ? "dispatched" : "dispatch_failed",
         });
       } else if (connectorCode === "sensorcommunity") {
         const resp = await callEdgeFunction(
@@ -1965,7 +1968,7 @@ serve(async (req) => {
           connector_code: connectorCode,
           status: resp.ok ? "triggered" : "error",
           response_status: resp.status,
-          detail: resp.ok ? "dispatched" : JSON.stringify(resp.body),
+          detail: resp.ok ? "dispatched" : "dispatch_failed",
         });
       } else if (connectorCode === "openaq") {
         const windowHours = getWindowHours(connector, connectorCode);
@@ -2001,7 +2004,7 @@ serve(async (req) => {
           connector_code: connectorCode,
           status: resp.ok ? "triggered" : "error",
           response_status: resp.status,
-          detail: resp.ok ? "dispatched" : JSON.stringify(resp.body),
+          detail: resp.ok ? "dispatched" : "dispatch_failed",
         });
       } else if (connectorCode === "breathelondon") {
         const batchLimit = getBatchLimit(connector, connectorCode);
@@ -2062,7 +2065,7 @@ serve(async (req) => {
             connector_code: connectorCode,
             status: resp.ok ? "triggered" : "error",
             response_status: resp.status,
-            detail: resp.ok ? "dispatched" : JSON.stringify(resp.body),
+            detail: resp.ok ? "dispatched" : "dispatch_failed",
           });
         }
       } else if (connectorCode === "erg_laqn") {
@@ -2119,7 +2122,7 @@ serve(async (req) => {
             connector_code: connectorCode,
             status: resp.ok ? "triggered" : "error",
             response_status: resp.status,
-            detail: resp.ok ? "dispatched" : JSON.stringify(resp.body),
+            detail: resp.ok ? "dispatched" : "dispatch_failed",
           });
         }
       } else {
