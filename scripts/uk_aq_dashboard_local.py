@@ -47,6 +47,11 @@ DISPATCH_MAX_ROWS = max(
     200,
     int(os.getenv("DISPATCH_MAX_ROWS", "5000")),
 )
+DB_SIZE_LOOKBACK_DAYS = max(
+    1,
+    int(os.getenv("UK_AQ_DB_SIZE_LOOKBACK_DAYS", "28")),
+)
+PUBLIC_SCHEMA = os.getenv("UK_AQ_PUBLIC_SCHEMA", "uk_aq_public")
 IN_FLIGHT_WARN_MINUTES = 5
 IN_FLIGHT_MAX_AGE_MINUTES = 180
 SCHEDULER_BACKEND_SUPABASE_FUNCTION = "supabase_function"
@@ -274,6 +279,62 @@ def _fetch_dispatcher_settings(
         "max_runs_per_dispatch_call": row.get("max_runs_per_dispatch_call") or 1,
         "updated_at": row.get("updated_at"),
     }
+
+
+def _fetch_db_size_metrics(
+    base_url: str,
+    headers: Dict[str, str],
+    now: datetime,
+) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+    public_headers = dict(headers)
+    public_headers["Accept-Profile"] = PUBLIC_SCHEMA
+    since = now - timedelta(days=DB_SIZE_LOOKBACK_DAYS)
+    try:
+        rows = _fetch_json(
+            f"{base_url}/uk_aq_db_size_metrics_hourly",
+            public_headers,
+            {
+                "select": "bucket_hour,database_label,database_name,size_bytes,recorded_at",
+                "bucket_hour": f"gte.{_to_postgrest_ts(since)}",
+                "order": "bucket_hour.asc",
+                "limit": "5000",
+            },
+        )
+    except Exception as exc:
+        return [], str(exc)
+
+    normalized: List[Dict[str, Any]] = []
+    for row in rows:
+        label = str(row.get("database_label") or "").strip().lower()
+        if label not in {"ingestdb", "historydb"}:
+            continue
+        bucket_hour = _parse_timestamp(row.get("bucket_hour"))
+        recorded_at = _parse_timestamp(row.get("recorded_at"))
+        if bucket_hour is None:
+            continue
+        raw_size = row.get("size_bytes")
+        try:
+            size_bytes = int(raw_size)
+        except (TypeError, ValueError):
+            continue
+        if size_bytes < 0:
+            continue
+        normalized.append(
+            {
+                "bucket_hour": bucket_hour.isoformat().replace("+00:00", "Z"),
+                "database_label": label,
+                "database_name": row.get("database_name"),
+                "size_bytes": size_bytes,
+                "recorded_at": (
+                    recorded_at.isoformat().replace("+00:00", "Z")
+                    if isinstance(recorded_at, datetime)
+                    else None
+                ),
+            }
+        )
+
+    normalized.sort(key=lambda item: _parse_timestamp(item.get("bucket_hour")) or UTC_DATETIME_MIN)
+    return normalized, None
 
 
 def _parse_timestamp(value: Optional[str]) -> Optional[datetime]:
@@ -537,6 +598,11 @@ def _build_dashboard(
             active_station_keys[(connector_id, station_id)] = True
 
     now = datetime.now(timezone.utc)
+    db_size_metrics, db_size_metrics_error = _fetch_db_size_metrics(
+        base_url,
+        headers,
+        now,
+    )
     ingest_runs = _get_ingest_runs_cached(
         base_url,
         headers,
@@ -732,6 +798,8 @@ def _build_dashboard(
         "generated_at": now.isoformat().replace("+00:00", "Z"),
         "dispatch_cursor": next_dispatch_cursor,
         "buckets": list(BUCKETS),
+        "db_size_metrics": db_size_metrics,
+        "db_size_metrics_error": db_size_metrics_error,
         "pollutants": pollutants_payload,
         "dispatch_runs": dispatch_runs,
         "dispatcher_settings": dispatcher_settings,

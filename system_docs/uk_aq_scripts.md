@@ -228,11 +228,14 @@ Notes:
 - Serves the UI at `http://127.0.0.1:8045` and JSON at `/api/dashboard`.
 - The HTML lives at `data/uk_aq_dashboard/uk_aq_dashboard.html`.
 - Dispatcher feed shows gap-station context for OpenAQ runs as `(<n> GAP)` under Stations when `gap_stations_polled > 0`.
+- Includes a DB size trend panel at the bottom (Ingest DB dark red, History DB dark blue) with fixed `0-500 MB` y-axis and period selector (`6h`, `12h`, `24h`, `48h`, `7d`, `14d`, `28d`), sourced from `uk_aq_public.uk_aq_db_size_metrics_hourly`.
 - Requires a service role key (anon/authenticated JWTs will be rejected).
 
 Environment:
 - `SUPABASE_URL`
 - `SB_SECRET_KEY`
+- `UK_AQ_PUBLIC_SCHEMA` (optional; default `uk_aq_public`, used for DB size metrics view reads)
+- `UK_AQ_DB_SIZE_LOOKBACK_DAYS` (optional; default `28`)
 
 ### `scripts/uk_aq_station_snapshot_local.py`
 Purpose:

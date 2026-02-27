@@ -233,6 +233,53 @@
         font-family: "Space Grotesk", "Segoe UI", sans-serif;
       }
 
+      .db-size-legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-bottom: 10px;
+      }
+
+      .db-size-item {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-family: "IBM Plex Mono", ui-monospace, monospace;
+        font-size: 12px;
+        color: var(--ink-soft);
+      }
+
+      .db-size-swatch {
+        width: 12px;
+        height: 12px;
+        border-radius: 999px;
+      }
+
+      .db-size-chart-wrap {
+        width: 100%;
+        height: 290px;
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        background: rgba(255, 255, 255, 0.68);
+        overflow: hidden;
+      }
+
+      .db-size-chart {
+        width: 100%;
+        height: 100%;
+        display: block;
+      }
+
+      .db-size-empty {
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--ink-soft);
+        font-family: "IBM Plex Mono", ui-monospace, monospace;
+        font-size: 12px;
+      }
+
       .status-pill {
         display: inline-flex;
         align-items: center;
@@ -459,6 +506,10 @@
         td:nth-child(n + 5) {
           display: none;
         }
+
+        .db-size-chart-wrap {
+          height: 240px;
+        }
       }
     </style>
   </head>
@@ -537,9 +588,21 @@
       const DISPATCH_CONNECTOR_STORAGE_KEY = "uk_aq_dispatch_connector";
       const DISPATCH_LOOKBACK_STORAGE_KEY = "uk_aq_dispatch_lookback_mins";
       const DISPATCH_CURSOR_STORAGE_KEY = "uk_aq_dispatch_cursor";
+      const DB_SIZE_PERIOD_OPTIONS = [
+        { value: 6, label: "6 hours" },
+        { value: 12, label: "12 hours" },
+        { value: 24, label: "24 hours" },
+        { value: 48, label: "48 hours" },
+        { value: 168, label: "7 days" },
+        { value: 336, label: "14 days" },
+        { value: 672, label: "28 days" },
+      ];
+      const DB_SIZE_PERIOD_STORAGE_KEY = "uk_aq_db_size_period_hours";
+      const DB_SIZE_Y_MAX_MB = 500;
       let dispatchConnectorFilter = "all";
       let dispatchLookbackMinutes = 30;
       let dispatchCursor = null;
+      let dbSizePeriodHours = 24;
 
       try {
         const storedConnector = localStorage.getItem(DISPATCH_CONNECTOR_STORAGE_KEY);
@@ -557,8 +620,24 @@
         if (storedCursor) {
           dispatchCursor = storedCursor;
         }
+        const storedDbSizePeriod = Number(localStorage.getItem(DB_SIZE_PERIOD_STORAGE_KEY));
+        if (
+          Number.isFinite(storedDbSizePeriod) &&
+          DB_SIZE_PERIOD_OPTIONS.some((opt) => opt.value === storedDbSizePeriod)
+        ) {
+          dbSizePeriodHours = storedDbSizePeriod;
+        }
       } catch (_err) {
         // Ignore storage read issues and use defaults.
+      }
+
+      function escapeHtml(value) {
+        return String(value || "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;");
       }
 
       function formatTime(value) {
@@ -572,6 +651,17 @@
           return "n/a";
         }
         return Number(value).toLocaleString();
+      }
+
+      function formatMegabytes(valueMb) {
+        if (valueMb === null || valueMb === undefined || Number.isNaN(Number(valueMb))) {
+          return "n/a";
+        }
+        const value = Number(valueMb);
+        if (Math.abs(value) >= 100) {
+          return Math.round(value).toLocaleString();
+        }
+        return value.toFixed(1);
       }
 
       function asNumber(value) {
@@ -1019,6 +1109,171 @@
         return panel;
       }
 
+      function buildDbPath(points, key, xFor, yFor) {
+        let path = "";
+        let started = false;
+        points.forEach((point) => {
+          const value = point[key];
+          if (value === null || value === undefined || Number.isNaN(Number(value))) {
+            started = false;
+            return;
+          }
+          const command = started ? "L" : "M";
+          path += `${command}${xFor(point.ms).toFixed(2)},${yFor(Number(value)).toFixed(2)} `;
+          started = true;
+        });
+        return path.trim();
+      }
+
+      function getSingleSeriesPoint(points, key) {
+        const valid = points.filter((point) => {
+          const value = point[key];
+          return value !== null && value !== undefined && !Number.isNaN(Number(value));
+        });
+        return valid.length === 1 ? valid[0] : null;
+      }
+
+      function renderDbSizePanel(rows, sourceError) {
+        const panel = document.createElement("section");
+        panel.className = "panel";
+
+        const cutoffMs = Date.now() - dbSizePeriodHours * 60 * 60 * 1000;
+        const pointMap = new Map();
+        (Array.isArray(rows) ? rows : []).forEach((row) => {
+          const label = String((row && row.database_label) || "").toLowerCase();
+          if (label !== "ingestdb" && label !== "historydb") {
+            return;
+          }
+          const timestamp = row.bucket_hour || row.recorded_at;
+          const ms = new Date(timestamp).getTime();
+          if (Number.isNaN(ms) || ms < cutoffMs) {
+            return;
+          }
+          const sizeBytes = asNumber(row.size_bytes);
+          if (sizeBytes === null || sizeBytes < 0) {
+            return;
+          }
+          const key = String(ms);
+          const point = pointMap.get(key) || { ms, ingestdb: null, historydb: null };
+          point[label] = sizeBytes / (1024 * 1024);
+          pointMap.set(key, point);
+        });
+
+        const points = Array.from(pointMap.values()).sort((a, b) => a.ms - b.ms);
+        const maxObservedMb = points.reduce((max, point) => {
+          const ingest = point.ingestdb === null ? 0 : Number(point.ingestdb);
+          const history = point.historydb === null ? 0 : Number(point.historydb);
+          return Math.max(max, ingest, history);
+        }, 0);
+
+        let chartMarkup = `<div class="db-size-empty">No DB size samples in the selected period.</div>`;
+        if (points.length > 0) {
+          const width = 960;
+          const height = 300;
+          const margin = { top: 16, right: 18, bottom: 36, left: 56 };
+          const innerWidth = width - margin.left - margin.right;
+          const innerHeight = height - margin.top - margin.bottom;
+
+          const minX = points[0].ms;
+          const maxX = points[points.length - 1].ms;
+          const spanX = Math.max(1, maxX - minX);
+          const xFor = (ms) => margin.left + ((ms - minX) / spanX) * innerWidth;
+          const yFor = (valueMb) => {
+            const capped = Math.max(0, Math.min(DB_SIZE_Y_MAX_MB, Number(valueMb)));
+            return margin.top + (1 - capped / DB_SIZE_Y_MAX_MB) * innerHeight;
+          };
+
+          const yTicks = [0, 100, 200, 300, 400, 500];
+          const xTicks = [minX, minX + spanX / 2, maxX];
+
+          const ingestPath = buildDbPath(points, "ingestdb", xFor, yFor);
+          const historyPath = buildDbPath(points, "historydb", xFor, yFor);
+          const ingestSinglePoint = getSingleSeriesPoint(points, "ingestdb");
+          const historySinglePoint = getSingleSeriesPoint(points, "historydb");
+
+          chartMarkup = `
+            <svg class="db-size-chart" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" role="img" aria-label="Ingest and history DB size trend">
+              ${yTicks
+                .map((tick) => {
+                  const y = yFor(tick);
+                  return `
+                    <line x1="${margin.left}" y1="${y}" x2="${width - margin.right}" y2="${y}" stroke="#e7dbc7" stroke-width="1" />
+                    <text x="${margin.left - 8}" y="${y + 4}" text-anchor="end" fill="#6b6255" font-size="11" font-family="IBM Plex Mono, ui-monospace, monospace">${tick}</text>
+                  `;
+                })
+                .join("")}
+              <line x1="${margin.left}" y1="${height - margin.bottom}" x2="${width - margin.right}" y2="${height - margin.bottom}" stroke="#bfae91" stroke-width="1.3" />
+              ${xTicks
+                .map((tick, idx) => {
+                  const x = xFor(tick);
+                  const anchor = idx === 0 ? "start" : idx === xTicks.length - 1 ? "end" : "middle";
+                  return `
+                    <line x1="${x}" y1="${height - margin.bottom}" x2="${x}" y2="${height - margin.bottom + 5}" stroke="#bfae91" stroke-width="1" />
+                    <text x="${x}" y="${height - margin.bottom + 20}" text-anchor="${anchor}" fill="#6b6255" font-size="11" font-family="IBM Plex Mono, ui-monospace, monospace">${new Date(tick).toLocaleString()}</text>
+                  `;
+                })
+                .join("")}
+              ${ingestPath ? `<path d="${ingestPath}" fill="none" stroke="#7a1f1f" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round" />` : ""}
+              ${historyPath ? `<path d="${historyPath}" fill="none" stroke="#123b7a" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round" />` : ""}
+              ${ingestSinglePoint ? `<circle cx="${xFor(ingestSinglePoint.ms).toFixed(2)}" cy="${yFor(Number(ingestSinglePoint.ingestdb)).toFixed(2)}" r="3.5" fill="#7a1f1f" />` : ""}
+              ${historySinglePoint ? `<circle cx="${xFor(historySinglePoint.ms).toFixed(2)}" cy="${yFor(Number(historySinglePoint.historydb)).toFixed(2)}" r="3.5" fill="#123b7a" />` : ""}
+            </svg>
+          `;
+        }
+
+        const maxNote = maxObservedMb > DB_SIZE_Y_MAX_MB
+          ? `Max observed ${formatMegabytes(maxObservedMb)} MB (chart capped at ${DB_SIZE_Y_MAX_MB} MB).`
+          : `Y-axis fixed at ${DB_SIZE_Y_MAX_MB} MB.`;
+        const sourceWarning = sourceError
+          ? `<div class="footnote">Metric source warning: ${escapeHtml(sourceError)}</div>`
+          : "";
+
+        panel.innerHTML = `
+          <h2 class="panel-heading">
+            <span>DB Size Trend</span>
+            <div class="dispatch-filters">
+              <label class="dispatch-filter" for="db-size-period-filter">
+                Time period
+                <select id="db-size-period-filter">
+                  ${DB_SIZE_PERIOD_OPTIONS
+                    .map((opt) => `<option value="${opt.value}" ${opt.value === dbSizePeriodHours ? "selected" : ""}>${opt.label}</option>`)
+                    .join("")}
+                </select>
+              </label>
+            </div>
+          </h2>
+          <div class="db-size-legend">
+            <span class="db-size-item"><span class="db-size-swatch" style="background:#7a1f1f"></span>Ingest DB</span>
+            <span class="db-size-item"><span class="db-size-swatch" style="background:#123b7a"></span>History DB</span>
+          </div>
+          <div class="db-size-chart-wrap">${chartMarkup}</div>
+          <div class="footnote">Ingest DB = dark red, History DB = dark blue. ${maxNote}</div>
+          ${sourceWarning}
+        `;
+
+        const periodSelect = panel.querySelector("#db-size-period-filter");
+        if (periodSelect) {
+          periodSelect.addEventListener("change", (event) => {
+            const nextHours = Number(event.target.value);
+            if (
+              !Number.isFinite(nextHours) ||
+              !DB_SIZE_PERIOD_OPTIONS.some((opt) => opt.value === nextHours)
+            ) {
+              return;
+            }
+            dbSizePeriodHours = nextHours;
+            try {
+              localStorage.setItem(DB_SIZE_PERIOD_STORAGE_KEY, String(dbSizePeriodHours));
+            } catch (_err) {
+              // Ignore storage write issues.
+            }
+            loadDashboard();
+          });
+        }
+
+        return panel;
+      }
+
       function renderConnectorSettingsPanel(connectors) {
         const schedulerBackendAllowlist = new Set(["uk_air_sos", "sensorcommunity", "breathelondon", "openaq"]);
         const panel = document.createElement("section");
@@ -1258,6 +1513,7 @@
           data.pollutants.forEach((pollutant) => {
             dashboardEl.appendChild(renderPanel(pollutant));
           });
+          dashboardEl.appendChild(renderDbSizePanel(data.db_size_metrics, data.db_size_metrics_error));
           setStatus(`Updated ${formatTime(data.generated_at)} (local time)`);
           setDataMeta(data);
         } catch (err) {
