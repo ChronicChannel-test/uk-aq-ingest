@@ -29,6 +29,7 @@ from uk_aq_enrich_station_names import (
     DEFAULT_GB_GPKG_PATH,
     NI_BBOX,
     OpenNamesLookup,
+    _coerce_float,
     _ensure_gb_gpkg,
     _in_bbox,
     _parse_geometry_coords,
@@ -226,13 +227,11 @@ def _resolve_region(matches: Sequence[Dict[str, Any]], max_distance_m: Optional[
         region = match.get("region")
         if not region:
             continue
-        distance = match.get("distance_m")
-        if max_distance_m is not None and distance is not None:
-            try:
-                if float(distance) > max_distance_m:
-                    continue
-            except (TypeError, ValueError):
-                distance = None
+        distance_m = match.get("distance_m")
+        if max_distance_m is not None and distance_m is not None:
+            distance_value = _coerce_float(distance_m)
+            if distance_value is not None and distance_value > max_distance_m:
+                continue
         return str(region)
     return None
 

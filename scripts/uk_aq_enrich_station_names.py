@@ -701,13 +701,11 @@ def _resolve_region_from_gb_matches(
         region = match.get("region")
         if not region:
             continue
-        distance = match.get("distance_m")
-        if max_distance_m is not None and distance is not None:
-            try:
-                if float(distance) > max_distance_m:
-                    continue
-            except (TypeError, ValueError):
-                distance = None
+        distance_m = match.get("distance_m")
+        if max_distance_m is not None and distance_m is not None:
+            distance_value = _coerce_float(distance_m)
+            if distance_value is not None and distance_value > max_distance_m:
+                continue
         return str(region)
     return None
 

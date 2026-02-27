@@ -605,15 +605,11 @@ def main() -> int:
 
         existing = existing_refs.get(station_id)
         uk_air_id = None
-        match_distance = None
-        match_method = None
         if existing:
             uk_air_id = existing.get("uk_air_id")
-            match_distance = existing.get("match_distance_m")
-            match_method = existing.get("match_method") or "existing"
             skipped_existing += 1
         else:
-            match_row, found_distance, found_method, status = _find_register_match(
+            match_row, match_distance, match_method, status = _find_register_match(
                 station,
                 register_rows,
                 args.match_distance_m,
@@ -628,8 +624,6 @@ def main() -> int:
             if status != "matched" or not match_row:
                 unmatched += 1
                 continue
-            match_distance = found_distance
-            match_method = found_method
             uk_air_id = match_row.get("uk_air_id")
             if uk_air_id:
                 station_ref_rows.append(
