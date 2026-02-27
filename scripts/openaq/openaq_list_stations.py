@@ -615,7 +615,6 @@ def normalize_location(location: Dict[str, Any]) -> Dict[str, Any]:
         - {"", "None"}
     )
     country = location.get("country") if isinstance(location.get("country"), dict) else {}
-    provider = location.get("provider") if isinstance(location.get("provider"), dict) else {}
     owner_name = _normalize_owner_name(_owner_name(location))
     datetime_first = location.get("datetimeFirst") if isinstance(location.get("datetimeFirst"), dict) else {}
     datetime_last = location.get("datetimeLast") if isinstance(location.get("datetimeLast"), dict) else {}

@@ -40,7 +40,6 @@ const SCOMM_INGEST_MET_FIELDS = parseBool(process.env.SCOMM_INGEST_MET_FIELDS, f
 const SCOMM_TRIGGER_MODE = parseTriggerMode(process.env.SCOMM_TRIGGER_MODE);
 
 const SUPABASE_URL = requiredEnv("SUPABASE_URL");
-const SB_SECRET_KEY = (process.env.SB_SECRET_KEY || "").trim();
 const SUPABASE_PRIVILEGED_KEY = requiredEnvAny(["SB_SECRET_KEY"]);
 const UK_AQ_CORE_SCHEMA = process.env.UK_AQ_CORE_SCHEMA || "uk_aq_core";
 const UK_AQ_RAW_SCHEMA = process.env.UK_AQ_RAW_SCHEMA || "uk_aq_raw";

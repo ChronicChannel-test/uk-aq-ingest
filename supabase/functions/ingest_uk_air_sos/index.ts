@@ -687,7 +687,7 @@ serve(async (req) => {
         errorLogger,
         refreshDropbox,
       );
-      accessToken = await uploadDropboxRaw(
+      await uploadDropboxRaw(
         accessToken,
         rawRecorder,
         connector?.id ?? requestedConnectorId ?? null,

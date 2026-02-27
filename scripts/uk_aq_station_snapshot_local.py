@@ -134,8 +134,8 @@ def _refresh_access_token(auth_state: dict[str, str]) -> tuple[str | None, str |
             body = exc.read().decode("utf-8")
             parsed = json.loads(body)
             message = parsed.get("msg") or parsed.get("message") or message
-        except Exception:
-            pass
+        except (json.JSONDecodeError, UnicodeDecodeError, ValueError):
+            message = str(message)
         return None, f"Token refresh failed ({exc.code}): {message}"
     except Exception as exc:
         return None, f"Token refresh failed: {exc}"
@@ -157,8 +157,8 @@ def _refresh_access_token(auth_state: dict[str, str]) -> tuple[str | None, str |
                         "UK_AQ_DEV_JWT": access_token,
                     },
                 )
-            except OSError:
-                pass
+            except OSError as exc:
+                auth_state["env_write_error"] = str(exc)
     return access_token, None
 
 

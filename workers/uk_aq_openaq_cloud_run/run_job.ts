@@ -114,7 +114,6 @@ const OPENAQ_INGEST_SCRIPT_PATH =
     "/app/runtime/ingest_openaq/index.ts").trim();
 
 const SUPABASE_URL = requiredEnv("SUPABASE_URL");
-const SB_SECRET_KEY = (Deno.env.get("SB_SECRET_KEY") || "").trim();
 const SUPABASE_PRIVILEGED_KEY = requiredEnvAny(["SB_SECRET_KEY"]);
 const UK_AQ_CORE_SCHEMA = (Deno.env.get("UK_AQ_CORE_SCHEMA") || "uk_aq_core")
   .trim();
@@ -1648,7 +1647,7 @@ async function main(): Promise<void> {
   let runFailed = false;
   let runStatus = "failed";
   let rateLimitResetAt: string | null = null;
-  let runMessage = "unknown";
+  let runMessage: string;
 
   try {
     await waitForServer(`http://127.0.0.1:${PORT}/`);

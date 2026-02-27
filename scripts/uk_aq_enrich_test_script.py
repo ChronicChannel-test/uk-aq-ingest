@@ -12,7 +12,7 @@ import json
 import os
 import re
 import sys
-from typing import Iterable, List, Optional, Tuple
+from typing import List, Optional, Tuple
 from urllib.parse import urlencode
 
 import requests

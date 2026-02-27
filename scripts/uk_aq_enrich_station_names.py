@@ -707,7 +707,7 @@ def _resolve_region_from_gb_matches(
                 if float(distance) > max_distance_m:
                     continue
             except (TypeError, ValueError):
-                pass
+                distance = None
         return str(region)
     return None
 

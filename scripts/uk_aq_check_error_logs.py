@@ -9,7 +9,7 @@ import argparse
 import json
 import os
 from datetime import datetime, timedelta, timezone
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 import requests
 

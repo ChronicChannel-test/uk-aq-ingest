@@ -232,7 +232,7 @@ def _resolve_region(matches: Sequence[Dict[str, Any]], max_distance_m: Optional[
                 if float(distance) > max_distance_m:
                     continue
             except (TypeError, ValueError):
-                pass
+                distance = None
         return str(region)
     return None
 

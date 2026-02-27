@@ -15,7 +15,7 @@ from datetime import datetime, timedelta, timezone
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import parse_qs, urlparse
 
 import requests
@@ -141,6 +141,20 @@ def _request_path(url: str) -> str:
     return parsed.path or url
 
 
+def _ensure_allowed_base_url(base_url: str) -> str:
+    parsed = urlparse(base_url)
+    if parsed.scheme not in {"https", "http"}:
+        raise ValueError(f"Unsupported URL scheme for base URL: {parsed.scheme}")
+    host = (parsed.hostname or "").lower()
+    if not host:
+        raise ValueError("Missing hostname in base URL.")
+    if host in {"localhost", "127.0.0.1"}:
+        return base_url.rstrip("/")
+    if host.endswith(".supabase.co") or host.endswith(".supabase.in"):
+        return base_url.rstrip("/")
+    raise ValueError(f"Unsupported host for base URL: {host}")
+
+
 def _safe_response_text(resp: requests.Response, max_chars: int = 500) -> str:
     text = (resp.text or "").strip()
     if len(text) <= max_chars:
@@ -163,15 +177,26 @@ def _fetch_json(url: str, headers: Dict[str, str], params: Dict[str, str]) -> Li
     return payload if isinstance(payload, list) else []
 
 
-def _patch_json(url: str, headers: Dict[str, str], payload: Dict[str, Any]) -> None:
-    resp = requests.patch(url, headers=headers, json=payload, timeout=60)
+def _patch_json(
+    base_url: str,
+    table: str,
+    headers: Dict[str, str],
+    params: Dict[str, str],
+    payload: Dict[str, Any],
+) -> None:
+    if not re.fullmatch(r"[a-z_]+", table):
+        raise ValueError(f"Invalid table name: {table}")
+    safe_base_url = _ensure_allowed_base_url(base_url)
+    url = f"{safe_base_url}/{table}"
+    resp = requests.patch(url, headers=headers, params=params, json=payload, timeout=60)
     if not resp.ok:
         payload_keys = sorted(payload.keys())
+        params_keys = sorted(params.keys())
         raise RuntimeError(
             (
                 "PostgREST PATCH error "
                 f"{resp.status_code} at {_request_path(url)} "
-                f"(payload_keys={payload_keys}): {_safe_response_text(resp)}"
+                f"(params_keys={params_keys}, payload_keys={payload_keys}): {_safe_response_text(resp)}"
             )
         )
 
@@ -888,8 +913,10 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     "scheduler_backend": scheduler_backend,
                 }
                 _patch_json(
-                    f"{base_url}/connectors?id=eq.{connector_id}",
+                    base_url,
+                    "connectors",
                     headers,
+                    {"id": f"eq.{connector_id}"},
                     payload,
                 )
         except Exception as exc:
@@ -949,8 +976,10 @@ class DashboardHandler(BaseHTTPRequestHandler):
         }
         try:
             _patch_json(
-                f"{base_url}/dispatcher_settings?id=eq.1",
+                base_url,
+                "dispatcher_settings",
                 headers,
+                {"id": "eq.1"},
                 payload,
             )
         except Exception as exc:

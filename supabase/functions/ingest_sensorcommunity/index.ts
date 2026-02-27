@@ -466,24 +466,20 @@ async function fetchJsonWithRetry(
   url: string,
   attempts = 3,
   rawRecorder?: RawRecorder | null,
-  deadlineMs?: number,
+  deadlineMs = Number.POSITIVE_INFINITY,
 ): Promise<unknown> {
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
-    if (deadlineMs !== undefined) {
-      const remainingBudgetMs = deadlineMs - Date.now();
-      if (remainingBudgetMs <= MIN_FETCH_TIMEOUT_MS) {
-        throw new Error(
-          "Runtime budget exhausted before Sensor.Community fetch completed.",
-        );
-      }
+    const remainingBudgetMs = deadlineMs - Date.now();
+    if (remainingBudgetMs <= MIN_FETCH_TIMEOUT_MS) {
+      throw new Error(
+        "Runtime budget exhausted before Sensor.Community fetch completed.",
+      );
     }
 
-    const timeoutMs = deadlineMs !== undefined
-      ? Math.max(
-        MIN_FETCH_TIMEOUT_MS,
-        Math.min(DEFAULT_TIMEOUT_MS, deadlineMs - Date.now() - 250),
-      )
-      : DEFAULT_TIMEOUT_MS;
+    const timeoutMs = Math.max(
+      MIN_FETCH_TIMEOUT_MS,
+      Math.min(DEFAULT_TIMEOUT_MS, deadlineMs - Date.now() - 250),
+    );
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -520,7 +516,6 @@ async function fetchJsonWithRetry(
       if (
         err instanceof DOMException &&
         err.name === "AbortError" &&
-        deadlineMs !== undefined &&
         deadlineMs - Date.now() <= MIN_FETCH_TIMEOUT_MS
       ) {
         throw new Error(
@@ -531,11 +526,9 @@ async function fetchJsonWithRetry(
         throw err;
       }
       const retryDelayMs = Math.min(30_000, 2 ** attempt * 1000);
-      if (deadlineMs !== undefined) {
-        const remainingBudgetMs = deadlineMs - Date.now();
-        if (remainingBudgetMs <= retryDelayMs + MIN_FETCH_TIMEOUT_MS) {
-          throw err;
-        }
+      const remainingBudgetMs = deadlineMs - Date.now();
+      if (remainingBudgetMs <= retryDelayMs + MIN_FETCH_TIMEOUT_MS) {
+        throw err;
       }
       await sleep(retryDelayMs);
     } finally {
@@ -1761,9 +1754,6 @@ serve(async (req) => {
   let requestedConnectorId: string | undefined;
   let requestedConnectorCode = SCOMM_CONNECTOR_CODE;
   let requestedConnectorLabel = SCOMM_SERVICE_LABEL;
-  let requestedServiceRef = SCOMM_SERVICE_REF;
-  let requestedCountry = SCOMM_COUNTRY;
-  let requestedBaseUrl = SCOMM_BASE_URL;
   let requestedNoFilter = false;
   let fetchedCount = 0;
   let filteredCount = 0;
@@ -1827,12 +1817,18 @@ serve(async (req) => {
       requestedConnectorId = payload.connector_id;
       requestedConnectorCode = payload.connector_code ?? SCOMM_CONNECTOR_CODE;
       requestedConnectorLabel = payload.connector_label ?? SCOMM_SERVICE_LABEL;
-      requestedServiceRef = payload.service_ref ?? SCOMM_SERVICE_REF;
-      requestedCountry = payload.country ?? SCOMM_COUNTRY;
-      requestedBaseUrl = (payload.base_url ?? SCOMM_BASE_URL).replace(
-        /\/$/,
-        "",
-      );
+      const requestedServiceRef =
+        typeof payload.service_ref === "string" && payload.service_ref.trim()
+          ? payload.service_ref
+          : SCOMM_SERVICE_REF;
+      const requestedCountry =
+        typeof payload.country === "string" && payload.country.trim()
+          ? payload.country
+          : SCOMM_COUNTRY;
+      const requestedBaseUrl =
+        typeof payload.base_url === "string" && payload.base_url.trim()
+          ? payload.base_url.replace(/\/$/, "")
+          : SCOMM_BASE_URL.replace(/\/$/, "");
       requestedNoFilter = Boolean(payload.no_filter);
 
       log.info("Poll request", {
@@ -1871,7 +1867,7 @@ serve(async (req) => {
               connector_id: requestedConnectorId ?? null,
               connector_code: requestedConnectorCode,
             },
-            connector_code: requestedConnectorCode ?? SCOMM_CONNECTOR_CODE,
+            connector_code: requestedConnectorCode,
             connector_id: requestedConnectorId ?? null,
           });
         }
@@ -2271,7 +2267,7 @@ serve(async (req) => {
           connector_code: requestedConnectorCode,
           connector_label: requestedConnectorLabel,
         },
-        connector_code: requestedConnectorCode ?? SCOMM_CONNECTOR_CODE,
+        connector_code: requestedConnectorCode,
         connector_id: requestedConnectorId ?? null,
       });
     } else {
@@ -2296,7 +2292,7 @@ serve(async (req) => {
 
     let accessToken: string | null = null;
     const resolvedConnectorCode = connector?.connector_code ??
-      requestedConnectorCode ?? SCOMM_CONNECTOR_CODE;
+      requestedConnectorCode;
     const refreshDropbox = dropboxConfig
       ? () => dropboxRefreshAccessToken(dropboxConfig)
       : undefined;
@@ -2317,7 +2313,7 @@ serve(async (req) => {
         refreshDropbox,
       );
       if (!shouldStop()) {
-        accessToken = await uploadDropboxRaw(
+        await uploadDropboxRaw(
           accessToken,
           rawRecorder,
           connector?.id ?? requestedConnectorId ?? null,

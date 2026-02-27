@@ -23,7 +23,6 @@ type FlushSummary = HistoryOutboxFlushStats & {
 };
 
 const SUPABASE_URL = requiredEnv("SUPABASE_URL");
-const SB_SECRET_KEY = (Deno.env.get("SB_SECRET_KEY") || "").trim();
 const SUPABASE_PRIVILEGED_KEY = requiredEnvAny(["SB_SECRET_KEY"]);
 const HISTORY_SUPABASE_URL = (Deno.env.get("HISTORY_SUPABASE_URL") || "").trim();
 const HISTORY_SECRET_KEY = (

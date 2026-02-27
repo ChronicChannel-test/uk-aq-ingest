@@ -46,7 +46,6 @@ const UK_AIR_SOS_INGEST_SCRIPT_PATH =
     "/app/runtime/ingest_uk_air_sos/index.ts").trim();
 
 const SUPABASE_URL = requiredEnv("SUPABASE_URL");
-const SB_SECRET_KEY = (Deno.env.get("SB_SECRET_KEY") || "").trim();
 const SUPABASE_PRIVILEGED_KEY = requiredEnvAny(["SB_SECRET_KEY"]);
 const UK_AQ_CORE_SCHEMA = (Deno.env.get("UK_AQ_CORE_SCHEMA") || "uk_aq_core")
   .trim();

@@ -15,7 +15,7 @@ import sys
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import requests
 from dotenv import load_dotenv
@@ -29,8 +29,6 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from scripts.erg_laqn.erg_laqn_list_stations import (
     LAQN_BASE_URL,
-    LAQN_CONNECTOR_DISPLAY_NAME,
-    LAQN_CONNECTOR_LABEL,
     LAQN_CONNECTOR_CODE,
     LAQN_SERVICE_REF,
     LAQN_USER_AGENT,

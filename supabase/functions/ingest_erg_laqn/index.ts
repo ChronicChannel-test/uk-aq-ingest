@@ -1722,7 +1722,7 @@ serve(async (req) => {
   let status = 200;
   let responsePayload: Record<string, unknown> = {};
   let connectorId: string | null = null;
-  let connectorCodeForLog = LAQN_CONNECTOR_CODE;
+  let connectorCodeForLog: string;
   let skippedHttp400 = 0;
   let historyWritten = 0;
   let historyReceiptsUpserted = 0;
@@ -2008,7 +2008,7 @@ serve(async (req) => {
                       error: message,
                     },
                     connector_code: connectorCodeForLog,
-                    connector_id: connectorId ?? null,
+                    connector_id: connectorId,
                     station_id: stationId,
                     timeseries_id: timeseriesId,
                   });
@@ -2186,7 +2186,7 @@ serve(async (req) => {
         error: message,
       },
       connector_code: connectorCodeForLog,
-      connector_id: connectorId ?? null,
+      connector_id: connectorId,
     });
   }
 
@@ -2211,7 +2211,7 @@ serve(async (req) => {
         refreshDropbox,
       );
       if (!dryRun) {
-        accessToken = await uploadErgDailyCsvs(
+        await uploadErgDailyCsvs(
           accessToken,
           connectorId,
           csvStationIdRaw,
@@ -2236,7 +2236,7 @@ serve(async (req) => {
           connector_code: connectorCodeForLog,
         },
         connector_code: connectorCodeForLog,
-        connector_id: connectorId ?? null,
+        connector_id: connectorId,
       });
     }
   }

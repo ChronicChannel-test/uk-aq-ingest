@@ -62,8 +62,8 @@ def request_token(
             body = exc.read().decode("utf-8")
             parsed = json.loads(body)
             message = parsed.get("msg") or parsed.get("message") or message
-        except Exception:
-            pass
+        except (json.JSONDecodeError, UnicodeDecodeError, ValueError):
+            message = str(message)
         raise SystemExit(f"Auth request failed ({exc.code}): {message}") from exc
 
 

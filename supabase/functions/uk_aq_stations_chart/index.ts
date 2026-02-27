@@ -703,9 +703,6 @@ function resolvePhenomenonLabel(
   if (label) {
     return label;
   }
-  if (notation) {
-    return notation;
-  }
   if (sourceLabel) {
     return sourceLabel.split(/[:/]/).filter(Boolean).pop() ?? null;
   }

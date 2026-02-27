@@ -424,7 +424,6 @@ def main() -> int:
         if station_id is None:
             continue
         for species in species_list:
-            config = SPECIES_CONFIG[species]
             timeseries_ref = _build_timeseries_ref(station_ref, species)
             timeseries_id = timeseries_id_map.get(timeseries_ref)
             if timeseries_id is None:

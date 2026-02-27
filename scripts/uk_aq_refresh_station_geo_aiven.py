@@ -19,7 +19,7 @@ import os
 import struct
 import sys
 import time
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import psycopg2
 import requests
@@ -224,7 +224,7 @@ def main() -> int:
                         try:
                             last_id = int(station_id)
                         except (TypeError, ValueError):
-                            pass
+                            station_id = None
                     lon, lat = geometry_to_lon_lat(row.get("geometry"))
                     if lon is None or lat is None:
                         missing_coords += 1

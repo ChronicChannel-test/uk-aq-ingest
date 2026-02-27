@@ -3060,7 +3060,7 @@ serve(async (req) => {
             continue;
           }
         }
-        if (stationId !== null && Number.isFinite(stationId)) {
+        if (typeof stationId === "number" && Number.isFinite(stationId)) {
           polledStationIds.add(stationId);
         }
         const baseObservedAt = tsCheckpoint?.last_observed_at ??

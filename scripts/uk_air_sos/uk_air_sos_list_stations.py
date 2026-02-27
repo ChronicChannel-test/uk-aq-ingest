@@ -19,7 +19,7 @@ import time
 import warnings
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Set
 
 warnings.filterwarnings(
     "ignore",
