@@ -262,12 +262,46 @@
         border-radius: 14px;
         background: rgba(255, 255, 255, 0.68);
         overflow: hidden;
+        position: relative;
       }
 
       .db-size-chart {
         width: 100%;
         height: 100%;
         display: block;
+      }
+
+      .db-size-tooltip-hit {
+        cursor: pointer;
+      }
+
+      .db-size-hover-tooltip {
+        position: absolute;
+        left: 0;
+        top: 0;
+        transform: translateX(-50%);
+        background: rgba(31, 28, 22, 0.94);
+        color: #fff;
+        border-radius: 10px;
+        padding: 7px 9px;
+        box-shadow: 0 10px 20px rgba(0, 0, 0, 0.18);
+        font-family: "IBM Plex Mono", ui-monospace, monospace;
+        font-size: 11px;
+        line-height: 1.35;
+        white-space: nowrap;
+        pointer-events: none;
+        opacity: 0;
+        visibility: hidden;
+        z-index: 4;
+      }
+
+      .db-size-hover-tooltip.visible {
+        opacity: 1;
+        visibility: visible;
+      }
+
+      .db-size-hover-tooltip div + div {
+        margin-top: 2px;
       }
 
       .db-size-empty {
@@ -1133,6 +1167,86 @@
         return valid.length === 1 ? valid[0] : null;
       }
 
+      function buildDbTooltipTargets(points, key, label, color, xFor, yFor) {
+        return points
+          .map((point) => {
+            const value = point[key];
+            if (value === null || value === undefined || Number.isNaN(Number(value))) {
+              return "";
+            }
+            const bucketLabel = new Date(point.ms).toLocaleString();
+            const sizeLabel = `${formatMegabytes(Number(value))} MB`;
+            return `
+              <circle
+                class="db-size-tooltip-hit"
+                cx="${xFor(point.ms).toFixed(2)}"
+                cy="${yFor(Number(value)).toFixed(2)}"
+                r="7"
+                fill="${color}"
+                fill-opacity="0.001"
+                stroke="none"
+                pointer-events="all"
+                data-label="${escapeHtml(label)}"
+                data-bucket="${escapeHtml(bucketLabel)}"
+                data-size="${escapeHtml(sizeLabel)}"
+              />
+            `;
+          })
+          .join("");
+      }
+
+      function bindDbSizeTooltips(panel) {
+        const chartWrap = panel.querySelector(".db-size-chart-wrap");
+        const tooltip = panel.querySelector(".db-size-hover-tooltip");
+        const targets = panel.querySelectorAll(".db-size-tooltip-hit");
+        if (!chartWrap || !tooltip || targets.length === 0) {
+          return;
+        }
+
+        function positionTooltip(clientX, clientY) {
+          const wrapRect = chartWrap.getBoundingClientRect();
+          const localY = clientY - wrapRect.top;
+          const halfWidth = Math.max(30, tooltip.offsetWidth / 2 + 8);
+          const x = Math.max(halfWidth, Math.min(wrapRect.width - halfWidth, clientX - wrapRect.left));
+          const tooltipHeight = Math.max(20, tooltip.offsetHeight);
+          const y = Math.max(8, Math.min(wrapRect.height - tooltipHeight - 8, localY + 10));
+          tooltip.style.left = `${x}px`;
+          tooltip.style.top = `${y}px`;
+        }
+
+        function showTooltip(event) {
+          const target = event.currentTarget;
+          const label = target.getAttribute("data-label") || "";
+          const bucket = target.getAttribute("data-bucket") || "";
+          const size = target.getAttribute("data-size") || "";
+          tooltip.innerHTML = `
+            <div>${escapeHtml(label)}</div>
+            <div>Bucket: ${escapeHtml(bucket)}</div>
+            <div>DB size: ${escapeHtml(size)}</div>
+          `;
+          tooltip.classList.add("visible");
+          positionTooltip(event.clientX, event.clientY);
+        }
+
+        function moveTooltip(event) {
+          if (!tooltip.classList.contains("visible")) {
+            return;
+          }
+          positionTooltip(event.clientX, event.clientY);
+        }
+
+        function hideTooltip() {
+          tooltip.classList.remove("visible");
+        }
+
+        targets.forEach((target) => {
+          target.addEventListener("mouseenter", showTooltip);
+          target.addEventListener("mousemove", moveTooltip);
+          target.addEventListener("mouseleave", hideTooltip);
+        });
+        chartWrap.addEventListener("mouseleave", hideTooltip);
+      }
+
       function renderDbSizePanel(rows, sourceError) {
         const panel = document.createElement("section");
         panel.className = "panel";
@@ -1190,6 +1304,22 @@
           const historyPath = buildDbPath(points, "historydb", xFor, yFor);
           const ingestSinglePoint = getSingleSeriesPoint(points, "ingestdb");
           const historySinglePoint = getSingleSeriesPoint(points, "historydb");
+          const ingestTooltipTargets = buildDbTooltipTargets(
+            points,
+            "ingestdb",
+            "Ingest DB",
+            "#ff2d2d",
+            xFor,
+            yFor,
+          );
+          const historyTooltipTargets = buildDbTooltipTargets(
+            points,
+            "historydb",
+            "History DB",
+            "#3b82f6",
+            xFor,
+            yFor,
+          );
 
           chartMarkup = `
             <svg class="db-size-chart" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" role="img" aria-label="Ingest and history DB size trend">
@@ -1213,10 +1343,12 @@
                   `;
                 })
                 .join("")}
-              ${ingestPath ? `<path d="${ingestPath}" fill="none" stroke="#7a1f1f" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round" />` : ""}
-              ${historyPath ? `<path d="${historyPath}" fill="none" stroke="#123b7a" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round" />` : ""}
-              ${ingestSinglePoint ? `<circle cx="${xFor(ingestSinglePoint.ms).toFixed(2)}" cy="${yFor(Number(ingestSinglePoint.ingestdb)).toFixed(2)}" r="3.5" fill="#7a1f1f" />` : ""}
-              ${historySinglePoint ? `<circle cx="${xFor(historySinglePoint.ms).toFixed(2)}" cy="${yFor(Number(historySinglePoint.historydb)).toFixed(2)}" r="3.5" fill="#123b7a" />` : ""}
+              ${ingestPath ? `<path d="${ingestPath}" fill="none" stroke="#ff2d2d" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round" />` : ""}
+              ${historyPath ? `<path d="${historyPath}" fill="none" stroke="#3b82f6" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round" />` : ""}
+              ${ingestTooltipTargets}
+              ${historyTooltipTargets}
+              ${ingestSinglePoint ? `<circle cx="${xFor(ingestSinglePoint.ms).toFixed(2)}" cy="${yFor(Number(ingestSinglePoint.ingestdb)).toFixed(2)}" r="3.5" fill="#ff2d2d" />` : ""}
+              ${historySinglePoint ? `<circle cx="${xFor(historySinglePoint.ms).toFixed(2)}" cy="${yFor(Number(historySinglePoint.historydb)).toFixed(2)}" r="3.5" fill="#3b82f6" />` : ""}
             </svg>
           `;
         }
@@ -1243,13 +1375,15 @@
             </div>
           </h2>
           <div class="db-size-legend">
-            <span class="db-size-item"><span class="db-size-swatch" style="background:#7a1f1f"></span>Ingest DB</span>
-            <span class="db-size-item"><span class="db-size-swatch" style="background:#123b7a"></span>History DB</span>
+            <span class="db-size-item"><span class="db-size-swatch" style="background:#ff2d2d"></span>Ingest DB</span>
+            <span class="db-size-item"><span class="db-size-swatch" style="background:#3b82f6"></span>History DB</span>
           </div>
-          <div class="db-size-chart-wrap">${chartMarkup}</div>
-          <div class="footnote">Ingest DB = dark red, History DB = dark blue. ${maxNote}</div>
+          <div class="db-size-chart-wrap">${chartMarkup}<div class="db-size-hover-tooltip" aria-hidden="true"></div></div>
+          <div class="footnote">Ingest DB = bright red, History DB = medium blue. ${maxNote}</div>
           ${sourceWarning}
         `;
+
+        bindDbSizeTooltips(panel);
 
         const periodSelect = panel.querySelector("#db-size-period-filter");
         if (periodSelect) {
