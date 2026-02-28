@@ -8,8 +8,8 @@
 
 -- 1) Create new hypertable in target schema (example: uk_aq_history.observations_ts)
 -- create table uk_aq_history.observations_ts (
---   connector_id integer not null,
---   timeseries_id integer not null,
+--   connector_id bigint not null,
+--   timeseries_id bigint not null,
 --   observed_at timestamptz not null,
 --   value double precision,
 --   status text,

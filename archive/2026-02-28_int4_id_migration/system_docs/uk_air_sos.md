@@ -62,8 +62,8 @@ Applied in `scripts/uk_air_sos/uk_air_sos_ingest.py`:
 - Label format: `<eionet pollutant URI> <station_ref> - <station label>`
 
 ## IDs
-- `connectors.id` and `timeseries.id` use integer internally; `stations.id` remains bigint. Upstream identifiers are stored in `service_ref`, `station_ref`, and `timeseries_ref`.
-- Any upstream identifier that arrives as text (even if numeric) uses a `*_ref` column; internal joins use `*_id` columns.
+- `connectors`, `stations`, and `timeseries` use bigint `id` internally, with upstream identifiers stored in `service_ref`, `station_ref`, and `timeseries_ref`.
+- Any upstream identifier that arrives as text (even if numeric) uses a `*_ref` column; internal joins always use bigint `*_id`.
 - `observations` references `timeseries.id`.
 
 ## Commands

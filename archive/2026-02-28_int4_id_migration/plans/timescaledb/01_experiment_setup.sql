@@ -15,15 +15,15 @@ create table if not exists staging.timescaledb_experiment_config (
   source_schema text not null default 'uk_aq_history',
   source_table text not null default 'observations',
   sample_station_id bigint,
-  sample_timeseries_id integer,
+  sample_timeseries_id bigint,
   sample_days integer not null default 90,
   inserted_at timestamptz not null default now()
 );
 
 -- Raw sample table mirrors the source shape (adjust column list if your source differs).
 create table if not exists staging.obs_sample_raw (
-  connector_id integer not null,
-  timeseries_id integer not null,
+  connector_id bigint not null,
+  timeseries_id bigint not null,
   observed_at timestamptz not null,
   value double precision,
   status text,
@@ -38,8 +38,8 @@ create index if not exists obs_sample_raw_timeseries_observed_idx
 
 -- Destination table for Timescale test. It starts as a regular table.
 create table if not exists staging.obs_sample_ts (
-  connector_id integer not null,
-  timeseries_id integer not null,
+  connector_id bigint not null,
+  timeseries_id bigint not null,
   observed_at timestamptz not null,
   value double precision,
   status text,

@@ -12,7 +12,7 @@ language plpgsql
 set search_path = uk_aq_core, uk_aq_raw, public, pg_catalog
 as $$
 declare
-  v_connector_id integer;
+  v_connector_id bigint;
   station_refs text[];
 begin
   select id into v_connector_id
@@ -123,7 +123,7 @@ language plpgsql
 set search_path = uk_aq_core, uk_aq_raw, public, pg_catalog
 as $$
 declare
-  v_connector_id integer;
+  v_connector_id bigint;
   station_refs text[];
 begin
   select id into v_connector_id
@@ -446,7 +446,7 @@ language plpgsql
 set search_path = uk_aq_core, uk_aq_raw, public, pg_catalog
 as $$
 declare
-  v_connector_id integer;
+  v_connector_id bigint;
   station_refs text[];
 begin
   select id into v_connector_id
@@ -501,7 +501,7 @@ language plpgsql
 set search_path = uk_aq_core, uk_aq_raw, public, pg_catalog
 as $$
 declare
-  v_connector_id integer;
+  v_connector_id bigint;
   station_refs text[];
 begin
   select id into v_connector_id

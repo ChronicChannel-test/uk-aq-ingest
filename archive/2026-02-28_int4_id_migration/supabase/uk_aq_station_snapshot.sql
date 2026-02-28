@@ -11,7 +11,7 @@ create index if not exists observations_timeseries_observed_at_desc_idx
 create or replace function uk_aq_public.uk_aq_station_snapshot(
   p_station_id bigint default null,
   p_station_ref text default null,
-  p_timeseries_id integer default null,
+  p_timeseries_id bigint default null,
   p_window text default '6h',
   p_obs_limit integer default 100
 )
@@ -28,8 +28,8 @@ declare
   v_station_checkpoint_rows jsonb := '[]'::jsonb;
   v_timeseries_checkpoint_rows jsonb := '[]'::jsonb;
   v_observations jsonb := '[]'::jsonb;
-  v_selected_timeseries_id integer;
-  v_timeseries_ids integer[] := '{}'::integer[];
+  v_selected_timeseries_id bigint;
+  v_timeseries_ids bigint[] := '{}'::bigint[];
   v_window text := lower(coalesce(nullif(trim(p_window), ''), '6h'));
   v_obs_limit integer := case when p_obs_limit = 1000 then 1000 else 100 end;
   v_now timestamptz := now();
@@ -87,7 +87,7 @@ begin
   from uk_aq_core.timeseries t
   where t.station_id = v_station_id;
 
-  select coalesce(array_agg(t.id order by t.id), '{}'::integer[])
+  select coalesce(array_agg(t.id order by t.id), '{}'::bigint[])
   into v_timeseries_ids
   from uk_aq_core.timeseries t
   where t.station_id = v_station_id;
@@ -157,6 +157,6 @@ begin
 end;
 $$;
 
-revoke all on function uk_aq_public.uk_aq_station_snapshot(bigint, text, integer, text, integer) from public;
-grant execute on function uk_aq_public.uk_aq_station_snapshot(bigint, text, integer, text, integer) to authenticated;
-grant execute on function uk_aq_public.uk_aq_station_snapshot(bigint, text, integer, text, integer) to service_role;
+revoke all on function uk_aq_public.uk_aq_station_snapshot(bigint, text, bigint, text, integer) from public;
+grant execute on function uk_aq_public.uk_aq_station_snapshot(bigint, text, bigint, text, integer) to authenticated;
+grant execute on function uk_aq_public.uk_aq_station_snapshot(bigint, text, bigint, text, integer) to service_role;

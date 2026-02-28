@@ -98,8 +98,8 @@ SQL
   INSERTED=$(psql "$SBASE_HISTORY_DB_URL" -v ON_ERROR_STOP=1 -q -t -A <<SQL
 DROP TABLE IF EXISTS tmp_hist;
 CREATE TEMP TABLE tmp_hist (
-  connector_id integer,
-  timeseries_id integer,
+  connector_id bigint,
+  timeseries_id bigint,
   observed_at timestamptz,
   value double precision,
   status text
@@ -129,8 +129,8 @@ SQL
   DELETED=$(psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -q -t -A <<SQL
 DROP TABLE IF EXISTS tmp_del;
 CREATE TEMP TABLE tmp_del (
-  connector_id integer,
-  timeseries_id integer,
+  connector_id bigint,
+  timeseries_id bigint,
   observed_at timestamptz
 );
 \copy tmp_del FROM '${CSV_KEYS}' WITH (FORMAT csv);
