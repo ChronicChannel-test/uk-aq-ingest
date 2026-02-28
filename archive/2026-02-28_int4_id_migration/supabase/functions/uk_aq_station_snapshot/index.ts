@@ -48,24 +48,6 @@ function parseBigIntParam(value: string | null): bigint | null {
   }
 }
 
-function parseInt4Param(value: string | null): number | null {
-  if (!value) {
-    return null;
-  }
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return null;
-  }
-  const parsed = Number(trimmed);
-  if (!Number.isInteger(parsed)) {
-    return null;
-  }
-  if (parsed < -2147483648 || parsed > 2147483647) {
-    return null;
-  }
-  return parsed;
-}
-
 function parseWindow(value: string | null): SnapshotWindow | null {
   if (!value || !value.trim()) {
     return "6h";
@@ -155,7 +137,7 @@ serve(async (req) => {
   const url = new URL(req.url);
   const stationId = parseBigIntParam(url.searchParams.get("station_id"));
   const stationRef = (url.searchParams.get("station_ref") ?? "").trim() || null;
-  const timeseriesId = parseInt4Param(url.searchParams.get("timeseries_id"));
+  const timeseriesId = parseBigIntParam(url.searchParams.get("timeseries_id"));
   const windowValue = parseWindow(url.searchParams.get("window"));
   const obsLimit = parseObsLimit(url.searchParams.get("obs_limit"));
 
@@ -191,7 +173,7 @@ serve(async (req) => {
     .rpc("uk_aq_station_snapshot", {
       p_station_id: stationId === null ? null : stationId.toString(),
       p_station_ref: stationRef,
-      p_timeseries_id: timeseriesId,
+      p_timeseries_id: timeseriesId === null ? null : timeseriesId.toString(),
       p_window: windowValue,
       p_obs_limit: obsLimit,
     });

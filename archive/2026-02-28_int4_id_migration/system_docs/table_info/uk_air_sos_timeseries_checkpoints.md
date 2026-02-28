@@ -4,7 +4,7 @@ Tracks the last time each UK-AIR SOS timeseries was polled so batches can rotate
 even when a station stops sending data.
 
 ## Columns
-- `timeseries_id` (integer, PK): Internal timeseries id.
+- `timeseries_id` (bigint, PK): Internal timeseries id.
 - `last_polled_at` (timestamptz): When the timeseries was last attempted.
 - `updated_at` (timestamptz): Updated alongside `last_polled_at`.
 

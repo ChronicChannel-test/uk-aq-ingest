@@ -467,12 +467,9 @@ Note:
 - Triggered by: Web requests (read-only, requires authenticated JWT).
 - Params:
   - `station_id` or `station_ref` (one required)
-  - `timeseries_id` (optional, int4 / integer id)
+  - `timeseries_id` (optional)
   - `window` (`6h|24h|7d`, default `6h`)
   - `obs_limit` (`100|1000`, default `100`)
-- ID typing:
-  - `station_id` remains bigint.
-  - `timeseries_id` is integer.
 - Auth:
   - Requires `Authorization: Bearer <JWT>`.
   - Verifies identity with `auth.getUser()`.

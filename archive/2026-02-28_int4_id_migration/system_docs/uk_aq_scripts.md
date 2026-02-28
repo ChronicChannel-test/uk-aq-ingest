@@ -1166,9 +1166,9 @@ Notes:
 
 ## Keys
 - `stations` uses bigint `id` with `station_ref` for upstream identifiers (unique by `connector_id, service_ref, station_ref`).
-- `timeseries` uses integer `id` with `timeseries_ref` for upstream identifiers (unique by `connector_id, service_ref, timeseries_ref`).
-- `observations` references `timeseries.id` (integer) and uses `(connector_id, timeseries_id, observed_at)` as the primary key.
-- `connectors.id` and all `connector_id` FKs are integer. External identifiers that arrive as text (even if numeric) use `*_ref`; internal joins use `*_id`.
+- `timeseries` uses bigint `id` with `timeseries_ref` for upstream identifiers (unique by `connector_id, service_ref, timeseries_ref`).
+- `observations` references `timeseries.id` (bigint) and uses `(connector_id, timeseries_id, observed_at)` as the primary key.
+- External identifiers that arrive as text (even if numeric) use `*_ref`; internal joins always use bigint `*_id`.
 
 ### `scripts/codeql_alerts_export.py`
 Purpose:
