@@ -65,6 +65,14 @@
 - Never suggest reducing website polling frequency below 1 minute.
 - Treat 1-minute website polling as a fixed requirement when proposing egress optimizations.
 
+## Supabase Egress Policy
+- Unless explicitly stated otherwise, "egress" means **Supabase billable egress** (bytes leaving Supabase to external callers).
+- Do not treat request upload payload metrics (for example `uk_aq_public.uk_aq_observation_rpc_metrics_minute.payload_bytes`) as Supabase egress; those are client-to-Supabase uploads and should be described as ingress/upload bytes.
+- When reporting egress changes, clearly separate:
+  - endpoint response egress estimates (`uk_aq_public.uk_aq_endpoint_egress_metrics_minute`)
+  - write/upload payload metrics (`uk_aq_public.uk_aq_observation_rpc_metrics_minute`)
+- Do not claim a Supabase egress improvement from write-path refactors unless endpoint/API egress metrics (or Supabase billing/usage counters) also move in the same direction.
+
 ## HistoryDB Granularity Policy
 - HistoryDB must preserve raw observation granularity at all times; do not propose aggregation/downsampling/rollups as the default storage strategy.
 - Do not suggest rollups, downsampling, or any aggregation-based size reduction unless the user explicitly asks for aggregation.

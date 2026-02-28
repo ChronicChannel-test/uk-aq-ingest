@@ -1,0 +1,156 @@
+[
+  {
+    "network": "Gov.UK SOS AURN (UK-AIR SOS)",
+    "endpoints": [
+      "https://uk-air.defra.gov.uk/sos-ukair/api/v1/timeseries/{timeseries_ref_or_id}/getData",
+      "{connector.service_url}/timeseries/{timeseries_ref_or_id}/getData"
+    ],
+    "status_fields_found": [
+      "values[*][2]",
+      "values[*].status",
+      "values[*].quality",
+      "values[*].qc"
+    ],
+    "status_semantics_notes": "Observation-level status is parsed as free-text from UK-AIR payloads. It is written to ingest observations.status, but there is no text->status_id mapping for history upsert.",
+    "persisted_to": [
+      {
+        "db": "ingest",
+        "table": "uk_aq_core.observations",
+        "column": "status",
+        "code_ref": "supabase/functions/ingest_uk_air_sos/index.ts:527"
+      },
+      {
+        "db": "ingest",
+        "table": "uk_aq_raw.history_observation_outbox",
+        "column": "payload[].status (conditional outbox path)",
+        "code_ref": "supabase/functions/_shared/history_client.ts:530"
+      },
+      {
+        "db": "history",
+        "table": "uk_aq_history.observations",
+        "column": "status_id (currently null from cloud-run ingest path)",
+        "code_ref": "/Users/mikehinford/Library/CloudStorage/Dropbox/Projects/CIC Website/CIC Air Quality Networks/CIC-Test-UK-AQ-Schema/CIC-test-uk-aq-schema/schemas/history_db/history_db_dualwrite_bootstrap.sql:165"
+      }
+    ],
+    "mapping_code_refs": [
+      "supabase/functions/ingest_uk_air_sos/index.ts:1700",
+      "supabase/functions/_shared/history_client.ts:278",
+      "supabase/functions/_shared/history_client.ts:454",
+      "/Users/mikehinford/Library/CloudStorage/Dropbox/Projects/CIC Website/CIC Air Quality Networks/CIC-Test-UK-AQ-Schema/CIC-test-uk-aq-schema/schemas/history_db/history_db_dualwrite_bootstrap.sql:159"
+    ]
+  },
+  {
+    "network": "Sensor.Community",
+    "endpoints": [
+      "https://data.sensor.community/airrohr/v1/filter/country=GB"
+    ],
+    "status_fields_found": [],
+    "status_semantics_notes": "No explicit observation QC/status field is parsed from Sensor.Community payloads; cloud-run worker builds observation rows with status=null.",
+    "persisted_to": [
+      {
+        "db": "ingest",
+        "table": "uk_aq_core.observations",
+        "column": "status (always null)",
+        "code_ref": "workers/uk_aq_sensorcommunity_cloud_run/index.mjs:1825"
+      },
+      {
+        "db": "history",
+        "table": "uk_aq_history.observations",
+        "column": "status_id (currently null from cloud-run ingest path)",
+        "code_ref": "/Users/mikehinford/Library/CloudStorage/Dropbox/Projects/CIC Website/CIC Air Quality Networks/CIC-Test-UK-AQ-Schema/CIC-test-uk-aq-schema/schemas/history_db/history_db_dualwrite_bootstrap.sql:165"
+      }
+    ],
+    "mapping_code_refs": [
+      "workers/uk_aq_sensorcommunity_cloud_run/index.mjs:1195",
+      "workers/uk_aq_sensorcommunity_cloud_run/index.mjs:1322",
+      "/Users/mikehinford/Library/CloudStorage/Dropbox/Projects/CIC Website/CIC Air Quality Networks/CIC-Test-UK-AQ-Schema/CIC-test-uk-aq-schema/schemas/history_db/history_db_dualwrite_bootstrap.sql:159"
+    ]
+  },
+  {
+    "network": "OpenAQ",
+    "endpoints": [
+      "https://api.openaq.org/v3/locations",
+      "https://api.openaq.org/v3/locations/{locationId}/latest",
+      "https://api.openaq.org/v3/sensors/{sensorId}/measurements/hourly"
+    ],
+    "status_fields_found": [
+      "results[*].flagInfo.hasFlags"
+    ],
+    "status_semantics_notes": "OpenAQ hourly payload includes flagInfo.hasFlags (fixture evidence), but current cloud-run ingest does not map this to observations.status or history status_id. Observation status is set to null.",
+    "persisted_to": [
+      {
+        "db": "none",
+        "table": "n/a",
+        "column": "results[*].flagInfo.hasFlags (ignored for persistence)",
+        "code_ref": "tests/cleanairsurb/cleanairsurb_openaq_api_1753.json:12"
+      },
+      {
+        "db": "ingest",
+        "table": "uk_aq_core.stations",
+        "column": "station_type (from locations[*].isMobile)",
+        "code_ref": "supabase/functions/ingest_openaq/index.ts:1835"
+      },
+      {
+        "db": "ingest",
+        "table": "uk_aq_core.observations",
+        "column": "status (always null)",
+        "code_ref": "supabase/functions/ingest_openaq/index.ts:3391"
+      },
+      {
+        "db": "history",
+        "table": "uk_aq_history.observations",
+        "column": "status_id (currently null from cloud-run ingest path)",
+        "code_ref": "/Users/mikehinford/Library/CloudStorage/Dropbox/Projects/CIC Website/CIC Air Quality Networks/CIC-Test-UK-AQ-Schema/CIC-test-uk-aq-schema/schemas/history_db/history_db_dualwrite_bootstrap.sql:165"
+      }
+    ],
+    "mapping_code_refs": [
+      "supabase/functions/ingest_openaq/index.ts:3223",
+      "supabase/functions/ingest_openaq/index.ts:3391",
+      "supabase/functions/ingest_openaq/index.ts:3406",
+      "supabase/functions/_shared/history_client.ts:454",
+      "/Users/mikehinford/Library/CloudStorage/Dropbox/Projects/CIC Website/CIC Air Quality Networks/CIC-Test-UK-AQ-Schema/CIC-test-uk-aq-schema/schemas/history_db/history_db_dualwrite_bootstrap.sql:159"
+    ]
+  },
+  {
+    "network": "Breathe London",
+    "endpoints": [
+      "https://api.breathelondon-communities.org/api/ListSensors",
+      "https://api.breathelondon-communities.org/api/getClarityData/{siteCode}/{species}/{start}/{end}/Hourly"
+    ],
+    "status_fields_found": [
+      "ListSensors[*].BatteryStatus",
+      "ListSensors[*].SensorsHealthStatus",
+      "ListSensors[*].OverallStatus",
+      "ListSensors[*].SignalStrength",
+      "ListSensors[*].ChargingStatus"
+    ],
+    "status_semantics_notes": "Breathe London status-like fields are station/device-health metadata, not observation QC status. Observation extraction uses DateTime + ScaledValue only.",
+    "persisted_to": [
+      {
+        "db": "ingest",
+        "table": "uk_aq_core.station_metadata",
+        "column": "attributes (battery_status, sensors_health_status, overall_status, etc.)",
+        "code_ref": "supabase/functions/ingest_breathelondon/index.ts:836"
+      },
+      {
+        "db": "ingest",
+        "table": "uk_aq_core.observations",
+        "column": "status (currently null)",
+        "code_ref": "supabase/functions/ingest_breathelondon/index.ts:1115"
+      },
+      {
+        "db": "history",
+        "table": "uk_aq_history.observations",
+        "column": "status_id (currently null from cloud-run ingest path)",
+        "code_ref": "/Users/mikehinford/Library/CloudStorage/Dropbox/Projects/CIC Website/CIC Air Quality Networks/CIC-Test-UK-AQ-Schema/CIC-test-uk-aq-schema/schemas/history_db/history_db_dualwrite_bootstrap.sql:165"
+      }
+    ],
+    "mapping_code_refs": [
+      "supabase/functions/ingest_breathelondon/index.ts:378",
+      "supabase/functions/ingest_breathelondon/index.ts:1110",
+      "supabase/functions/ingest_breathelondon/index.ts:1062",
+      "supabase/functions/_shared/history_client.ts:454",
+      "/Users/mikehinford/Library/CloudStorage/Dropbox/Projects/CIC Website/CIC Air Quality Networks/CIC-Test-UK-AQ-Schema/CIC-test-uk-aq-schema/schemas/history_db/history_db_dualwrite_bootstrap.sql:159"
+    ]
+  }
+]
