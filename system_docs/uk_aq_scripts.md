@@ -133,6 +133,28 @@ Notes:
 - With current prune API, start-date mode requires `start-date + max-hours` to land on `00:00 UTC` (for example 24/48/72 hours).
 - `proxy` mode avoids the common user-account `print-identity-token --audiences` error.
 
+### `scripts/uk_aq_int4_migration_all_clear.sh`
+Purpose:
+- Run post-migration all-clear checks for the connector/timeseries ID `int4` migration on MAIN and HISTORY DBs.
+- Validate target column types, FK type parity, key RPC signatures, and basic smoke queries.
+
+Common commands:
+```bash
+scripts/uk_aq_int4_migration_all_clear.sh
+scripts/uk_aq_int4_migration_all_clear.sh --main-only
+scripts/uk_aq_int4_migration_all_clear.sh --history-only --history-db-url "$HISTORY_SUPABASE_DB_URL"
+scripts/uk_aq_int4_migration_all_clear.sh --env-file .env
+```
+
+Notes:
+- The script defaults to `.env` in the ingest repo and auto-loads DB URLs from env if flags are not passed.
+- It sets `PGOPTIONS` to disable statement/lock/idle transaction timeouts when not already set.
+- `--main-only` and `--history-only` allow targeted validation runs.
+
+Environment:
+- MAIN DB URL: `SUPABASE_DB_URL` (or `--main-db-url`)
+- HISTORY DB URL: `HISTORY_SUPABASE_DB_URL` or `SBASE_HISTORY_DB_URL` (or `--history-db-url`)
+
 ### `scripts/gcp/uk_aq_secret_upsert_if_changed.sh`
 Purpose:
 - Upsert one GCP Secret Manager secret from stdin.
