@@ -478,6 +478,7 @@ Note:
   - Verifies identity with `auth.getUser()`.
   - Uses `SB_PUBLISHABLE_DEFAULT_KEY` + caller JWT (does not use service role key).
 - RPC backing: `uk_aq_public.uk_aq_station_snapshot`.
+- SQL deploy note: `supabase/uk_aq_station_snapshot.sql` drops legacy bigint and int4 overloads before recreating the int4 signature to avoid PostgREST RPC ambiguity.
 - Returns:
   - Raw station row (`stations`)
   - Raw station timeseries rows (`timeseries`)

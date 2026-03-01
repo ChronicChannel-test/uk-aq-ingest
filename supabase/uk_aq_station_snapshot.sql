@@ -8,6 +8,22 @@ create index if not exists stations_station_ref_idx
 create index if not exists observations_timeseries_observed_at_desc_idx
   on uk_aq_core.observations(timeseries_id, observed_at desc);
 
+drop function if exists uk_aq_public.uk_aq_station_snapshot(
+  bigint,
+  text,
+  bigint,
+  text,
+  integer
+);
+
+drop function if exists uk_aq_public.uk_aq_station_snapshot(
+  bigint,
+  text,
+  integer,
+  text,
+  integer
+);
+
 create or replace function uk_aq_public.uk_aq_station_snapshot(
   p_station_id bigint default null,
   p_station_ref text default null,
