@@ -782,8 +782,24 @@ async function main(): Promise<void> {
   let ingestResponse: IngestResponse | null = null;
 
   try {
-    await waitForServer(`http://127.0.0.1:${PORT}/`);
-    ingestResponse = await runIngestOnce(payloadPlan.payload);
+    try {
+      await waitForServer(`http://127.0.0.1:${PORT}/`);
+      ingestResponse = await runIngestOnce(payloadPlan.payload);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const runEndedAtIso = new Date().toISOString();
+      if (connectorId === null) {
+        connectorId = await resolveConnectorId(null);
+      }
+      await updateConnectorRun(
+        connectorId,
+        runStartedAtIso,
+        runEndedAtIso,
+        "failed",
+        errorMessage,
+      );
+      throw error;
+    }
 
     const { runStatus, runMessage, payload } = deriveRunSummary(ingestResponse);
     const runEndedAtIso = new Date().toISOString();

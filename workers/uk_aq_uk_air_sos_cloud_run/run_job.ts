@@ -605,7 +605,7 @@ function buildStationCheckpointRows(
     const updatedLastObserved = maxTimestampIso(previousLastObserved, latestObserved);
     const stationHasNewObservation = Boolean(
       latestObserved &&
-        (!previousLastObserved || Date.parse(latestObserved) > Date.parse(previousLastObserved)),
+      (!previousLastObserved || Date.parse(latestObserved) > Date.parse(previousLastObserved)),
     );
 
     let lagSamples = current?.ingest_lag_samples ?? [];

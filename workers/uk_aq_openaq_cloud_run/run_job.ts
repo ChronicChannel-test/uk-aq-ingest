@@ -537,7 +537,7 @@ async function buildIngestPayload(
   const tieredLimit = Math.max(0, batchLimit - staleLimit);
   const tier1RetrySeconds =
     toPositiveIntegerOrNull(payload.tier1_retry_seconds) ??
-      DEFAULT_TIER1_RETRY_SECONDS;
+    DEFAULT_TIER1_RETRY_SECONDS;
   const stationRows = await loadStationRefs({
     tieredLimit,
     staleLimit,
@@ -583,7 +583,7 @@ function deriveRunSummary(ingestResponse: IngestResponse): RunSummary {
   const partial = payload?.partial === true;
   const stoppedReason =
     toStringOrNull(payload?.stopped_reason)?.toLowerCase() ??
-      null;
+    null;
   const rateLimitStopReason = toStringOrNull(payload?.rate_limit_stop_reason)
     ?.toLowerCase() ?? null;
   const rateLimitStop = payload?.rate_limit_stop === true ||
@@ -1083,10 +1083,10 @@ function computeNextCheckTime(
   const minDelaySeconds = failure
     ? OPENAQ_FAILURE_RETRY_SECONDS
     : runStatus === "partial"
-    ? OPENAQ_NEXT_CHECK_PARTIAL_MIN_SECONDS
-    : runStatus === "skipped"
-    ? OPENAQ_NEXT_CHECK_SKIPPED_MIN_SECONDS
-    : OPENAQ_NEXT_CHECK_MIN_SECONDS;
+      ? OPENAQ_NEXT_CHECK_PARTIAL_MIN_SECONDS
+      : runStatus === "skipped"
+        ? OPENAQ_NEXT_CHECK_SKIPPED_MIN_SECONDS
+        : OPENAQ_NEXT_CHECK_MIN_SECONDS;
   const minDelayMs = minDelaySeconds * 1000;
   let notBeforeMs = now.getTime() + minDelayMs;
   if (rateLimitResetAt) {
@@ -1490,8 +1490,8 @@ function deriveRateLimitResetAt(
     const resetMs = numericReset > 1e12
       ? numericReset
       : numericReset > 1e9
-      ? numericReset * 1000
-      : nowMs + Math.max(0, numericReset * 1000);
+        ? numericReset * 1000
+        : nowMs + Math.max(0, numericReset * 1000);
     return new Date(resetMs).toISOString();
   }
   return null;
@@ -1647,40 +1647,60 @@ async function main(): Promise<void> {
   let runFailed = false;
   let runStatus = "failed";
   let rateLimitResetAt: string | null = null;
-  let runMessage: string;
+  let summary: RunSummary;
 
   try {
-    await waitForServer(`http://127.0.0.1:${PORT}/`);
-    ingestResponse = await runIngestOnce(payloadPlan.payload);
+    try {
+      await waitForServer(`http://127.0.0.1:${PORT}/`);
+      ingestResponse = await runIngestOnce(payloadPlan.payload);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const runEndedAtIso = new Date().toISOString();
+      if (connectorId === null) {
+        connectorId = await resolveConnectorId(null);
+      }
+      await updateConnectorRun(
+        connectorId,
+        runStartedAtIso,
+        runEndedAtIso,
+        "failed",
+        errorMessage,
+      );
+      runFailed = true;
+      throw error;
+    }
 
-    const summary = deriveRunSummary(ingestResponse);
+    summary = deriveRunSummary(ingestResponse);
     runStatus = summary.runStatus;
-    runMessage = summary.runMessage;
-    rateLimitResetAt = deriveRateLimitResetAt(summary.payload);
+    runFailed = !ingestResponse.ok || runStatus === "failed" || runStatus === "error";
 
     const runEndedAtIso = new Date().toISOString();
+    if (connectorId === null) {
+      connectorId = await resolveConnectorId(summary.payload);
+    }
+
+    rateLimitResetAt = deriveRateLimitResetAt(summary.payload);
+
     await updateConnectorRun(
       connectorId,
       runStartedAtIso,
       runEndedAtIso,
       runStatus,
-      runMessage,
+      summary.runMessage,
     );
+
     await insertRunRow(
       connectorId,
       runStartedAtIso,
       runEndedAtIso,
       runStatus,
-      runMessage,
+      summary.runMessage,
       ingestResponse,
       summary.payload,
       payloadPlan.stationRows.length,
     );
 
-    if (
-      !ingestResponse.ok || runStatus === "failed" || runStatus === "error"
-    ) {
-      runFailed = true;
+    if (runFailed) {
       await insertErrorLog(connectorId, ingestResponse);
       throw new Error(
         `ingest_openaq failed (${ingestResponse.status}): ${ingestResponse.raw}`,
@@ -1690,7 +1710,6 @@ async function main(): Promise<void> {
     logSummary("success", {
       trigger_mode: OPENAQ_TRIGGER_MODE,
       run_status: runStatus,
-      run_message: runMessage,
       response_status: ingestResponse.status,
       connector_id: connectorId,
       stations_selected: payloadPlan.stationRows.length,

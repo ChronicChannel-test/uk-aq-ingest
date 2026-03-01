@@ -99,13 +99,13 @@ const DROPBOX_ROOT_FOLDER = (() => {
 })();
 const DROPBOX_LOG_FOLDER = dropboxWithRoot(
   process.env.SCOMM_LOG_DROPBOX_FOLDER ||
-    process.env.UK_AIR_LOG_DROPBOX_FOLDER ||
-    "/connectors/sensorcommunity/log",
+  process.env.UK_AIR_LOG_DROPBOX_FOLDER ||
+  "/connectors/sensorcommunity/log",
 );
 const DROPBOX_RAW_FOLDER = dropboxWithRoot(
   process.env.SCOMM_RAW_DROPBOX_FOLDER ||
-    process.env.UK_AIR_RAW_DROPBOX_FOLDER ||
-    "/connectors/sensorcommunity/raw_data",
+  process.env.UK_AIR_RAW_DROPBOX_FOLDER ||
+  "/connectors/sensorcommunity/raw_data",
 );
 const DROPBOX_TOKEN_URL = "https://api.dropbox.com/oauth2/token";
 const DROPBOX_UPLOAD_URL = "https://content.dropboxapi.com/2/files/upload";
@@ -126,22 +126,22 @@ const VALUE_TYPE_MAP = {
   ...BASE_VALUE_TYPE_MAP,
   ...(SCOMM_INGEST_MET_FIELDS
     ? {
-        temperature: {
-          pollutant: "temperature",
-          label: "Temperature",
-          uom: "degC",
-        },
-        humidity: {
-          pollutant: "humidity",
-          label: "Humidity",
-          uom: "%",
-        },
-        pressure: {
-          pollutant: "pressure",
-          label: "Pressure",
-          uom: "hPa",
-        },
-      }
+      temperature: {
+        pollutant: "temperature",
+        label: "Temperature",
+        uom: "degC",
+      },
+      humidity: {
+        pollutant: "humidity",
+        label: "Humidity",
+        uom: "%",
+      },
+      pressure: {
+        pollutant: "pressure",
+        label: "Pressure",
+        uom: "hPa",
+      },
+    }
     : {}),
 };
 
@@ -164,25 +164,25 @@ const SCOMM_PHENOMENA = {
   ...BASE_SCOMM_PHENOMENA,
   ...(SCOMM_INGEST_MET_FIELDS
     ? {
-        temperature: {
-          source_label: "sensorcommunity:temperature",
-          label: "Temperature",
-          notation: "temperature",
-          pollutant_label: "temperature",
-        },
-        humidity: {
-          source_label: "sensorcommunity:humidity",
-          label: "Humidity",
-          notation: "humidity",
-          pollutant_label: "humidity",
-        },
-        pressure: {
-          source_label: "sensorcommunity:pressure",
-          label: "Pressure",
-          notation: "pressure",
-          pollutant_label: "pressure",
-        },
-      }
+      temperature: {
+        source_label: "sensorcommunity:temperature",
+        label: "Temperature",
+        notation: "temperature",
+        pollutant_label: "temperature",
+      },
+      humidity: {
+        source_label: "sensorcommunity:humidity",
+        label: "Humidity",
+        notation: "humidity",
+        pollutant_label: "humidity",
+      },
+      pressure: {
+        source_label: "sensorcommunity:pressure",
+        label: "Pressure",
+        notation: "pressure",
+        pollutant_label: "pressure",
+      },
+    }
     : {}),
 };
 
@@ -1701,9 +1701,8 @@ async function uploadDropboxArtifacts(
       const timestamp = new Date();
       const rawPath = buildDropboxRawPath(connectorCode, timestamp);
       const rawText = `${JSON.stringify(rawPayload)}\n`;
-      const entryName = `uk_aq_raw_cloud_run_${
-        normalizeConnectorPrefix(connectorCode)
-      }_${formatCompactTimestamp(timestamp)}.json`;
+      const entryName = `uk_aq_raw_cloud_run_${normalizeConnectorPrefix(connectorCode)
+        }_${formatCompactTimestamp(timestamp)}.json`;
       const rawBytes = zipTextCompressed(entryName, rawText);
       await dropboxUploadFileWithRetry(
         accessToken,
@@ -2039,35 +2038,53 @@ async function main() {
   const connectorId = Number(claim.connector_id || connector.id);
   let ingestResponse;
   const dropboxCapture = {};
+  let runFailed = false;
+
   try {
-    const payload = await runDirectIngest(
-      connectorId,
-      connector.overwrite_station_name,
-      dropboxCapture,
-    );
-    ingestResponse = {
-      ok: true,
-      status: 200,
-      body: payload,
-      raw: JSON.stringify(payload),
-    };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    ingestResponse = {
-      ok: false,
-      status: 500,
-      body: {
-        error: "direct_ingest_failed",
+    try {
+      const payload = await runDirectIngest(
+        connectorId,
+        connector.overwrite_station_name,
+        dropboxCapture,
+      );
+      ingestResponse = {
+        ok: true,
+        status: 200,
+        body: payload,
+        raw: JSON.stringify(payload),
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const runEndedAtIso = new Date().toISOString();
+      await updateConnectorRun(
+        connectorId,
+        runEndedAtIso,
+        "failed",
         message,
-      },
-      raw: message,
-    };
+        runStartedAtIso,
+      );
+      runFailed = true;
+      ingestResponse = {
+        ok: false,
+        status: 500,
+        body: {
+          error: "direct_ingest_failed",
+          message,
+        },
+        raw: message,
+      };
+      throw error;
+    }
+  } catch (outerError) {
+    // If we threw from the inner block, we still want to finish logging
   }
 
   const runEndedAtIso = new Date().toISOString();
   const { runStatus, runMessage, payload } = deriveRunSummary(ingestResponse);
-  const runFailed =
-    !ingestResponse.ok || runStatus === "failed" || runStatus === "error";
+
+  if (!runFailed) {
+    runFailed = !ingestResponse.ok || runStatus === "failed" || runStatus === "error";
+  }
 
   await updateConnectorRun(
     connectorId,
@@ -2104,8 +2121,7 @@ async function main() {
   if (runFailed) {
     await insertErrorLog(connectorId, ingestResponse);
     throw new Error(
-      `ingest_sensorcommunity failed (${ingestResponse.status}): ${
-        ingestResponse.raw || runMessage
+      `ingest_sensorcommunity failed (${ingestResponse.status}): ${ingestResponse.raw || runMessage
       }`,
     );
   }
