@@ -13,6 +13,7 @@
 --   observed_at timestamptz not null,
 --   value double precision,
 --   status text,
+--   created_at timestamptz,
 --   primary key (connector_id, timeseries_id, observed_at)
 -- );
 -- select create_hypertable('uk_aq_history.observations_ts', 'observed_at', chunk_time_interval => interval '7 days');
@@ -30,8 +31,8 @@
 -- select add_retention_policy('uk_aq_history.observations_ts', drop_after => interval '5 years');
 
 -- 3) Backfill in bounded windows (repeat by month/day)
--- insert into uk_aq_history.observations_ts (connector_id, timeseries_id, observed_at, value, status)
--- select connector_id, timeseries_id, observed_at, value, status
+-- insert into uk_aq_history.observations_ts (connector_id, timeseries_id, observed_at, value, status, created_at)
+-- select connector_id, timeseries_id, observed_at, value, status, created_at
 -- from uk_aq_history.observations
 -- where observed_at >= '2025-01-01'::timestamptz
 --   and observed_at <  '2025-02-01'::timestamptz

@@ -112,7 +112,7 @@ Use this flow when creating fresh MAIN + HISTORY projects.
    - In the schema repo (`../CIC-Test-UK-AQ-Schema/uk-aq-schema/schemas/history_db`), run/paste:
      - `uk_aq_history_schema.sql`
      - `history_db_dualwrite_bootstrap.sql`
-   - History observations are keyed by `(connector_id, timeseries_id, observed_at)`.
+   - History observations are keyed by `(connector_id, timeseries_id, observed_at)` with `created_at`.
 3. Set MAIN runtime secrets:
    - `HISTORY_SUPABASE_URL`
    - `HISTORY_SECRET_KEY`

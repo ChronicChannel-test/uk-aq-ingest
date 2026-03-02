@@ -79,6 +79,7 @@
  uk_aq_history | observations               |                3 | observed_at     | timestamp with time zone | NO          |         8 |      92776
  uk_aq_history | observations               |                4 | value           | double precision         | YES         |         8 |      14267
  uk_aq_history | observations               |                5 | status          | text                     | YES         |         0 |          0
+ uk_aq_history | observations               |                6 | created_at      | timestamp with time zone | NO          |         8 |       4619
  uk_aq_raw     | history_rpc_metrics_minute |                1 | bucket_minute   | timestamp with time zone | NO          |         8 |         -1
  uk_aq_raw     | history_rpc_metrics_minute |                2 | endpoint        | text                     | NO          |        42 |          1
  uk_aq_raw     | history_rpc_metrics_minute |                3 | calls           | bigint                   | NO          |         8 |         29

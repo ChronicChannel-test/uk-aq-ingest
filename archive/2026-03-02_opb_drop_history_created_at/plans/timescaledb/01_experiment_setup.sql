@@ -27,6 +27,7 @@ create table if not exists staging.obs_sample_raw (
   observed_at timestamptz not null,
   value double precision,
   status text,
+  created_at timestamptz,
   primary key (connector_id, timeseries_id, observed_at)
 );
 
@@ -41,7 +42,8 @@ create table if not exists staging.obs_sample_ts (
   timeseries_id integer not null,
   observed_at timestamptz not null,
   value double precision,
-  status text
+  status text,
+  created_at timestamptz
 );
 
 -- Representative indexes similar to observation query patterns.

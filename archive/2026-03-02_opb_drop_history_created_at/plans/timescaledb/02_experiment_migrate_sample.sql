@@ -47,14 +47,16 @@ insert into staging.obs_sample_raw (
   timeseries_id,
   observed_at,
   value,
-  status
+  status,
+  created_at
 )
 select
   o.connector_id,
   o.timeseries_id,
   o.observed_at,
   o.value,
-  o.status
+  o.status,
+  o.created_at
 from uk_aq_history.observations o
 join lateral (
   select cfg.sample_timeseries_id, cfg.sample_days
@@ -81,14 +83,16 @@ insert into staging.obs_sample_ts (
   timeseries_id,
   observed_at,
   value,
-  status
+  status,
+  created_at
 )
 select
   connector_id,
   timeseries_id,
   observed_at,
   value,
-  status
+  status,
+  created_at
 from staging.obs_sample_raw;
 
 commit;
