@@ -1,4 +1,4 @@
-# History Prune Option 2 Plan (3-Day Hot Window + Pre-Prune Archive/Aggregation)
+# History Prune Option 2 Plan (3-Day Hot Window + Pre-Prune Backup/Aggregation)
 
 ## Goal
 - Keep HistoryDB within the 32-day / 500 MB target by retaining a 3-day hot write window.
@@ -8,7 +8,7 @@
 
 ## Scope
 - Applies to the ingest prune service flow.
-- Adds pre-prune archive and aggregation stages that run before any ingest-row deletion.
+- Adds pre-prune backup and aggregation stages that run before any ingest-row deletion.
 - Adds repair logic for missing history rows.
 
 ## Why This Option
@@ -19,11 +19,11 @@
 ## Execution Order (Single Prune Run)
 1. Acquire run lock and compute UTC boundaries.
 2. Phase A: Recent-window history completeness check (last 3 UTC days).
-3. Phase B: Archive ingest rows older than 7 days to Cloudflare R2 as Parquet.
+3. Phase B: Backup ingest rows older than 7 days to Cloudflare R2 as Parquet.
 4. Phase C: Build/refresh `aggregated_daily` for the same older-than-7-day set.
 5. Phase D: Cold completeness check for prune candidates (>7 days), enqueue repair tasks for missing history.
 6. Phase E: Cold repair worker step (temporary reheat per day when required).
-7. Phase F: Prune ingest rows older than 7 days only when archive + aggregation + repair prerequisites pass.
+7. Phase F: Prune ingest rows older than 7 days only when backup + aggregation + repair prerequisites pass.
 8. Emit run summary and alerts.
 
 ## Phase Details
@@ -33,7 +33,7 @@
 - If gaps are found in this window, replay through normal history upsert path (already indexed/hot).
 - Do not delete ingest rows in this phase.
 
-### Phase B: R2 Parquet Archive (Pre-Prune)
+### Phase B: R2 Parquet Backup (Pre-Prune)
 - Source: ingest rows with `observed_at < now_utc - interval '7 days'`.
 - Output: partitioned Parquet files in Cloudflare R2 by UTC day (and optionally connector).
 - Write a manifest per run:
@@ -42,8 +42,8 @@
   - parquet_object_keys
   - file_count
   - checksum/hash
-  - archived_at_utc
-- Archive success for a day is required before that day can be pruned.
+  - backed_up_at_utc
+- Backup success for a day is required before that day can be pruned.
 
 ### Phase C: `aggregated_daily` Build (Pre-Prune)
 - Build daily aggregates from the same older-than-7-day ingest slice.
@@ -68,14 +68,14 @@
 
 ### Phase F: Safe Prune Gate
 - A day may be pruned only if all are true:
-  - Archive complete in R2.
+  - Backup complete in R2.
   - `aggregated_daily` complete.
   - History completeness marked resolved (or no repair needed).
 - If any gate fails, skip prune for that day and log reason.
 
 ## Data/Control Additions
 - Add prune run state fields (or tables) for per-day gate status:
-  - `archive_done`
+  - `backup_done`
   - `aggregate_done`
   - `history_repair_status` (`not_required|queued|in_progress|resolved|failed`)
 - Add `history_cold_repair_queue` with:
@@ -90,14 +90,14 @@
 - Dropbox alert conditions:
   - cold repair exceeds max attempts
   - queued repair older than SLA (example: 24h)
-  - archive or aggregate phase fails for a prune-eligible day
+  - backup or aggregate phase fails for a prune-eligible day
 - Include run_id, day_utc, counts, error summary, and recommended next action.
 
 ## Egress and DB Size Impact
 - Supabase endpoint egress:
   - Expected near-neutral; this is primarily write/control-path work.
 - Upload/write traffic:
-  - Increases from archive manifest writes, repair queue writes, and replay writes.
+- Increases from backup manifest writes, repair queue writes, and replay writes.
 - HistoryDB size:
   - Permanent growth remains aligned with 3-day hot window.
   - Temporary size increase only during day-level reheat index creation.
@@ -112,7 +112,7 @@
 - Keep replay idempotent and deduplicated on `(connector_id, timeseries_id, observed_at)`.
 
 ## Acceptance Criteria
-- No prune deletion occurs without successful archive + aggregation + history completeness gates.
+- No prune deletion occurs without successful backup + aggregation + history completeness gates.
 - Recent 3-day completeness gaps are auto-repaired without manual intervention.
 - Cold repair queue drains within SLA under normal load.
 - HistoryDB remains on 3-day hot window policy.
