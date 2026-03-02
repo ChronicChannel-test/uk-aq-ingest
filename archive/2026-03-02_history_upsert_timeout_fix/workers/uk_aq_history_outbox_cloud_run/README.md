@@ -10,7 +10,6 @@ Design choices:
 - retry-aware main RPC calls to reduce transient network reset failures
 - merges claimed outbox payloads per batch before history upsert to reduce
   history RPC call count and egress overhead
-- retries history upsert RPC calls and can split large chunks on statement timeout
 
 ## Required env vars / secrets
 
@@ -26,10 +25,6 @@ Design choices:
 - `HISTORY_UPSERT_RPC` (default `uk_aq_rpc_history_observations_upsert`)
 - `HISTORY_OUTBOX_FLUSH_LIMIT` (default `40`)
 - `HISTORY_UPSERT_CHUNK_SIZE` (default `5000`)
-- `HISTORY_UPSERT_RPC_RETRIES` (default `3`; retries per history upsert RPC call for retryable failures)
-- `HISTORY_UPSERT_RETRY_BASE_MS` (default `1000`; base backoff between history upsert retries)
-- `HISTORY_UPSERT_TIMEOUT_SPLIT_MIN_ROWS` (default `32`; minimum chunk size that can be split when statement timeouts occur)
-- `HISTORY_UPSERT_TIMEOUT_SPLIT_MAX_DEPTH` (default `4`; max recursive split depth for timeout fallback)
 - `HISTORY_OUTBOX_CLOUD_RUN_MAX_BATCHES` (default `30`)
 - `HISTORY_OUTBOX_CLOUD_RUN_CLAIM_BATCH_LIMIT` (default `20`)
 - `HISTORY_OUTBOX_CLOUD_RUN_BUDGET_SECONDS` (default `540`)

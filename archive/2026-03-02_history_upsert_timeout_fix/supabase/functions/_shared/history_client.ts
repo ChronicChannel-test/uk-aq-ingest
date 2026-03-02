@@ -1,4 +1,6 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.8";
+import {
+  createClient,
+} from "https://esm.sh/@supabase/supabase-js@2.49.8";
 
 type RpcError = { message: string };
 
@@ -87,9 +89,7 @@ function normalizeHistoryRpcSchema(raw: string): string {
   const normalized = raw.trim().toLowerCase();
   // History RPC functions live in uk_aq_public. Accept older env values and
   // map them to the callable RPC schema.
-  if (
-    !normalized || normalized === "uk_aq_history" || normalized === "public"
-  ) {
+  if (!normalized || normalized === "uk_aq_history" || normalized === "public") {
     return "uk_aq_public";
   }
   return raw.trim();
@@ -111,26 +111,6 @@ const HISTORY_OUTBOX_FLUSH_LIMIT = parsePositiveInt(
 const HISTORY_UPSERT_CHUNK_SIZE = parsePositiveInt(
   Deno.env.get("HISTORY_UPSERT_CHUNK_SIZE"),
   5000,
-);
-
-const HISTORY_UPSERT_RPC_RETRIES = parsePositiveInt(
-  Deno.env.get("HISTORY_UPSERT_RPC_RETRIES"),
-  3,
-);
-
-const HISTORY_UPSERT_RETRY_BASE_MS = parsePositiveInt(
-  Deno.env.get("HISTORY_UPSERT_RETRY_BASE_MS"),
-  1000,
-);
-
-const HISTORY_UPSERT_TIMEOUT_SPLIT_MIN_ROWS = parsePositiveInt(
-  Deno.env.get("HISTORY_UPSERT_TIMEOUT_SPLIT_MIN_ROWS"),
-  32,
-);
-
-const HISTORY_UPSERT_TIMEOUT_SPLIT_MAX_DEPTH = parsePositiveInt(
-  Deno.env.get("HISTORY_UPSERT_TIMEOUT_SPLIT_MAX_DEPTH"),
-  4,
 );
 
 const HISTORY_WRITE_MODE = normalizeHistoryWriteMode(
@@ -192,8 +172,7 @@ function float64ToHex(value: number): string {
   const view = new DataView(buffer);
   view.setFloat64(0, value, false);
   const bytes = new Uint8Array(buffer);
-  return Array.from(bytes).map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
+  return Array.from(bytes).map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 function float64FromHex(value: unknown): number | null {
@@ -321,32 +300,6 @@ function shortError(error: unknown): string {
   return message.length > 400 ? `${message.slice(0, 397)}...` : message;
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function isHistoryStatementTimeoutError(message: string): boolean {
-  return /statement timeout|canceling statement due to statement timeout/i.test(
-    message,
-  );
-}
-
-function isRetryableHistoryUpsertError(message: string): boolean {
-  const normalized = message.toLowerCase();
-  return (
-    isHistoryStatementTimeoutError(normalized) ||
-    normalized.includes("deadlock detected") ||
-    normalized.includes("could not serialize access due to") ||
-    normalized.includes("connection terminated") ||
-    normalized.includes("connection reset") ||
-    normalized.includes("http 429") ||
-    normalized.includes("http 500") ||
-    normalized.includes("http 502") ||
-    normalized.includes("http 503") ||
-    normalized.includes("http 504")
-  );
-}
-
 function pubsubTopicPath(): string {
   if (!GCP_HISTORY_PUBSUB_TOPIC) {
     return "";
@@ -407,9 +360,7 @@ async function publishHistoryRowsToPubsub(
   const token = await fetchGoogleAccessToken();
   let published = 0;
 
-  for (
-    const chunk of chunkRows(preparedRows, HISTORY_PUBSUB_PUBLISH_BATCH_SIZE)
-  ) {
+  for (const chunk of chunkRows(preparedRows, HISTORY_PUBSUB_PUBLISH_BATCH_SIZE)) {
     const messages = chunk.map((row) => ({
       data: btoa(JSON.stringify(row)),
       attributes: {
@@ -431,9 +382,7 @@ async function publishHistoryRowsToPubsub(
       },
     );
 
-    const payload = await response.json().catch(() => null) as
-      | PubsubPublishResponse
-      | null;
+    const payload = await response.json().catch(() => null) as PubsubPublishResponse | null;
     if (!response.ok) {
       const message = typeof payload === "object" && payload !== null
         ? JSON.stringify(payload)
@@ -441,7 +390,9 @@ async function publishHistoryRowsToPubsub(
       throw new Error(`History Pub/Sub publish failed: ${message}`);
     }
     const messageIds = payload?.messageIds;
-    published += Array.isArray(messageIds) ? messageIds.length : chunk.length;
+    published += Array.isArray(messageIds)
+      ? messageIds.length
+      : chunk.length;
   }
 
   return published;
@@ -488,75 +439,6 @@ export function createSupabaseHistoryClient(): ReturnType<typeof createClient> {
   return historyClientCache;
 }
 
-async function upsertHistoryChunk(
-  history: ReturnType<typeof createClient>,
-  chunk: HistoryObservationRow[],
-): Promise<number> {
-  const { data, error } = await history.rpc(HISTORY_UPSERT_RPC, {
-    rows: chunk,
-  });
-  if (error) {
-    throw new Error(error.message || "unknown_history_upsert_error");
-  }
-  return countRowsFromPayload(
-    (Array.isArray(data) ? data : null) as
-      | Array<Record<"observations_upserted", number>>
-      | null,
-    "observations_upserted",
-    chunk.length,
-  );
-}
-
-async function upsertHistoryChunkWithFallback(
-  history: ReturnType<typeof createClient>,
-  chunk: HistoryObservationRow[],
-  splitDepth = 0,
-): Promise<number> {
-  let lastMessage = "unknown_history_upsert_error";
-
-  for (let attempt = 1; attempt <= HISTORY_UPSERT_RPC_RETRIES; attempt += 1) {
-    try {
-      return await upsertHistoryChunk(history, chunk);
-    } catch (error) {
-      lastMessage = shortError(error);
-      if (
-        attempt < HISTORY_UPSERT_RPC_RETRIES &&
-        isRetryableHistoryUpsertError(lastMessage)
-      ) {
-        await sleep(Math.min(5000, HISTORY_UPSERT_RETRY_BASE_MS * attempt));
-        continue;
-      }
-      break;
-    }
-  }
-
-  if (
-    isHistoryStatementTimeoutError(lastMessage) &&
-    splitDepth < HISTORY_UPSERT_TIMEOUT_SPLIT_MAX_DEPTH &&
-    chunk.length >= HISTORY_UPSERT_TIMEOUT_SPLIT_MIN_ROWS * 2
-  ) {
-    const midpoint = Math.floor(chunk.length / 2);
-    const left = chunk.slice(0, midpoint);
-    const right = chunk.slice(midpoint);
-    if (!left.length || !right.length) {
-      throw new Error(`History upsert failed: ${lastMessage}`);
-    }
-    const leftWritten = await upsertHistoryChunkWithFallback(
-      history,
-      left,
-      splitDepth + 1,
-    );
-    const rightWritten = await upsertHistoryChunkWithFallback(
-      history,
-      right,
-      splitDepth + 1,
-    );
-    return leftWritten + rightWritten;
-  }
-
-  throw new Error(`History upsert failed: ${lastMessage}`);
-}
-
 export async function historyUpsertObservations(
   historyRows: HistoryObservationRow[],
 ): Promise<number> {
@@ -569,7 +451,19 @@ export async function historyUpsertObservations(
   let written = 0;
 
   for (const chunk of chunkRows(preparedRows, HISTORY_UPSERT_CHUNK_SIZE)) {
-    written += await upsertHistoryChunkWithFallback(history, chunk);
+    const { data, error } = await history.rpc(HISTORY_UPSERT_RPC, {
+      rows: chunk,
+    });
+    if (error) {
+      throw new Error(`History upsert failed: ${error.message}`);
+    }
+    written += countRowsFromPayload(
+      (Array.isArray(data) ? data : null) as
+        | Array<Record<"observations_upserted", number>>
+        | null,
+      "observations_upserted",
+      chunk.length,
+    );
   }
 
   return written;
