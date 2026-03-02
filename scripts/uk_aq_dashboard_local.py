@@ -75,6 +75,7 @@ DISPATCH_RUNS_STATE: Dict[str, Any] = {
 }
 CACHE_TTL_SECONDS = 20
 UTC_DATETIME_MIN = datetime.min.replace(tzinfo=timezone.utc)
+R2_BYTES_PER_GB = 1024 ** 3
 
 
 def _normalize_token(value: str) -> str:
@@ -165,6 +166,48 @@ def _safe_response_text(resp: requests.Response, max_chars: int = 500) -> str:
     if len(text) <= max_chars:
         return text
     return text[:max_chars] + "...(truncated)"
+
+
+def _safe_number(value: Any) -> Optional[float]:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        if isinstance(value, float) and (value != value or value in {float("inf"), float("-inf")}):
+            return None
+        return float(value)
+    if isinstance(value, str):
+        candidate = value.strip()
+        if not candidate:
+            return None
+        try:
+            parsed = float(candidate)
+        except ValueError:
+            return None
+        if parsed != parsed or parsed in {float("inf"), float("-inf")}:
+            return None
+        return parsed
+    return None
+
+
+def _safe_nonnegative_number(value: Any) -> Optional[float]:
+    parsed = _safe_number(value)
+    if parsed is None or parsed < 0:
+        return None
+    return parsed
+
+
+def _extract_r2_usage_point(raw: Any) -> Optional[Dict[str, float]]:
+    if not isinstance(raw, dict):
+        return None
+    payload_size = _safe_nonnegative_number(raw.get("payloadSize"))
+    metadata_size = _safe_nonnegative_number(raw.get("metadataSize"))
+    objects = _safe_nonnegative_number(raw.get("objects"))
+    if payload_size is None or metadata_size is None or objects is None:
+        return None
+    return {
+        "used_bytes": payload_size + metadata_size,
+        "objects": objects,
+    }
 
 
 def _fetch_json(url: str, headers: Dict[str, str], params: Dict[str, str]) -> List[Dict[str, Any]]:
@@ -335,6 +378,75 @@ def _fetch_db_size_metrics(
 
     normalized.sort(key=lambda item: _parse_timestamp(item.get("bucket_hour")) or UTC_DATETIME_MIN)
     return normalized, None
+
+
+def _fetch_r2_account_metrics(now: datetime) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+    account_id = str(os.getenv("CLOUDFLARE_ACCOUNT_ID") or "").strip()
+    api_token = str(os.getenv("CFLARE_API_READ_TOKEN") or "").strip()
+    if not account_id or not api_token:
+        return None, "missing CLOUDFLARE_ACCOUNT_ID or CFLARE_API_READ_TOKEN"
+
+    free_tier_raw = str(os.getenv("UK_AQ_R2_FREE_TIER_GB", "10")).strip()
+    free_tier_gb = _safe_number(free_tier_raw)
+    if free_tier_gb is None or free_tier_gb <= 0:
+        return None, "invalid UK_AQ_R2_FREE_TIER_GB"
+
+    url = f"https://api.cloudflare.com/client/v4/accounts/{account_id}/r2/metrics"
+    try:
+        resp = requests.get(
+            url,
+            headers={
+                "Authorization": f"Bearer {api_token}",
+                "Content-Type": "application/json",
+            },
+            timeout=30,
+        )
+    except requests.RequestException as exc:
+        return None, f"R2 metrics request failed ({exc.__class__.__name__})"
+    if not resp.ok:
+        return None, f"R2 metrics HTTP {resp.status_code}"
+
+    try:
+        payload = resp.json()
+    except ValueError:
+        return None, "R2 metrics returned non-JSON payload"
+    if not isinstance(payload, dict):
+        return None, "R2 metrics payload is not an object"
+    if payload.get("success") is not True:
+        return None, "R2 metrics API reported success=false"
+
+    result = payload.get("result")
+    if not isinstance(result, dict):
+        return None, "R2 metrics missing result object"
+
+    standard = result.get("standard")
+    if not isinstance(standard, dict):
+        return None, "R2 metrics missing standard section"
+    # Validate both sections defensively, but always prefer published usage.
+    published_point = _extract_r2_usage_point(standard.get("published"))
+    uploaded_point = _extract_r2_usage_point(standard.get("uploaded"))
+    selected_point = published_point or uploaded_point
+    if selected_point is None:
+        return None, "R2 metrics missing standard usage values"
+
+    standard_used_bytes = int(round(selected_point["used_bytes"]))
+    standard_objects = int(round(selected_point["objects"]))
+    free_bytes = int(free_tier_gb * R2_BYTES_PER_GB)
+    percent_used = 0.0
+    if free_bytes > 0:
+        percent_used = (standard_used_bytes / free_bytes) * 100.0
+    percent_used = max(0.0, min(200.0, percent_used))
+    used_gb = standard_used_bytes / R2_BYTES_PER_GB
+
+    return {
+        "standard_used_bytes": standard_used_bytes,
+        "standard_used_gb": used_gb,
+        "standard_objects": standard_objects,
+        "free_tier_gb": float(free_tier_gb),
+        "percent_of_free_tier": percent_used,
+        "source": "cloudflare_r2_account_metrics",
+        "as_of_utc": now.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
+    }, None
 
 
 def _parse_timestamp(value: Optional[str]) -> Optional[datetime]:
@@ -603,6 +715,7 @@ def _build_dashboard(
         headers,
         now,
     )
+    r2_usage, r2_usage_error = _fetch_r2_account_metrics(now)
     ingest_runs = _get_ingest_runs_cached(
         base_url,
         headers,
@@ -800,6 +913,8 @@ def _build_dashboard(
         "buckets": list(BUCKETS),
         "db_size_metrics": db_size_metrics,
         "db_size_metrics_error": db_size_metrics_error,
+        "r2_usage": r2_usage,
+        "r2_usage_error": r2_usage_error,
         "pollutants": pollutants_payload,
         "dispatch_runs": dispatch_runs,
         "dispatcher_settings": dispatcher_settings,

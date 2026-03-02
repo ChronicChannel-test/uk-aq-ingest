@@ -314,6 +314,44 @@
         font-size: 12px;
       }
 
+      .r2-usage-wrap {
+        margin-top: 12px;
+        display: grid;
+        gap: 6px;
+      }
+
+      .r2-usage-head {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 10px;
+        flex-wrap: wrap;
+        font-family: "IBM Plex Mono", ui-monospace, monospace;
+        font-size: 12px;
+        color: var(--ink-soft);
+      }
+
+      .r2-usage-bar {
+        height: 12px;
+        border-radius: 999px;
+        overflow: hidden;
+        border: 1px solid var(--border);
+        background: rgba(255, 255, 255, 0.85);
+      }
+
+      .r2-usage-fill {
+        height: 100%;
+        border-radius: 999px;
+        background: var(--accent-2);
+        transition: width 0.25s ease;
+      }
+
+      .r2-usage-sub {
+        font-family: "IBM Plex Mono", ui-monospace, monospace;
+        font-size: 11px;
+        color: var(--ink-soft);
+      }
+
       .status-pill {
         display: inline-flex;
         align-items: center;
@@ -696,6 +734,13 @@
           return Math.round(value).toLocaleString();
         }
         return value.toFixed(1);
+      }
+
+      function formatGigabytes(valueGb) {
+        if (valueGb === null || valueGb === undefined || Number.isNaN(Number(valueGb))) {
+          return "n/a";
+        }
+        return Number(valueGb).toFixed(2);
       }
 
       function asNumber(value) {
@@ -1247,7 +1292,7 @@
         chartWrap.addEventListener("mouseleave", hideTooltip);
       }
 
-      function renderDbSizePanel(rows, sourceError) {
+      function renderDbSizePanel(rows, sourceError, r2Usage, r2Error) {
         const panel = document.createElement("section");
         panel.className = "panel";
 
@@ -1370,6 +1415,42 @@
         const maxNote = maxObservedMb > DB_SIZE_Y_MAX_MB
           ? `Max observed ${formatMegabytes(maxObservedMb)} MB (chart capped at ${DB_SIZE_Y_MAX_MB} MB).`
           : `Y-axis fixed at ${DB_SIZE_Y_MAX_MB} MB.`;
+        const r2UsageObject = asObject(r2Usage);
+        let r2UsageMarkup = "";
+        if (r2UsageObject) {
+          const usedGb = asNumber(r2UsageObject.standard_used_gb);
+          const freeTierGb = asNumber(r2UsageObject.free_tier_gb);
+          const percent = asNumber(r2UsageObject.percent_of_free_tier);
+          const objects = asNumber(r2UsageObject.standard_objects);
+          if (usedGb !== null && freeTierGb !== null && percent !== null) {
+            const fillPct = Math.min(100, Math.max(0, percent));
+            const objectsLine = objects !== null
+              ? `<div class="r2-usage-sub">Objects: ${formatCount(objects)}</div>`
+              : "";
+            r2UsageMarkup = `
+              <div class="r2-usage-wrap">
+                <div class="r2-usage-head">
+                  <span>R2 Standard free tier</span>
+                  <span>${formatGigabytes(usedGb)} GB / ${formatGigabytes(freeTierGb)} GB (${Math.round(percent)}%)</span>
+                </div>
+                <div class="r2-usage-bar" role="img" aria-label="R2 Standard free-tier usage">
+                  <div class="r2-usage-fill" style="width:${fillPct.toFixed(2)}%"></div>
+                </div>
+                ${objectsLine}
+              </div>
+            `;
+          }
+        }
+        if (!r2UsageMarkup) {
+          const unavailableSuffix = r2Error
+            ? `: ${escapeHtml(String(r2Error))}`
+            : "";
+          r2UsageMarkup = `
+            <div class="r2-usage-wrap">
+              <div class="r2-usage-sub">R2 usage unavailable${unavailableSuffix}</div>
+            </div>
+          `;
+        }
         const sourceWarning = sourceError
           ? `<div class="footnote">Metric source warning: ${escapeHtml(sourceError)}</div>`
           : "";
@@ -1394,6 +1475,7 @@
             <span class="db-size-item"><span class="db-size-swatch" style="background:#2f9e44"></span>Agg Daily DB</span>
           </div>
           <div class="db-size-chart-wrap">${chartMarkup}<div class="db-size-hover-tooltip" aria-hidden="true"></div></div>
+          ${r2UsageMarkup}
           <div class="footnote">Ingest DB = bright red, History DB = medium blue, Agg Daily DB = medium green. ${maxNote}</div>
           ${sourceWarning}
         `;
@@ -1662,7 +1744,14 @@
           data.pollutants.forEach((pollutant) => {
             dashboardEl.appendChild(renderPanel(pollutant));
           });
-          dashboardEl.appendChild(renderDbSizePanel(data.db_size_metrics, data.db_size_metrics_error));
+          dashboardEl.appendChild(
+            renderDbSizePanel(
+              data.db_size_metrics,
+              data.db_size_metrics_error,
+              data.r2_usage,
+              data.r2_usage_error,
+            ),
+          );
           setStatus(`Updated ${formatTime(data.generated_at)} (local time)`);
           setDataMeta(data);
         } catch (err) {
