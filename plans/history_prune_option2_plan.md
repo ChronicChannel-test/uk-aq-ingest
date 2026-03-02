@@ -110,6 +110,7 @@
 - Keep all day boundaries in UTC.
 - Process cold repair one day at a time to cap lock and resource impact.
 - Keep replay idempotent and deduplicated on `(connector_id, timeseries_id, observed_at)`.
+- Follow-up required: align History partition-maintenance backup checks with Phase B backup manifests/prefixes (`backup/observations/day_utc=.../manifest.json`) so partition-drop backup gating uses the same source of truth (and can retire legacy `CFLARE_R2_OBSERVATIONS_PREFIX` day checks).
 
 ## Acceptance Criteria
 - No prune deletion occurs without successful backup + aggregation + history completeness gates.
