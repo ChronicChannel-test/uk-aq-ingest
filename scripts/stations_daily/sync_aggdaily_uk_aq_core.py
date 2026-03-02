@@ -26,7 +26,36 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 import requests
 
-TABLES: List[str] = ["connectors", "phenomena", "stations", "timeseries"]
+PRIMARY_TABLES: List[str] = ["connectors", "phenomena", "stations", "timeseries"]
+DEPENDENCY_TABLES: List[str] = [
+    "observed_properties",
+    "categories",
+    "offerings",
+    "features",
+    "procedures",
+]
+SYNC_TABLES: List[str] = [
+    "connectors",
+    "observed_properties",
+    "categories",
+    "phenomena",
+    "offerings",
+    "features",
+    "procedures",
+    "stations",
+    "timeseries",
+]
+DELETE_ORDER: List[str] = [
+    "timeseries",
+    "stations",
+    "procedures",
+    "features",
+    "offerings",
+    "phenomena",
+    "categories",
+    "observed_properties",
+    "connectors",
+]
 CORE_SCHEMA = "uk_aq_core"
 PUBLIC_SCHEMA = "uk_aq_public"
 
@@ -469,6 +498,14 @@ class PostgrestClient:
 
         if not response.ok:
             body = response.text.strip()
+            # Supabase/PostgREST returns 406 PGRST106 when schema is not exposed.
+            if response.status_code == 406 and "PGRST106" in body and f"Invalid schema: {CORE_SCHEMA}" in body:
+                raise SyncError(
+                    "Destination project API does not expose schema "
+                    f"'{CORE_SCHEMA}'. Add '{CORE_SCHEMA}' to Supabase API "
+                    "Exposed schemas for the destination (agg_daily) project, "
+                    "then re-run this workflow."
+                )
             raise SyncError(
                 f"PostgREST {method} {path} failed ({response.status_code}): {body or response.reason}"
             )
@@ -725,7 +762,7 @@ def main() -> int:
     source_columns, source_pk, source_meta_mode = load_source_metadata(
         src_client=src_client,
         schema_sql_path=schema_sql_path,
-        tables=TABLES,
+        tables=PRIMARY_TABLES,
     )
     print(f"Loaded source schema metadata via: {source_meta_mode}")
 
@@ -733,12 +770,12 @@ def main() -> int:
         dst_column_rows = dst_client.rpc(
             COLUMNS_RPC,
             profile=PUBLIC_SCHEMA,
-            args={"p_schema": CORE_SCHEMA, "p_table_names": TABLES},
+            args={"p_schema": CORE_SCHEMA, "p_table_names": SYNC_TABLES},
         )
         dst_pk_rows = dst_client.rpc(
             PK_RPC,
             profile=PUBLIC_SCHEMA,
-            args={"p_schema": CORE_SCHEMA, "p_table_names": TABLES},
+            args={"p_schema": CORE_SCHEMA, "p_table_names": SYNC_TABLES},
         )
     except SyncError as exc:
         message = str(exc)
@@ -759,12 +796,16 @@ def main() -> int:
         source_pk_by_table=source_pk,
         dest_columns_by_table=dest_columns,
         dest_pk_by_table=dest_pk,
-        tables=TABLES,
+        tables=PRIMARY_TABLES,
     )
 
-    print("Schema verification passed for all sync tables.")
+    print("Schema verification passed for all primary sync tables.")
 
-    for table in TABLES:
+    table_stats: Dict[str, Dict[str, Any]] = {}
+    missing_by_table: Dict[str, List[Tuple[Any, ...]]] = {}
+
+    # Phase 1: upsert all rows for dependency-safe set of tables.
+    for table in SYNC_TABLES:
         pk_columns = dest_pk.get(table, [])
         if not pk_columns:
             raise SyncError(f"{table}: no destination PK columns found")
@@ -787,29 +828,37 @@ def main() -> int:
                 on_conflict=",".join(pk_columns),
             )
 
-        src_pk_rows = src_client.fetch_all_rows(
-            table,
-            profile=CORE_SCHEMA,
-            select=",".join(pk_columns),
-            order=order_expr,
-        )
+        source_pk_set = {pk_tuple(row, pk_columns) for row in source_rows}
         dst_pk_rows_before_delete = dst_client.fetch_all_rows(
             table,
             profile=CORE_SCHEMA,
             select=",".join(pk_columns),
             order=order_expr,
         )
-
-        source_pk_set = {pk_tuple(row, pk_columns) for row in src_pk_rows}
         dest_pk_set = {pk_tuple(row, pk_columns) for row in dst_pk_rows_before_delete}
-        missing_in_source = sorted(dest_pk_set - source_pk_set)
+        missing_by_table[table] = sorted(dest_pk_set - source_pk_set)
+        table_stats[table] = {
+            "table": table,
+            "source_row_count": source_count,
+            "upsert_attempted": source_count,
+            "destination_row_count_after_sync": len(dest_pk_set),
+            "deleted": 0,
+            "pk_columns": pk_columns,
+        }
+
+    # Phase 2: hard-delete rows missing in source in FK-safe reverse order.
+    for table in DELETE_ORDER:
+        pk_columns = dest_pk.get(table, [])
+        if not pk_columns:
+            raise SyncError(f"{table}: no destination PK columns found for delete phase")
+        order_expr = ",".join(f"{col}.asc" for col in pk_columns)
 
         deleted = delete_missing_rows(
             client=dst_client,
             table=table,
             profile=CORE_SCHEMA,
             pk_columns=pk_columns,
-            missing_keys=missing_in_source,
+            missing_keys=missing_by_table.get(table, []),
         )
 
         dst_pk_rows_after_delete = dst_client.fetch_all_rows(
@@ -818,22 +867,11 @@ def main() -> int:
             select=",".join(pk_columns),
             order=order_expr,
         )
+        table_stats[table]["deleted"] = deleted
+        table_stats[table]["destination_row_count_after_sync"] = len(dst_pk_rows_after_delete)
 
-        dest_after_count = len(dst_pk_rows_after_delete)
-
-        print(
-            json.dumps(
-                {
-                    "table": table,
-                    "source_row_count": source_count,
-                    "upsert_attempted": source_count,
-                    "destination_row_count_after_sync": dest_after_count,
-                    "deleted": deleted,
-                    "pk_columns": pk_columns,
-                },
-                sort_keys=True,
-            )
-        )
+    for table in SYNC_TABLES:
+        print(json.dumps(table_stats[table], sort_keys=True))
 
     print("uk_aq_core sync to agg_daily completed successfully.")
     return 0

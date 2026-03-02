@@ -272,6 +272,7 @@ Behavior:
 - Reads source rows from ingest via PostgREST (`Accept-Profile`/`Content-Profile: uk_aq_core`).
 - Upserts destination rows by table primary key (`resolution=merge-duplicates` + `on_conflict=<pk>`).
 - Hard-deletes destination rows whose PKs no longer exist in ingest.
+- Also syncs FK dependency tables (`observed_properties`, `categories`, `offerings`, `features`, `procedures`) in dependency-safe order so mirrored rows can insert/delete cleanly.
 - Validates destination schema against source metadata (column order/name/type/nullability/default + PK) before any write.
 - Fails fast (non-zero exit) on schema mismatch or sync errors.
 

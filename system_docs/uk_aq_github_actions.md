@@ -117,6 +117,7 @@ UK_AQ_EDGE_UPSTREAM_SECRET=...
 - Export: `python3 scripts/uk_aq_export_stations_dropbox.py` (uploads `uk_aq_stations_<timestamp>.json`).
 - Final mirror step: `python3 scripts/stations_daily/sync_aggdaily_uk_aq_core.py`.
   - Mirrors `uk_aq_core.connectors`, `uk_aq_core.phenomena`, `uk_aq_core.stations`, `uk_aq_core.timeseries`.
+  - Also syncs FK dependency tables (`observed_properties`, `categories`, `offerings`, `features`, `procedures`) so the mirrored tables can be applied with exact FK constraints.
   - Sync mode: upsert by PK plus hard-delete missing PKs in destination.
   - Pre-write guard: destination schema must match source metadata (columns/defaults/nullability/order + PK), or workflow fails.
 - Optional: Sensor.Community discovery step (disabled by default).
