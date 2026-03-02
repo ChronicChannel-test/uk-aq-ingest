@@ -357,6 +357,17 @@
         color: var(--ink-soft);
       }
 
+      .r2-usage-actions {
+        display: flex;
+        justify-content: flex-end;
+      }
+
+      .r2-refresh-button {
+        padding: 6px 10px;
+        font-size: 12px;
+        border-radius: 10px;
+      }
+
       .status-pill {
         display: inline-flex;
         align-items: center;
@@ -680,6 +691,7 @@
       let dispatchLookbackMinutes = 30;
       let dispatchCursor = null;
       let dbSizePeriodHours = 24;
+      let latestDashboardData = null;
 
       try {
         const storedConnector = localStorage.getItem(DISPATCH_CONNECTOR_STORAGE_KEY);
@@ -721,6 +733,14 @@
         if (!value) return "n/a";
         const date = new Date(value);
         return date.toLocaleString();
+      }
+
+      function formatDateTimeDdMmYyyyHhMmSs(value) {
+        if (!value) return "n/a";
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return "n/a";
+        const pad = (num) => String(num).padStart(2, "0");
+        return `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
       }
 
       function formatCount(value) {
@@ -1297,9 +1317,57 @@
         chartWrap.addEventListener("mouseleave", hideTooltip);
       }
 
+      async function refreshR2MetricsOnly() {
+        if (!latestDashboardData) {
+          return;
+        }
+        setError("");
+        setStatus("Refreshing R2 metrics...");
+        try {
+          const params = new URLSearchParams();
+          params.set("force", "1");
+          params.set("t", String(Date.now()));
+          const resp = await fetch(`/api/r2_metrics?${params.toString()}`);
+          const text = await resp.text();
+          let payload = null;
+          try {
+            payload = JSON.parse(text);
+          } catch (_err) {
+            payload = null;
+          }
+          if (!resp.ok) {
+            const message =
+              (payload && (payload.error || payload.message)) ||
+              text ||
+              `Request failed (${resp.status})`;
+            throw new Error(message);
+          }
+          latestDashboardData.r2_usage = payload ? payload.r2_usage : null;
+          latestDashboardData.r2_usage_error = payload ? payload.r2_usage_error : null;
+          const nextPanel = renderDbSizePanel(
+            latestDashboardData.db_size_metrics,
+            latestDashboardData.db_size_metrics_error,
+            latestDashboardData.r2_usage,
+            latestDashboardData.r2_usage_error,
+          );
+          const currentPanel = dashboardEl.querySelector('[data-panel="db-size"]');
+          if (currentPanel) {
+            currentPanel.replaceWith(nextPanel);
+          } else {
+            dashboardEl.appendChild(nextPanel);
+          }
+          const generatedAt = (payload && payload.generated_at) || new Date().toISOString();
+          setStatus(`R2 metrics refreshed ${formatTime(generatedAt)} (local time)`);
+        } catch (err) {
+          setError(err.message || String(err));
+          setStatus("Error");
+        }
+      }
+
       function renderDbSizePanel(rows, sourceError, r2Usage, r2Error) {
         const panel = document.createElement("section");
         panel.className = "panel";
+        panel.dataset.panel = "db-size";
 
         const cutoffMs = Date.now() - dbSizePeriodHours * 60 * 60 * 1000;
         const pointMap = new Map();
@@ -1421,32 +1489,33 @@
           ? `Max observed ${formatMegabytes(maxObservedMb)} MB (chart capped at ${DB_SIZE_Y_MAX_MB} MB).`
           : `Y-axis fixed at ${DB_SIZE_Y_MAX_MB} MB.`;
         const r2UsageObject = asObject(r2Usage);
-        let r2UsageMarkup = "";
+        const r2Rows = [];
+        let r2LastUpdate = "n/a";
+        const addUsageRow = (title, summaryText, percentValue, subText) => {
+          const fillPct = Math.min(100, Math.max(0, Number(percentValue)));
+          r2Rows.push(`
+            <div class="r2-usage-row">
+              <div class="r2-usage-head">
+                <span>${escapeHtml(title)}</span>
+                <span>${escapeHtml(summaryText)}</span>
+              </div>
+              <div class="r2-usage-bar" role="img" aria-label="${escapeHtml(title)} usage">
+                <div class="r2-usage-fill" style="width:${fillPct.toFixed(2)}%"></div>
+              </div>
+              ${subText ? `<div class="r2-usage-sub">${escapeHtml(subText)}</div>` : ""}
+            </div>
+          `);
+        };
+        const addUnavailableRow = (title, errorText) => {
+          const suffix = errorText ? `: ${String(errorText)}` : "";
+          r2Rows.push(`
+            <div class="r2-usage-row">
+              <div class="r2-usage-sub">${escapeHtml(`${title} unavailable${suffix}`)}</div>
+            </div>
+          `);
+        };
         if (r2UsageObject) {
-          const rows = [];
-          const notes = [];
-          const addUsageRow = (title, summaryText, percentValue, subText) => {
-            const fillPct = Math.min(100, Math.max(0, Number(percentValue)));
-            rows.push(`
-              <div class="r2-usage-row">
-                <div class="r2-usage-head">
-                  <span>${escapeHtml(title)}</span>
-                  <span>${escapeHtml(summaryText)}</span>
-                </div>
-                <div class="r2-usage-bar" role="img" aria-label="${escapeHtml(title)} usage">
-                  <div class="r2-usage-fill" style="width:${fillPct.toFixed(2)}%"></div>
-                </div>
-                ${subText ? `<div class="r2-usage-sub">${escapeHtml(subText)}</div>` : ""}
-              </div>
-            `);
-          };
-          const addUnavailableRow = (title) => {
-            rows.push(`
-              <div class="r2-usage-row">
-                <div class="r2-usage-sub">${escapeHtml(title)} unavailable</div>
-              </div>
-            `);
-          };
+          r2LastUpdate = formatDateTimeDdMmYyyyHhMmSs(r2UsageObject.as_of_utc);
 
           const usedGb = asNumber(r2UsageObject.standard_used_gb);
           const freeTierGb = asNumber(r2UsageObject.free_tier_gb);
@@ -1460,10 +1529,7 @@
               objects !== null ? `Objects: ${formatCount(objects)}` : "",
             );
           } else {
-            addUnavailableRow("R2 Standard free tier (storage)");
-            if (r2Error) {
-              notes.push(`Storage usage error: ${String(r2Error)}`);
-            }
+            addUnavailableRow("R2 Standard free tier (storage)", r2Error);
           }
 
           const classAUsed = asNumber(r2UsageObject.class_a_used_requests);
@@ -1477,7 +1543,7 @@
               "Write/list-multipart operations",
             );
           } else {
-            addUnavailableRow("R2 Class A free tier");
+            addUnavailableRow("R2 Class A free tier", r2UsageObject.class_ops_error);
           }
 
           const classBUsed = asNumber(r2UsageObject.class_b_used_requests);
@@ -1491,40 +1557,22 @@
               "Read operations",
             );
           } else {
-            addUnavailableRow("R2 Class B free tier");
+            addUnavailableRow("R2 Class B free tier", r2UsageObject.class_ops_error);
           }
-
-          const opsError = r2UsageObject.class_ops_error;
-          if (opsError) {
-            notes.push(`Class operations error: ${String(opsError)}`);
-          }
-          const unclassifiedRequests = asNumber(r2UsageObject.class_ops_unclassified_requests);
-          if (unclassifiedRequests !== null && unclassifiedRequests > 0) {
-            notes.push(
-              `${formatCount(unclassifiedRequests)} operations were unclassified by action type and excluded from Class A/B totals.`,
-            );
-          }
-          const opsWindowEnd = r2UsageObject.class_ops_window_end_utc;
-          if (opsWindowEnd) {
-            notes.push(`Class ops window end: ${formatTime(opsWindowEnd)}.`);
-          }
-
-          r2UsageMarkup = `
-            <div class="r2-usage-wrap">
-              ${rows.join("")}
-              ${notes.length ? `<div class="r2-usage-sub">${escapeHtml(notes.join(" "))}</div>` : ""}
-            </div>
-          `;
         } else {
-          const unavailableSuffix = r2Error
-            ? `: ${escapeHtml(String(r2Error))}`
-            : "";
-          r2UsageMarkup = `
-            <div class="r2-usage-wrap">
-              <div class="r2-usage-sub">R2 usage unavailable${unavailableSuffix}</div>
-            </div>
-          `;
+          addUnavailableRow("R2 usage", r2Error);
         }
+        r2Rows.push(
+          `<div class="r2-usage-sub">R2 Metrics updated every hour. Last update: ${escapeHtml(r2LastUpdate)}</div>`,
+        );
+        const r2UsageMarkup = `
+          <div class="r2-usage-wrap">
+            ${r2Rows.join("")}
+            <div class="r2-usage-actions">
+              <button class="settings-button r2-refresh-button" id="refresh-r2-metrics" type="button">Refresh R2 metrics</button>
+            </div>
+          </div>
+        `;
         const sourceWarning = sourceError
           ? `<div class="footnote">Metric source warning: ${escapeHtml(sourceError)}</div>`
           : "";
@@ -1573,6 +1621,13 @@
               // Ignore storage write issues.
             }
             loadDashboard();
+          });
+        }
+
+        const refreshR2Button = panel.querySelector("#refresh-r2-metrics");
+        if (refreshR2Button) {
+          refreshR2Button.addEventListener("click", () => {
+            refreshR2MetricsOnly();
           });
         }
 
@@ -1794,6 +1849,7 @@
             throw new Error(message);
           }
           const data = payload || {};
+          latestDashboardData = data;
           if (typeof data.dispatch_cursor === "string" && data.dispatch_cursor) {
             dispatchCursor = data.dispatch_cursor;
             try {

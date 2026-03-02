@@ -69,11 +69,13 @@ SCHEDULER_BACKEND_CONNECTOR_ALLOWLIST = {
 
 CACHE_LOCK = threading.Lock()
 CACHE_STATE: Dict[str, Any] = {"data": None, "generated_at": None}
+R2_CACHE_STATE: Dict[str, Any] = {"usage": None, "error": None, "generated_at": None}
 DISPATCH_RUNS_STATE: Dict[str, Any] = {
     "rows": [],
     "latest_created_at": None,
 }
 CACHE_TTL_SECONDS = 20
+R2_CACHE_TTL_SECONDS = 60 * 60
 UTC_DATETIME_MIN = datetime.min.replace(tzinfo=timezone.utc)
 R2_BYTES_PER_GB = 1024 ** 3
 R2_CLASS_A_ACTION_TYPES = {
@@ -650,6 +652,30 @@ def _fetch_r2_account_metrics(now: datetime) -> Tuple[Optional[Dict[str, Any]], 
     return payload, None
 
 
+def _get_r2_usage_cached(
+    *,
+    force_refresh: bool = False,
+) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+    now = datetime.now(timezone.utc)
+    with CACHE_LOCK:
+        cached_usage = R2_CACHE_STATE.get("usage")
+        cached_error = R2_CACHE_STATE.get("error")
+        generated_at = R2_CACHE_STATE.get("generated_at")
+        if (
+            not force_refresh
+            and isinstance(generated_at, datetime)
+            and (now - generated_at).total_seconds() < R2_CACHE_TTL_SECONDS
+        ):
+            return cached_usage, cached_error
+
+    usage, error = _fetch_r2_account_metrics(now)
+    with CACHE_LOCK:
+        R2_CACHE_STATE["usage"] = usage
+        R2_CACHE_STATE["error"] = error
+        R2_CACHE_STATE["generated_at"] = datetime.now(timezone.utc)
+    return usage, error
+
+
 def _parse_timestamp(value: Optional[str]) -> Optional[datetime]:
     if not value:
         return None
@@ -916,7 +942,7 @@ def _build_dashboard(
         headers,
         now,
     )
-    r2_usage, r2_usage_error = _fetch_r2_account_metrics(now)
+    r2_usage, r2_usage_error = _get_r2_usage_cached(force_refresh=False)
     ingest_runs = _get_ingest_runs_cached(
         base_url,
         headers,
@@ -1177,6 +1203,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
         if parsed.path in ("/", "/index.html"):
             self._serve_html()
             return
+        if parsed.path == "/api/r2_metrics":
+            self._serve_r2_metrics(parsed)
+            return
         if parsed.path == "/api/dashboard":
             self._serve_dashboard(parsed)
             return
@@ -1235,6 +1264,41 @@ class DashboardHandler(BaseHTTPRequestHandler):
             return
 
         payload = json.dumps(data, indent=2)
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.end_headers()
+        self.wfile.write(payload.encode("utf-8"))
+
+    def _serve_r2_metrics(self, parsed) -> None:
+        query = parse_qs(parsed.query, keep_blank_values=False)
+        force_refresh_raw = ((query.get("force") or [""])[0] or "").strip().lower()
+        force_refresh = force_refresh_raw in {"1", "true", "yes", "y", "on"}
+        try:
+            r2_usage, r2_usage_error = _get_r2_usage_cached(force_refresh=force_refresh)
+        except Exception as exc:
+            payload = json.dumps({"error": str(exc)}, indent=2)
+            self.send_response(HTTPStatus.INTERNAL_SERVER_ERROR)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(payload.encode("utf-8"))
+            return
+
+        if force_refresh:
+            with CACHE_LOCK:
+                CACHE_STATE["data"] = None
+                CACHE_STATE["generated_at"] = None
+
+        payload = json.dumps(
+            {
+                "r2_usage": r2_usage,
+                "r2_usage_error": r2_usage_error,
+                "generated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+            },
+            indent=2,
+        )
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", "application/json")
         self.send_header("Cache-Control", "no-store")
