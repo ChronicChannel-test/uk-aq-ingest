@@ -317,6 +317,11 @@
       .r2-usage-wrap {
         margin-top: 12px;
         display: grid;
+        gap: 10px;
+      }
+
+      .r2-usage-row {
+        display: grid;
         gap: 6px;
       }
 
@@ -1418,30 +1423,99 @@
         const r2UsageObject = asObject(r2Usage);
         let r2UsageMarkup = "";
         if (r2UsageObject) {
-          const usedGb = asNumber(r2UsageObject.standard_used_gb);
-          const freeTierGb = asNumber(r2UsageObject.free_tier_gb);
-          const percent = asNumber(r2UsageObject.percent_of_free_tier);
-          const objects = asNumber(r2UsageObject.standard_objects);
-          if (usedGb !== null && freeTierGb !== null && percent !== null) {
-            const fillPct = Math.min(100, Math.max(0, percent));
-            const objectsLine = objects !== null
-              ? `<div class="r2-usage-sub">Objects: ${formatCount(objects)}</div>`
-              : "";
-            r2UsageMarkup = `
-              <div class="r2-usage-wrap">
+          const rows = [];
+          const notes = [];
+          const addUsageRow = (title, summaryText, percentValue, subText) => {
+            const fillPct = Math.min(100, Math.max(0, Number(percentValue)));
+            rows.push(`
+              <div class="r2-usage-row">
                 <div class="r2-usage-head">
-                  <span>R2 Standard free tier</span>
-                  <span>${formatGigabytes(usedGb)} GB / ${formatGigabytes(freeTierGb)} GB (${Math.round(percent)}%)</span>
+                  <span>${escapeHtml(title)}</span>
+                  <span>${escapeHtml(summaryText)}</span>
                 </div>
-                <div class="r2-usage-bar" role="img" aria-label="R2 Standard free-tier usage">
+                <div class="r2-usage-bar" role="img" aria-label="${escapeHtml(title)} usage">
                   <div class="r2-usage-fill" style="width:${fillPct.toFixed(2)}%"></div>
                 </div>
-                ${objectsLine}
+                ${subText ? `<div class="r2-usage-sub">${escapeHtml(subText)}</div>` : ""}
               </div>
-            `;
+            `);
+          };
+          const addUnavailableRow = (title) => {
+            rows.push(`
+              <div class="r2-usage-row">
+                <div class="r2-usage-sub">${escapeHtml(title)} unavailable</div>
+              </div>
+            `);
+          };
+
+          const usedGb = asNumber(r2UsageObject.standard_used_gb);
+          const freeTierGb = asNumber(r2UsageObject.free_tier_gb);
+          const storagePercent = asNumber(r2UsageObject.percent_of_free_tier);
+          const objects = asNumber(r2UsageObject.standard_objects);
+          if (usedGb !== null && freeTierGb !== null && storagePercent !== null) {
+            addUsageRow(
+              "R2 Standard free tier (storage)",
+              `${formatGigabytes(usedGb)} GB / ${formatGigabytes(freeTierGb)} GB (${Math.round(storagePercent)}%)`,
+              storagePercent,
+              objects !== null ? `Objects: ${formatCount(objects)}` : "",
+            );
+          } else {
+            addUnavailableRow("R2 Standard free tier (storage)");
+            if (r2Error) {
+              notes.push(`Storage usage error: ${String(r2Error)}`);
+            }
           }
-        }
-        if (!r2UsageMarkup) {
+
+          const classAUsed = asNumber(r2UsageObject.class_a_used_requests);
+          const classAFree = asNumber(r2UsageObject.class_a_free_tier_requests);
+          const classAPercent = asNumber(r2UsageObject.class_a_percent_of_free_tier);
+          if (classAUsed !== null && classAFree !== null && classAPercent !== null) {
+            addUsageRow(
+              "R2 Class A free tier",
+              `${formatCount(classAUsed)} / ${formatCount(classAFree)} (${Math.round(classAPercent)}%)`,
+              classAPercent,
+              "Write/list-multipart operations",
+            );
+          } else {
+            addUnavailableRow("R2 Class A free tier");
+          }
+
+          const classBUsed = asNumber(r2UsageObject.class_b_used_requests);
+          const classBFree = asNumber(r2UsageObject.class_b_free_tier_requests);
+          const classBPercent = asNumber(r2UsageObject.class_b_percent_of_free_tier);
+          if (classBUsed !== null && classBFree !== null && classBPercent !== null) {
+            addUsageRow(
+              "R2 Class B free tier",
+              `${formatCount(classBUsed)} / ${formatCount(classBFree)} (${Math.round(classBPercent)}%)`,
+              classBPercent,
+              "Read operations",
+            );
+          } else {
+            addUnavailableRow("R2 Class B free tier");
+          }
+
+          const opsError = r2UsageObject.class_ops_error;
+          if (opsError) {
+            notes.push(`Class operations error: ${String(opsError)}`);
+          }
+          const unclassifiedRequests = asNumber(r2UsageObject.class_ops_unclassified_requests);
+          if (unclassifiedRequests !== null && unclassifiedRequests > 0) {
+            notes.push(
+              `${formatCount(unclassifiedRequests)} operations were unclassified by action type and excluded from Class A/B totals.`,
+            );
+          }
+          const opsWindowEnd = r2UsageObject.class_ops_window_end_utc;
+          if (opsWindowEnd) {
+            notes.push(`Class ops window end: ${formatTime(opsWindowEnd)}.`);
+          }
+
+          r2UsageMarkup = `
+            <div class="r2-usage-wrap">
+              ${rows.join("")}
+              ${notes.length ? `<div class="r2-usage-sub">${escapeHtml(notes.join(" "))}</div>` : ""}
+            </div>
+          `;
+        } else {
           const unavailableSuffix = r2Error
             ? `: ${escapeHtml(String(r2Error))}`
             : "";

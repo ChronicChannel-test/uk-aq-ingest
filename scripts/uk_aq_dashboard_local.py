@@ -76,6 +76,61 @@ DISPATCH_RUNS_STATE: Dict[str, Any] = {
 CACHE_TTL_SECONDS = 20
 UTC_DATETIME_MIN = datetime.min.replace(tzinfo=timezone.utc)
 R2_BYTES_PER_GB = 1024 ** 3
+R2_CLASS_A_ACTION_TYPES = {
+    "ListBuckets",
+    "PutBucket",
+    "ListObjects",
+    "PutObject",
+    "CopyObject",
+    "CompleteMultipartUpload",
+    "CreateMultipartUpload",
+    "LifecycleStorageTierTransition",
+    "ListMultipartUploads",
+    "UploadPart",
+    "UploadPartCopy",
+    "ListParts",
+    "PutBucketEncryption",
+    "PutBucketCors",
+    "PutBucketLifecycleConfiguration",
+}
+R2_CLASS_B_ACTION_TYPES = {
+    "HeadBucket",
+    "HeadObject",
+    "GetObject",
+    "UsageSummary",
+    "GetBucketEncryption",
+    "GetBucketLocation",
+    "GetBucketCors",
+    "GetBucketLifecycleConfiguration",
+}
+R2_FREE_ACTION_TYPES = {
+    "DeleteObject",
+    "DeleteObjects",
+    "DeleteBucket",
+    "AbortMultipartUpload",
+}
+R2_OPS_GQL_QUERY = """
+query R2OpsMonth($accountTag: string!, $startDate: Time!, $endDate: Time!) {
+  viewer {
+    accounts(filter: { accountTag: $accountTag }) {
+      r2OperationsAdaptiveGroups(
+        limit: 10000
+        filter: {
+          datetime_geq: $startDate
+          datetime_leq: $endDate
+        }
+      ) {
+        sum {
+          requests
+        }
+        dimensions {
+          actionType
+        }
+      }
+    }
+  }
+}
+"""
 
 
 def _normalize_token(value: str) -> str:
@@ -196,6 +251,10 @@ def _safe_nonnegative_number(value: Any) -> Optional[float]:
     return parsed
 
 
+def _clamp_percent(value: float) -> float:
+    return max(0.0, min(200.0, value))
+
+
 def _extract_r2_usage_point(raw: Any) -> Optional[Dict[str, float]]:
     if not isinstance(raw, dict):
         return None
@@ -208,6 +267,102 @@ def _extract_r2_usage_point(raw: Any) -> Optional[Dict[str, float]]:
         "used_bytes": payload_size + metadata_size,
         "objects": objects,
     }
+
+
+def _fetch_r2_operations_metrics(
+    account_id: str,
+    api_token: str,
+    now: datetime,
+) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+    window_end = now.astimezone(timezone.utc)
+    window_start = window_end.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    try:
+        resp = requests.post(
+            "https://api.cloudflare.com/client/v4/graphql",
+            headers={
+                "Authorization": f"Bearer {api_token}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "query": R2_OPS_GQL_QUERY,
+                "variables": {
+                    "accountTag": account_id,
+                    "startDate": window_start.isoformat().replace("+00:00", "Z"),
+                    "endDate": window_end.isoformat().replace("+00:00", "Z"),
+                },
+            },
+            timeout=30,
+        )
+    except requests.RequestException as exc:
+        return None, f"R2 ops request failed ({exc.__class__.__name__})"
+    if not resp.ok:
+        return None, f"R2 ops HTTP {resp.status_code}"
+
+    try:
+        payload = resp.json()
+    except ValueError:
+        return None, "R2 ops returned non-JSON payload"
+    if not isinstance(payload, dict):
+        return None, "R2 ops payload is not an object"
+    if payload.get("errors"):
+        return None, "R2 ops GraphQL returned errors"
+
+    data = payload.get("data")
+    if not isinstance(data, dict):
+        return None, "R2 ops missing data object"
+    viewer = data.get("viewer")
+    if not isinstance(viewer, dict):
+        return None, "R2 ops missing viewer object"
+    accounts = viewer.get("accounts")
+    if not isinstance(accounts, list) or not accounts:
+        return None, "R2 ops missing account data"
+    account_row = accounts[0]
+    if not isinstance(account_row, dict):
+        return None, "R2 ops account row is invalid"
+    groups = account_row.get("r2OperationsAdaptiveGroups")
+    if not isinstance(groups, list):
+        return None, "R2 ops missing operations groups"
+
+    class_a_requests = 0.0
+    class_b_requests = 0.0
+    free_requests = 0.0
+    unclassified_requests = 0.0
+    unclassified_action_types: List[str] = []
+    unclassified_seen: set[str] = set()
+    for group in groups:
+        if not isinstance(group, dict):
+            continue
+        dimensions = group.get("dimensions")
+        totals = group.get("sum")
+        if not isinstance(dimensions, dict) or not isinstance(totals, dict):
+            continue
+        action_type = str(dimensions.get("actionType") or "").strip()
+        if not action_type:
+            continue
+        requests_count = _safe_nonnegative_number(totals.get("requests"))
+        if requests_count is None:
+            continue
+        if action_type in R2_CLASS_A_ACTION_TYPES:
+            class_a_requests += requests_count
+        elif action_type in R2_CLASS_B_ACTION_TYPES:
+            class_b_requests += requests_count
+        elif action_type in R2_FREE_ACTION_TYPES or action_type.lower().startswith("delete"):
+            free_requests += requests_count
+        else:
+            unclassified_requests += requests_count
+            if action_type not in unclassified_seen:
+                unclassified_seen.add(action_type)
+                unclassified_action_types.append(action_type)
+
+    return {
+        "class_a_requests": int(round(class_a_requests)),
+        "class_b_requests": int(round(class_b_requests)),
+        "free_requests": int(round(free_requests)),
+        "unclassified_requests": int(round(unclassified_requests)),
+        "unclassified_action_types": sorted(unclassified_action_types),
+        "window_start_utc": window_start.isoformat().replace("+00:00", "Z"),
+        "window_end_utc": window_end.isoformat().replace("+00:00", "Z"),
+    }, None
 
 
 def _fetch_json(url: str, headers: Dict[str, str], params: Dict[str, str]) -> List[Dict[str, Any]]:
@@ -390,6 +545,18 @@ def _fetch_r2_account_metrics(now: datetime) -> Tuple[Optional[Dict[str, Any]], 
     free_tier_gb = _safe_number(free_tier_raw)
     if free_tier_gb is None or free_tier_gb <= 0:
         return None, "invalid UK_AQ_R2_FREE_TIER_GB"
+    class_a_free_tier_raw = str(
+        os.getenv("UK_AQ_R2_FREE_TIER_CLASS_A_REQUESTS", "1000000")
+    ).strip()
+    class_b_free_tier_raw = str(
+        os.getenv("UK_AQ_R2_FREE_TIER_CLASS_B_REQUESTS", "10000000")
+    ).strip()
+    class_a_free_tier = _safe_number(class_a_free_tier_raw)
+    class_b_free_tier = _safe_number(class_b_free_tier_raw)
+    if class_a_free_tier is None or class_a_free_tier <= 0:
+        return None, "invalid UK_AQ_R2_FREE_TIER_CLASS_A_REQUESTS"
+    if class_b_free_tier is None or class_b_free_tier <= 0:
+        return None, "invalid UK_AQ_R2_FREE_TIER_CLASS_B_REQUESTS"
 
     url = f"https://api.cloudflare.com/client/v4/accounts/{account_id}/r2/metrics"
     try:
@@ -435,18 +602,52 @@ def _fetch_r2_account_metrics(now: datetime) -> Tuple[Optional[Dict[str, Any]], 
     percent_used = 0.0
     if free_bytes > 0:
         percent_used = (standard_used_bytes / free_bytes) * 100.0
-    percent_used = max(0.0, min(200.0, percent_used))
+    percent_used = _clamp_percent(percent_used)
     used_gb = standard_used_bytes / R2_BYTES_PER_GB
 
-    return {
+    payload: Dict[str, Any] = {
         "standard_used_bytes": standard_used_bytes,
         "standard_used_gb": used_gb,
         "standard_objects": standard_objects,
         "free_tier_gb": float(free_tier_gb),
         "percent_of_free_tier": percent_used,
+        "class_a_used_requests": None,
+        "class_b_used_requests": None,
+        "class_a_free_tier_requests": int(round(class_a_free_tier)),
+        "class_b_free_tier_requests": int(round(class_b_free_tier)),
+        "class_a_percent_of_free_tier": None,
+        "class_b_percent_of_free_tier": None,
+        "class_ops_unclassified_requests": None,
+        "class_ops_unclassified_action_types": [],
+        "class_ops_window_start_utc": None,
+        "class_ops_window_end_utc": None,
+        "class_ops_error": None,
         "source": "cloudflare_r2_account_metrics",
         "as_of_utc": now.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
-    }, None
+    }
+
+    ops_metrics, ops_error = _fetch_r2_operations_metrics(account_id, api_token, now)
+    if ops_metrics is None:
+        payload["class_ops_error"] = ops_error
+        return payload, None
+
+    class_a_used_requests = int(ops_metrics.get("class_a_requests") or 0)
+    class_b_used_requests = int(ops_metrics.get("class_b_requests") or 0)
+    class_a_percent = _clamp_percent((class_a_used_requests / class_a_free_tier) * 100.0)
+    class_b_percent = _clamp_percent((class_b_used_requests / class_b_free_tier) * 100.0)
+    payload["class_a_used_requests"] = class_a_used_requests
+    payload["class_b_used_requests"] = class_b_used_requests
+    payload["class_a_percent_of_free_tier"] = class_a_percent
+    payload["class_b_percent_of_free_tier"] = class_b_percent
+    payload["class_ops_unclassified_requests"] = int(
+        ops_metrics.get("unclassified_requests") or 0
+    )
+    payload["class_ops_unclassified_action_types"] = ops_metrics.get(
+        "unclassified_action_types"
+    ) or []
+    payload["class_ops_window_start_utc"] = ops_metrics.get("window_start_utc")
+    payload["class_ops_window_end_utc"] = ops_metrics.get("window_end_utc")
+    return payload, None
 
 
 def _parse_timestamp(value: Optional[str]) -> Optional[datetime]:
