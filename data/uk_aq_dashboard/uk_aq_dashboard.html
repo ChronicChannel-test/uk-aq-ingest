@@ -357,9 +357,16 @@
         color: var(--ink-soft);
       }
 
-      .r2-usage-actions {
+      .r2-usage-meta {
         display: flex;
-        justify-content: flex-end;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+
+      .r2-usage-meta .r2-usage-sub {
+        margin-right: auto;
       }
 
       .r2-refresh-button {
@@ -1562,13 +1569,11 @@
         } else {
           addUnavailableRow("R2 usage", r2Error);
         }
-        r2Rows.push(
-          `<div class="r2-usage-sub">R2 Metrics updated every hour. Last update: ${escapeHtml(r2LastUpdate)}</div>`,
-        );
         const r2UsageMarkup = `
           <div class="r2-usage-wrap">
             ${r2Rows.join("")}
-            <div class="r2-usage-actions">
+            <div class="r2-usage-meta">
+              <div class="r2-usage-sub">R2 Metrics updated every hour. Last update: ${escapeHtml(r2LastUpdate)}</div>
               <button class="settings-button r2-refresh-button" id="refresh-r2-metrics" type="button">Refresh R2 metrics</button>
             </div>
           </div>
