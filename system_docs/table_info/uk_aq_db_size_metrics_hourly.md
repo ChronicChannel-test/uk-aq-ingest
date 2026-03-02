@@ -3,13 +3,13 @@
 Hourly database size points logged by the DB size logger Cloud Run service.
 
 ## Purpose
-- Persist ingest DB and history DB size trends for dashboard charting.
+- Persist ingest DB, history DB, and Agg Daily DB size trends for dashboard charting.
 - Keep one consolidated metrics series in ingest DB (`database_label` differentiates DBs).
 - Support bounded retention cleanup without affecting observation granularity.
 
 ## Columns
 - `bucket_hour` (timestamptz, PK part): UTC hour bucket for the sample.
-- `database_label` (text, PK part): Database identifier (`ingestdb` or `historydb`).
+- `database_label` (text, PK part): Database identifier (`ingestdb`, `historydb`, or `aggdailydb`).
 - `database_name` (text): Postgres database name returned by `current_database()`.
 - `size_bytes` (bigint): Database size in bytes from `pg_database_size(current_database())`.
 - `source` (text): Writer source tag (default `uk_aq_db_size_logger_cloud_run`).

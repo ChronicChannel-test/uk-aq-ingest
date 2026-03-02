@@ -306,7 +306,7 @@ def _fetch_db_size_metrics(
     normalized: List[Dict[str, Any]] = []
     for row in rows:
         label = str(row.get("database_label") or "").strip().lower()
-        if label not in {"ingestdb", "historydb"}:
+        if label not in {"ingestdb", "historydb", "aggdailydb"}:
             continue
         bucket_hour = _parse_timestamp(row.get("bucket_hour"))
         recorded_at = _parse_timestamp(row.get("recorded_at"))

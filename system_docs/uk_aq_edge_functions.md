@@ -142,18 +142,19 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
   - Mixed rows across connectors are processed in the same batch, reducing history RPC call overhead.
 
 ### DB Size Logger (Cloud Run)
-- Purpose: Sample current DB size from both ingest DB and history DB once per run, then upsert hourly points into ingest DB.
+- Purpose: Sample current DB size from ingest DB, history DB, and optional Agg Daily DB once per run, then upsert hourly points into ingest DB.
 - Triggered by: Cloud Scheduler -> Cloud Run service (`workers/uk_aq_db_size_logger_cloud_run`).
 - Reads:
   - Ingest DB RPC: `uk_aq_public.uk_aq_rpc_database_size_bytes`
   - History DB RPC: `uk_aq_public.uk_aq_rpc_database_size_bytes`
+  - Agg Daily DB RPC (optional): `uk_aq_public.uk_aq_rpc_database_size_bytes`
 - Writes (ingest DB):
   - RPC: `uk_aq_public.uk_aq_rpc_db_size_metric_upsert`
   - RPC: `uk_aq_public.uk_aq_rpc_db_size_metric_cleanup`
   - Table: `uk_aq_raw.db_size_metrics_hourly`
   - View: `uk_aq_public.uk_aq_db_size_metrics_hourly`
 - Notes:
-  - Upsert key is `(bucket_hour, database_label)` with labels `ingestdb` and `historydb`.
+  - Upsert key is `(bucket_hour, database_label)` with labels `ingestdb`, `historydb`, and `aggdailydb`.
   - Cleanup RPC trims old rows by retention days (`UK_AQ_DB_SIZE_RETENTION_DAYS`, default `120`).
   - Cloud Run CPU/memory/concurrency are managed in deploy workflow vars (`GCP_DB_SIZE_LOGGER_*`).
 

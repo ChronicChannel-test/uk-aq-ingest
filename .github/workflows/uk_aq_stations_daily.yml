@@ -376,3 +376,12 @@ jobs:
           UK_AQ_DROPBOX_ROOT: ${{ vars.UK_AQ_DROPBOX_ROOT }}
         run: |
           python3 scripts/uk_aq_export_stations_dropbox.py
+
+      - name: Sync uk_aq_core reference tables to Agg Daily
+        env:
+          SRC_SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          SRC_SECRET_KEY: ${{ secrets.SB_SECRET_KEY }}
+          DST_SUPABASE_URL: ${{ vars.AGGDAILY_SUPABASE_URL }}
+          DST_SECRET_KEY: ${{ secrets.AGGDAILY_SECRET_KEY }}
+        run: |
+          python3 scripts/stations_daily/sync_aggdaily_uk_aq_core.py
