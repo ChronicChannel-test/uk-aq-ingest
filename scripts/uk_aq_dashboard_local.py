@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import base64
 import json
+import math
 import os
 import re
 import threading
@@ -254,7 +255,7 @@ def _safe_number(value: Any) -> Optional[float]:
     if isinstance(value, bool):
         return None
     if isinstance(value, (int, float)):
-        if isinstance(value, float) and (value != value or value in {float("inf"), float("-inf")}):
+        if isinstance(value, float) and not math.isfinite(value):
             return None
         return float(value)
     if isinstance(value, str):
@@ -265,7 +266,7 @@ def _safe_number(value: Any) -> Optional[float]:
             parsed = float(candidate)
         except ValueError:
             return None
-        if parsed != parsed or parsed in {float("inf"), float("-inf")}:
+        if not math.isfinite(parsed):
             return None
         return parsed
     return None

@@ -1541,7 +1541,7 @@
               subMarkup = `
                 <div class="r2-usage-sub r2-usage-sub-split">
                   <span>${escapeHtml(subText || "")}</span>
-                  <span class="r2-usage-sub-right">${escapeHtml(subRightText || "")}</span>
+                  <span class="r2-usage-sub-right">${escapeHtml(String(subRightText))}</span>
                 </div>
               `;
             } else {
