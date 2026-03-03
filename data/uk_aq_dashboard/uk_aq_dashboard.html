@@ -367,6 +367,7 @@
       .r2-usage-sub-right {
         margin-left: auto;
         text-align: right;
+        white-space: nowrap;
       }
 
       .r2-usage-meta {
@@ -1531,6 +1532,18 @@
           ? `Max observed ${formatMegabytes(maxObservedMb)} MB (chart capped at ${DB_SIZE_Y_MAX_MB} MB).`
           : `Y-axis fixed at ${DB_SIZE_Y_MAX_MB} MB.`;
         const r2UsageObject = asObject(r2Usage);
+        const getNextR2LimitsResetDate = () => {
+          const now = new Date();
+          let target = new Date(now.getFullYear(), now.getMonth(), 24);
+          if (now.getDate() >= 24) {
+            target = new Date(now.getFullYear(), now.getMonth() + 1, 24);
+          }
+          const day = String(target.getDate()).padStart(2, "0");
+          const month = String(target.getMonth() + 1).padStart(2, "0");
+          const year = String(target.getFullYear());
+          return `${day}/${month}/${year}`;
+        };
+        const r2LimitsResetLabel = `Limits reset: ${getNextR2LimitsResetDate()}`;
         const r2Rows = [];
         let r2LastUpdate = "n/a";
         const addUsageRow = (title, summaryText, percentValue, subText, subRightText) => {
@@ -1612,6 +1625,7 @@
               `${formatCount(classBUsed)} / ${formatCount(classBFree)} (${Math.round(classBPercent)}%)`,
               classBPercent,
               "Read operations",
+              r2LimitsResetLabel,
             );
           } else {
             addUnavailableRow("R2 Class B free tier", r2UsageObject.class_ops_error);
