@@ -357,6 +357,18 @@
         color: var(--ink-soft);
       }
 
+      .r2-usage-sub-split {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 10px;
+      }
+
+      .r2-usage-sub-right {
+        margin-left: auto;
+        text-align: right;
+      }
+
       .r2-usage-meta {
         display: flex;
         align-items: center;
@@ -773,6 +785,29 @@
           return "n/a";
         }
         return Number(valueGb).toFixed(2);
+      }
+
+      function formatBytesBestFit(valueBytes) {
+        if (valueBytes === null || valueBytes === undefined || Number.isNaN(Number(valueBytes))) {
+          return "n/a";
+        }
+        const value = Number(valueBytes);
+        const abs = Math.abs(value);
+        if (abs < 1000) {
+          return `${Math.round(value)} bytes`;
+        }
+        const units = [
+          { threshold: 1e12, label: "TB" },
+          { threshold: 1e9, label: "GB" },
+          { threshold: 1e6, label: "MB" },
+          { threshold: 1e3, label: "kb" },
+        ];
+        for (const unit of units) {
+          if (abs >= unit.threshold) {
+            return `${(value / unit.threshold).toFixed(2)}${unit.label}`;
+          }
+        }
+        return `${Math.round(value)} bytes`;
       }
 
       function asNumber(value) {
@@ -1498,8 +1533,21 @@
         const r2UsageObject = asObject(r2Usage);
         const r2Rows = [];
         let r2LastUpdate = "n/a";
-        const addUsageRow = (title, summaryText, percentValue, subText) => {
+        const addUsageRow = (title, summaryText, percentValue, subText, subRightText) => {
           const fillPct = Math.min(100, Math.max(0, Number(percentValue)));
+          let subMarkup = "";
+          if (subText || subRightText) {
+            if (subRightText) {
+              subMarkup = `
+                <div class="r2-usage-sub r2-usage-sub-split">
+                  <span>${escapeHtml(subText || "")}</span>
+                  <span class="r2-usage-sub-right">${escapeHtml(subRightText || "")}</span>
+                </div>
+              `;
+            } else {
+              subMarkup = `<div class="r2-usage-sub">${escapeHtml(subText || "")}</div>`;
+            }
+          }
           r2Rows.push(`
             <div class="r2-usage-row">
               <div class="r2-usage-head">
@@ -1509,7 +1557,7 @@
               <div class="r2-usage-bar" role="img" aria-label="${escapeHtml(title)} usage">
                 <div class="r2-usage-fill" style="width:${fillPct.toFixed(2)}%"></div>
               </div>
-              ${subText ? `<div class="r2-usage-sub">${escapeHtml(subText)}</div>` : ""}
+              ${subMarkup}
             </div>
           `);
         };
@@ -1525,6 +1573,7 @@
           r2LastUpdate = formatDateTimeDdMmYyyyHhMmSs(r2UsageObject.as_of_utc);
 
           const usedGb = asNumber(r2UsageObject.standard_used_gb);
+          const usedBytes = asNumber(r2UsageObject.standard_used_bytes);
           const freeTierGb = asNumber(r2UsageObject.free_tier_gb);
           const storagePercent = asNumber(r2UsageObject.percent_of_free_tier);
           const objects = asNumber(r2UsageObject.standard_objects);
@@ -1534,6 +1583,7 @@
               `${formatGigabytes(usedGb)} GB / ${formatGigabytes(freeTierGb)} GB (${Math.round(storagePercent)}%)`,
               storagePercent,
               objects !== null ? `Objects: ${formatCount(objects)}` : "",
+              usedBytes !== null ? `Size: ${formatBytesBestFit(usedBytes)}` : "",
             );
           } else {
             addUnavailableRow("R2 Standard free tier (storage)", r2Error);
