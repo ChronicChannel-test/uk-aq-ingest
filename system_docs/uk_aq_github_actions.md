@@ -336,7 +336,7 @@ UK_AQ_EDGE_UPSTREAM_SECRET=...
 - Required secrets/vars:
   - `GCP_PROJECT_ID`, Google auth secrets (`GCP_WORKLOAD_IDENTITY_PROVIDER` + `GCP_SERVICE_ACCOUNT` or `GCP_SA_KEY`)
   - `GCP_SCOMM_JOB_SERVICE_ACCOUNT` (runtime service account used by Cloud Run service)
-  - `SUPABASE_URL`, `SB_SECRET_KEY` (preferred; workflow falls back to `SB_SECRET_KEY`)
+  - `SUPABASE_URL`, `SB_SECRET_KEY` (preferred; workflow falls back to `SECRET_KEY`)
 - Optional:
   - `HISTORY_SUPABASE_URL`, `HISTORY_SECRET_KEY` (required only for `HISTORY_WRITE_MODE=direct`; not injected for `pubsub_only`/`outbox_only`)
   - `SCOMM_HISTORY_WRITE_MODE` (workflow default `pubsub_only`)
