@@ -68,6 +68,9 @@ UK_AQ_EDGE_UPSTREAM_SECRET=...
   - `vars.HISTORY_SUPABASE_URL`
   - `secrets.HISTORY_PUBLISHABLE_DEFAULT_KEY`
   - optional `secrets.SB_UK_AQ_CRON_SECRET` header.
+- Invocation guardrails:
+  - Uses `lookback_minutes=60`, `top_n=15`, `page_size=5000`, `max_rows=25000`, `runtime_budget_ms=115000`, `request_timeout_ms=20000`.
+  - Uses `curl` retry controls for transient `5xx`/timeout responses: `--retry 2 --retry-delay 5 --retry-max-time 210`.
 
 ### `uk_aq_monthly_index_maintenance.yml`
 - Trigger: monthly on day 1 at 05:35 UTC, or manual dispatch.

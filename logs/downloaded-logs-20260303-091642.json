@@ -1,0 +1,2764 @@
+[
+  {
+    "protoPayload": {
+      "@type": "type.googleapis.com/google.cloud.audit.AuditLog",
+      "authenticationInfo": {
+        "principalEmail": "github-actions-deploy-uk-aq@astute-lyceum-484111-k5.iam.gserviceaccount.com",
+        "serviceAccountKeyName": "//iam.googleapis.com/projects/astute-lyceum-484111-k5/serviceAccounts/github-actions-deploy-uk-aq@astute-lyceum-484111-k5.iam.gserviceaccount.com/keys/245477747bc3a9f0c496fb7a93dbc4423a1e8a0b",
+        "principalSubject": "serviceAccount:github-actions-deploy-uk-aq@astute-lyceum-484111-k5.iam.gserviceaccount.com",
+        "oauthInfo": {
+          "oauthClientId": "107038033518857047977"
+        }
+      },
+      "requestMetadata": {
+        "callerIp": "135.232.200.214",
+        "callerSuppliedUserAgent": "google-cloud-sdk gcloud/557.0.0 command/gcloud.run.deploy invocation-id/236c89bc777b41d2a0a3b420b65397db environment/github-actions-setup-gcloud environment-version/2.2.1 client-os/LINUX client-os-ver/6.14.0 client-pltf-arch/x86_64 interactive/False from-script/False python/3.13.10 term/  (Linux 6.14.0-1017-azure),gzip(gfe)",
+        "requestAttributes": {
+          "time": "2026-03-03T08:49:04.581126Z",
+          "auth": {}
+        },
+        "destinationAttributes": {}
+      },
+      "serviceName": "run.googleapis.com",
+      "methodName": "google.cloud.run.v1.Services.ReplaceService",
+      "authorizationInfo": [
+        {
+          "resource": "namespaces/astute-lyceum-484111-k5/services/uk-aq-history-pubsub-writer",
+          "permission": "run.services.update",
+          "granted": true,
+          "resourceAttributes": {},
+          "permissionType": "ADMIN_WRITE"
+        },
+        {
+          "resource": "namespaces/astute-lyceum-484111-k5/services/uk-aq-history-pubsub-writer",
+          "permission": "run.services.update",
+          "granted": true,
+          "resourceAttributes": {
+            "service": "run.googleapis.com/",
+            "name": "namespaces/astute-lyceum-484111-k5/services/uk-aq-history-pubsub-writer",
+            "type": "run.googleapis.com/Service"
+          },
+          "permissionType": "ADMIN_WRITE"
+        }
+      ],
+      "resourceName": "namespaces/astute-lyceum-484111-k5/services/uk-aq-history-pubsub-writer",
+      "request": {
+        "name": "namespaces/astute-lyceum-484111-k5/services/uk-aq-history-pubsub-writer",
+        "@type": "type.googleapis.com/google.cloud.run.v1.ReplaceServiceRequest",
+        "service": {
+          "status": {
+            "latestReadyRevisionName": "uk-aq-history-pubsub-writer-00014-2h4",
+            "latestCreatedRevisionName": "uk-aq-history-pubsub-writer-00014-2h4",
+            "url": "https://uk-aq-history-pubsub-writer-a666zgauua-nw.a.run.app",
+            "observedGeneration": 14,
+            "traffic": [
+              {
+                "percent": 100,
+                "revisionName": "uk-aq-history-pubsub-writer-00014-2h4",
+                "latestRevision": true
+              }
+            ],
+            "conditions": [
+              {
+                "lastTransitionTime": "2026-03-02T10:26:28.433014Z",
+                "type": "Ready",
+                "status": "True"
+              },
+              {
+                "type": "ConfigurationsReady",
+                "lastTransitionTime": "2026-03-02T10:26:23.659841Z",
+                "status": "True"
+              },
+              {
+                "status": "True",
+                "lastTransitionTime": "2026-03-02T10:26:28.390166Z",
+                "type": "RoutesReady"
+              }
+            ]
+          },
+          "kind": "Service",
+          "spec": {
+            "traffic": [
+              {
+                "percent": 100,
+                "latestRevision": true
+              }
+            ],
+            "template": {
+              "metadata": {
+                "annotations": {
+                  "run.googleapis.com/client-name": "gcloud",
+                  "autoscaling.knative.dev/maxScale": "1",
+                  "run.googleapis.com/client-version": "557.0.0"
+                },
+                "labels": {
+                  "run.googleapis.com/startupProbeType": "Default",
+                  "job_name": "uk-aq-history-pubsub-writer-service",
+                  "client.knative.dev/nonce": "qquxnzedki"
+                }
+              },
+              "spec": {
+                "containerConcurrency": 1,
+                "containers": [
+                  {
+                    "resources": {
+                      "limits": {
+                        "cpu": "0.25",
+                        "memory": "256Mi"
+                      }
+                    },
+                    "image": "europe-west2-docker.pkg.dev/astute-lyceum-484111-k5/uk-aq/uk-aq-history-pubsub:a7de4426e33b",
+                    "name": "uk-aq-history-pubsub-1"
+                  }
+                ],
+                "timeoutSeconds": 1500,
+                "serviceAccountName": "uk-aq-history-pubsub-job@astute-lyceum-484111-k5.iam.gserviceaccount.com"
+              }
+            }
+          },
+          "apiVersion": "serving.knative.dev/v1",
+          "metadata": {
+            "labels": {
+              "job_name": "uk-aq-history-pubsub-writer-service",
+              "run.googleapis.com/satisfiesPzs": "true",
+              "cloud.googleapis.com/location": "europe-west2"
+            },
+            "name": "uk-aq-history-pubsub-writer",
+            "annotations": {
+              "run.googleapis.com/operation-id": "d8605962-f311-4bd6-95bb-e660bd92ba73",
+              "run.googleapis.com/client-version": "557.0.0",
+              "run.googleapis.com/maxScale": "80",
+              "serving.knative.dev/lastModifier": "github-actions-deploy-uk-aq@astute-lyceum-484111-k5.iam.gserviceaccount.com",
+              "serving.knative.dev/creator": "github-actions-deploy-uk-aq@astute-lyceum-484111-k5.iam.gserviceaccount.com",
+              "run.googleapis.com/urls": "[\"https://uk-aq-history-pubsub-writer-252684221022.europe-west2.run.app\",\"https://uk-aq-history-pubsub-writer-a666zgauua-nw.a.run.app\"]",
+              "run.googleapis.com/ingress-status": "all",
+              "run.googleapis.com/ingress": "all",
+              "run.googleapis.com/client-name": "gcloud"
+            },
+            "namespace": "252684221022",
+            "selfLink": "/apis/serving.knative.dev/v1/namespaces/252684221022/services/uk-aq-history-pubsub-writer",
+            "generation": 14,
+            "uid": "c9a93f6d-d561-404f-994c-c79f18173daf",
+            "resourceVersion": "AAZMCAUMuHY",
+            "creationTimestamp": "2026-02-19T13:03:14.049461Z"
+          }
+        }
+      },
+      "resourceLocation": {
+        "currentLocations": [
+          "europe-west2"
+        ]
+      }
+    },
+    "insertId": "t66x0hdgd5f",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "project_id": "astute-lyceum-484111-k5",
+        "location": "europe-west2",
+        "configuration_name": "",
+        "revision_name": "",
+        "service_name": "uk-aq-history-pubsub-writer"
+      }
+    },
+    "timestamp": "2026-03-03T08:49:04.051375Z",
+    "severity": "NOTICE",
+    "logName": "projects/astute-lyceum-484111-k5/logs/cloudaudit.googleapis.com%2Factivity",
+    "receiveTimestamp": "2026-03-03T08:49:05.024319762Z"
+  },
+  {
+    "textPayload": "Starting new instance. Reason: DEPLOYMENT_ROLLOUT - Instance started due to traffic shifting between revisions due to deployment, traffic split adjustment, or deployment health check.",
+    "insertId": "69a6a0840004468660a1e838",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "service_name": "uk-aq-history-pubsub-writer",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s",
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "project_id": "astute-lyceum-484111-k5",
+        "location": "europe-west2"
+      }
+    },
+    "timestamp": "2026-03-03T08:49:08.280198Z",
+    "severity": "INFO",
+    "labels": {
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206",
+      "job_name": "uk-aq-history-pubsub-writer-service",
+      "scaling_reason": "DEPLOYMENT_ROLLOUT"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fvarlog%2Fsystem",
+    "receiveTimestamp": "2026-03-03T08:49:08.284372830Z"
+  },
+  {
+    "textPayload": "\u001b[0m\u001b[32mDownload\u001b[0m https://deno.land/std@0.224.0/http/server.ts",
+    "insertId": "69a6a0860007b87c1c37f813",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "service_name": "uk-aq-history-pubsub-writer",
+        "location": "europe-west2",
+        "project_id": "astute-lyceum-484111-k5",
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s"
+      }
+    },
+    "timestamp": "2026-03-03T08:49:10.505980Z",
+    "labels": {
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206",
+      "job_name": "uk-aq-history-pubsub-writer-service"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2026-03-03T08:49:10.510994962Z"
+  },
+  {
+    "textPayload": "\u001b[0m\u001b[32mDownload\u001b[0m https://deno.land/std@0.224.0/async/delay.ts",
+    "insertId": "69a6a086000c8080877c111f",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "service_name": "uk-aq-history-pubsub-writer",
+        "project_id": "astute-lyceum-484111-k5",
+        "location": "europe-west2",
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s"
+      }
+    },
+    "timestamp": "2026-03-03T08:49:10.819328Z",
+    "labels": {
+      "job_name": "uk-aq-history-pubsub-writer-service",
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2026-03-03T08:49:10.844302761Z"
+  },
+  {
+    "textPayload": "Default STARTUP TCP probe succeeded after 1 attempt for container \"uk-aq-history-pubsub-1\" on port 8080.",
+    "insertId": "69a6a086000d39671c094024",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "location": "europe-west2",
+        "project_id": "astute-lyceum-484111-k5",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s",
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "service_name": "uk-aq-history-pubsub-writer"
+      }
+    },
+    "timestamp": "2026-03-03T08:49:10.866663Z",
+    "severity": "INFO",
+    "labels": {
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206",
+      "job_name": "uk-aq-history-pubsub-writer-service"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fvarlog%2Fsystem",
+    "receiveTimestamp": "2026-03-03T08:49:10.951459606Z"
+  },
+  {
+    "textPayload": "Listening on http://localhost:8080/",
+    "insertId": "69a6a086000d401548bbcab1",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "service_name": "uk-aq-history-pubsub-writer",
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s",
+        "location": "europe-west2",
+        "project_id": "astute-lyceum-484111-k5"
+      }
+    },
+    "timestamp": "2026-03-03T08:49:10.868373Z",
+    "labels": {
+      "job_name": "uk-aq-history-pubsub-writer-service",
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2026-03-03T08:49:10.873770109Z"
+  },
+  {
+    "protoPayload": {
+      "@type": "type.googleapis.com/google.cloud.audit.AuditLog",
+      "status": {
+        "message": "Ready condition status changed to True for Revision uk-aq-history-pubsub-writer-00015-r8s with message: Deploying revision succeeded in 6.28s."
+      },
+      "serviceName": "run.googleapis.com",
+      "methodName": "/Services.ReplaceService",
+      "resourceName": "namespaces/astute-lyceum-484111-k5/revisions/uk-aq-history-pubsub-writer-00015-r8s",
+      "response": {
+        "metadata": {
+          "name": "uk-aq-history-pubsub-writer-00015-r8s",
+          "namespace": "252684221022",
+          "selfLink": "/apis/serving.knative.dev/v1/namespaces/252684221022/revisions/uk-aq-history-pubsub-writer-00015-r8s",
+          "uid": "e9457d62-06b3-474b-a2e7-ff399371b3d4",
+          "resourceVersion": "AAZMGsby4Fg",
+          "generation": 1,
+          "creationTimestamp": "2026-03-03T08:49:04.653581Z",
+          "labels": {
+            "client.knative.dev/nonce": "qquxnzedki",
+            "job_name": "uk-aq-history-pubsub-writer-service",
+            "serving.knative.dev/configuration": "uk-aq-history-pubsub-writer",
+            "serving.knative.dev/configurationGeneration": "15",
+            "serving.knative.dev/service": "uk-aq-history-pubsub-writer",
+            "serving.knative.dev/serviceUid": "c9a93f6d-d561-404f-994c-c79f18173daf",
+            "serving.knative.dev/route": "uk-aq-history-pubsub-writer",
+            "run.googleapis.com/satisfiesPzs": "true",
+            "cloud.googleapis.com/location": "europe-west2",
+            "run.googleapis.com/startupProbeType": "Default"
+          },
+          "annotations": {
+            "autoscaling.knative.dev/maxScale": "1",
+            "run.googleapis.com/client-name": "gcloud",
+            "run.googleapis.com/client-version": "557.0.0",
+            "serving.knative.dev/creator": "github-actions-deploy-uk-aq@astute-lyceum-484111-k5.iam.gserviceaccount.com",
+            "run.googleapis.com/operation-id": "ee8087db-b517-4239-97c9-d6c3b623da07"
+          },
+          "ownerReferences": [
+            {
+              "kind": "Configuration",
+              "name": "uk-aq-history-pubsub-writer",
+              "uid": "365b818e-dae8-4bdc-a473-77e013472bd8",
+              "apiVersion": "serving.knative.dev/v1",
+              "controller": true,
+              "blockOwnerDeletion": true
+            }
+          ]
+        },
+        "apiVersion": "serving.knative.dev/v1",
+        "kind": "Revision",
+        "spec": {
+          "containerConcurrency": 1,
+          "timeoutSeconds": 1500,
+          "serviceAccountName": "uk-aq-history-pubsub-job@astute-lyceum-484111-k5.iam.gserviceaccount.com",
+          "containers": [
+            {
+              "name": "uk-aq-history-pubsub-1",
+              "image": "europe-west2-docker.pkg.dev/astute-lyceum-484111-k5/uk-aq/uk-aq-history-pubsub@sha256:fa2e3a9180459016773a2c169aa814ab8fc33cbbc4734507d3a421bdb00a5bab",
+              "ports": [
+                {
+                  "name": "http1",
+                  "containerPort": 8080
+                }
+              ],
+              "env": [
+                {
+                  "name": "SUPABASE_URL",
+                  "value": "https://nmgierafoeuxfkkscrln.supabase.co"
+                },
+                {
+                  "name": "HISTORY_SUPABASE_URL",
+                  "value": "https://izumkxuxseyojjsmnapi.supabase.co"
+                },
+                {
+                  "name": "UK_AQ_PUBLIC_SCHEMA",
+                  "value": "uk_aq_public"
+                },
+                {
+                  "name": "HISTORY_SCHEMA",
+                  "value": "uk_aq_public"
+                },
+                {
+                  "name": "HISTORY_UPSERT_RPC",
+                  "value": "uk_aq_rpc_history_observations_upsert"
+                },
+                {
+                  "name": "HISTORY_UPSERT_CHUNK_SIZE",
+                  "value": "5000"
+                },
+                {
+                  "name": "HISTORY_UPSERT_RPC_RETRIES",
+                  "value": "3"
+                },
+                {
+                  "name": "HISTORY_UPSERT_RETRY_BASE_MS",
+                  "value": "1000"
+                },
+                {
+                  "name": "HISTORY_UPSERT_TIMEOUT_SPLIT_MIN_ROWS",
+                  "value": "32"
+                },
+                {
+                  "name": "HISTORY_UPSERT_TIMEOUT_SPLIT_MAX_DEPTH",
+                  "value": "4"
+                },
+                {
+                  "name": "HISTORY_PUBSUB_PULL_MAX_MESSAGES",
+                  "value": "1000"
+                },
+                {
+                  "name": "HISTORY_PUBSUB_WRITER_MAX_BATCHES",
+                  "value": "24"
+                },
+                {
+                  "name": "HISTORY_PUBSUB_WRITER_BUDGET_SECONDS",
+                  "value": "1200"
+                },
+                {
+                  "name": "HISTORY_PUBSUB_WRITER_SHUTDOWN_BUFFER_SECONDS",
+                  "value": "20"
+                },
+                {
+                  "name": "HISTORY_PUBSUB_WRITER_RPC_RETRIES",
+                  "value": "3"
+                },
+                {
+                  "name": "HISTORY_PUBSUB_WRITER_PUBSUB_RETRIES",
+                  "value": "3"
+                },
+                {
+                  "name": "HISTORY_PUBSUB_LOCAL_PORT",
+                  "value": "8000"
+                },
+                {
+                  "name": "GCP_PROJECT_ID",
+                  "value": "astute-lyceum-484111-k5"
+                },
+                {
+                  "name": "HISTORY_PUBSUB_SUBSCRIPTION",
+                  "value": "uk-aq-history-observations-sub"
+                },
+                {
+                  "name": "SB_SECRET_KEY",
+                  "valueFrom": {
+                    "secretKeyRef": {
+                      "key": "latest",
+                      "name": "SB_SECRET_KEY"
+                    }
+                  }
+                },
+                {
+                  "name": "HISTORY_SECRET_KEY",
+                  "valueFrom": {
+                    "secretKeyRef": {
+                      "key": "latest",
+                      "name": "HISTORY_SECRET_KEY"
+                    }
+                  }
+                }
+              ],
+              "resources": {
+                "limits": {
+                  "cpu": "0.25",
+                  "memory": "256Mi"
+                }
+              },
+              "startupProbe": {
+                "timeoutSeconds": 240,
+                "periodSeconds": 240,
+                "failureThreshold": 1,
+                "tcpSocket": {
+                  "port": 8080
+                }
+              }
+            }
+          ]
+        },
+        "status": {
+          "observedGeneration": 1,
+          "conditions": [
+            {
+              "type": "Ready",
+              "status": "True",
+              "message": "Deploying revision succeeded in 6.28s.",
+              "lastTransitionTime": "2026-03-03T08:49:10.930520Z"
+            },
+            {
+              "type": "ContainerHealthy",
+              "status": "True",
+              "message": "Containers became healthy in 2.25s.",
+              "lastTransitionTime": "2026-03-03T08:49:10.873348Z"
+            },
+            {
+              "type": "ContainerReady",
+              "status": "True",
+              "message": "Container image import completed in 1.31s.",
+              "lastTransitionTime": "2026-03-03T08:49:06.611498Z"
+            },
+            {
+              "type": "ResourcesAvailable",
+              "status": "True",
+              "message": "Provisioning imported containers completed in 1.55s. Checking container health. This will wait for up to 4m for the configured startup probe, including an initial delay of 0s.",
+              "lastTransitionTime": "2026-03-03T08:49:08.165075Z"
+            }
+          ],
+          "logUrl": "https://console.cloud.google.com/logs/viewer?project=astute-lyceum-484111-k5&resource=cloud_run_revision/service_name/uk-aq-history-pubsub-writer/revision_name/uk-aq-history-pubsub-writer-00015-r8s&advancedFilter=resource.type%3D%22cloud_run_revision%22%0Aresource.labels.service_name%3D%22uk-aq-history-pubsub-writer%22%0Aresource.labels.revision_name%3D%22uk-aq-history-pubsub-writer-00015-r8s%22",
+          "imageDigest": "europe-west2-docker.pkg.dev/astute-lyceum-484111-k5/uk-aq/uk-aq-history-pubsub@sha256:fa2e3a9180459016773a2c169aa814ab8fc33cbbc4734507d3a421bdb00a5bab",
+          "containerStatuses": [
+            {
+              "name": "uk-aq-history-pubsub-1",
+              "imageDigest": "europe-west2-docker.pkg.dev/astute-lyceum-484111-k5/uk-aq/uk-aq-history-pubsub@sha256:fa2e3a9180459016773a2c169aa814ab8fc33cbbc4734507d3a421bdb00a5bab"
+            }
+          ]
+        },
+        "@type": "type.googleapis.com/google.cloud.run.v1.Revision"
+      }
+    },
+    "insertId": "tp14wxd5nze",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "service_name": "uk-aq-history-pubsub-writer",
+        "location": "europe-west2",
+        "project_id": "astute-lyceum-484111-k5",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s",
+        "configuration_name": "uk-aq-history-pubsub-writer"
+      }
+    },
+    "timestamp": "2026-03-03T08:49:10.943818Z",
+    "severity": "INFO",
+    "logName": "projects/astute-lyceum-484111-k5/logs/cloudaudit.googleapis.com%2Fsystem_event",
+    "receiveTimestamp": "2026-03-03T08:49:11.325400462Z"
+  },
+  {
+    "protoPayload": {
+      "@type": "type.googleapis.com/google.cloud.audit.AuditLog",
+      "status": {
+        "message": "Ready condition status changed to True for Service uk-aq-history-pubsub-writer."
+      },
+      "serviceName": "run.googleapis.com",
+      "methodName": "/Services.ReplaceService",
+      "resourceName": "namespaces/astute-lyceum-484111-k5/services/uk-aq-history-pubsub-writer",
+      "response": {
+        "metadata": {
+          "name": "uk-aq-history-pubsub-writer",
+          "namespace": "252684221022",
+          "selfLink": "/apis/serving.knative.dev/v1/namespaces/252684221022/services/uk-aq-history-pubsub-writer",
+          "uid": "c9a93f6d-d561-404f-994c-c79f18173daf",
+          "resourceVersion": "AAZMGscG67E",
+          "generation": 15,
+          "creationTimestamp": "2026-02-19T13:03:14.049461Z",
+          "labels": {
+            "job_name": "uk-aq-history-pubsub-writer-service",
+            "run.googleapis.com/satisfiesPzs": "true",
+            "cloud.googleapis.com/location": "europe-west2"
+          },
+          "annotations": {
+            "serving.knative.dev/creator": "github-actions-deploy-uk-aq@astute-lyceum-484111-k5.iam.gserviceaccount.com",
+            "serving.knative.dev/lastModifier": "github-actions-deploy-uk-aq@astute-lyceum-484111-k5.iam.gserviceaccount.com",
+            "run.googleapis.com/client-name": "gcloud",
+            "run.googleapis.com/client-version": "557.0.0",
+            "run.googleapis.com/operation-id": "ee8087db-b517-4239-97c9-d6c3b623da07",
+            "run.googleapis.com/ingress": "all",
+            "run.googleapis.com/ingress-status": "all",
+            "run.googleapis.com/maxScale": "80",
+            "run.googleapis.com/urls": "[\"https://uk-aq-history-pubsub-writer-252684221022.europe-west2.run.app\",\"https://uk-aq-history-pubsub-writer-a666zgauua-nw.a.run.app\"]"
+          }
+        },
+        "apiVersion": "serving.knative.dev/v1",
+        "kind": "Service",
+        "spec": {
+          "template": {
+            "metadata": {
+              "labels": {
+                "client.knative.dev/nonce": "qquxnzedki",
+                "job_name": "uk-aq-history-pubsub-writer-service",
+                "run.googleapis.com/startupProbeType": "Default"
+              },
+              "annotations": {
+                "autoscaling.knative.dev/maxScale": "1",
+                "run.googleapis.com/client-name": "gcloud",
+                "run.googleapis.com/client-version": "557.0.0"
+              }
+            },
+            "spec": {
+              "containerConcurrency": 1,
+              "timeoutSeconds": 1500,
+              "serviceAccountName": "uk-aq-history-pubsub-job@astute-lyceum-484111-k5.iam.gserviceaccount.com",
+              "containers": [
+                {
+                  "name": "uk-aq-history-pubsub-1",
+                  "image": "europe-west2-docker.pkg.dev/astute-lyceum-484111-k5/uk-aq/uk-aq-history-pubsub:a7de4426e33b",
+                  "ports": [
+                    {
+                      "name": "http1",
+                      "containerPort": 8080
+                    }
+                  ],
+                  "env": [
+                    {
+                      "name": "SUPABASE_URL",
+                      "value": "https://nmgierafoeuxfkkscrln.supabase.co"
+                    },
+                    {
+                      "name": "HISTORY_SUPABASE_URL",
+                      "value": "https://izumkxuxseyojjsmnapi.supabase.co"
+                    },
+                    {
+                      "name": "UK_AQ_PUBLIC_SCHEMA",
+                      "value": "uk_aq_public"
+                    },
+                    {
+                      "name": "HISTORY_SCHEMA",
+                      "value": "uk_aq_public"
+                    },
+                    {
+                      "name": "HISTORY_UPSERT_RPC",
+                      "value": "uk_aq_rpc_history_observations_upsert"
+                    },
+                    {
+                      "name": "HISTORY_UPSERT_CHUNK_SIZE",
+                      "value": "5000"
+                    },
+                    {
+                      "name": "HISTORY_UPSERT_RPC_RETRIES",
+                      "value": "3"
+                    },
+                    {
+                      "name": "HISTORY_UPSERT_RETRY_BASE_MS",
+                      "value": "1000"
+                    },
+                    {
+                      "name": "HISTORY_UPSERT_TIMEOUT_SPLIT_MIN_ROWS",
+                      "value": "32"
+                    },
+                    {
+                      "name": "HISTORY_UPSERT_TIMEOUT_SPLIT_MAX_DEPTH",
+                      "value": "4"
+                    },
+                    {
+                      "name": "HISTORY_PUBSUB_PULL_MAX_MESSAGES",
+                      "value": "1000"
+                    },
+                    {
+                      "name": "HISTORY_PUBSUB_WRITER_MAX_BATCHES",
+                      "value": "24"
+                    },
+                    {
+                      "name": "HISTORY_PUBSUB_WRITER_BUDGET_SECONDS",
+                      "value": "1200"
+                    },
+                    {
+                      "name": "HISTORY_PUBSUB_WRITER_SHUTDOWN_BUFFER_SECONDS",
+                      "value": "20"
+                    },
+                    {
+                      "name": "HISTORY_PUBSUB_WRITER_RPC_RETRIES",
+                      "value": "3"
+                    },
+                    {
+                      "name": "HISTORY_PUBSUB_WRITER_PUBSUB_RETRIES",
+                      "value": "3"
+                    },
+                    {
+                      "name": "HISTORY_PUBSUB_LOCAL_PORT",
+                      "value": "8000"
+                    },
+                    {
+                      "name": "GCP_PROJECT_ID",
+                      "value": "astute-lyceum-484111-k5"
+                    },
+                    {
+                      "name": "HISTORY_PUBSUB_SUBSCRIPTION",
+                      "value": "uk-aq-history-observations-sub"
+                    },
+                    {
+                      "name": "SB_SECRET_KEY",
+                      "valueFrom": {
+                        "secretKeyRef": {
+                          "key": "latest",
+                          "name": "SB_SECRET_KEY"
+                        }
+                      }
+                    },
+                    {
+                      "name": "HISTORY_SECRET_KEY",
+                      "valueFrom": {
+                        "secretKeyRef": {
+                          "key": "latest",
+                          "name": "HISTORY_SECRET_KEY"
+                        }
+                      }
+                    }
+                  ],
+                  "resources": {
+                    "limits": {
+                      "cpu": "0.25",
+                      "memory": "256Mi"
+                    }
+                  },
+                  "startupProbe": {
+                    "timeoutSeconds": 240,
+                    "periodSeconds": 240,
+                    "failureThreshold": 1,
+                    "tcpSocket": {
+                      "port": 8080
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "traffic": [
+            {
+              "percent": 100,
+              "latestRevision": true
+            }
+          ]
+        },
+        "status": {
+          "observedGeneration": 15,
+          "conditions": [
+            {
+              "type": "Ready",
+              "status": "True",
+              "lastTransitionTime": "2026-03-03T08:49:12.244145Z"
+            },
+            {
+              "type": "ConfigurationsReady",
+              "status": "True",
+              "lastTransitionTime": "2026-03-03T08:49:06.730397Z"
+            },
+            {
+              "type": "RoutesReady",
+              "status": "True",
+              "lastTransitionTime": "2026-03-03T08:49:12.205871Z"
+            }
+          ],
+          "latestReadyRevisionName": "uk-aq-history-pubsub-writer-00015-r8s",
+          "latestCreatedRevisionName": "uk-aq-history-pubsub-writer-00015-r8s",
+          "traffic": [
+            {
+              "revisionName": "uk-aq-history-pubsub-writer-00015-r8s",
+              "percent": 100,
+              "latestRevision": true
+            }
+          ],
+          "url": "https://uk-aq-history-pubsub-writer-a666zgauua-nw.a.run.app",
+          "address": {
+            "url": "https://uk-aq-history-pubsub-writer-a666zgauua-nw.a.run.app"
+          }
+        },
+        "@type": "type.googleapis.com/google.cloud.run.v1.Service"
+      }
+    },
+    "insertId": "tp14wxd5nzi",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "project_id": "astute-lyceum-484111-k5",
+        "location": "europe-west2",
+        "configuration_name": "",
+        "revision_name": "",
+        "service_name": "uk-aq-history-pubsub-writer"
+      }
+    },
+    "timestamp": "2026-03-03T08:49:12.258954Z",
+    "severity": "INFO",
+    "logName": "projects/astute-lyceum-484111-k5/logs/cloudaudit.googleapis.com%2Fsystem_event",
+    "receiveTimestamp": "2026-03-03T08:49:12.326905388Z"
+  },
+  {
+    "insertId": "69a6a3a90003c538e23bd95a",
+    "httpRequest": {
+      "requestMethod": "POST",
+      "requestUrl": "https://uk-aq-history-pubsub-writer-a666zgauua-nw.a.run.app/",
+      "requestSize": "1388",
+      "status": 500,
+      "responseSize": "191",
+      "userAgent": "Google-Cloud-Scheduler",
+      "remoteIp": "35.187.141.4",
+      "serverIp": "34.143.78.2",
+      "latency": "152.999327309s",
+      "protocol": "HTTP/1.1"
+    },
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "service_name": "uk-aq-history-pubsub-writer",
+        "project_id": "astute-lyceum-484111-k5",
+        "location": "europe-west2",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s",
+        "configuration_name": "uk-aq-history-pubsub-writer"
+      }
+    },
+    "timestamp": "2026-03-03T09:00:00.219023Z",
+    "severity": "ERROR",
+    "labels": {
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206",
+      "job_name": "uk-aq-history-pubsub-writer-service"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Frequests",
+    "trace": "projects/astute-lyceum-484111-k5/traces/1192721eddac5736cc0ee3c8ce86724c",
+    "receiveTimestamp": "2026-03-03T09:02:33.253201186Z",
+    "spanId": "06788859e891df9d",
+    "traceSampled": true
+  },
+  {
+    "textPayload": "\u001b[0m\u001b[32mDownload\u001b[0m https://esm.sh/@supabase/supabase-js@2.49.8",
+    "insertId": "69a6a31000089d3bdfd5cc1e",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "service_name": "uk-aq-history-pubsub-writer",
+        "project_id": "astute-lyceum-484111-k5",
+        "location": "europe-west2",
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s"
+      }
+    },
+    "timestamp": "2026-03-03T09:00:00.564539Z",
+    "labels": {
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206",
+      "job_name": "uk-aq-history-pubsub-writer-service"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2026-03-03T09:00:00.572826689Z"
+  },
+  {
+    "textPayload": "\u001b[0m\u001b[32mDownload\u001b[0m https://esm.sh/@supabase/auth-js@2.69.1/denonext/auth-js.mjs",
+    "insertId": "69a6a310000ac81c1e564cc4",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "location": "europe-west2",
+        "project_id": "astute-lyceum-484111-k5",
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s",
+        "service_name": "uk-aq-history-pubsub-writer"
+      }
+    },
+    "timestamp": "2026-03-03T09:00:00.706588Z",
+    "labels": {
+      "job_name": "uk-aq-history-pubsub-writer-service",
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2026-03-03T09:00:00.903786544Z"
+  },
+  {
+    "textPayload": "\u001b[0m\u001b[32mDownload\u001b[0m https://esm.sh/@supabase/functions-js@2.4.4/denonext/functions-js.mjs",
+    "insertId": "69a6a310000ac83aaf172e0c",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s",
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "project_id": "astute-lyceum-484111-k5",
+        "location": "europe-west2",
+        "service_name": "uk-aq-history-pubsub-writer"
+      }
+    },
+    "timestamp": "2026-03-03T09:00:00.706618Z",
+    "labels": {
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206",
+      "job_name": "uk-aq-history-pubsub-writer-service"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2026-03-03T09:00:00.903786544Z"
+  },
+  {
+    "textPayload": "\u001b[0m\u001b[32mDownload\u001b[0m https://esm.sh/@supabase/node-fetch@2.6.15/denonext/node-fetch.mjs",
+    "insertId": "69a6a310000ac883bd9370ce",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "service_name": "uk-aq-history-pubsub-writer",
+        "project_id": "astute-lyceum-484111-k5",
+        "location": "europe-west2",
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s"
+      }
+    },
+    "timestamp": "2026-03-03T09:00:00.706691Z",
+    "labels": {
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206",
+      "job_name": "uk-aq-history-pubsub-writer-service"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2026-03-03T09:00:00.903786544Z"
+  },
+  {
+    "textPayload": "\u001b[0m\u001b[32mDownload\u001b[0m https://esm.sh/@supabase/postgrest-js@1.19.4/denonext/postgrest-js.mjs",
+    "insertId": "69a6a310000ac922bb7b7474",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "service_name": "uk-aq-history-pubsub-writer",
+        "location": "europe-west2",
+        "project_id": "astute-lyceum-484111-k5",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s",
+        "configuration_name": "uk-aq-history-pubsub-writer"
+      }
+    },
+    "timestamp": "2026-03-03T09:00:00.706850Z",
+    "labels": {
+      "job_name": "uk-aq-history-pubsub-writer-service",
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2026-03-03T09:00:00.903786544Z"
+  },
+  {
+    "textPayload": "\u001b[0m\u001b[32mDownload\u001b[0m https://esm.sh/@supabase/realtime-js@2.11.2/denonext/realtime-js.mjs",
+    "insertId": "69a6a310000ac9766cef20e0",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "service_name": "uk-aq-history-pubsub-writer",
+        "project_id": "astute-lyceum-484111-k5",
+        "location": "europe-west2",
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s"
+      }
+    },
+    "timestamp": "2026-03-03T09:00:00.706934Z",
+    "labels": {
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206",
+      "job_name": "uk-aq-history-pubsub-writer-service"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2026-03-03T09:00:00.903786544Z"
+  },
+  {
+    "textPayload": "\u001b[0m\u001b[32mDownload\u001b[0m https://esm.sh/@supabase/storage-js@2.7.1/denonext/storage-js.mjs",
+    "insertId": "69a6a310000ac9e4df48b100",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "service_name": "uk-aq-history-pubsub-writer",
+        "location": "europe-west2",
+        "project_id": "astute-lyceum-484111-k5",
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s"
+      }
+    },
+    "timestamp": "2026-03-03T09:00:00.707044Z",
+    "labels": {
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206",
+      "job_name": "uk-aq-history-pubsub-writer-service"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2026-03-03T09:00:00.903786544Z"
+  },
+  {
+    "textPayload": "\u001b[0m\u001b[32mDownload\u001b[0m https://esm.sh/@supabase/supabase-js@2.49.8/denonext/supabase-js.mjs",
+    "insertId": "69a6a310000aca286002c795",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "project_id": "astute-lyceum-484111-k5",
+        "location": "europe-west2",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s",
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "service_name": "uk-aq-history-pubsub-writer"
+      }
+    },
+    "timestamp": "2026-03-03T09:00:00.707112Z",
+    "labels": {
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206",
+      "job_name": "uk-aq-history-pubsub-writer-service"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2026-03-03T09:00:00.903786544Z"
+  },
+  {
+    "textPayload": "\u001b[0m\u001b[32mDownload\u001b[0m https://esm.sh/whatwg-url@^5.0.0?target=denonext",
+    "insertId": "69a6a310000d4bd78c872caf",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "service_name": "uk-aq-history-pubsub-writer",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s",
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "location": "europe-west2",
+        "project_id": "astute-lyceum-484111-k5"
+      }
+    },
+    "timestamp": "2026-03-03T09:00:00.871383Z",
+    "labels": {
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206",
+      "job_name": "uk-aq-history-pubsub-writer-service"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2026-03-03T09:00:00.903786544Z"
+  },
+  {
+    "textPayload": "\u001b[0m\u001b[32mDownload\u001b[0m https://esm.sh/@supabase/node-fetch@^2.6.14?target=denonext",
+    "insertId": "69a6a310000d4c25058f57eb",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "project_id": "astute-lyceum-484111-k5",
+        "location": "europe-west2",
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s",
+        "service_name": "uk-aq-history-pubsub-writer"
+      }
+    },
+    "timestamp": "2026-03-03T09:00:00.871461Z",
+    "labels": {
+      "job_name": "uk-aq-history-pubsub-writer-service",
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2026-03-03T09:00:00.903786544Z"
+  },
+  {
+    "textPayload": "\u001b[0m\u001b[32mDownload\u001b[0m https://esm.sh/whatwg-url@5.0.0?target=denonext",
+    "insertId": "69a6a310000d6ac4a06b3a09",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "service_name": "uk-aq-history-pubsub-writer",
+        "project_id": "astute-lyceum-484111-k5",
+        "location": "europe-west2",
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s"
+      }
+    },
+    "timestamp": "2026-03-03T09:00:00.879300Z",
+    "labels": {
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206",
+      "job_name": "uk-aq-history-pubsub-writer-service"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2026-03-03T09:00:00.903786544Z"
+  },
+  {
+    "textPayload": "\u001b[0m\u001b[32mDownload\u001b[0m https://esm.sh/@supabase/node-fetch@2.6.15?target=denonext",
+    "insertId": "69a6a310000d6b05327cc4fe",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "service_name": "uk-aq-history-pubsub-writer",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s",
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "location": "europe-west2",
+        "project_id": "astute-lyceum-484111-k5"
+      }
+    },
+    "timestamp": "2026-03-03T09:00:00.879365Z",
+    "labels": {
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206",
+      "job_name": "uk-aq-history-pubsub-writer-service"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2026-03-03T09:00:00.903786544Z"
+  },
+  {
+    "textPayload": "\u001b[0m\u001b[32mDownload\u001b[0m https://esm.sh/tr46@~0.0.3?target=denonext",
+    "insertId": "69a6a310000d93d0b6f11ee7",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "project_id": "astute-lyceum-484111-k5",
+        "location": "europe-west2",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s",
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "service_name": "uk-aq-history-pubsub-writer"
+      }
+    },
+    "timestamp": "2026-03-03T09:00:00.889808Z",
+    "labels": {
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206",
+      "job_name": "uk-aq-history-pubsub-writer-service"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2026-03-03T09:00:00.903786544Z"
+  },
+  {
+    "textPayload": "\u001b[0m\u001b[32mDownload\u001b[0m https://esm.sh/webidl-conversions@^3.0.0?target=denonext",
+    "insertId": "69a6a310000d942329463a17",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "service_name": "uk-aq-history-pubsub-writer",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s",
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "location": "europe-west2",
+        "project_id": "astute-lyceum-484111-k5"
+      }
+    },
+    "timestamp": "2026-03-03T09:00:00.889891Z",
+    "labels": {
+      "job_name": "uk-aq-history-pubsub-writer-service",
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2026-03-03T09:00:00.903786544Z"
+  },
+  {
+    "textPayload": "\u001b[0m\u001b[32mDownload\u001b[0m https://esm.sh/whatwg-url@5.0.0/denonext/whatwg-url.mjs",
+    "insertId": "69a6a310000d948b2f040a6d",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "location": "europe-west2",
+        "project_id": "astute-lyceum-484111-k5",
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s",
+        "service_name": "uk-aq-history-pubsub-writer"
+      }
+    },
+    "timestamp": "2026-03-03T09:00:00.889995Z",
+    "labels": {
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206",
+      "job_name": "uk-aq-history-pubsub-writer-service"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2026-03-03T09:00:00.903786544Z"
+  },
+  {
+    "textPayload": "\u001b[0m\u001b[32mDownload\u001b[0m https://esm.sh/tr46@0.0.3?target=denonext",
+    "insertId": "69a6a310000dafdc38ff587b",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s",
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "location": "europe-west2",
+        "project_id": "astute-lyceum-484111-k5",
+        "service_name": "uk-aq-history-pubsub-writer"
+      }
+    },
+    "timestamp": "2026-03-03T09:00:00.896988Z",
+    "labels": {
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206",
+      "job_name": "uk-aq-history-pubsub-writer-service"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2026-03-03T09:00:00.903786544Z"
+  },
+  {
+    "textPayload": "\u001b[0m\u001b[32mDownload\u001b[0m https://esm.sh/webidl-conversions@3.0.1?target=denonext",
+    "insertId": "69a6a310000db1ce71470a85",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s",
+        "location": "europe-west2",
+        "project_id": "astute-lyceum-484111-k5",
+        "service_name": "uk-aq-history-pubsub-writer"
+      }
+    },
+    "timestamp": "2026-03-03T09:00:00.897486Z",
+    "labels": {
+      "job_name": "uk-aq-history-pubsub-writer-service",
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2026-03-03T09:00:00.903786544Z"
+  },
+  {
+    "textPayload": "\u001b[0m\u001b[32mDownload\u001b[0m https://esm.sh/tr46@0.0.3/denonext/tr46.mjs",
+    "insertId": "69a6a310000ed1539dfe790d",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "location": "europe-west2",
+        "project_id": "astute-lyceum-484111-k5",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s",
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "service_name": "uk-aq-history-pubsub-writer"
+      }
+    },
+    "timestamp": "2026-03-03T09:00:00.971091Z",
+    "labels": {
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206",
+      "job_name": "uk-aq-history-pubsub-writer-service"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2026-03-03T09:00:01.235114087Z"
+  },
+  {
+    "textPayload": "\u001b[0m\u001b[32mDownload\u001b[0m https://esm.sh/webidl-conversions@3.0.1/denonext/webidl-conversions.mjs",
+    "insertId": "69a6a310000ed1a26ffc4b1a",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "service_name": "uk-aq-history-pubsub-writer",
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s",
+        "project_id": "astute-lyceum-484111-k5",
+        "location": "europe-west2"
+      }
+    },
+    "timestamp": "2026-03-03T09:00:00.971170Z",
+    "labels": {
+      "job_name": "uk-aq-history-pubsub-writer-service",
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2026-03-03T09:00:01.235114087Z"
+  },
+  {
+    "textPayload": "\u001b[0m\u001b[32mDownload\u001b[0m https://esm.sh/ws@^8.18.0?target=denonext",
+    "insertId": "69a6a3110007255a146d696a",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "project_id": "astute-lyceum-484111-k5",
+        "location": "europe-west2",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s",
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "service_name": "uk-aq-history-pubsub-writer"
+      }
+    },
+    "timestamp": "2026-03-03T09:00:01.468314Z",
+    "labels": {
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206",
+      "job_name": "uk-aq-history-pubsub-writer-service"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2026-03-03T09:00:01.573171464Z"
+  },
+  {
+    "textPayload": "\u001b[0m\u001b[32mDownload\u001b[0m https://esm.sh/ws@8.19.0?target=denonext",
+    "insertId": "69a6a31100074e2fbc907657",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "location": "europe-west2",
+        "project_id": "astute-lyceum-484111-k5",
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s",
+        "service_name": "uk-aq-history-pubsub-writer"
+      }
+    },
+    "timestamp": "2026-03-03T09:00:01.478767Z",
+    "labels": {
+      "job_name": "uk-aq-history-pubsub-writer-service",
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2026-03-03T09:00:01.573171464Z"
+  },
+  {
+    "textPayload": "\u001b[0m\u001b[32mDownload\u001b[0m https://esm.sh/bufferutil@^4.0.1?target=denonext",
+    "insertId": "69a6a311000773a1e193e3c5",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s",
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "location": "europe-west2",
+        "project_id": "astute-lyceum-484111-k5",
+        "service_name": "uk-aq-history-pubsub-writer"
+      }
+    },
+    "timestamp": "2026-03-03T09:00:01.488353Z",
+    "labels": {
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206",
+      "job_name": "uk-aq-history-pubsub-writer-service"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2026-03-03T09:00:01.573171464Z"
+  },
+  {
+    "textPayload": "\u001b[0m\u001b[32mDownload\u001b[0m https://esm.sh/utf-8-validate@%3E=5.0.2?target=denonext",
+    "insertId": "69a6a311000773f0bc929e20",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s",
+        "project_id": "astute-lyceum-484111-k5",
+        "location": "europe-west2",
+        "service_name": "uk-aq-history-pubsub-writer"
+      }
+    },
+    "timestamp": "2026-03-03T09:00:01.488432Z",
+    "labels": {
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206",
+      "job_name": "uk-aq-history-pubsub-writer-service"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2026-03-03T09:00:01.573171464Z"
+  },
+  {
+    "textPayload": "\u001b[0m\u001b[32mDownload\u001b[0m https://esm.sh/ws@8.19.0/denonext/ws.mjs",
+    "insertId": "69a6a31100077454279dabb9",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "location": "europe-west2",
+        "project_id": "astute-lyceum-484111-k5",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s",
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "service_name": "uk-aq-history-pubsub-writer"
+      }
+    },
+    "timestamp": "2026-03-03T09:00:01.488532Z",
+    "labels": {
+      "job_name": "uk-aq-history-pubsub-writer-service",
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2026-03-03T09:00:01.573171464Z"
+  },
+  {
+    "textPayload": "\u001b[0m\u001b[32mDownload\u001b[0m https://esm.sh/bufferutil@4.1.0?target=denonext",
+    "insertId": "69a6a311000793f6d18976b9",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s",
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "location": "europe-west2",
+        "project_id": "astute-lyceum-484111-k5",
+        "service_name": "uk-aq-history-pubsub-writer"
+      }
+    },
+    "timestamp": "2026-03-03T09:00:01.496630Z",
+    "labels": {
+      "job_name": "uk-aq-history-pubsub-writer-service",
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2026-03-03T09:00:01.573171464Z"
+  },
+  {
+    "textPayload": "\u001b[0m\u001b[32mDownload\u001b[0m https://esm.sh/utf-8-validate@6.0.6?target=denonext",
+    "insertId": "69a6a31100079454f2003fb9",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s",
+        "location": "europe-west2",
+        "project_id": "astute-lyceum-484111-k5",
+        "service_name": "uk-aq-history-pubsub-writer"
+      }
+    },
+    "timestamp": "2026-03-03T09:00:01.496724Z",
+    "labels": {
+      "job_name": "uk-aq-history-pubsub-writer-service",
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2026-03-03T09:00:01.573171464Z"
+  },
+  {
+    "textPayload": "\u001b[0m\u001b[32mDownload\u001b[0m https://esm.sh/node-gyp-build@^4.3.0?target=denonext",
+    "insertId": "69a6a3110008c4366498da62",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "service_name": "uk-aq-history-pubsub-writer",
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s",
+        "project_id": "astute-lyceum-484111-k5",
+        "location": "europe-west2"
+      }
+    },
+    "timestamp": "2026-03-03T09:00:01.574518Z",
+    "labels": {
+      "job_name": "uk-aq-history-pubsub-writer-service",
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2026-03-03T09:00:01.901056857Z"
+  },
+  {
+    "textPayload": "\u001b[0m\u001b[32mDownload\u001b[0m https://esm.sh/bufferutil@4.1.0/denonext/bufferutil.mjs",
+    "insertId": "69a6a3110008c4a98ed3e117",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "project_id": "astute-lyceum-484111-k5",
+        "location": "europe-west2",
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s",
+        "service_name": "uk-aq-history-pubsub-writer"
+      }
+    },
+    "timestamp": "2026-03-03T09:00:01.574633Z",
+    "labels": {
+      "job_name": "uk-aq-history-pubsub-writer-service",
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2026-03-03T09:00:01.901056857Z"
+  },
+  {
+    "textPayload": "\u001b[0m\u001b[32mDownload\u001b[0m https://esm.sh/utf-8-validate@6.0.6/denonext/utf-8-validate.mjs",
+    "insertId": "69a6a3110008c50573838a24",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "service_name": "uk-aq-history-pubsub-writer",
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s",
+        "project_id": "astute-lyceum-484111-k5",
+        "location": "europe-west2"
+      }
+    },
+    "timestamp": "2026-03-03T09:00:01.574725Z",
+    "labels": {
+      "job_name": "uk-aq-history-pubsub-writer-service",
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2026-03-03T09:00:01.901056857Z"
+  },
+  {
+    "textPayload": "\u001b[0m\u001b[32mDownload\u001b[0m https://esm.sh/node-gyp-build@4.8.4?target=denonext",
+    "insertId": "69a6a3110008ee7effc5745a",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "service_name": "uk-aq-history-pubsub-writer",
+        "project_id": "astute-lyceum-484111-k5",
+        "location": "europe-west2",
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s"
+      }
+    },
+    "timestamp": "2026-03-03T09:00:01.585342Z",
+    "labels": {
+      "job_name": "uk-aq-history-pubsub-writer-service",
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2026-03-03T09:00:01.901056857Z"
+  },
+  {
+    "textPayload": "\u001b[0m\u001b[32mDownload\u001b[0m https://esm.sh/node-gyp-build@4.8.4/denonext/node-gyp-build.mjs",
+    "insertId": "69a6a3110009144b87cfc6c2",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "service_name": "uk-aq-history-pubsub-writer",
+        "project_id": "astute-lyceum-484111-k5",
+        "location": "europe-west2",
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s"
+      }
+    },
+    "timestamp": "2026-03-03T09:00:01.595019Z",
+    "labels": {
+      "job_name": "uk-aq-history-pubsub-writer-service",
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2026-03-03T09:00:01.901056857Z"
+  },
+  {
+    "textPayload": "history_pubsub_cloud_run_start {",
+    "insertId": "69a6a31200006f0b955cc171",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s",
+        "location": "europe-west2",
+        "project_id": "astute-lyceum-484111-k5",
+        "service_name": "uk-aq-history-pubsub-writer"
+      }
+    },
+    "timestamp": "2026-03-03T09:00:02.028427Z",
+    "labels": {
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206",
+      "job_name": "uk-aq-history-pubsub-writer-service"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2026-03-03T09:00:02.035687516Z"
+  },
+  {
+    "textPayload": "  checked_at: \"2026-03-03T09:00:01.968Z\",",
+    "insertId": "69a6a31200006f1f828aa73b",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s",
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "location": "europe-west2",
+        "project_id": "astute-lyceum-484111-k5",
+        "service_name": "uk-aq-history-pubsub-writer"
+      }
+    },
+    "timestamp": "2026-03-03T09:00:02.028447Z",
+    "labels": {
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206",
+      "job_name": "uk-aq-history-pubsub-writer-service"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2026-03-03T09:00:02.035687516Z"
+  },
+  {
+    "textPayload": "  max_batches: 24,",
+    "insertId": "69a6a31200006f2319d5d5bc",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "service_name": "uk-aq-history-pubsub-writer",
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s",
+        "project_id": "astute-lyceum-484111-k5",
+        "location": "europe-west2"
+      }
+    },
+    "timestamp": "2026-03-03T09:00:02.028451Z",
+    "labels": {
+      "job_name": "uk-aq-history-pubsub-writer-service",
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2026-03-03T09:00:02.035687516Z"
+  },
+  {
+    "textPayload": "  pull_max_messages: 1000,",
+    "insertId": "69a6a31200006f27bd64fe1e",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "service_name": "uk-aq-history-pubsub-writer",
+        "location": "europe-west2",
+        "project_id": "astute-lyceum-484111-k5",
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s"
+      }
+    },
+    "timestamp": "2026-03-03T09:00:02.028455Z",
+    "labels": {
+      "job_name": "uk-aq-history-pubsub-writer-service",
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2026-03-03T09:00:02.035687516Z"
+  },
+  {
+    "textPayload": "  budget_seconds: 1200,",
+    "insertId": "69a6a31200006f2ca4cf39df",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "service_name": "uk-aq-history-pubsub-writer",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s",
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "location": "europe-west2",
+        "project_id": "astute-lyceum-484111-k5"
+      }
+    },
+    "timestamp": "2026-03-03T09:00:02.028460Z",
+    "labels": {
+      "job_name": "uk-aq-history-pubsub-writer-service",
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2026-03-03T09:00:02.035687516Z"
+  },
+  {
+    "textPayload": "  shutdown_buffer_seconds: 20,",
+    "insertId": "69a6a31200006f2fc12cc692",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "service_name": "uk-aq-history-pubsub-writer",
+        "location": "europe-west2",
+        "project_id": "astute-lyceum-484111-k5",
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s"
+      }
+    },
+    "timestamp": "2026-03-03T09:00:02.028463Z",
+    "labels": {
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206",
+      "job_name": "uk-aq-history-pubsub-writer-service"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2026-03-03T09:00:02.035687516Z"
+  },
+  {
+    "textPayload": "  subscription: \"projects/astute-lyceum-484111-k5/subscriptions/uk-aq-history-observations-sub\"",
+    "insertId": "69a6a31200006f3d2d0b6d2c",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "service_name": "uk-aq-history-pubsub-writer",
+        "location": "europe-west2",
+        "project_id": "astute-lyceum-484111-k5",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s",
+        "configuration_name": "uk-aq-history-pubsub-writer"
+      }
+    },
+    "timestamp": "2026-03-03T09:00:02.028477Z",
+    "labels": {
+      "job_name": "uk-aq-history-pubsub-writer-service",
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2026-03-03T09:00:02.366529868Z"
+  },
+  {
+    "textPayload": "}",
+    "insertId": "69a6a31200006f422ca946ec",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "service_name": "uk-aq-history-pubsub-writer",
+        "project_id": "astute-lyceum-484111-k5",
+        "location": "europe-west2",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s",
+        "configuration_name": "uk-aq-history-pubsub-writer"
+      }
+    },
+    "timestamp": "2026-03-03T09:00:02.028482Z",
+    "labels": {
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206",
+      "job_name": "uk-aq-history-pubsub-writer-service"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2026-03-03T09:00:02.366529868Z"
+  },
+  {
+    "insertId": "69a6a31d00008aed7bd054e6",
+    "jsonPayload": {
+      "query_params": [],
+      "duration_ms": 9358,
+      "endpoint": "postgrest:rpc/uk_aq_rpc_history_observations_upsert|origin=izumkxuxseyojjsmnapi",
+      "ts": "2026-03-03T09:00:13.036Z",
+      "has_select": false,
+      "caller": null,
+      "metric": "uk_aq_endpoint_egress",
+      "sample_rate": 0,
+      "response_bytes": 100,
+      "status": 500,
+      "method": "POST",
+      "request_meta": {
+        "has_select": false,
+        "query_params": [],
+        "caller": null,
+        "target": "rpc/uk_aq_rpc_history_observations_upsert",
+        "method": "POST"
+      },
+      "target": "rpc/uk_aq_rpc_history_observations_upsert"
+    },
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s",
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "location": "europe-west2",
+        "project_id": "astute-lyceum-484111-k5",
+        "service_name": "uk-aq-history-pubsub-writer"
+      }
+    },
+    "timestamp": "2026-03-03T09:00:13.035565Z",
+    "labels": {
+      "job_name": "uk-aq-history-pubsub-writer-service",
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2026-03-03T09:00:13.354228579Z"
+  },
+  {
+    "insertId": "69a6a327000276fe60996f17",
+    "jsonPayload": {
+      "status": 500,
+      "target": "rpc/uk_aq_rpc_history_observations_upsert",
+      "method": "POST",
+      "request_meta": {
+        "target": "rpc/uk_aq_rpc_history_observations_upsert",
+        "method": "POST",
+        "caller": null,
+        "query_params": [],
+        "has_select": false
+      },
+      "response_bytes": 100,
+      "has_select": false,
+      "caller": null,
+      "metric": "uk_aq_endpoint_egress",
+      "sample_rate": 0,
+      "query_params": [],
+      "duration_ms": 9021,
+      "endpoint": "postgrest:rpc/uk_aq_rpc_history_observations_upsert|origin=izumkxuxseyojjsmnapi",
+      "ts": "2026-03-03T09:00:23.162Z"
+    },
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "project_id": "astute-lyceum-484111-k5",
+        "location": "europe-west2",
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s",
+        "service_name": "uk-aq-history-pubsub-writer"
+      }
+    },
+    "timestamp": "2026-03-03T09:00:23.161534Z",
+    "labels": {
+      "job_name": "uk-aq-history-pubsub-writer-service",
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2026-03-03T09:00:23.348692360Z"
+  },
+  {
+    "insertId": "69a6a33200040c3887b72b03",
+    "jsonPayload": {
+      "metric": "uk_aq_endpoint_egress",
+      "caller": null,
+      "has_select": false,
+      "sample_rate": 0,
+      "endpoint": "postgrest:rpc/uk_aq_rpc_history_observations_upsert|origin=izumkxuxseyojjsmnapi",
+      "duration_ms": 8995,
+      "query_params": [],
+      "ts": "2026-03-03T09:00:34.265Z",
+      "status": 500,
+      "method": "POST",
+      "request_meta": {
+        "method": "POST",
+        "target": "rpc/uk_aq_rpc_history_observations_upsert",
+        "has_select": false,
+        "query_params": [],
+        "caller": null
+      },
+      "target": "rpc/uk_aq_rpc_history_observations_upsert",
+      "response_bytes": 100
+    },
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s",
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "location": "europe-west2",
+        "project_id": "astute-lyceum-484111-k5",
+        "service_name": "uk-aq-history-pubsub-writer"
+      }
+    },
+    "timestamp": "2026-03-03T09:00:34.265272Z",
+    "labels": {
+      "job_name": "uk-aq-history-pubsub-writer-service",
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2026-03-03T09:00:34.336994725Z"
+  },
+  {
+    "insertId": "69a6a33b000a7c7782908f94",
+    "jsonPayload": {
+      "status": 500,
+      "target": "rpc/uk_aq_rpc_history_observations_upsert",
+      "method": "POST",
+      "request_meta": {
+        "caller": null,
+        "has_select": false,
+        "query_params": [],
+        "method": "POST",
+        "target": "rpc/uk_aq_rpc_history_observations_upsert"
+      },
+      "response_bytes": 100,
+      "has_select": false,
+      "metric": "uk_aq_endpoint_egress",
+      "caller": null,
+      "sample_rate": 0,
+      "duration_ms": 9282,
+      "query_params": [],
+      "endpoint": "postgrest:rpc/uk_aq_rpc_history_observations_upsert|origin=izumkxuxseyojjsmnapi",
+      "ts": "2026-03-03T09:00:43.688Z"
+    },
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s",
+        "project_id": "astute-lyceum-484111-k5",
+        "location": "europe-west2",
+        "service_name": "uk-aq-history-pubsub-writer"
+      }
+    },
+    "timestamp": "2026-03-03T09:00:43.687223Z",
+    "labels": {
+      "job_name": "uk-aq-history-pubsub-writer-service",
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2026-03-03T09:00:43.993002448Z"
+  },
+  {
+    "insertId": "69a6a345000c4ca9d717bb51",
+    "jsonPayload": {
+      "response_bytes": 100,
+      "status": 500,
+      "target": "rpc/uk_aq_rpc_history_observations_upsert",
+      "request_meta": {
+        "target": "rpc/uk_aq_rpc_history_observations_upsert",
+        "method": "POST",
+        "caller": null,
+        "query_params": [],
+        "has_select": false
+      },
+      "method": "POST",
+      "query_params": [],
+      "duration_ms": 8916,
+      "endpoint": "postgrest:rpc/uk_aq_rpc_history_observations_upsert|origin=izumkxuxseyojjsmnapi",
+      "ts": "2026-03-03T09:00:53.807Z",
+      "has_select": false,
+      "caller": null,
+      "metric": "uk_aq_endpoint_egress",
+      "sample_rate": 0
+    },
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s",
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "project_id": "astute-lyceum-484111-k5",
+        "location": "europe-west2",
+        "service_name": "uk-aq-history-pubsub-writer"
+      }
+    },
+    "timestamp": "2026-03-03T09:00:53.806057Z",
+    "labels": {
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206",
+      "job_name": "uk-aq-history-pubsub-writer-service"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2026-03-03T09:00:53.988069775Z"
+  },
+  {
+    "insertId": "69a6a350000b409b207b660d",
+    "jsonPayload": {
+      "status": 500,
+      "request_meta": {
+        "caller": null,
+        "has_select": false,
+        "query_params": [],
+        "method": "POST",
+        "target": "rpc/uk_aq_rpc_history_observations_upsert"
+      },
+      "method": "POST",
+      "target": "rpc/uk_aq_rpc_history_observations_upsert",
+      "response_bytes": 100,
+      "caller": null,
+      "metric": "uk_aq_endpoint_egress",
+      "has_select": false,
+      "sample_rate": 0,
+      "endpoint": "postgrest:rpc/uk_aq_rpc_history_observations_upsert|origin=izumkxuxseyojjsmnapi",
+      "query_params": [],
+      "duration_ms": 8823,
+      "ts": "2026-03-03T09:01:04.738Z"
+    },
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "service_name": "uk-aq-history-pubsub-writer",
+        "project_id": "astute-lyceum-484111-k5",
+        "location": "europe-west2",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s",
+        "configuration_name": "uk-aq-history-pubsub-writer"
+      }
+    },
+    "timestamp": "2026-03-03T09:01:04.737435Z",
+    "labels": {
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206",
+      "job_name": "uk-aq-history-pubsub-writer-service"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2026-03-03T09:01:04.977041823Z"
+  },
+  {
+    "insertId": "69a6a359000b2ab709d6baf5",
+    "jsonPayload": {
+      "endpoint": "postgrest:rpc/uk_aq_rpc_history_observations_upsert|origin=izumkxuxseyojjsmnapi",
+      "query_params": [],
+      "duration_ms": 8903,
+      "ts": "2026-03-03T09:01:13.732Z",
+      "metric": "uk_aq_endpoint_egress",
+      "caller": null,
+      "has_select": false,
+      "sample_rate": 0,
+      "response_bytes": 100,
+      "status": 500,
+      "target": "rpc/uk_aq_rpc_history_observations_upsert",
+      "request_meta": {
+        "caller": null,
+        "query_params": [],
+        "has_select": false,
+        "method": "POST",
+        "target": "rpc/uk_aq_rpc_history_observations_upsert"
+      },
+      "method": "POST"
+    },
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "location": "europe-west2",
+        "project_id": "astute-lyceum-484111-k5",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s",
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "service_name": "uk-aq-history-pubsub-writer"
+      }
+    },
+    "timestamp": "2026-03-03T09:01:13.731831Z",
+    "labels": {
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206",
+      "job_name": "uk-aq-history-pubsub-writer-service"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2026-03-03T09:01:13.966453857Z"
+  },
+  {
+    "insertId": "69a6a3630008dccf42b14f09",
+    "jsonPayload": {
+      "has_select": false,
+      "metric": "uk_aq_endpoint_egress",
+      "caller": null,
+      "sample_rate": 0,
+      "query_params": [],
+      "duration_ms": 8760,
+      "endpoint": "postgrest:rpc/uk_aq_rpc_history_observations_upsert|origin=izumkxuxseyojjsmnapi",
+      "ts": "2026-03-03T09:01:23.581Z",
+      "status": 500,
+      "target": "rpc/uk_aq_rpc_history_observations_upsert",
+      "method": "POST",
+      "request_meta": {
+        "caller": null,
+        "has_select": false,
+        "query_params": [],
+        "method": "POST",
+        "target": "rpc/uk_aq_rpc_history_observations_upsert"
+      },
+      "response_bytes": 100
+    },
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "service_name": "uk-aq-history-pubsub-writer",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s",
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "location": "europe-west2",
+        "project_id": "astute-lyceum-484111-k5"
+      }
+    },
+    "timestamp": "2026-03-03T09:01:23.580815Z",
+    "labels": {
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206",
+      "job_name": "uk-aq-history-pubsub-writer-service"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2026-03-03T09:01:23.622307500Z"
+  },
+  {
+    "insertId": "69a6a36e000ac099acd9805a",
+    "jsonPayload": {
+      "request_meta": {
+        "caller": null,
+        "query_params": [],
+        "has_select": false,
+        "method": "POST",
+        "target": "rpc/uk_aq_rpc_history_observations_upsert"
+      },
+      "method": "POST",
+      "target": "rpc/uk_aq_rpc_history_observations_upsert",
+      "status": 500,
+      "response_bytes": 100,
+      "sample_rate": 0,
+      "has_select": false,
+      "caller": null,
+      "metric": "uk_aq_endpoint_egress",
+      "ts": "2026-03-03T09:01:34.705Z",
+      "query_params": [],
+      "duration_ms": 9036,
+      "endpoint": "postgrest:rpc/uk_aq_rpc_history_observations_upsert|origin=izumkxuxseyojjsmnapi"
+    },
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s",
+        "project_id": "astute-lyceum-484111-k5",
+        "location": "europe-west2",
+        "service_name": "uk-aq-history-pubsub-writer"
+      }
+    },
+    "timestamp": "2026-03-03T09:01:34.704665Z",
+    "labels": {
+      "job_name": "uk-aq-history-pubsub-writer-service",
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2026-03-03T09:01:34.944035544Z"
+  },
+  {
+    "insertId": "69a6a3770006b3a37f2249b0",
+    "jsonPayload": {
+      "target": "rpc/uk_aq_rpc_history_observations_upsert",
+      "request_meta": {
+        "query_params": [],
+        "has_select": false,
+        "caller": null,
+        "target": "rpc/uk_aq_rpc_history_observations_upsert",
+        "method": "POST"
+      },
+      "method": "POST",
+      "status": 500,
+      "response_bytes": 100,
+      "sample_rate": 0,
+      "has_select": false,
+      "metric": "uk_aq_endpoint_egress",
+      "caller": null,
+      "ts": "2026-03-03T09:01:43.440Z",
+      "query_params": [],
+      "duration_ms": 8646,
+      "endpoint": "postgrest:rpc/uk_aq_rpc_history_observations_upsert|origin=izumkxuxseyojjsmnapi"
+    },
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s",
+        "location": "europe-west2",
+        "project_id": "astute-lyceum-484111-k5",
+        "service_name": "uk-aq-history-pubsub-writer"
+      }
+    },
+    "timestamp": "2026-03-03T09:01:43.439203Z",
+    "labels": {
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206",
+      "job_name": "uk-aq-history-pubsub-writer-service"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2026-03-03T09:01:43.607315266Z"
+  },
+  {
+    "insertId": "69a6a3810004930cfe211f9b",
+    "jsonPayload": {
+      "endpoint": "postgrest:rpc/uk_aq_rpc_history_observations_upsert|origin=izumkxuxseyojjsmnapi",
+      "query_params": [],
+      "duration_ms": 8776,
+      "ts": "2026-03-03T09:01:53.301Z",
+      "caller": null,
+      "metric": "uk_aq_endpoint_egress",
+      "has_select": false,
+      "sample_rate": 0,
+      "response_bytes": 100,
+      "status": 500,
+      "request_meta": {
+        "method": "POST",
+        "target": "rpc/uk_aq_rpc_history_observations_upsert",
+        "query_params": [],
+        "has_select": false,
+        "caller": null
+      },
+      "method": "POST",
+      "target": "rpc/uk_aq_rpc_history_observations_upsert"
+    },
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "location": "europe-west2",
+        "project_id": "astute-lyceum-484111-k5",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s",
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "service_name": "uk-aq-history-pubsub-writer"
+      }
+    },
+    "timestamp": "2026-03-03T09:01:53.299788Z",
+    "labels": {
+      "job_name": "uk-aq-history-pubsub-writer-service",
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2026-03-03T09:01:53.592576806Z"
+  },
+  {
+    "insertId": "69a6a38c0000959565c42eaf",
+    "jsonPayload": {
+      "sample_rate": 0,
+      "has_select": false,
+      "metric": "uk_aq_endpoint_egress",
+      "caller": null,
+      "ts": "2026-03-03T09:02:04.039Z",
+      "duration_ms": 8683,
+      "query_params": [],
+      "endpoint": "postgrest:rpc/uk_aq_rpc_history_observations_upsert|origin=izumkxuxseyojjsmnapi",
+      "target": "rpc/uk_aq_rpc_history_observations_upsert",
+      "request_meta": {
+        "has_select": false,
+        "query_params": [],
+        "caller": null,
+        "target": "rpc/uk_aq_rpc_history_observations_upsert",
+        "method": "POST"
+      },
+      "method": "POST",
+      "status": 500,
+      "response_bytes": 100
+    },
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "service_name": "uk-aq-history-pubsub-writer",
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s",
+        "location": "europe-west2",
+        "project_id": "astute-lyceum-484111-k5"
+      }
+    },
+    "timestamp": "2026-03-03T09:02:04.038293Z",
+    "labels": {
+      "job_name": "uk-aq-history-pubsub-writer-service",
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2026-03-03T09:02:04.044831078Z"
+  },
+  {
+    "insertId": "69a6a394000c19d7a9a5bf48",
+    "jsonPayload": {
+      "sample_rate": 0,
+      "has_select": false,
+      "caller": null,
+      "metric": "uk_aq_endpoint_egress",
+      "ts": "2026-03-03T09:02:12.794Z",
+      "query_params": [],
+      "duration_ms": 8684,
+      "endpoint": "postgrest:rpc/uk_aq_rpc_history_observations_upsert|origin=izumkxuxseyojjsmnapi",
+      "target": "rpc/uk_aq_rpc_history_observations_upsert",
+      "request_meta": {
+        "method": "POST",
+        "target": "rpc/uk_aq_rpc_history_observations_upsert",
+        "query_params": [],
+        "has_select": false,
+        "caller": null
+      },
+      "method": "POST",
+      "status": 500,
+      "response_bytes": 100
+    },
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "service_name": "uk-aq-history-pubsub-writer",
+        "project_id": "astute-lyceum-484111-k5",
+        "location": "europe-west2",
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s"
+      }
+    },
+    "timestamp": "2026-03-03T09:02:12.793047Z",
+    "labels": {
+      "job_name": "uk-aq-history-pubsub-writer-service",
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2026-03-03T09:02:13.034843024Z"
+  },
+  {
+    "insertId": "69a6a39e0006a15c6d4cecc0",
+    "jsonPayload": {
+      "target": "rpc/uk_aq_rpc_history_observations_upsert",
+      "method": "POST",
+      "request_meta": {
+        "caller": null,
+        "has_select": false,
+        "query_params": [],
+        "target": "rpc/uk_aq_rpc_history_observations_upsert",
+        "method": "POST"
+      },
+      "status": 500,
+      "response_bytes": 100,
+      "sample_rate": 0,
+      "caller": null,
+      "metric": "uk_aq_endpoint_egress",
+      "has_select": false,
+      "ts": "2026-03-03T09:02:22.436Z",
+      "endpoint": "postgrest:rpc/uk_aq_rpc_history_observations_upsert|origin=izumkxuxseyojjsmnapi",
+      "duration_ms": 8590,
+      "query_params": []
+    },
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "service_name": "uk-aq-history-pubsub-writer",
+        "location": "europe-west2",
+        "project_id": "astute-lyceum-484111-k5",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s",
+        "configuration_name": "uk-aq-history-pubsub-writer"
+      }
+    },
+    "timestamp": "2026-03-03T09:02:22.434524Z",
+    "labels": {
+      "job_name": "uk-aq-history-pubsub-writer-service",
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2026-03-03T09:02:22.692272022Z"
+  },
+  {
+    "insertId": "69a6a3a90001ef620c567802",
+    "jsonPayload": {
+      "response_bytes": 100,
+      "status": 500,
+      "target": "rpc/uk_aq_rpc_history_observations_upsert",
+      "request_meta": {
+        "method": "POST",
+        "target": "rpc/uk_aq_rpc_history_observations_upsert",
+        "query_params": [],
+        "has_select": false,
+        "caller": null
+      },
+      "method": "POST",
+      "duration_ms": 8521,
+      "query_params": [],
+      "endpoint": "postgrest:rpc/uk_aq_rpc_history_observations_upsert|origin=izumkxuxseyojjsmnapi",
+      "ts": "2026-03-03T09:02:33.127Z",
+      "has_select": false,
+      "caller": null,
+      "metric": "uk_aq_endpoint_egress",
+      "sample_rate": 0
+    },
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "location": "europe-west2",
+        "project_id": "astute-lyceum-484111-k5",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s",
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "service_name": "uk-aq-history-pubsub-writer"
+      }
+    },
+    "timestamp": "2026-03-03T09:02:33.126818Z",
+    "labels": {
+      "job_name": "uk-aq-history-pubsub-writer-service",
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2026-03-03T09:02:33.348606508Z"
+  },
+  {
+    "textPayload": "history_pubsub_cloud_run_summary {",
+    "insertId": "69a6a3a900037a786f11f55c",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "location": "europe-west2",
+        "project_id": "astute-lyceum-484111-k5",
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s",
+        "service_name": "uk-aq-history-pubsub-writer"
+      }
+    },
+    "timestamp": "2026-03-03T09:02:33.227960Z",
+    "labels": {
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206",
+      "job_name": "uk-aq-history-pubsub-writer-service"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2026-03-03T09:02:33.348606508Z"
+  },
+  {
+    "textPayload": "  checked_at: \"2026-03-03T09:00:01.968Z\",",
+    "insertId": "69a6a3a900037a87038c169a",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "service_name": "uk-aq-history-pubsub-writer",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s",
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "project_id": "astute-lyceum-484111-k5",
+        "location": "europe-west2"
+      }
+    },
+    "timestamp": "2026-03-03T09:02:33.227975Z",
+    "labels": {
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206",
+      "job_name": "uk-aq-history-pubsub-writer-service"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2026-03-03T09:02:33.348606508Z"
+  },
+  {
+    "textPayload": "  history_pubsub: {",
+    "insertId": "69a6a3a900037a8c714e1bda",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "service_name": "uk-aq-history-pubsub-writer",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s",
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "project_id": "astute-lyceum-484111-k5",
+        "location": "europe-west2"
+      }
+    },
+    "timestamp": "2026-03-03T09:02:33.227980Z",
+    "labels": {
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206",
+      "job_name": "uk-aq-history-pubsub-writer-service"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2026-03-03T09:02:33.348606508Z"
+  },
+  {
+    "textPayload": "    batches: 1,",
+    "insertId": "69a6a3a900037a90e827910e",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "project_id": "astute-lyceum-484111-k5",
+        "location": "europe-west2",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s",
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "service_name": "uk-aq-history-pubsub-writer"
+      }
+    },
+    "timestamp": "2026-03-03T09:02:33.227984Z",
+    "labels": {
+      "job_name": "uk-aq-history-pubsub-writer-service",
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2026-03-03T09:02:33.348606508Z"
+  },
+  {
+    "textPayload": "    max_batches: 24,",
+    "insertId": "69a6a3a900037a94a4425b1d",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "service_name": "uk-aq-history-pubsub-writer",
+        "location": "europe-west2",
+        "project_id": "astute-lyceum-484111-k5",
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s"
+      }
+    },
+    "timestamp": "2026-03-03T09:02:33.227988Z",
+    "labels": {
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206",
+      "job_name": "uk-aq-history-pubsub-writer-service"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2026-03-03T09:02:33.348606508Z"
+  },
+  {
+    "textPayload": "    pulled_messages: 1000,",
+    "insertId": "69a6a3a900037a98512e34b2",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "project_id": "astute-lyceum-484111-k5",
+        "location": "europe-west2",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s",
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "service_name": "uk-aq-history-pubsub-writer"
+      }
+    },
+    "timestamp": "2026-03-03T09:02:33.227992Z",
+    "labels": {
+      "job_name": "uk-aq-history-pubsub-writer-service",
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2026-03-03T09:02:33.348606508Z"
+  },
+  {
+    "textPayload": "    decoded_rows: 1000,",
+    "insertId": "69a6a3a900037a9c49ac82a6",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "location": "europe-west2",
+        "project_id": "astute-lyceum-484111-k5",
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s",
+        "service_name": "uk-aq-history-pubsub-writer"
+      }
+    },
+    "timestamp": "2026-03-03T09:02:33.227996Z",
+    "labels": {
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206",
+      "job_name": "uk-aq-history-pubsub-writer-service"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2026-03-03T09:02:33.348606508Z"
+  },
+  {
+    "textPayload": "    deduped_rows: 1000,",
+    "insertId": "69a6a3a900037aa0eb6832b4",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "service_name": "uk-aq-history-pubsub-writer",
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s",
+        "location": "europe-west2",
+        "project_id": "astute-lyceum-484111-k5"
+      }
+    },
+    "timestamp": "2026-03-03T09:02:33.228Z",
+    "labels": {
+      "job_name": "uk-aq-history-pubsub-writer-service",
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2026-03-03T09:02:33.348606508Z"
+  },
+  {
+    "textPayload": "    delivered: 0,",
+    "insertId": "69a6a3a900037aa350bf086e",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "service_name": "uk-aq-history-pubsub-writer",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s",
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "project_id": "astute-lyceum-484111-k5",
+        "location": "europe-west2"
+      }
+    },
+    "timestamp": "2026-03-03T09:02:33.228003Z",
+    "labels": {
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206",
+      "job_name": "uk-aq-history-pubsub-writer-service"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2026-03-03T09:02:33.348606508Z"
+  },
+  {
+    "textPayload": "    receipts_upserted: 0,",
+    "insertId": "69a6a3a900037aa70616516c",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "service_name": "uk-aq-history-pubsub-writer",
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s",
+        "location": "europe-west2",
+        "project_id": "astute-lyceum-484111-k5"
+      }
+    },
+    "timestamp": "2026-03-03T09:02:33.228007Z",
+    "labels": {
+      "job_name": "uk-aq-history-pubsub-writer-service",
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2026-03-03T09:02:33.348606508Z"
+  },
+  {
+    "textPayload": "    acked_messages: 0,",
+    "insertId": "69a6a3a900037aabfc491fe7",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "service_name": "uk-aq-history-pubsub-writer",
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s",
+        "location": "europe-west2",
+        "project_id": "astute-lyceum-484111-k5"
+      }
+    },
+    "timestamp": "2026-03-03T09:02:33.228011Z",
+    "labels": {
+      "job_name": "uk-aq-history-pubsub-writer-service",
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2026-03-03T09:02:33.348606508Z"
+  },
+  {
+    "textPayload": "    malformed_messages: 0,",
+    "insertId": "69a6a3a900037aae968f5c9e",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "service_name": "uk-aq-history-pubsub-writer",
+        "location": "europe-west2",
+        "project_id": "astute-lyceum-484111-k5",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s",
+        "configuration_name": "uk-aq-history-pubsub-writer"
+      }
+    },
+    "timestamp": "2026-03-03T09:02:33.228014Z",
+    "labels": {
+      "job_name": "uk-aq-history-pubsub-writer-service",
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2026-03-03T09:02:33.348606508Z"
+  },
+  {
+    "textPayload": "    warnings: [],",
+    "insertId": "69a6a3a900037ab2478f00c1",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "project_id": "astute-lyceum-484111-k5",
+        "location": "europe-west2",
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s",
+        "service_name": "uk-aq-history-pubsub-writer"
+      }
+    },
+    "timestamp": "2026-03-03T09:02:33.228018Z",
+    "labels": {
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206",
+      "job_name": "uk-aq-history-pubsub-writer-service"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2026-03-03T09:02:33.348606508Z"
+  },
+  {
+    "textPayload": "    errors: [",
+    "insertId": "69a6a3a900037ab653ae3a8f",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "location": "europe-west2",
+        "project_id": "astute-lyceum-484111-k5",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s",
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "service_name": "uk-aq-history-pubsub-writer"
+      }
+    },
+    "timestamp": "2026-03-03T09:02:33.228022Z",
+    "labels": {
+      "job_name": "uk-aq-history-pubsub-writer-service",
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2026-03-03T09:02:33.348606508Z"
+  },
+  {
+    "textPayload": "      \"History upsert failed for batch 1: History upsert failed: canceling statement due to statement timeout\"",
+    "insertId": "69a6a3a900037abbb3c59835",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "service_name": "uk-aq-history-pubsub-writer",
+        "project_id": "astute-lyceum-484111-k5",
+        "location": "europe-west2",
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s"
+      }
+    },
+    "timestamp": "2026-03-03T09:02:33.228027Z",
+    "labels": {
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206",
+      "job_name": "uk-aq-history-pubsub-writer-service"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2026-03-03T09:02:33.348606508Z"
+  },
+  {
+    "textPayload": "    ],",
+    "insertId": "69a6a3a900037abeb5672ecf",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "service_name": "uk-aq-history-pubsub-writer",
+        "location": "europe-west2",
+        "project_id": "astute-lyceum-484111-k5",
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s"
+      }
+    },
+    "timestamp": "2026-03-03T09:02:33.228030Z",
+    "labels": {
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206",
+      "job_name": "uk-aq-history-pubsub-writer-service"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2026-03-03T09:02:33.348606508Z"
+  },
+  {
+    "textPayload": "    stopped_early: true,",
+    "insertId": "69a6a3a900037ac266128736",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "location": "europe-west2",
+        "project_id": "astute-lyceum-484111-k5",
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s",
+        "service_name": "uk-aq-history-pubsub-writer"
+      }
+    },
+    "timestamp": "2026-03-03T09:02:33.228034Z",
+    "labels": {
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206",
+      "job_name": "uk-aq-history-pubsub-writer-service"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2026-03-03T09:02:33.348606508Z"
+  },
+  {
+    "textPayload": "    stop_reason: \"history_upsert_failed\"",
+    "insertId": "69a6a3a900037ac62407b5a2",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "service_name": "uk-aq-history-pubsub-writer",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s",
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "project_id": "astute-lyceum-484111-k5",
+        "location": "europe-west2"
+      }
+    },
+    "timestamp": "2026-03-03T09:02:33.228038Z",
+    "labels": {
+      "job_name": "uk-aq-history-pubsub-writer-service",
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2026-03-03T09:02:33.348606508Z"
+  },
+  {
+    "textPayload": "  }",
+    "insertId": "69a6a3a900037ac90ac09ad7",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "location": "europe-west2",
+        "project_id": "astute-lyceum-484111-k5",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s",
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "service_name": "uk-aq-history-pubsub-writer"
+      }
+    },
+    "timestamp": "2026-03-03T09:02:33.228041Z",
+    "labels": {
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206",
+      "job_name": "uk-aq-history-pubsub-writer-service"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2026-03-03T09:02:33.348606508Z"
+  },
+  {
+    "textPayload": "}",
+    "insertId": "69a6a3a900037acca7df72da",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "service_name": "uk-aq-history-pubsub-writer",
+        "project_id": "astute-lyceum-484111-k5",
+        "location": "europe-west2",
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s"
+      }
+    },
+    "timestamp": "2026-03-03T09:02:33.228044Z",
+    "labels": {
+      "job_name": "uk-aq-history-pubsub-writer-service",
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2026-03-03T09:02:33.348606508Z"
+  },
+  {
+    "textPayload": "\u001b[0m\u001b[1m\u001b[31merror\u001b[0m: Uncaught (in promise) Error: history_pubsub_flush_error {\"batches\":1,\"pulled_messages\":1000,\"decoded_rows\":1000,\"deduped_rows\":1000,\"delivered\":0,\"receipts_upserted\":0,\"acked_messages\":0,\"malformed_messages\":0,\"stop_reason\":\"history_upsert_failed\",\"warnings\":[]}",
+    "insertId": "69a6a3a900039818339b3b56",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s",
+        "project_id": "astute-lyceum-484111-k5",
+        "location": "europe-west2",
+        "service_name": "uk-aq-history-pubsub-writer"
+      }
+    },
+    "timestamp": "2026-03-03T09:02:33.235544Z",
+    "labels": {
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206",
+      "job_name": "uk-aq-history-pubsub-writer-service"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2026-03-03T09:02:33.244012974Z"
+  },
+  {
+    "textPayload": "    throw new Error(`history_pubsub_flush_error ${summarizeForError(summary)}`);",
+    "insertId": "69a6a3a900039830ac63d9f6",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s",
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "location": "europe-west2",
+        "project_id": "astute-lyceum-484111-k5",
+        "service_name": "uk-aq-history-pubsub-writer"
+      }
+    },
+    "timestamp": "2026-03-03T09:02:33.235568Z",
+    "labels": {
+      "job_name": "uk-aq-history-pubsub-writer-service",
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2026-03-03T09:02:33.244012974Z"
+  },
+  {
+    "textPayload": "\u001b[0m\u001b[31m          ^\u001b[0m",
+    "insertId": "69a6a3a900039834ff6556c5",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "service_name": "uk-aq-history-pubsub-writer",
+        "location": "europe-west2",
+        "project_id": "astute-lyceum-484111-k5",
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s"
+      }
+    },
+    "timestamp": "2026-03-03T09:02:33.235572Z",
+    "labels": {
+      "job_name": "uk-aq-history-pubsub-writer-service",
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2026-03-03T09:02:33.244012974Z"
+  },
+  {
+    "textPayload": "    at \u001b[0m\u001b[1m\u001b[3mmain\u001b[0m (\u001b[0m\u001b[36mfile:///app/workers/uk_aq_history_pubsub_cloud_run/run_job.ts\u001b[0m:\u001b[0m\u001b[33m505\u001b[0m:\u001b[0m\u001b[33m11\u001b[0m)",
+    "insertId": "69a6a3a9000398396c04932e",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "service_name": "uk-aq-history-pubsub-writer",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s",
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "location": "europe-west2",
+        "project_id": "astute-lyceum-484111-k5"
+      }
+    },
+    "timestamp": "2026-03-03T09:02:33.235577Z",
+    "labels": {
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206",
+      "job_name": "uk-aq-history-pubsub-writer-service"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2026-03-03T09:02:33.244012974Z"
+  },
+  {
+    "textPayload": "    at \u001b[0m\u001b[1m\u001b[3meventLoopTick\u001b[0m (\u001b[0m\u001b[36mext:core/01_core.js\u001b[0m:\u001b[0m\u001b[33m175\u001b[0m:\u001b[0m\u001b[33m7\u001b[0m)",
+    "insertId": "69a6a3a90003983e646e24c3",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "service_name": "uk-aq-history-pubsub-writer",
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s",
+        "project_id": "astute-lyceum-484111-k5",
+        "location": "europe-west2"
+      }
+    },
+    "timestamp": "2026-03-03T09:02:33.235582Z",
+    "labels": {
+      "job_name": "uk-aq-history-pubsub-writer-service",
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2026-03-03T09:02:33.244012974Z"
+  },
+  {
+    "textPayload": "    at async \u001b[0m\u001b[36mfile:///app/workers/uk_aq_history_pubsub_cloud_run/run_job.ts\u001b[0m:\u001b[0m\u001b[33m510\u001b[0m:\u001b[0m\u001b[33m3\u001b[0m",
+    "insertId": "69a6a3a90003984256e6b4bd",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "project_id": "astute-lyceum-484111-k5",
+        "location": "europe-west2",
+        "configuration_name": "uk-aq-history-pubsub-writer",
+        "revision_name": "uk-aq-history-pubsub-writer-00015-r8s",
+        "service_name": "uk-aq-history-pubsub-writer"
+      }
+    },
+    "timestamp": "2026-03-03T09:02:33.235586Z",
+    "labels": {
+      "instanceId": "00da6cd2c4433b88105d4cff3c47ac979267157e3cc286b97d0245997cfd2bf2efa255b9a372276c5309eb0879bb91bcb287fbbcf61c3fbdcb0443f6dded978f8a38568cfb797d524cd454a1b41206",
+      "job_name": "uk-aq-history-pubsub-writer-service"
+    },
+    "logName": "projects/astute-lyceum-484111-k5/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2026-03-03T09:02:33.244012974Z"
+  }
+]

@@ -175,9 +175,10 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
   - For history-project deployment, use `.github/workflows/uk_aq_history_edge_deploy.yml` which deploys with `--no-verify-jwt` so invocations can remain publishable-key based.
   - Uses `x-ukaq-egress-bypass: 1` on its own PostgREST calls so monitor traffic does not recursively inflate egress metrics.
   - Paginates through `uk_aq_endpoint_egress_metrics_minute` for the lookback window (not capped to a single page).
+  - Enforces a runtime budget and per-request timeout during pagination; returns partial results with `rows_truncated=true` and `rows_truncated_reason` when limits are hit.
   - Returns both observed sampled totals and sampling-adjusted estimated totals; alert threshold uses `estimated_mb`.
   - Aggregates endpoint totals with caller tags normalized back to base endpoint names, and also returns `top_endpoint_callers_estimated` for endpoint+caller attribution.
-  - Supports query params `lookback_minutes`, `top_n`, `alert_mb`, `write_error_log`, `page_size`, `max_rows`.
+  - Supports query params `lookback_minutes`, `top_n`, `alert_mb`, `write_error_log`, `page_size`, `max_rows`, `runtime_budget_ms`, `request_timeout_ms`.
 
 ### ingest_uk_air_sos
 - Purpose: Poll UK-AIR SOS timeseries and write observations + last_value fields.
@@ -560,6 +561,8 @@ Optional:
 - `UK_AQ_EGRESS_MONITOR_WRITE_ERROR_LOG` (optional; defaults to `true`; write warning rows into `error_logs` when threshold is exceeded)
 - `UK_AQ_EGRESS_MONITOR_PAGE_SIZE` (optional; defaults to `1000`; page size used by egress monitor pagination)
 - `UK_AQ_EGRESS_MONITOR_MAX_ROWS` (optional; defaults to `100000`; safety cap for monitor row scan)
+- `UK_AQ_EGRESS_MONITOR_RUNTIME_BUDGET_MS` (optional; defaults to `120000`; runtime budget for monitor pagination loop)
+- `UK_AQ_EGRESS_MONITOR_REQUEST_TIMEOUT_MS` (optional; defaults to `20000`; per-PostgREST request timeout during monitor pagination)
 - `UK_AIR_ERROR_DROPBOX_FOLDER` (defaults to `error_log`)
 - `BREATHELONDON_ERROR_DROPBOX_FOLDER` (optional override for Breathe London)
 - `SCOMM_ERROR_DROPBOX_FOLDER` (optional override for Sensor.Community)

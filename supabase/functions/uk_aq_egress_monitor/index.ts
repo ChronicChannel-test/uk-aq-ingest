@@ -15,7 +15,8 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ??
 const SB_SECRET_KEY = Deno.env.get("SB_SECRET_KEY") ?? "";
 const SUPABASE_PRIVILEGED_KEY = SB_SECRET_KEY;
 const SB_UK_AQ_CRON_SECRET = Deno.env.get("SB_UK_AQ_CRON_SECRET") ?? "";
-const UK_AQ_PUBLIC_SCHEMA = Deno.env.get("UK_AQ_PUBLIC_SCHEMA") ?? "uk_aq_public";
+const UK_AQ_PUBLIC_SCHEMA = Deno.env.get("UK_AQ_PUBLIC_SCHEMA") ??
+  "uk_aq_public";
 const UK_AQ_RAW_SCHEMA = Deno.env.get("UK_AQ_RAW_SCHEMA") ?? "uk_aq_raw";
 const REST_BASE_URL = SUPABASE_URL
   ? `${SUPABASE_URL.replace(/\/$/, "")}/rest/v1`
@@ -27,6 +28,10 @@ const DEFAULT_ALERT_MB = 250;
 const DEFAULT_WRITE_ERROR_LOG = true;
 const DEFAULT_PAGE_SIZE = 1000;
 const DEFAULT_MAX_ROWS = 100_000;
+const DEFAULT_RUNTIME_BUDGET_MS = 120_000;
+const DEFAULT_REQUEST_TIMEOUT_MS = 20_000;
+const MIN_REQUEST_TIMEOUT_MS = 1_000;
+const RUNTIME_BUDGET_BUFFER_MS = 1_000;
 const EGRESS_BYPASS_HEADER = "x-ukaq-egress-bypass";
 
 function parsePositiveInt(
@@ -81,7 +86,9 @@ function requireCronSecret(req: Request): Response | null {
   return null;
 }
 
-function postgrestHeaders(schema = UK_AQ_PUBLIC_SCHEMA): Record<string, string> {
+function postgrestHeaders(
+  schema = UK_AQ_PUBLIC_SCHEMA,
+): Record<string, string> {
   const headers: Record<string, string> = {
     apikey: SUPABASE_PRIVILEGED_KEY,
     "Content-Type": "application/json",
@@ -102,6 +109,7 @@ async function postgrestRequest<T>(
   params?: Record<string, string>,
   body?: unknown,
   schema = UK_AQ_PUBLIC_SCHEMA,
+  signal?: AbortSignal,
 ): Promise<{ data: T | null; error: { message: string } | null }> {
   if (!REST_BASE_URL || !SUPABASE_PRIVILEGED_KEY) {
     return {
@@ -119,6 +127,7 @@ async function postgrestRequest<T>(
     method,
     headers: postgrestHeaders(schema),
     body: body === undefined ? undefined : JSON.stringify(body),
+    signal,
   });
   const contentType = resp.headers.get("content-type") ?? "";
   const payload = contentType.includes("application/json")
@@ -127,7 +136,10 @@ async function postgrestRequest<T>(
   if (!resp.ok) {
     const message = payload?.message || payload?.error_description ||
       payload?.error || resp.statusText;
-    return { data: null, error: { message: String(message || "PostgREST request failed.") } };
+    return {
+      data: null,
+      error: { message: String(message || "PostgREST request failed.") },
+    };
   }
   return { data: payload as T, error: null };
 }
@@ -171,26 +183,76 @@ async function fetchEgressRowsSince(
   sinceIso: string,
   pageSize: number,
   maxRows: number,
-): Promise<{ rows: EgressMinuteRow[]; pages: number; truncated: boolean }> {
+  options: {
+    startedAtMs: number;
+    runtimeBudgetMs: number;
+    requestTimeoutMs: number;
+  },
+): Promise<{
+  rows: EgressMinuteRow[];
+  pages: number;
+  truncated: boolean;
+  budget_exhausted: boolean;
+  request_timed_out: boolean;
+}> {
   const rows: EgressMinuteRow[] = [];
   let pages = 0;
   let offset = 0;
+  let budgetExhausted = false;
+  let requestTimedOut = false;
   while (rows.length < maxRows) {
-    const limit = Math.min(pageSize, maxRows - rows.length);
-    const { data, error } = await postgrestRequest<EgressMinuteRow[]>(
-      "GET",
-      "uk_aq_endpoint_egress_metrics_minute",
-      {
-        select:
-          "endpoint,response_bytes_sum,observed_requests,estimated_requests,bucket_minute",
-        bucket_minute: `gte.${sinceIso}`,
-        order: "bucket_minute.asc",
-        limit: String(limit),
-        offset: String(offset),
-      },
-      undefined,
-      UK_AQ_PUBLIC_SCHEMA,
+    const elapsedMs = Date.now() - options.startedAtMs;
+    const remainingBudgetMs = options.runtimeBudgetMs - elapsedMs;
+    if (remainingBudgetMs <= RUNTIME_BUDGET_BUFFER_MS) {
+      budgetExhausted = true;
+      break;
+    }
+    const perRequestTimeoutMs = Math.min(
+      options.requestTimeoutMs,
+      remainingBudgetMs - RUNTIME_BUDGET_BUFFER_MS,
     );
+    if (perRequestTimeoutMs < MIN_REQUEST_TIMEOUT_MS) {
+      budgetExhausted = true;
+      break;
+    }
+    const limit = Math.min(pageSize, maxRows - rows.length);
+    const requestController = new AbortController();
+    const requestTimer = setTimeout(
+      () => requestController.abort(),
+      perRequestTimeoutMs,
+    );
+    let data: EgressMinuteRow[] | null = null;
+    let error: { message: string } | null = null;
+    try {
+      const response = await postgrestRequest<EgressMinuteRow[]>(
+        "GET",
+        "uk_aq_endpoint_egress_metrics_minute",
+        {
+          select:
+            "endpoint,response_bytes_sum,observed_requests,estimated_requests,bucket_minute",
+          bucket_minute: `gte.${sinceIso}`,
+          order: "bucket_minute.asc",
+          limit: String(limit),
+          offset: String(offset),
+        },
+        undefined,
+        UK_AQ_PUBLIC_SCHEMA,
+        requestController.signal,
+      );
+      data = response.data;
+      error = response.error;
+    } catch (requestError) {
+      if (
+        requestError instanceof DOMException &&
+        requestError.name === "AbortError"
+      ) {
+        requestTimedOut = true;
+        break;
+      }
+      throw requestError;
+    } finally {
+      clearTimeout(requestTimer);
+    }
     if (error) {
       throw new Error(`Failed to load egress metrics: ${error.message}`);
     }
@@ -198,11 +260,23 @@ async function fetchEgressRowsSince(
     rows.push(...batch);
     pages += 1;
     if (batch.length < limit) {
-      return { rows, pages, truncated: false };
+      return {
+        rows,
+        pages,
+        truncated: false,
+        budget_exhausted: false,
+        request_timed_out: false,
+      };
     }
     offset += limit;
   }
-  return { rows, pages, truncated: true };
+  return {
+    rows,
+    pages,
+    truncated: rows.length >= maxRows || budgetExhausted || requestTimedOut,
+    budget_exhausted: budgetExhausted,
+    request_timed_out: requestTimedOut,
+  };
 }
 
 serve(async (req) => {
@@ -217,6 +291,7 @@ serve(async (req) => {
     return authResponse;
   }
   try {
+    const startedAtMs = Date.now();
     const url = new URL(req.url);
     const lookbackMinutes = parsePositiveInt(
       url.searchParams.get("lookback_minutes") ??
@@ -226,7 +301,8 @@ serve(async (req) => {
       1440,
     );
     const topN = parsePositiveInt(
-      url.searchParams.get("top_n") ?? Deno.env.get("UK_AQ_EGRESS_MONITOR_TOP_N"),
+      url.searchParams.get("top_n") ??
+        Deno.env.get("UK_AQ_EGRESS_MONITOR_TOP_N"),
       DEFAULT_TOP_N,
       1,
       100,
@@ -255,10 +331,33 @@ serve(async (req) => {
       1_000,
       1_000_000,
     );
+    const runtimeBudgetMs = parsePositiveInt(
+      url.searchParams.get("runtime_budget_ms") ??
+        Deno.env.get("UK_AQ_EGRESS_MONITOR_RUNTIME_BUDGET_MS"),
+      DEFAULT_RUNTIME_BUDGET_MS,
+      10_000,
+      300_000,
+    );
+    const requestTimeoutMs = parsePositiveInt(
+      url.searchParams.get("request_timeout_ms") ??
+        Deno.env.get("UK_AQ_EGRESS_MONITOR_REQUEST_TIMEOUT_MS"),
+      DEFAULT_REQUEST_TIMEOUT_MS,
+      MIN_REQUEST_TIMEOUT_MS,
+      120_000,
+    );
 
     const sinceIso = new Date(Date.now() - (lookbackMinutes * 60 * 1000))
       .toISOString();
-    const fetchResult = await fetchEgressRowsSince(sinceIso, pageSize, maxRows);
+    const fetchResult = await fetchEgressRowsSince(
+      sinceIso,
+      pageSize,
+      maxRows,
+      {
+        startedAtMs,
+        runtimeBudgetMs,
+        requestTimeoutMs,
+      },
+    );
     const data = fetchResult.rows;
 
     const totalsByEndpoint = new Map<
@@ -312,15 +411,18 @@ serve(async (req) => {
       existing.estimatedRequests += estimatedRequests;
       totalsByEndpoint.set(endpoint, existing);
 
-      const endpointCallerKey = `${endpoint}|caller=${split.caller ?? "unknown"}`;
-      const existingEndpointCaller = totalsByEndpointCaller.get(endpointCallerKey) ?? {
-        endpoint,
-        caller: split.caller,
-        observedBytes: 0,
-        estimatedBytes: 0,
-        observedRequests: 0,
-        estimatedRequests: 0,
-      };
+      const endpointCallerKey = `${endpoint}|caller=${
+        split.caller ?? "unknown"
+      }`;
+      const existingEndpointCaller =
+        totalsByEndpointCaller.get(endpointCallerKey) ?? {
+          endpoint,
+          caller: split.caller,
+          observedBytes: 0,
+          estimatedBytes: 0,
+          observedRequests: 0,
+          estimatedRequests: 0,
+        };
       existingEndpointCaller.observedBytes += observedBytes;
       existingEndpointCaller.estimatedBytes += estimatedBytes;
       existingEndpointCaller.observedRequests += observedRequests;
@@ -349,7 +451,9 @@ serve(async (req) => {
       }))
       .sort((a, b) => b.mb - a.mb)
       .slice(0, topN);
-    const topEndpointCallersEstimated = Array.from(totalsByEndpointCaller.values())
+    const topEndpointCallersEstimated = Array.from(
+      totalsByEndpointCaller.values(),
+    )
       .map((value) => ({
         endpoint: value.endpoint,
         caller: value.caller,
@@ -364,6 +468,13 @@ serve(async (req) => {
     const totalObservedMb = Number(toMiB(totalObservedBytes).toFixed(3));
     const totalEstimatedMb = Number(toMiB(totalEstimatedBytes).toFixed(3));
     const thresholdExceeded = totalEstimatedMb >= alertMb;
+    const rowsTruncatedReason = fetchResult.request_timed_out
+      ? "request_timeout"
+      : fetchResult.budget_exhausted
+      ? "runtime_budget"
+      : fetchResult.truncated
+      ? "max_rows"
+      : null;
 
     if (thresholdExceeded) {
       console.warn("uk_aq_egress_monitor_threshold_exceeded", {
@@ -413,6 +524,9 @@ serve(async (req) => {
         rows_truncated: fetchResult.truncated,
         page_size: pageSize,
         max_rows: maxRows,
+        runtime_budget_ms: runtimeBudgetMs,
+        request_timeout_ms: requestTimeoutMs,
+        runtime_elapsed_ms: Date.now() - startedAtMs,
         total_observed_mb: totalObservedMb,
         total_estimated_mb: totalEstimatedMb,
         total_observed_requests: Math.round(totalObservedRequests),
@@ -422,6 +536,9 @@ serve(async (req) => {
         total_requests: Math.round(totalObservedRequests),
         alert_threshold_mb: alertMb,
         threshold_exceeded: thresholdExceeded,
+        rows_truncated_reason: rowsTruncatedReason,
+        runtime_budget_exhausted: fetchResult.budget_exhausted,
+        request_timed_out: fetchResult.request_timed_out,
         top_endpoints: topEndpointsObserved,
         top_endpoints_estimated: topEndpointsEstimated,
         top_endpoint_callers_estimated: topEndpointCallersEstimated,
