@@ -524,45 +524,58 @@ async function loadStationCheckpointRows(
   if (!stationIds.length) {
     return checkpoints;
   }
-  const response = await postgrestRequest(
-    "GET",
-    "uk_air_sos_station_checkpoints",
-    {
-      schema: UK_AQ_RAW_SCHEMA,
-      query: {
-        select:
-          "station_id,next_due_at,last_observed_at,ingest_lag_samples,last_polled_at",
-        station_id: postgrestIn(stationIds),
-        limit: "1000",
+
+  let offset = 0;
+  const limit = 1000;
+  while (true) {
+    const response = await postgrestRequest(
+      "GET",
+      "uk_air_sos_station_checkpoints",
+      {
+        schema: UK_AQ_RAW_SCHEMA,
+        query: {
+          select:
+            "station_id,next_due_at,last_observed_at,ingest_lag_samples,last_polled_at",
+          station_id: postgrestIn(stationIds),
+          limit: String(limit),
+          offset: String(offset),
+        },
       },
-    },
-  );
-  if (!response.ok) {
-    throw new Error(
-      `Failed to load SOS station checkpoints (${response.status}): ${response.text}`,
     );
-  }
-  const rows = Array.isArray(response.data) ? response.data : [];
-  for (const row of rows) {
-    const obj = toObject(row);
-    const stationId = toIntegerOrNull(obj?.station_id);
-    if (stationId === null) {
-      continue;
+    if (!response.ok) {
+      throw new Error(
+        `Failed to load SOS station checkpoints (${response.status}): ${response.text}`,
+      );
     }
-    const rawSamples = Array.isArray(obj?.ingest_lag_samples)
-      ? obj?.ingest_lag_samples
-      : [];
-    const lagSamples = rawSamples
-      .map((sample) => toIntegerOrNull(sample))
-      .filter((sample): sample is number => sample !== null && sample >= 0);
-    checkpoints.set(stationId, {
-      station_id: stationId,
-      next_due_at: toStringOrNull(obj?.next_due_at),
-      last_observed_at: toStringOrNull(obj?.last_observed_at),
-      ingest_lag_samples: lagSamples,
-      last_polled_at: toStringOrNull(obj?.last_polled_at),
-    });
+    const rows = Array.isArray(response.data) ? response.data : [];
+    for (const row of rows) {
+      const obj = toObject(row);
+      const stationId = toIntegerOrNull(obj?.station_id);
+      if (stationId === null) {
+        continue;
+      }
+      const rawSamples = Array.isArray(obj?.ingest_lag_samples)
+        ? obj?.ingest_lag_samples
+        : [];
+      const lagSamples = rawSamples
+        .map((sample) => toIntegerOrNull(sample))
+        .filter(
+          (sample): sample is number => sample !== null && sample >= 0,
+        );
+      checkpoints.set(stationId, {
+        station_id: stationId,
+        next_due_at: toStringOrNull(obj?.next_due_at),
+        last_observed_at: toStringOrNull(obj?.last_observed_at),
+        ingest_lag_samples: lagSamples,
+        last_polled_at: toStringOrNull(obj?.last_polled_at),
+      });
+    }
+    if (rows.length < limit) {
+      break;
+    }
+    offset += limit;
   }
+
   return checkpoints;
 }
 
