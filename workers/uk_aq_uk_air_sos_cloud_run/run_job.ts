@@ -277,7 +277,7 @@ function getTimeseriesLimit(connector: ConnectorConfig | null): number {
 }
 
 function getStationBatchLimit(connector: ConnectorConfig | null): number {
-  const value = toPositiveIntegerOrNull(connector?.poll_station_batch_size);
+  const value = toPositiveIntegerOrNull(connector?.poll_timeseries_batch_size);
   if (value !== null) {
     return value;
   }
@@ -537,6 +537,7 @@ async function loadStationCheckpointRows(
           select:
             "station_id,next_due_at,last_observed_at,ingest_lag_samples,last_polled_at",
           station_id: postgrestIn(stationIds),
+          order: "station_id.asc",
           limit: String(limit),
           offset: String(offset),
         },
