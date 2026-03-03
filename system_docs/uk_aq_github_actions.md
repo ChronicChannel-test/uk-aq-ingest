@@ -313,7 +313,7 @@ UK_AQ_EDGE_UPSTREAM_SECRET=...
 - Required secrets/vars:
   - `GCP_PROJECT_ID`, Google auth secrets (`GCP_WORKLOAD_IDENTITY_PROVIDER` + `GCP_SERVICE_ACCOUNT` or `GCP_SA_KEY`)
   - `GCP_OPENAQ_JOB_SERVICE_ACCOUNT` (repo var or secret)
-  - `SUPABASE_URL`, `SB_SECRET_KEY` (preferred; workflow falls back to `SB_SECRET_KEY`)
+  - `SUPABASE_URL`, `SB_SECRET_KEY` (preferred; workflow falls back to `SECRET_KEY`)
   - `OPENAQ_API_KEY`
 - Optional:
   - `HISTORY_SUPABASE_URL`, `HISTORY_SECRET_KEY` (required only for `HISTORY_WRITE_MODE=direct`; not injected for `pubsub_only`/`outbox_only`)
