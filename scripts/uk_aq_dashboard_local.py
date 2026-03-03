@@ -133,6 +133,31 @@ query R2OpsMonth($accountTag: string!, $startDate: Time!, $endDate: Time!) {
   }
 }
 """
+R2_STORAGE_GQL_QUERY = """
+query R2StorageNow($accountTag: string!, $startDate: Time!, $endDate: Time!) {
+  viewer {
+    accounts(filter: { accountTag: $accountTag }) {
+      r2StorageAdaptiveGroups(
+        limit: 1000
+        filter: {
+          datetime_geq: $startDate
+          datetime_leq: $endDate
+        }
+      ) {
+        dimensions {
+          bucketName
+          storageClass
+        }
+        max {
+          objectCount
+          payloadSize
+          metadataSize
+        }
+      }
+    }
+  }
+}
+"""
 
 
 def _normalize_token(value: str) -> str:
@@ -367,6 +392,89 @@ def _fetch_r2_operations_metrics(
     }, None
 
 
+def _fetch_r2_storage_fallback_metrics(
+    account_id: str,
+    api_token: str,
+    now: datetime,
+) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+    window_end = now.astimezone(timezone.utc)
+    # Short lookback keeps this close to current bucket-state in Cloudflare UI.
+    window_start = window_end - timedelta(hours=2)
+    try:
+        resp = requests.post(
+            "https://api.cloudflare.com/client/v4/graphql",
+            headers={
+                "Authorization": f"Bearer {api_token}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "query": R2_STORAGE_GQL_QUERY,
+                "variables": {
+                    "accountTag": account_id,
+                    "startDate": window_start.isoformat().replace("+00:00", "Z"),
+                    "endDate": window_end.isoformat().replace("+00:00", "Z"),
+                },
+            },
+            timeout=30,
+        )
+    except requests.RequestException as exc:
+        return None, f"R2 storage fallback request failed ({exc.__class__.__name__})"
+    if not resp.ok:
+        return None, f"R2 storage fallback HTTP {resp.status_code}"
+
+    try:
+        payload = resp.json()
+    except ValueError:
+        return None, "R2 storage fallback returned non-JSON payload"
+    if not isinstance(payload, dict):
+        return None, "R2 storage fallback payload is not an object"
+    if payload.get("errors"):
+        return None, "R2 storage fallback GraphQL returned errors"
+
+    data = payload.get("data")
+    if not isinstance(data, dict):
+        return None, "R2 storage fallback missing data object"
+    viewer = data.get("viewer")
+    if not isinstance(viewer, dict):
+        return None, "R2 storage fallback missing viewer object"
+    accounts = viewer.get("accounts")
+    if not isinstance(accounts, list) or not accounts:
+        return None, "R2 storage fallback missing account data"
+    account_row = accounts[0]
+    if not isinstance(account_row, dict):
+        return None, "R2 storage fallback account row is invalid"
+    groups = account_row.get("r2StorageAdaptiveGroups")
+    if not isinstance(groups, list):
+        return None, "R2 storage fallback missing storage groups"
+
+    used_bytes = 0.0
+    objects = 0.0
+    for group in groups:
+        if not isinstance(group, dict):
+            continue
+        dimensions = group.get("dimensions")
+        max_values = group.get("max")
+        if not isinstance(dimensions, dict) or not isinstance(max_values, dict):
+            continue
+        storage_class = str(dimensions.get("storageClass") or "").strip()
+        if storage_class.lower() != "standard":
+            continue
+        payload_size = _safe_nonnegative_number(max_values.get("payloadSize"))
+        metadata_size = _safe_nonnegative_number(max_values.get("metadataSize"))
+        object_count = _safe_nonnegative_number(max_values.get("objectCount"))
+        if payload_size is None or metadata_size is None or object_count is None:
+            continue
+        used_bytes += payload_size + metadata_size
+        objects += object_count
+
+    return {
+        "standard_used_bytes": int(round(used_bytes)),
+        "standard_objects": int(round(objects)),
+        "window_start_utc": window_start.isoformat().replace("+00:00", "Z"),
+        "window_end_utc": window_end.isoformat().replace("+00:00", "Z"),
+    }, None
+
+
 def _fetch_json(url: str, headers: Dict[str, str], params: Dict[str, str]) -> List[Dict[str, Any]]:
     resp = requests.get(url, headers=headers, params=params, timeout=60)
     if not resp.ok:
@@ -560,46 +668,81 @@ def _fetch_r2_account_metrics(now: datetime) -> Tuple[Optional[Dict[str, Any]], 
     if class_b_free_tier is None or class_b_free_tier <= 0:
         return None, "invalid UK_AQ_R2_FREE_TIER_CLASS_B_REQUESTS"
 
-    url = f"https://api.cloudflare.com/client/v4/accounts/{account_id}/r2/metrics"
-    try:
-        resp = requests.get(
-            url,
-            headers={
-                "Authorization": f"Bearer {api_token}",
-                "Content-Type": "application/json",
-            },
-            timeout=30,
-        )
-    except requests.RequestException as exc:
-        return None, f"R2 metrics request failed ({exc.__class__.__name__})"
-    if not resp.ok:
-        return None, f"R2 metrics HTTP {resp.status_code}"
+    storage_source = "cloudflare_r2_storage_adaptive_groups_2h"
+    storage_fetch_warning: Optional[str] = None
+    standard_used_bytes = 0
+    standard_objects = 0
 
-    try:
-        payload = resp.json()
-    except ValueError:
-        return None, "R2 metrics returned non-JSON payload"
-    if not isinstance(payload, dict):
-        return None, "R2 metrics payload is not an object"
-    if payload.get("success") is not True:
-        return None, "R2 metrics API reported success=false"
+    storage_metrics, storage_error = _fetch_r2_storage_fallback_metrics(
+        account_id,
+        api_token,
+        now,
+    )
+    if storage_metrics is not None:
+        standard_used_bytes = int(storage_metrics.get("standard_used_bytes") or 0)
+        standard_objects = int(storage_metrics.get("standard_objects") or 0)
+    else:
+        storage_fetch_warning = storage_error
 
-    result = payload.get("result")
-    if not isinstance(result, dict):
-        return None, "R2 metrics missing result object"
+    # Backup path: if storage analytics return empty/zero, fall back to R2 REST metrics.
+    if standard_used_bytes <= 0 and standard_objects <= 0:
+        storage_source = "cloudflare_r2_account_metrics_backup"
+        url = f"https://api.cloudflare.com/client/v4/accounts/{account_id}/r2/metrics"
+        try:
+            resp = requests.get(
+                url,
+                headers={
+                    "Authorization": f"Bearer {api_token}",
+                    "Content-Type": "application/json",
+                },
+                timeout=30,
+            )
+        except requests.RequestException as exc:
+            if storage_fetch_warning:
+                return None, f"{storage_fetch_warning}; R2 metrics request failed ({exc.__class__.__name__})"
+            return None, f"R2 metrics request failed ({exc.__class__.__name__})"
+        if not resp.ok:
+            if storage_fetch_warning:
+                return None, f"{storage_fetch_warning}; R2 metrics HTTP {resp.status_code}"
+            return None, f"R2 metrics HTTP {resp.status_code}"
 
-    standard = result.get("standard")
-    if not isinstance(standard, dict):
-        return None, "R2 metrics missing standard section"
-    # Validate both sections defensively, but always prefer published usage.
-    published_point = _extract_r2_usage_point(standard.get("published"))
-    uploaded_point = _extract_r2_usage_point(standard.get("uploaded"))
-    selected_point = published_point or uploaded_point
-    if selected_point is None:
-        return None, "R2 metrics missing standard usage values"
+        try:
+            payload = resp.json()
+        except ValueError:
+            if storage_fetch_warning:
+                return None, f"{storage_fetch_warning}; R2 metrics returned non-JSON payload"
+            return None, "R2 metrics returned non-JSON payload"
+        if not isinstance(payload, dict):
+            if storage_fetch_warning:
+                return None, f"{storage_fetch_warning}; R2 metrics payload is not an object"
+            return None, "R2 metrics payload is not an object"
+        if payload.get("success") is not True:
+            if storage_fetch_warning:
+                return None, f"{storage_fetch_warning}; R2 metrics API reported success=false"
+            return None, "R2 metrics API reported success=false"
 
-    standard_used_bytes = int(round(selected_point["used_bytes"]))
-    standard_objects = int(round(selected_point["objects"]))
+        result = payload.get("result")
+        if not isinstance(result, dict):
+            if storage_fetch_warning:
+                return None, f"{storage_fetch_warning}; R2 metrics missing result object"
+            return None, "R2 metrics missing result object"
+
+        standard = result.get("standard")
+        if not isinstance(standard, dict):
+            if storage_fetch_warning:
+                return None, f"{storage_fetch_warning}; R2 metrics missing standard section"
+            return None, "R2 metrics missing standard section"
+        # Validate both sections defensively, but always prefer published usage.
+        published_point = _extract_r2_usage_point(standard.get("published"))
+        uploaded_point = _extract_r2_usage_point(standard.get("uploaded"))
+        selected_point = published_point or uploaded_point
+        if selected_point is None:
+            if storage_fetch_warning:
+                return None, f"{storage_fetch_warning}; R2 metrics missing standard usage values"
+            return None, "R2 metrics missing standard usage values"
+
+        standard_used_bytes = int(round(selected_point["used_bytes"]))
+        standard_objects = int(round(selected_point["objects"]))
     free_bytes = int(free_tier_gb * R2_BYTES_PER_GB)
     percent_used = 0.0
     if free_bytes > 0:
@@ -624,6 +767,8 @@ def _fetch_r2_account_metrics(now: datetime) -> Tuple[Optional[Dict[str, Any]], 
         "class_ops_window_start_utc": None,
         "class_ops_window_end_utc": None,
         "class_ops_error": None,
+        "storage_source": storage_source,
+        "storage_fallback_error": storage_fetch_warning,
         "source": "cloudflare_r2_account_metrics",
         "as_of_utc": now.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
     }
