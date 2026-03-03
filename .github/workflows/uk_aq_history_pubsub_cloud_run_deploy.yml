@@ -348,6 +348,7 @@ jobs:
           scheduler_sa="${SCHEDULER_SERVICE_ACCOUNT:-${HISTORY_PUBSUB_SERVICE_ACCOUNT}}"
           service_uri="$(gcloud run services describe "${SERVICE_NAME}" --region "${REGION}" --format='value(status.url)')"
           scheduler_body='{"trigger_mode":"scheduler"}'
+          scheduler_attempt_deadline="1200s"
 
           gcloud run services add-iam-policy-binding "${SERVICE_NAME}" \
             --region "${REGION}" \
@@ -365,6 +366,7 @@ jobs:
               --message-body "${scheduler_body}" \
               --oidc-service-account-email "${scheduler_sa}" \
               --oidc-token-audience "${service_uri}" \
+              --attempt-deadline "${scheduler_attempt_deadline}" \
               --max-retry-attempts "${SCHEDULER_MAX_RETRY_ATTEMPTS}"
             echo "Updated Cloud Scheduler job: ${SCHEDULER_JOB_NAME}"
           else
@@ -378,6 +380,7 @@ jobs:
               --message-body "${scheduler_body}" \
               --oidc-service-account-email "${scheduler_sa}" \
               --oidc-token-audience "${service_uri}" \
+              --attempt-deadline "${scheduler_attempt_deadline}" \
               --max-retry-attempts "${SCHEDULER_MAX_RETRY_ATTEMPTS}"
             echo "Created Cloud Scheduler job: ${SCHEDULER_JOB_NAME}"
           fi
