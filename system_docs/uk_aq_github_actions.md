@@ -217,7 +217,7 @@ UK_AQ_EDGE_UPSTREAM_SECRET=...
   - Small per-batch claims, bounded runtime budget, and retry-aware RPC calls.
   - Scheduler target uses Google Cloud Scheduler -> Cloud Run Jobs API (`:run`).
 - Secrets:
-  - `SUPABASE_URL`, `SB_SECRET_KEY` (preferred; workflow falls back to `SB_SECRET_KEY`),
+  - `SUPABASE_URL`, `SB_SECRET_KEY` (preferred; workflow falls back to `SECRET_KEY`),
   - `HISTORY_SUPABASE_URL`, `HISTORY_SECRET_KEY`,
   - GCP deploy/auth secrets as in other Cloud Run workflows.
 
