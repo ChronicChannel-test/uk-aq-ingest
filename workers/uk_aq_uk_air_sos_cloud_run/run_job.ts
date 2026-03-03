@@ -277,7 +277,7 @@ function getTimeseriesLimit(connector: ConnectorConfig | null): number {
 }
 
 function getStationBatchLimit(connector: ConnectorConfig | null): number {
-  const value = toPositiveIntegerOrNull(connector?.poll_timeseries_batch_size);
+  const value = toPositiveIntegerOrNull(connector?.poll_station_batch_size);
   if (value !== null) {
     return value;
   }
