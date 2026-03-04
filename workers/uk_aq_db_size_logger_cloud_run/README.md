@@ -3,6 +3,8 @@
 This Cloud Run service samples current Postgres database size for both ingest DB
 and history DB once per run, then writes hourly points into
 `uk_aq_raw.db_size_metrics_hourly` in ingest DB.
+Each sample also captures the oldest `observed_at` timestamp currently present in
+that database's observations table.
 
 Scheduler triggers the service with an authenticated POST request.
 

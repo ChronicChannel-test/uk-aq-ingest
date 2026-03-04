@@ -603,7 +603,7 @@ def _fetch_db_size_metrics(
             f"{base_url}/uk_aq_db_size_metrics_hourly",
             public_headers,
             {
-                "select": "bucket_hour,database_label,database_name,size_bytes,recorded_at",
+                "select": "bucket_hour,database_label,database_name,size_bytes,oldest_observed_at,recorded_at",
                 "bucket_hour": f"gte.{_to_postgrest_ts(since)}",
                 "order": "bucket_hour.asc",
                 "limit": "5000",
@@ -619,6 +619,7 @@ def _fetch_db_size_metrics(
             continue
         bucket_hour = _parse_timestamp(row.get("bucket_hour"))
         recorded_at = _parse_timestamp(row.get("recorded_at"))
+        oldest_observed_at = _parse_timestamp(row.get("oldest_observed_at"))
         if bucket_hour is None:
             continue
         raw_size = row.get("size_bytes")
@@ -634,6 +635,11 @@ def _fetch_db_size_metrics(
                 "database_label": label,
                 "database_name": row.get("database_name"),
                 "size_bytes": size_bytes,
+                "oldest_observed_at": (
+                    oldest_observed_at.isoformat().replace("+00:00", "Z")
+                    if isinstance(oldest_observed_at, datetime)
+                    else None
+                ),
                 "recorded_at": (
                     recorded_at.isoformat().replace("+00:00", "Z")
                     if isinstance(recorded_at, datetime)

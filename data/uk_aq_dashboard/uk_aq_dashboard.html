@@ -242,11 +242,24 @@
 
       .db-size-item {
         display: inline-flex;
-        align-items: center;
-        gap: 6px;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 2px;
         font-family: "IBM Plex Mono", ui-monospace, monospace;
         font-size: 12px;
         color: var(--ink-soft);
+      }
+
+      .db-size-item-title {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .db-size-item-min {
+        padding-left: 18px;
+        font-size: 11px;
+        color: #6b6255;
       }
 
       .db-size-swatch {
@@ -761,6 +774,22 @@
         if (Number.isNaN(date.getTime())) return "n/a";
         const pad = (num) => String(num).padStart(2, "0");
         return `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+      }
+
+      function formatDateDdMmYyyy(value) {
+        if (!value) return null;
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return null;
+        const pad = (num) => String(num).padStart(2, "0");
+        return `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()}`;
+      }
+
+      function formatDbOldestDayLabel(value) {
+        const formatted = formatDateDdMmYyyy(value);
+        if (!formatted) {
+          return ">=--/--/----";
+        }
+        return `>=${formatted}`;
       }
 
       function formatCount(value) {
@@ -1280,7 +1309,7 @@
         return valid.length === 1 ? valid[0] : null;
       }
 
-      function buildDbTooltipTargets(points, key, label, color, xFor, yFor) {
+      function buildDbTooltipTargets(points, key, label, color, oldestDayLabel, xFor, yFor) {
         return points
           .map((point) => {
             const value = point[key];
@@ -1302,6 +1331,7 @@
                 data-label="${escapeHtml(label)}"
                 data-bucket="${escapeHtml(bucketLabel)}"
                 data-size="${escapeHtml(sizeLabel)}"
+                data-oldest-day="${escapeHtml(oldestDayLabel)}"
               />
             `;
           })
@@ -1332,10 +1362,12 @@
           const label = target.getAttribute("data-label") || "";
           const bucket = target.getAttribute("data-bucket") || "";
           const size = target.getAttribute("data-size") || "";
+          const oldestDay = target.getAttribute("data-oldest-day") || ">=--/--/----";
           tooltip.innerHTML = `
             <div>${escapeHtml(label)}</div>
             <div>Bucket: ${escapeHtml(bucket)}</div>
             <div>DB size: ${escapeHtml(size)}</div>
+            <div>Oldest day: ${escapeHtml(oldestDay)}</div>
           `;
           tooltip.classList.add("visible");
           positionTooltip(event.clientX, event.clientY);
@@ -1414,10 +1446,24 @@
 
         const cutoffMs = Date.now() - dbSizePeriodHours * 60 * 60 * 1000;
         const pointMap = new Map();
+        const oldestByLabel = new Map();
         (Array.isArray(rows) ? rows : []).forEach((row) => {
           const label = String((row && row.database_label) || "").toLowerCase();
           if (label !== "ingestdb" && label !== "historydb" && label !== "aggdailydb") {
             return;
+          }
+          const sampleTimestamp = row.recorded_at || row.bucket_hour;
+          const sampleMs = new Date(sampleTimestamp).getTime();
+          const oldestObservedAt = row.oldest_observed_at;
+          const oldestMs = new Date(oldestObservedAt || "").getTime();
+          if (!Number.isNaN(sampleMs) && !Number.isNaN(oldestMs)) {
+            const currentOldest = oldestByLabel.get(label);
+            if (!currentOldest || sampleMs >= currentOldest.sampleMs) {
+              oldestByLabel.set(label, {
+                sampleMs,
+                oldestObservedAt,
+              });
+            }
           }
           const timestamp = row.bucket_hour || row.recorded_at;
           const ms = new Date(timestamp).getTime();
@@ -1433,6 +1479,15 @@
           point[label] = sizeBytes / (1024 * 1024);
           pointMap.set(key, point);
         });
+        const ingestOldestDayLabel = formatDbOldestDayLabel(
+          (oldestByLabel.get("ingestdb") || {}).oldestObservedAt,
+        );
+        const historyOldestDayLabel = formatDbOldestDayLabel(
+          (oldestByLabel.get("historydb") || {}).oldestObservedAt,
+        );
+        const aggdailyOldestDayLabel = formatDbOldestDayLabel(
+          (oldestByLabel.get("aggdailydb") || {}).oldestObservedAt,
+        );
 
         const points = Array.from(pointMap.values()).sort((a, b) => a.ms - b.ms);
         const maxObservedMb = points.reduce((max, point) => {
@@ -1473,6 +1528,7 @@
             "ingestdb",
             "Ingest DB",
             "#ff2d2d",
+            ingestOldestDayLabel,
             xFor,
             yFor,
           );
@@ -1481,6 +1537,7 @@
             "historydb",
             "History DB",
             "#3b82f6",
+            historyOldestDayLabel,
             xFor,
             yFor,
           );
@@ -1489,6 +1546,7 @@
             "aggdailydb",
             "Agg Daily DB",
             "#2f9e44",
+            aggdailyOldestDayLabel,
             xFor,
             yFor,
           );
@@ -1661,9 +1719,18 @@
             </div>
           </h2>
           <div class="db-size-legend">
-            <span class="db-size-item"><span class="db-size-swatch" style="background:#ff2d2d"></span>Ingest DB</span>
-            <span class="db-size-item"><span class="db-size-swatch" style="background:#3b82f6"></span>History DB</span>
-            <span class="db-size-item"><span class="db-size-swatch" style="background:#2f9e44"></span>Agg Daily DB</span>
+            <span class="db-size-item">
+              <span class="db-size-item-title"><span class="db-size-swatch" style="background:#ff2d2d"></span>Ingest DB</span>
+              <span class="db-size-item-min">${escapeHtml(ingestOldestDayLabel)}</span>
+            </span>
+            <span class="db-size-item">
+              <span class="db-size-item-title"><span class="db-size-swatch" style="background:#3b82f6"></span>History DB</span>
+              <span class="db-size-item-min">${escapeHtml(historyOldestDayLabel)}</span>
+            </span>
+            <span class="db-size-item">
+              <span class="db-size-item-title"><span class="db-size-swatch" style="background:#2f9e44"></span>Agg Daily DB</span>
+              <span class="db-size-item-min">${escapeHtml(aggdailyOldestDayLabel)}</span>
+            </span>
           </div>
           <div class="db-size-chart-wrap">${chartMarkup}<div class="db-size-hover-tooltip" aria-hidden="true"></div></div>
           ${r2UsageMarkup}

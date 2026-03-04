@@ -11,6 +11,7 @@ type DbSizeSample = {
   database_label: "ingestdb" | "historydb";
   database_name: string;
   size_bytes: number;
+  oldest_observed_at: string | null;
   sampled_at: string;
 };
 
@@ -82,6 +83,23 @@ function parseDatabaseLabel(
     return value;
   }
   return fallback;
+}
+
+function parseIsoTimestamp(value: unknown): string | null {
+  if (typeof value !== "string" || !value.trim()) {
+    return null;
+  }
+  const ms = Date.parse(value);
+  if (Number.isNaN(ms)) {
+    return null;
+  }
+  return new Date(ms).toISOString();
+}
+
+function isMissingOldestUpsertArgError(message: string): boolean {
+  const normalized = message.toLowerCase();
+  return normalized.includes("p_oldest_observed_at") &&
+    normalized.includes("uk_aq_rpc_db_size_metric_upsert");
 }
 
 function sleep(ms: number): Promise<void> {
@@ -186,9 +204,8 @@ function parseDbSizeSample(
     ? root.database_name.trim()
     : "";
   const sizeBytes = Number(root.size_bytes);
-  const sampledAtText = typeof root.sampled_at === "string"
-    ? root.sampled_at
-    : "";
+  const sampledAt = parseIsoTimestamp(root.sampled_at) || new Date().toISOString();
+  const oldestObservedAt = parseIsoTimestamp(root.oldest_observed_at);
 
   if (!databaseName) {
     throw new Error(`${databaseLabel}: missing database_name`);
@@ -197,11 +214,11 @@ function parseDbSizeSample(
     throw new Error(`${databaseLabel}: invalid size_bytes`);
   }
 
-  const sampledAt = sampledAtText || new Date().toISOString();
   return {
     database_label: databaseLabel,
     database_name: databaseName,
     size_bytes: Math.trunc(sizeBytes),
+    oldest_observed_at: oldestObservedAt,
     sampled_at: sampledAt,
   };
 }
@@ -224,18 +241,35 @@ async function collectDbSizeSample(
 }
 
 async function upsertDbSizeSample(sample: DbSizeSample): Promise<void> {
-  const result = await postgrestRpc<unknown>(
+  const baseArgs: Record<string, unknown> = {
+    p_database_label: sample.database_label,
+    p_database_name: sample.database_name,
+    p_size_bytes: sample.size_bytes,
+    p_recorded_at: sample.sampled_at,
+    p_source: "uk_aq_db_size_logger_cloud_run",
+  };
+  const maybeExtendedArgs = sample.oldest_observed_at
+    ? { ...baseArgs, p_oldest_observed_at: sample.oldest_observed_at }
+    : baseArgs;
+
+  let result = await postgrestRpc<unknown>(
     SUPABASE_URL,
     SUPABASE_PRIVILEGED_KEY,
     DB_SIZE_UPSERT_RPC,
-    {
-      p_database_label: sample.database_label,
-      p_database_name: sample.database_name,
-      p_size_bytes: sample.size_bytes,
-      p_recorded_at: sample.sampled_at,
-      p_source: "uk_aq_db_size_logger_cloud_run",
-    },
+    maybeExtendedArgs,
   );
+  if (
+    result.error &&
+    "p_oldest_observed_at" in maybeExtendedArgs &&
+    isMissingOldestUpsertArgError(result.error.message)
+  ) {
+    result = await postgrestRpc<unknown>(
+      SUPABASE_URL,
+      SUPABASE_PRIVILEGED_KEY,
+      DB_SIZE_UPSERT_RPC,
+      baseArgs,
+    );
+  }
   if (result.error) {
     throw new Error(
       `${sample.database_label}: upsert failed: ${result.error.message}`,

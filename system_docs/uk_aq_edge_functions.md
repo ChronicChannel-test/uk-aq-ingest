@@ -155,6 +155,7 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
   - View: `uk_aq_public.uk_aq_db_size_metrics_hourly`
 - Notes:
   - Upsert key is `(bucket_hour, database_label)` with labels `ingestdb`, `historydb`, and `aggdailydb`.
+  - Size RPC payload includes `oldest_observed_at` (min `observed_at` in that DB); logger stores it in `uk_aq_raw.db_size_metrics_hourly.oldest_observed_at`.
   - Cleanup RPC trims old rows by retention days (`UK_AQ_DB_SIZE_RETENTION_DAYS`, default `120`).
   - Cloud Run CPU/memory/concurrency are managed in deploy workflow vars (`GCP_DB_SIZE_LOGGER_*`).
 
