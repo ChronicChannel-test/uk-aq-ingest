@@ -25,3 +25,4 @@ plans/uk_aq_station_duplicate_candidates_stations.csv
 !.vscode/tasks.json
 
 .codeql/
+/logs

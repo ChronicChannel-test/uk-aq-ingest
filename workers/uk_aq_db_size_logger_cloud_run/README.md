@@ -28,4 +28,3 @@ Scheduler triggers the service with an authenticated POST request.
 - `UK_AQ_HISTORY_DB_LABEL` (default `historydb`)
 - `AGGDAILY_SUPABASE_URL` (optional; enable Agg Daily sampling when set with secret)
 - `AGGDAILY_SECRET_KEY` (optional; must be set when `AGGDAILY_SUPABASE_URL` is set)
-- `UK_AQ_AGGDAILY_DB_LABEL` (default `aggdailydb`)

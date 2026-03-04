@@ -47,10 +47,7 @@ const HISTORY_DB_LABEL = parseDatabaseLabel(
   Deno.env.get("UK_AQ_HISTORY_DB_LABEL"),
   "historydb",
 );
-const AGGDAILY_DB_LABEL = parseDatabaseLabel(
-  Deno.env.get("UK_AQ_AGGDAILY_DB_LABEL"),
-  "aggdailydb",
-);
+const AGGDAILY_DB_LABEL: "aggdailydb" = "aggdailydb";
 
 if ((AGGDAILY_SUPABASE_URL && !AGGDAILY_PRIVILEGED_KEY) ||
   (!AGGDAILY_SUPABASE_URL && AGGDAILY_PRIVILEGED_KEY)) {

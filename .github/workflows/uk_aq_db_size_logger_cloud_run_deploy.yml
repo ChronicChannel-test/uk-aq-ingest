@@ -48,13 +48,11 @@ jobs:
       UK_AQ_DB_SIZE_RPC_RETRIES: ${{ vars.UK_AQ_DB_SIZE_RPC_RETRIES || '3' }}
       UK_AQ_INGEST_DB_LABEL: ${{ vars.UK_AQ_INGEST_DB_LABEL || 'ingestdb' }}
       UK_AQ_HISTORY_DB_LABEL: ${{ vars.UK_AQ_HISTORY_DB_LABEL || 'historydb' }}
-      UK_AQ_AGGDAILY_DB_LABEL: ${{ vars.UK_AQ_AGGDAILY_DB_LABEL || 'aggdailydb' }}
       SB_SECRET_KEY: ${{ secrets.SB_SECRET_KEY }}
       HISTORY_SECRET_KEY: ${{ secrets.HISTORY_SECRET_KEY }}
       AGGDAILY_SECRET_KEY: ${{ secrets.AGGDAILY_SECRET_KEY }}
       SB_SECRET_KEY_SECRET_NAME: ${{ vars.SB_SECRET_KEY_SECRET_NAME || 'SB_SECRET_KEY' }}
       HISTORY_SECRET_KEY_SECRET_NAME: ${{ vars.HISTORY_SECRET_KEY_SECRET_NAME || 'HISTORY_SECRET_KEY' }}
-      AGGDAILY_SECRET_KEY_SECRET_NAME: ${{ vars.AGGDAILY_SECRET_KEY_SECRET_NAME || 'AGGDAILY_SECRET_KEY' }}
       GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
       GCP_SERVICE_ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT }}
       GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
@@ -179,7 +177,7 @@ jobs:
           upsert_secret "${SB_SECRET_KEY_SECRET_NAME}" "${SB_SECRET_KEY}" 1
           upsert_secret "${HISTORY_SECRET_KEY_SECRET_NAME}" "${HISTORY_SECRET_KEY}" 1
           if [ -n "${AGGDAILY_SUPABASE_URL:-}" ]; then
-            upsert_secret "${AGGDAILY_SECRET_KEY_SECRET_NAME}" "${AGGDAILY_SECRET_KEY}" 1
+            upsert_secret "AGGDAILY_SECRET_KEY" "${AGGDAILY_SECRET_KEY}" 1
           fi
 
       - name: Build Cloud Run env and secret args
@@ -241,7 +239,6 @@ jobs:
           add_env UK_AQ_HISTORY_DB_LABEL
           if [ -n "${AGGDAILY_SUPABASE_URL:-}" ]; then
             add_env AGGDAILY_SUPABASE_URL
-            add_env UK_AQ_AGGDAILY_DB_LABEL
           fi
           env_updates+=("GCP_PROJECT_ID=${PROJECT_ID}")
 
@@ -249,7 +246,7 @@ jobs:
           add_secret_binding "SB_SECRET_KEY" "${SB_SECRET_KEY_SECRET_NAME}" 1
           add_secret_binding "HISTORY_SECRET_KEY" "${HISTORY_SECRET_KEY_SECRET_NAME}" 1
           if [ -n "${AGGDAILY_SUPABASE_URL:-}" ]; then
-            add_secret_binding "AGGDAILY_SECRET_KEY" "${AGGDAILY_SECRET_KEY_SECRET_NAME}" 1
+            add_secret_binding "AGGDAILY_SECRET_KEY" "AGGDAILY_SECRET_KEY" 1
           fi
 
           env_file="${RUNNER_TEMP}/uk-aq-db-size-logger-env.yaml"
