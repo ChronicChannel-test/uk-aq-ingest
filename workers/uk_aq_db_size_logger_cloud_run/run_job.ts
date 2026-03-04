@@ -8,7 +8,7 @@ type RpcResult<T> = {
 };
 
 type DbSizeSample = {
-  database_label: "ingestdb" | "historydb";
+  database_label: "ingestdb" | "historydb" | "aggdailydb";
   database_name: string;
   size_bytes: number;
   oldest_observed_at: string | null;
@@ -19,6 +19,8 @@ const SUPABASE_URL = requiredEnv("SUPABASE_URL");
 const SUPABASE_PRIVILEGED_KEY = requiredEnvAny(["SB_SECRET_KEY"]);
 const HISTORY_SUPABASE_URL = requiredEnv("HISTORY_SUPABASE_URL");
 const HISTORY_PRIVILEGED_KEY = requiredEnv("HISTORY_SECRET_KEY");
+const AGGDAILY_SUPABASE_URL = optionalEnv("AGGDAILY_SUPABASE_URL");
+const AGGDAILY_PRIVILEGED_KEY = optionalEnv("AGGDAILY_SECRET_KEY");
 
 const RPC_SCHEMA = (Deno.env.get("UK_AQ_PUBLIC_SCHEMA") || "uk_aq_public")
   .trim();
@@ -45,6 +47,18 @@ const HISTORY_DB_LABEL = parseDatabaseLabel(
   Deno.env.get("UK_AQ_HISTORY_DB_LABEL"),
   "historydb",
 );
+const AGGDAILY_DB_LABEL = parseDatabaseLabel(
+  Deno.env.get("UK_AQ_AGGDAILY_DB_LABEL"),
+  "aggdailydb",
+);
+
+if ((AGGDAILY_SUPABASE_URL && !AGGDAILY_PRIVILEGED_KEY) ||
+  (!AGGDAILY_SUPABASE_URL && AGGDAILY_PRIVILEGED_KEY)) {
+  throw new Error(
+    "Agg Daily config requires both AGGDAILY_SUPABASE_URL and AGGDAILY_SECRET_KEY",
+  );
+}
+const AGGDAILY_ENABLED = Boolean(AGGDAILY_SUPABASE_URL && AGGDAILY_PRIVILEGED_KEY);
 
 function requiredEnv(name: string): string {
   const value = (Deno.env.get(name) || "").trim();
@@ -66,6 +80,11 @@ function requiredEnvAny(names: string[]): string {
   );
 }
 
+function optionalEnv(name: string): string | null {
+  const value = (Deno.env.get(name) || "").trim();
+  return value || null;
+}
+
 function parsePositiveInt(raw: string | undefined, fallback: number): number {
   const value = Number(raw || "");
   if (!Number.isFinite(value) || value <= 0) {
@@ -76,10 +95,10 @@ function parsePositiveInt(raw: string | undefined, fallback: number): number {
 
 function parseDatabaseLabel(
   raw: string | undefined,
-  fallback: "ingestdb" | "historydb",
-): "ingestdb" | "historydb" {
+  fallback: "ingestdb" | "historydb" | "aggdailydb",
+): "ingestdb" | "historydb" | "aggdailydb" {
   const value = (raw || "").trim().toLowerCase();
-  if (value === "ingestdb" || value === "historydb") {
+  if (value === "ingestdb" || value === "historydb" || value === "aggdailydb") {
     return value;
   }
   return fallback;
@@ -188,7 +207,7 @@ async function postgrestRpc<T>(
 }
 
 function parseDbSizeSample(
-  databaseLabel: "ingestdb" | "historydb",
+  databaseLabel: "ingestdb" | "historydb" | "aggdailydb",
   payload: unknown,
 ): DbSizeSample {
   if (!Array.isArray(payload) || payload.length === 0) {
@@ -224,7 +243,7 @@ function parseDbSizeSample(
 }
 
 async function collectDbSizeSample(
-  databaseLabel: "ingestdb" | "historydb",
+  databaseLabel: "ingestdb" | "historydb" | "aggdailydb",
   baseUrl: string,
   privilegedKey: string,
 ): Promise<DbSizeSample> {
@@ -308,6 +327,8 @@ async function main(): Promise<void> {
     retention_days: DB_SIZE_RETENTION_DAYS,
     ingest_label: INGEST_DB_LABEL,
     history_label: HISTORY_DB_LABEL,
+    aggdaily_enabled: AGGDAILY_ENABLED,
+    aggdaily_label: AGGDAILY_DB_LABEL,
   });
 
   const ingestSample = await collectDbSizeSample(
@@ -320,15 +341,26 @@ async function main(): Promise<void> {
     HISTORY_SUPABASE_URL,
     HISTORY_PRIVILEGED_KEY,
   );
+  const aggdailySample = AGGDAILY_ENABLED
+    ? await collectDbSizeSample(
+      AGGDAILY_DB_LABEL,
+      AGGDAILY_SUPABASE_URL as string,
+      AGGDAILY_PRIVILEGED_KEY as string,
+    )
+    : null;
 
   await upsertDbSizeSample(ingestSample);
   await upsertDbSizeSample(historySample);
+  if (aggdailySample) {
+    await upsertDbSizeSample(aggdailySample);
+  }
   const rowsDeleted = await cleanupOldRows(DB_SIZE_RETENTION_DAYS);
 
   console.log("uk_aq_db_size_logger_summary", {
     started_at: startedAt,
     ingestdb: ingestSample,
     historydb: historySample,
+    aggdailydb: aggdailySample,
     rows_deleted: rowsDeleted,
   });
 }

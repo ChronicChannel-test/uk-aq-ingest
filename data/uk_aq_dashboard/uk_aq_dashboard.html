@@ -333,6 +333,15 @@
         gap: 10px;
       }
 
+      .r2-window-heading {
+        font-weight: 600;
+        color: var(--ink-soft);
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        font-family: "IBM Plex Mono", ui-monospace, monospace;
+      }
+
       .r2-usage-row {
         display: grid;
         gap: 6px;
@@ -1309,7 +1318,7 @@
         return valid.length === 1 ? valid[0] : null;
       }
 
-      function buildDbTooltipTargets(points, key, label, color, oldestDayLabel, xFor, yFor) {
+      function buildDbTooltipTargets(points, key, label, color, xFor, yFor) {
         return points
           .map((point) => {
             const value = point[key];
@@ -1318,6 +1327,8 @@
             }
             const bucketLabel = new Date(point.ms).toLocaleString();
             const sizeLabel = `${formatMegabytes(Number(value))} MB`;
+            const oldestKey = `${key}_oldest_observed_at`;
+            const oldestDayLabel = formatDbOldestDayLabel(point[oldestKey] || null);
             return `
               <circle
                 class="db-size-tooltip-hit"
@@ -1419,11 +1430,15 @@
           }
           latestDashboardData.r2_usage = payload ? payload.r2_usage : null;
           latestDashboardData.r2_usage_error = payload ? payload.r2_usage_error : null;
+          latestDashboardData.r2_backup_window = payload ? payload.r2_backup_window : null;
+          latestDashboardData.r2_backup_window_error = payload ? payload.r2_backup_window_error : null;
           const nextPanel = renderDbSizePanel(
             latestDashboardData.db_size_metrics,
             latestDashboardData.db_size_metrics_error,
             latestDashboardData.r2_usage,
             latestDashboardData.r2_usage_error,
+            latestDashboardData.r2_backup_window,
+            latestDashboardData.r2_backup_window_error,
           );
           const currentPanel = dashboardEl.querySelector('[data-panel="db-size"]');
           if (currentPanel) {
@@ -1439,7 +1454,7 @@
         }
       }
 
-      function renderDbSizePanel(rows, sourceError, r2Usage, r2Error) {
+      function renderDbSizePanel(rows, sourceError, r2Usage, r2Error, r2BackupWindow, r2BackupWindowError) {
         const panel = document.createElement("section");
         panel.className = "panel";
         panel.dataset.panel = "db-size";
@@ -1477,6 +1492,7 @@
           const key = String(ms);
           const point = pointMap.get(key) || { ms, ingestdb: null, historydb: null, aggdailydb: null };
           point[label] = sizeBytes / (1024 * 1024);
+          point[`${label}_oldest_observed_at`] = oldestObservedAt || null;
           pointMap.set(key, point);
         });
         const ingestOldestDayLabel = formatDbOldestDayLabel(
@@ -1528,7 +1544,6 @@
             "ingestdb",
             "Ingest DB",
             "#ff2d2d",
-            ingestOldestDayLabel,
             xFor,
             yFor,
           );
@@ -1537,7 +1552,6 @@
             "historydb",
             "History DB",
             "#3b82f6",
-            historyOldestDayLabel,
             xFor,
             yFor,
           );
@@ -1546,7 +1560,6 @@
             "aggdailydb",
             "Agg Daily DB",
             "#2f9e44",
-            aggdailyOldestDayLabel,
             xFor,
             yFor,
           );
@@ -1590,6 +1603,14 @@
           ? `Max observed ${formatMegabytes(maxObservedMb)} MB (chart capped at ${DB_SIZE_Y_MAX_MB} MB).`
           : `Y-axis fixed at ${DB_SIZE_Y_MAX_MB} MB.`;
         const r2UsageObject = asObject(r2Usage);
+        const r2BackupWindowObject = asObject(r2BackupWindow);
+        const backupWindowMin = formatDateDdMmYyyy(
+          r2BackupWindowObject ? r2BackupWindowObject.min_day_utc : null,
+        ) || "--/--/----";
+        const backupWindowMax = formatDateDdMmYyyy(
+          r2BackupWindowObject ? r2BackupWindowObject.max_day_utc : null,
+        ) || "--/--/----";
+        const backupWindowLabel = `CLOUDFLARE R2 BACKUP WINDOW - ${backupWindowMin} -> ${backupWindowMax}`;
         const getNextR2LimitsResetDate = () => {
           const now = new Date();
           let target = new Date(now.getFullYear(), now.getMonth(), 24);
@@ -1693,9 +1714,11 @@
         }
         const r2UsageMarkup = `
           <div class="r2-usage-wrap">
+            <div class="r2-window-heading">${escapeHtml(backupWindowLabel)}</div>
             ${r2Rows.join("")}
             <div class="r2-usage-meta">
               <div class="r2-usage-sub">R2 Metrics updated every hour. Last update: ${escapeHtml(r2LastUpdate)}</div>
+              ${r2BackupWindowError ? `<div class="r2-usage-sub">Backup window source warning: ${escapeHtml(r2BackupWindowError)}</div>` : ""}
               <button class="settings-button r2-refresh-button" id="refresh-r2-metrics" type="button">Refresh R2 metrics</button>
             </div>
           </div>
@@ -2016,6 +2039,8 @@
               data.db_size_metrics_error,
               data.r2_usage,
               data.r2_usage_error,
+              data.r2_backup_window,
+              data.r2_backup_window_error,
             ),
           );
           setStatus(`Updated ${formatTime(data.generated_at)} (local time)`);

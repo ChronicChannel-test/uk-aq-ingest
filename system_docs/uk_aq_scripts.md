@@ -250,7 +250,7 @@ Notes:
 - Serves the UI at `http://127.0.0.1:8045` and JSON at `/api/dashboard`.
 - The HTML lives at `data/uk_aq_dashboard/uk_aq_dashboard.html`.
 - Dispatcher feed shows gap-station context for OpenAQ runs as `(<n> GAP)` under Stations when `gap_stations_polled > 0`.
-- Includes a DB size trend panel at the bottom (Ingest DB bright red, History DB medium blue, Agg Daily DB medium green) with fixed `0-500 MB` y-axis and period selector (`6h`, `12h`, `24h`, `48h`, `7d`, `14d`, `28d`), sourced from `uk_aq_public.uk_aq_db_size_metrics_hourly`; legend rows show oldest observed day as `>=DD/MM/YYYY` (Agg Daily placeholder `>=--/--/----`), and chart hover tooltips show bucket datetime, DB size, and oldest observed day.
+- Includes a DB size trend panel at the bottom (Ingest DB bright red, History DB medium blue, Agg Daily DB medium green) with fixed `0-500 MB` y-axis and period selector (`6h`, `12h`, `24h`, `48h`, `7d`, `14d`, `28d`), sourced from `uk_aq_public.uk_aq_db_size_metrics_hourly`; legend rows show oldest observed day as `>=DD/MM/YYYY` (Agg Daily placeholder `>=--/--/----`), chart hover tooltips show bucket datetime, DB size, and oldest observed day, and the R2 section includes an uppercase backup window heading (`CLOUDFLARE R2 BACKUP WINDOW - DD/MM/YYYY -> DD/MM/YYYY`) sourced from `uk_aq_public.uk_aq_rpc_r2_backup_window` (`uk_aq_ops.prune_day_gates`).
 - Requires a service role key (anon/authenticated JWTs will be rejected).
 
 Environment:
@@ -258,6 +258,7 @@ Environment:
 - `SB_SECRET_KEY`
 - `UK_AQ_PUBLIC_SCHEMA` (optional; default `uk_aq_public`, used for DB size metrics view reads)
 - `UK_AQ_DB_SIZE_LOOKBACK_DAYS` (optional; default `28`)
+- `UK_AQ_R2_BACKUP_WINDOW_RPC` (optional; default `uk_aq_rpc_r2_backup_window`)
 
 ### `scripts/stations_daily/sync_aggdaily_uk_aq_core.py`
 Purpose:

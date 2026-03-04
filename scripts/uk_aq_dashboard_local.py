@@ -53,6 +53,7 @@ DB_SIZE_LOOKBACK_DAYS = max(
     int(os.getenv("UK_AQ_DB_SIZE_LOOKBACK_DAYS", "28")),
 )
 PUBLIC_SCHEMA = os.getenv("UK_AQ_PUBLIC_SCHEMA", "uk_aq_public")
+R2_BACKUP_WINDOW_RPC = os.getenv("UK_AQ_R2_BACKUP_WINDOW_RPC", "uk_aq_rpc_r2_backup_window")
 IN_FLIGHT_WARN_MINUTES = 5
 IN_FLIGHT_MAX_AGE_MINUTES = 180
 SCHEDULER_BACKEND_SUPABASE_FUNCTION = "supabase_function"
@@ -652,6 +653,46 @@ def _fetch_db_size_metrics(
     return normalized, None
 
 
+def _normalize_iso_date(value: Any) -> Optional[str]:
+    if isinstance(value, datetime):
+        return value.date().isoformat()
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        candidate = text.split("T", 1)[0]
+        try:
+            parsed = datetime.fromisoformat(candidate).date()
+        except ValueError:
+            return None
+        return parsed.isoformat()
+    return None
+
+
+def _fetch_r2_backup_window(
+    base_url: str,
+    headers: Dict[str, str],
+) -> Tuple[Optional[Dict[str, Optional[str]]], Optional[str]]:
+    public_headers = dict(headers)
+    public_headers["Accept-Profile"] = PUBLIC_SCHEMA
+    try:
+        rows = _fetch_json(
+            f"{base_url}/rpc/{R2_BACKUP_WINDOW_RPC}",
+            public_headers,
+            {},
+        )
+    except Exception as exc:
+        return None, str(exc)
+
+    if not rows:
+        return {"min_day_utc": None, "max_day_utc": None}, None
+    row = rows[0] if isinstance(rows[0], dict) else {}
+    return {
+        "min_day_utc": _normalize_iso_date(row.get("min_day_utc")),
+        "max_day_utc": _normalize_iso_date(row.get("max_day_utc")),
+    }, None
+
+
 def _fetch_r2_account_metrics(now: datetime) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
     account_id = str(os.getenv("CLOUDFLARE_ACCOUNT_ID") or "").strip()
     api_token = str(os.getenv("CFLARE_API_READ_TOKEN") or "").strip()
@@ -1095,6 +1136,10 @@ def _build_dashboard(
         now,
     )
     r2_usage, r2_usage_error = _get_r2_usage_cached(force_refresh=False)
+    r2_backup_window, r2_backup_window_error = _fetch_r2_backup_window(
+        base_url,
+        headers,
+    )
     ingest_runs = _get_ingest_runs_cached(
         base_url,
         headers,
@@ -1294,6 +1339,8 @@ def _build_dashboard(
         "db_size_metrics_error": db_size_metrics_error,
         "r2_usage": r2_usage,
         "r2_usage_error": r2_usage_error,
+        "r2_backup_window": r2_backup_window,
+        "r2_backup_window_error": r2_backup_window_error,
         "pollutants": pollutants_payload,
         "dispatch_runs": dispatch_runs,
         "dispatcher_settings": dispatcher_settings,
@@ -1429,6 +1476,11 @@ class DashboardHandler(BaseHTTPRequestHandler):
         force_refresh = force_refresh_raw in {"1", "true", "yes", "y", "on"}
         try:
             r2_usage, r2_usage_error = _get_r2_usage_cached(force_refresh=force_refresh)
+            headers = _postgrest_headers(self.server.service_role_key)
+            r2_backup_window, r2_backup_window_error = _fetch_r2_backup_window(
+                self.server.base_url,
+                headers,
+            )
         except Exception as exc:
             payload = json.dumps({"error": str(exc)}, indent=2)
             self.send_response(HTTPStatus.INTERNAL_SERVER_ERROR)
@@ -1447,6 +1499,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
             {
                 "r2_usage": r2_usage,
                 "r2_usage_error": r2_usage_error,
+                "r2_backup_window": r2_backup_window,
+                "r2_backup_window_error": r2_backup_window_error,
                 "generated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             },
             indent=2,
