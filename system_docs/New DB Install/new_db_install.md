@@ -8,14 +8,19 @@ This guide is for bringing up fresh Supabase projects for:
 
 Run SQL in this order.
 
-1. `../CIC-Test-UK-AQ-Schema/uk-aq-schema/schemas/main_db/uk_aq_core_schema.sql`
-2. `../CIC-Test-UK-AQ-Schema/uk-aq-schema/schemas/main_db/uk_aq_raw_schema.sql`
-3. `../CIC-Test-UK-AQ-Schema/uk-aq-schema/schemas/main_db/uk_aq_pop_schema.sql`
-4. `../CIC-Test-UK-AQ-Schema/uk-aq-schema/schemas/main_db/uk_aq_rpc.sql`
-5. `../CIC-Test-UK-AQ-Schema/uk-aq-schema/schemas/main_db/uk_aq_public_views.sql`
-6. `../CIC-Test-UK-AQ-Schema/uk-aq-schema/schemas/main_db/uk_aq_security.sql`
-7. `../CIC-Test-UK-AQ-Schema/uk-aq-schema/schemas/main_db/main_db_dualwrite_bootstrap.sql`
+1. `../CIC-Test-UK-AQ-Schema/uk-aq-schema/schemas/ingest_db/uk_aq_core_schema.sql`
+2. `../CIC-Test-UK-AQ-Schema/uk-aq-schema/schemas/ingest_db/uk_aq_raw_schema.sql`
+3. `../CIC-Test-UK-AQ-Schema/uk-aq-schema/schemas/ingest_db/uk_aq_pop_schema.sql`
+4. `../CIC-Test-UK-AQ-Schema/uk-aq-schema/schemas/ingest_db/uk_aq_rpc.sql`
+5. `../CIC-Test-UK-AQ-Schema/uk-aq-schema/schemas/ingest_db/uk_aq_public_views.sql`
+6. `../CIC-Test-UK-AQ-Schema/uk-aq-schema/schemas/ingest_db/uk_aq_security.sql`
+7. `../CIC-Test-UK-AQ-Schema/uk-aq-schema/schemas/ingest_db/main_db_dualwrite_bootstrap.sql`
 8. `supabase/uk_aq_polling_helpers.sql`
+
+`main_db_dualwrite_bootstrap.sql` includes Phase B backup ops objects for prune safety and resumable backup exports:
+- `uk_aq_ops.backup_candidates`
+- `uk_aq_ops.prune_day_gates`
+- `uk_aq_ops.uk_aq_phase_b_backup_rows(...)`
 
 Then configure Supabase Data API exposed schemas for the MAIN project:
 

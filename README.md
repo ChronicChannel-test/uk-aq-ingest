@@ -98,7 +98,7 @@ Note: `SUPABASE_ACCESS_TOKEN` is only required for deployments (GitHub Actions o
 Use this flow when creating fresh MAIN + HISTORY projects.
 
 1. MAIN DB project:
-   - In the schema repo (`../CIC-Test-UK-AQ-Schema/uk-aq-schema/schemas/main_db`), run/paste:
+   - In the schema repo (`../CIC-Test-UK-AQ-Schema/uk-aq-schema/schemas/ingest_db`), run/paste:
      - `uk_aq_core_schema.sql`
      - `uk_aq_raw_schema.sql`
      - `uk_aq_pop_schema.sql`
@@ -106,6 +106,7 @@ Use this flow when creating fresh MAIN + HISTORY projects.
      - `uk_aq_public_views.sql`
      - `uk_aq_security.sql`
      - `main_db_dualwrite_bootstrap.sql`
+       - Includes Phase B backup ops objects (`uk_aq_ops.backup_candidates`, `uk_aq_ops.prune_day_gates`) and server-side backup projection function `uk_aq_ops.uk_aq_phase_b_backup_rows(...)`.
    - In this repo, run/paste:
      - `supabase/uk_aq_polling_helpers.sql`
 2. HISTORY DB project:
