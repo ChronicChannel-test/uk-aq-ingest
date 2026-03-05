@@ -1300,7 +1300,6 @@
         points.forEach((point) => {
           const value = point[key];
           if (value === null || value === undefined || Number.isNaN(Number(value))) {
-            started = false;
             return;
           }
           const command = started ? "L" : "M";

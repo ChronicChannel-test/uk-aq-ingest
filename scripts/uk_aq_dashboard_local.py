@@ -52,6 +52,12 @@ DB_SIZE_LOOKBACK_DAYS = max(
     1,
     int(os.getenv("UK_AQ_DB_SIZE_LOOKBACK_DAYS", "28")),
 )
+DB_SIZE_API_URL = str(os.getenv("UK_AQ_DB_SIZE_API_URL") or "").strip()
+DB_SIZE_API_TOKEN = str(os.getenv("UK_AQ_DB_SIZE_API_TOKEN") or "").strip()
+HISTORY_SUPABASE_URL = str(os.getenv("HISTORY_SUPABASE_URL") or "").strip()
+HISTORY_SECRET_KEY = str(os.getenv("HISTORY_SECRET_KEY") or "").strip()
+AGGDAILY_SUPABASE_URL = str(os.getenv("AGGDAILY_SUPABASE_URL") or "").strip()
+AGGDAILY_SECRET_KEY = str(os.getenv("AGGDAILY_SECRET_KEY") or "").strip()
 PUBLIC_SCHEMA = os.getenv("UK_AQ_PUBLIC_SCHEMA", "uk_aq_public")
 R2_BACKUP_WINDOW_RPC = os.getenv("UK_AQ_R2_BACKUP_WINDOW_RPC", "uk_aq_rpc_r2_backup_window")
 IN_FLIGHT_WARN_MINUTES = 5
@@ -591,28 +597,7 @@ def _fetch_dispatcher_settings(
     }
 
 
-def _fetch_db_size_metrics(
-    base_url: str,
-    headers: Dict[str, str],
-    now: datetime,
-) -> Tuple[List[Dict[str, Any]], Optional[str]]:
-    public_headers = dict(headers)
-    public_headers["Accept-Profile"] = PUBLIC_SCHEMA
-    since = now - timedelta(days=DB_SIZE_LOOKBACK_DAYS)
-    try:
-        rows = _fetch_json(
-            f"{base_url}/uk_aq_db_size_metrics_hourly",
-            public_headers,
-            {
-                "select": "bucket_hour,database_label,database_name,size_bytes,oldest_observed_at,recorded_at",
-                "bucket_hour": f"gte.{_to_postgrest_ts(since)}",
-                "order": "bucket_hour.asc",
-                "limit": "5000",
-            },
-        )
-    except Exception as exc:
-        return [], str(exc)
-
+def _normalize_db_size_metrics_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     normalized: List[Dict[str, Any]] = []
     for row in rows:
         label = str(row.get("database_label") or "").strip().lower()
@@ -650,7 +635,167 @@ def _fetch_db_size_metrics(
         )
 
     normalized.sort(key=lambda item: _parse_timestamp(item.get("bucket_hour")) or UTC_DATETIME_MIN)
-    return normalized, None
+    return normalized
+
+
+def _fetch_db_size_metrics_from_supabase_source(
+    base_url: str,
+    service_role_key: str,
+    since: datetime,
+    expected_label: str,
+) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+    public_headers: Dict[str, str] = {}
+    public_headers["apikey"] = service_role_key
+    public_headers["Authorization"] = f"Bearer {service_role_key}"
+    public_headers["Accept-Profile"] = PUBLIC_SCHEMA
+    try:
+        rows = _fetch_json(
+            f"{base_url}/uk_aq_db_size_metrics_hourly",
+            public_headers,
+            {
+                "select": "bucket_hour,database_label,database_name,size_bytes,oldest_observed_at,recorded_at",
+                "bucket_hour": f"gte.{_to_postgrest_ts(since)}",
+                "order": "bucket_hour.asc",
+                "limit": "5000",
+            },
+        )
+    except Exception as exc:
+        return [], str(exc)
+    normalized = _normalize_db_size_metrics_rows(rows)
+    filtered = [
+        row
+        for row in normalized
+        if str(row.get("database_label") or "").strip().lower() == expected_label
+    ]
+    return filtered, None
+
+
+def _fetch_db_size_metrics_from_external_api(
+    now: datetime,
+) -> Tuple[Optional[List[Dict[str, Any]]], Optional[str]]:
+    if not DB_SIZE_API_URL:
+        return None, None
+
+    params = {
+        "lookback_days": str(DB_SIZE_LOOKBACK_DAYS),
+    }
+    headers = {
+        "Accept": "application/json",
+    }
+    if DB_SIZE_API_TOKEN:
+        headers["Authorization"] = f"Bearer {DB_SIZE_API_TOKEN}"
+
+    try:
+        resp = requests.get(
+            DB_SIZE_API_URL,
+            headers=headers,
+            params=params,
+            timeout=60,
+        )
+    except requests.RequestException as exc:
+        return None, f"External DB size API request failed ({exc.__class__.__name__})"
+
+    if not resp.ok:
+        return (
+            None,
+            (
+                f"External DB size API HTTP {resp.status_code}: "
+                f"{_safe_response_text(resp)}"
+            ),
+        )
+
+    try:
+        payload = resp.json()
+    except ValueError:
+        return None, "External DB size API returned non-JSON payload"
+
+    rows: Any = None
+    upstream_error: Optional[str] = None
+    if isinstance(payload, dict):
+        rows = payload.get("db_size_metrics")
+        raw_error = payload.get("db_size_metrics_error")
+        if isinstance(raw_error, str) and raw_error.strip():
+            upstream_error = raw_error.strip()
+    elif isinstance(payload, list):
+        rows = payload
+
+    if not isinstance(rows, list):
+        return None, "External DB size API payload missing db_size_metrics list"
+
+    normalized = _normalize_db_size_metrics_rows(rows)
+
+    # External API supports the same lookback contract; if response is stale, treat as error.
+    latest_bucket = None
+    if normalized:
+        latest_bucket = _parse_timestamp(normalized[-1].get("bucket_hour"))
+    if latest_bucket and latest_bucket < now - timedelta(days=DB_SIZE_LOOKBACK_DAYS + 1):
+        return None, "External DB size API returned stale metrics window"
+
+    return normalized, upstream_error
+
+
+def _fetch_db_size_metrics(
+    base_url: str,
+    headers: Dict[str, str],
+    now: datetime,
+) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+    since = now - timedelta(days=DB_SIZE_LOOKBACK_DAYS)
+
+    external_rows, external_error = _fetch_db_size_metrics_from_external_api(now)
+    if external_rows is not None:
+        return external_rows, external_error
+
+    source_errors: List[str] = []
+    all_rows: List[Dict[str, Any]] = []
+
+    ingest_key = str(headers.get("apikey") or "").strip()
+    if base_url and ingest_key:
+        ingest_rows, ingest_error = _fetch_db_size_metrics_from_supabase_source(
+            base_url=base_url,
+            service_role_key=ingest_key,
+            since=since,
+            expected_label="ingestdb",
+        )
+        if ingest_error:
+            source_errors.append(f"ingestdb: {ingest_error}")
+        all_rows.extend(ingest_rows)
+    else:
+        source_errors.append("ingestdb: missing base URL or service key")
+
+    if HISTORY_SUPABASE_URL and HISTORY_SECRET_KEY:
+        history_base_url = f"{HISTORY_SUPABASE_URL.rstrip('/')}/rest/v1"
+        history_rows, history_error = _fetch_db_size_metrics_from_supabase_source(
+            base_url=history_base_url,
+            service_role_key=HISTORY_SECRET_KEY,
+            since=since,
+            expected_label="historydb",
+        )
+        if history_error:
+            source_errors.append(f"historydb: {history_error}")
+        all_rows.extend(history_rows)
+
+    if AGGDAILY_SUPABASE_URL and AGGDAILY_SECRET_KEY:
+        aggdaily_base_url = f"{AGGDAILY_SUPABASE_URL.rstrip('/')}/rest/v1"
+        aggdaily_rows, aggdaily_error = _fetch_db_size_metrics_from_supabase_source(
+            base_url=aggdaily_base_url,
+            service_role_key=AGGDAILY_SECRET_KEY,
+            since=since,
+            expected_label="aggdailydb",
+        )
+        if aggdaily_error:
+            source_errors.append(f"aggdailydb: {aggdaily_error}")
+        all_rows.extend(aggdaily_rows)
+
+    all_rows.sort(key=lambda item: _parse_timestamp(item.get("bucket_hour")) or UTC_DATETIME_MIN)
+
+    warnings: List[str] = []
+    if external_error:
+        warnings.append(f"{external_error}; using direct Supabase fallback.")
+    if source_errors:
+        warnings.append("; ".join(source_errors))
+
+    warning_text = "; ".join(warnings) if warnings else None
+    return all_rows, warning_text
 
 
 def _normalize_iso_date(value: Any) -> Optional[str]:
