@@ -142,7 +142,7 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
   - Mixed rows across connectors are processed in the same batch, reducing history RPC call overhead.
 
 ### DB Size Logger (Cloud Run)
-- Purpose: Sample current DB size from ingest DB, history DB, and optional Agg Daily DB once per run, then upsert hourly points into ingest DB.
+- Purpose: Sample cluster-wide DB size (sum of `pg_database_size(datname)` across `pg_database`) from ingest DB, history DB, and optional Agg Daily DB once per run, then upsert hourly points into ingest DB.
 - Triggered by: Cloud Scheduler -> Cloud Run service (`workers/uk_aq_db_size_logger_cloud_run`).
 - Reads:
   - Ingest DB RPC: `uk_aq_public.uk_aq_rpc_database_size_bytes`
