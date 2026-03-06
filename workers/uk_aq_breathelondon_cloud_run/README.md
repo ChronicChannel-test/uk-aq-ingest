@@ -69,7 +69,7 @@ gcloud run deploy uk-aq-breathelondon-ingest \
 - `HISTORY_WRITE_MODE` (workflow default: `pubsub_only`)
 - `GCP_HISTORY_PUBSUB_TOPIC` (required for `HISTORY_WRITE_MODE=pubsub_only`)
 - `HISTORY_PUBSUB_PUBLISH_BATCH_SIZE` (default `500`)
-- `HISTORY_SUPABASE_URL`, `HISTORY_SECRET_KEY`, `HISTORY_SCHEMA` (required when `HISTORY_WRITE_MODE=direct`; not injected for `pubsub_only`/`outbox_only`)
+- `HISTORY_SUPABASE_URL`, `HISTORY_SECRET_KEY`, `HISTORY_RPC_SCHEMA` (required when `HISTORY_WRITE_MODE=direct`; not injected for `pubsub_only`/`outbox_only`)
 - `DROPBOX_APP_KEY`
 - `DROPBOX_APP_SECRET`
 - `DROPBOX_REFRESH_TOKEN`

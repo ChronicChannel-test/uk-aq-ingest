@@ -21,7 +21,7 @@ Scheduler triggers the service with an authenticated POST request.
 ## Optional env vars
 
 - `UK_AQ_PUBLIC_SCHEMA` (default `uk_aq_public`)
-- `HISTORY_SCHEMA` (default `uk_aq_public`)
+- `HISTORY_RPC_SCHEMA` (default `uk_aq_public`)
 - `HISTORY_UPSERT_RPC` (default `uk_aq_rpc_history_observations_upsert`)
 - `HISTORY_UPSERT_CHUNK_SIZE` (default `5000`)
 - `HISTORY_UPSERT_RPC_RETRIES` (default `3`; retries per history upsert RPC call for retryable failures)

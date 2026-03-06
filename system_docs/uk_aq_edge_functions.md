@@ -4,9 +4,9 @@ This project uses Supabase Edge Functions for polling and serving data. The Edge
 functions run inside Supabase and need their own environment variables (Project
 Settings -> Functions -> Environment Variables). They do not read the local .env.
 
-History dual-write note: shared history writes normalize `HISTORY_SCHEMA` /
-`HISTORY_DB_SCHEMA` values `uk_aq_history` and `public` to `uk_aq_public` for
-RPC calls, because history RPCs are exposed from `uk_aq_public`.
+History dual-write note: shared history writes normalize `HISTORY_RPC_SCHEMA`
+values `uk_aq_history` and `public` to `uk_aq_public` for RPC calls, because
+history RPCs are exposed from `uk_aq_public`.
 History dual-write write-path note: rows are normalized and deduplicated on
 `(connector_id, timeseries_id, observed_at)` before history upsert and outbox
 enqueue to reduce duplicate payload bytes, write churn, and request overhead.
@@ -464,6 +464,9 @@ curl "https://YOUR_PROJECT.supabase.co/functions/v1/uk_aq_latest?region=London&p
   - request interval is split at `now - 7 days` (ingest is source of truth for recent overlap).
   - recent overlap is read from ingest RPC `uk_aq_timeseries_rpc`.
   - older overlap is read directly from history project PostgREST (`HISTORY_SUPABASE_URL/rest/v1/observations`, schema `uk_aq_history`).
+  - history read schema resolution order is:
+    `HISTORY_READ_SCHEMA` -> `uk_aq_history`.
+  - if resolved schema is `uk_aq_public` or `public`, the function auto-switches to `uk_aq_history` for direct table reads.
   - if direct history read is unavailable, older overlap is skipped and the response remains ingest-only.
   - rows are merged on `observed_at` with ingest rows overriding overlaps.
 - Request flow (exact):
@@ -546,7 +549,8 @@ Dropbox folders:
 Optional:
 - `UK_AQ_CORE_SCHEMA` (defaults to `uk_aq_core`; used for PostgREST profile headers)
 - `UK_AQ_RAW_SCHEMA` (defaults to `uk_aq_raw`; used for raw tables like `error_logs` and checkpoint tables)
-- `HISTORY_SCHEMA` / `HISTORY_DB_SCHEMA` (optional; default `uk_aq_history`; schema used by `uk_aq_timeseries` for direct history reads)
+- `HISTORY_RPC_SCHEMA` (optional; default `uk_aq_public`; schema used by history RPC/write paths)
+- `HISTORY_READ_SCHEMA` (optional; default `uk_aq_history`; schema used by `uk_aq_timeseries` direct history reads)
 - `UK_AQ_TIMESERIES_HISTORY_PAGE_SIZE` (optional; default `1000`; per-page row fetch size for `uk_aq_timeseries` direct history reads, capped at `5000`)
 - `HISTORY_OUTBOX_CLOUD_RUN_MAX_BATCHES` (optional; defaults to `30`; Cloud Run outbox batches per run)
 - `HISTORY_OUTBOX_CLOUD_RUN_CLAIM_BATCH_LIMIT` (optional; defaults to `20`; outbox claim size per batch in Cloud Run)

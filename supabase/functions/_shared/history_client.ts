@@ -77,16 +77,13 @@ const HISTORY_SECRET_KEY = (
   Deno.env.get("HISTORY_SECRET_KEY") ?? ""
 ).trim();
 
-const HISTORY_SCHEMA = (
-  Deno.env.get("HISTORY_SCHEMA") ??
-    Deno.env.get("HISTORY_DB_SCHEMA") ??
-    "uk_aq_public"
-).trim();
+const HISTORY_RPC_SCHEMA = normalizeHistoryRpcSchema(
+  (Deno.env.get("HISTORY_RPC_SCHEMA") ?? "uk_aq_public").trim(),
+);
 
 function normalizeHistoryRpcSchema(raw: string): string {
   const normalized = raw.trim().toLowerCase();
-  // History RPC functions live in uk_aq_public. Accept older env values and
-  // map them to the callable RPC schema.
+  // History RPC functions live in uk_aq_public.
   if (
     !normalized || normalized === "uk_aq_history" || normalized === "public"
   ) {
@@ -94,10 +91,6 @@ function normalizeHistoryRpcSchema(raw: string): string {
   }
   return raw.trim();
 }
-
-// RPC functions are defined in uk_aq_public, while tables live in uk_aq_history.
-// Keep backward compatibility with HISTORY_DB_SCHEMA values that may point at table schema.
-const HISTORY_RPC_SCHEMA = normalizeHistoryRpcSchema(HISTORY_SCHEMA);
 
 const HISTORY_UPSERT_RPC = (Deno.env.get("HISTORY_UPSERT_RPC") ||
   "uk_aq_rpc_history_observations_upsert")

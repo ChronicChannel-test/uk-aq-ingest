@@ -34,7 +34,7 @@ jobs:
       HISTORY_SUPABASE_URL: ${{ vars.HISTORY_SUPABASE_URL }}
       UK_AQ_CORE_SCHEMA: ${{ vars.UK_AQ_CORE_SCHEMA || 'uk_aq_core' }}
       UK_AQ_RAW_SCHEMA: ${{ vars.UK_AQ_RAW_SCHEMA || 'uk_aq_raw' }}
-      HISTORY_SCHEMA: ${{ vars.HISTORY_SCHEMA || 'uk_aq_public' }}
+      HISTORY_RPC_SCHEMA: ${{ vars.HISTORY_RPC_SCHEMA || 'uk_aq_public' }}
       HISTORY_WRITE_MODE: ${{ vars.SCOMM_HISTORY_WRITE_MODE || 'pubsub_only' }}
       GCP_HISTORY_PUBSUB_TOPIC: ${{ vars.GCP_HISTORY_PUBSUB_TOPIC || 'uk-aq-history-observations' }}
       HISTORY_PUBSUB_PUBLISH_BATCH_SIZE: ${{ vars.HISTORY_PUBSUB_PUBLISH_BATCH_SIZE || '500' }}
@@ -280,7 +280,7 @@ jobs:
           env_updates+=("GCP_PROJECT_ID=${PROJECT_ID}")
           if [ -n "${HISTORY_SUPABASE_URL:-}" ]; then
             add_env HISTORY_SUPABASE_URL
-            add_env HISTORY_SCHEMA
+            add_env HISTORY_RPC_SCHEMA
           fi
 
           history_mode="$(printf '%s' "${HISTORY_WRITE_MODE:-}" | tr '[:upper:]' '[:lower:]')"

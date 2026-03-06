@@ -49,12 +49,9 @@ const HISTORY_SUPABASE_URL = (process.env.HISTORY_SUPABASE_URL || "").trim();
 const HISTORY_SECRET_KEY = (
   process.env.HISTORY_SECRET_KEY || ""
 ).trim();
-const HISTORY_SCHEMA = (
-  process.env.HISTORY_SCHEMA ||
-  process.env.HISTORY_DB_SCHEMA ||
-  "uk_aq_public"
-).trim();
-const HISTORY_RPC_SCHEMA = normalizeHistoryRpcSchema(HISTORY_SCHEMA);
+const HISTORY_RPC_SCHEMA = normalizeHistoryRpcSchema(
+  (process.env.HISTORY_RPC_SCHEMA || "uk_aq_public").trim(),
+);
 const HISTORY_UPSERT_RPC = (
   process.env.HISTORY_UPSERT_RPC ||
   "uk_aq_rpc_history_observations_upsert"

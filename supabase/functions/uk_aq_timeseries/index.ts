@@ -39,9 +39,10 @@ const UK_AQ_CORE_SCHEMA = Deno.env.get("UK_AQ_CORE_SCHEMA") ??
   "uk_aq_core";
 const UK_AQ_PUBLIC_SCHEMA = Deno.env.get("UK_AQ_PUBLIC_SCHEMA") ??
   "uk_aq_public";
-const HISTORY_SCHEMA = Deno.env.get("HISTORY_SCHEMA") ??
-  Deno.env.get("HISTORY_DB_SCHEMA") ??
-  "uk_aq_history";
+const HISTORY_READ_SCHEMA = resolveHistoryReadSchema(
+  Deno.env.get("HISTORY_READ_SCHEMA") ??
+    "uk_aq_history",
+);
 const HISTORY_PAGE_SIZE = Math.min(
   5000,
   Math.max(
@@ -65,6 +66,17 @@ const REST_BASE_URL = SUPABASE_URL
 const HISTORY_REST_BASE_URL = HISTORY_SUPABASE_URL
   ? `${HISTORY_SUPABASE_URL.replace(/\/$/, "")}/rest/v1`
   : "";
+
+function resolveHistoryReadSchema(raw: string): string {
+  const trimmed = (raw || "").trim();
+  const normalized = trimmed.toLowerCase();
+  // For direct table reads we always need uk_aq_history-style table schema.
+  // If configured with an RPC/public schema by mistake, force table schema.
+  if (!normalized || normalized === "uk_aq_public" || normalized === "public") {
+    return "uk_aq_history";
+  }
+  return trimmed;
+}
 
 type PostgrestQueryParams = Record<string, string | string[]>;
 
@@ -539,7 +551,7 @@ async function fetchHistoryRowsDirect(
         limit: String(pageLimit),
         offset: String(offset),
       },
-      HISTORY_SCHEMA,
+      HISTORY_READ_SCHEMA,
       undefined,
       {
         baseUrl: HISTORY_REST_BASE_URL,

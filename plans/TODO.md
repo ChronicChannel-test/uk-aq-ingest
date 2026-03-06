@@ -23,3 +23,4 @@
 - Tidy up pollutants/phenomena. Mapping table from connector versions to phenomena.
 - Investigate prune-repair edge case where `history_count > ingest_count` for a `(connector_id, hour_start)` bucket. Confirm if this can occur with current pipeline ordering/duplication behavior, and if needed add safe remediation path (history-side dedupe/remove or strict guardrail workflow).
 - AQI follow-up: add expected-count/cadence completeness fields (`expected_count`, validity boolean) for helper-hour rows after v1 sample-count-only rollout. Keep hourly source shape simple for now.
+- Legacy bridge review: keep ingest-side `uk_aq_history.observations` + `uk_aq_public.rpc_observations_window` for now; re-check live usage before removing in a future cleanup.

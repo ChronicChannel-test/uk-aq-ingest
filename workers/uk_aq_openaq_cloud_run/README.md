@@ -97,7 +97,7 @@ gcloud run deploy uk-aq-openaq-ingest \
 - `OPENAQ_INGEST_SCRIPT_PATH` (default `/app/runtime/ingest_openaq/index.ts`)
 - `OPENAQ_DROPBOX_UPLOAD_SOURCE` (default `cloud_run` for this worker)
 - `SB_UK_AQ_CRON_SECRET` (if set, local call sends `x-cron-secret`)
-- `HISTORY_SUPABASE_URL`, `HISTORY_SECRET_KEY`, `HISTORY_SCHEMA` (required when `HISTORY_WRITE_MODE=direct`; not injected for `pubsub_only`/`outbox_only`)
+- `HISTORY_SUPABASE_URL`, `HISTORY_SECRET_KEY`, `HISTORY_RPC_SCHEMA` (required when `HISTORY_WRITE_MODE=direct`; not injected for `pubsub_only`/`outbox_only`)
 - `HISTORY_WRITE_MODE` (default in deploy workflow: `pubsub_only`)
 - `GCP_HISTORY_PUBSUB_TOPIC` (required when `HISTORY_WRITE_MODE=pubsub_only`)
 - `HISTORY_PUBSUB_PUBLISH_BATCH_SIZE` (optional; defaults to `500`)

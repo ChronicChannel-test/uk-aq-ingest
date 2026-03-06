@@ -22,7 +22,7 @@ Design choices:
 ## Optional env vars
 
 - `UK_AQ_PUBLIC_SCHEMA` (default `uk_aq_public`)
-- `HISTORY_SCHEMA` (default `uk_aq_public`)
+- `HISTORY_RPC_SCHEMA` (default `uk_aq_public`)
 - `HISTORY_UPSERT_RPC` (default `uk_aq_rpc_history_observations_upsert`)
 - `HISTORY_OUTBOX_FLUSH_LIMIT` (default `40`)
 - `HISTORY_UPSERT_CHUNK_SIZE` (default `5000`)
