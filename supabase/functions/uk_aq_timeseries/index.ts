@@ -8,14 +8,20 @@ import { validateWorkerUpstreamAuth } from "../_shared/worker_auth.ts";
 
 const DEFAULT_WINDOW = "24h";
 const DEFAULT_FORMAT = "objects";
+const HOUR_MS = 60 * 60 * 1000;
+const DAY_MS = 24 * HOUR_MS;
 
-const WINDOW_HOURS: Record<string, number> = {
+type NamedWindowLabel = "12h" | "24h" | "7d" | "31d";
+
+const WINDOW_HOURS: Record<NamedWindowLabel, number> = {
   "12h": 12,
   "24h": 24,
   "7d": 24 * 7,
-  "30d": 24 * 31, // Backward-compatible alias.
   "31d": 24 * 31,
 };
+const MAX_WINDOW_DAYS = parsePositiveInteger(
+  Deno.env.get("UK_AQ_TIMESERIES_MAX_WINDOW_DAYS"),
+) ?? 366;
 const INGEST_SOURCE_OF_TRUTH_HOURS = 24 * 7;
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")
@@ -122,7 +128,30 @@ serve(async (req) => {
       error_type: "invalid_timeseries_id",
     });
   }
-  const windowLabel = normalizeWindow(url.searchParams.get("window"));
+  const rawWindow = url.searchParams.get("window");
+  const rawDays = url.searchParams.get("days");
+  const rawStart = firstNonEmptyParam(
+    url.searchParams.get("start"),
+    url.searchParams.get("start_utc"),
+  );
+  const rawEnd = firstNonEmptyParam(
+    url.searchParams.get("end"),
+    url.searchParams.get("end_utc"),
+  );
+  const now = new Date();
+  const rangeResult = resolveRequestedRange({
+    rawWindow,
+    rawDays,
+    rawStart,
+    rawEnd,
+    now,
+  });
+  if (!rangeResult.ok) {
+    return await finish(json({ error: rangeResult.error }, 400), {
+      error_type: "invalid_window_range",
+    });
+  }
+  const range = rangeResult.range;
   const rawLimit = url.searchParams.get("limit");
   const limit = parseOptionalLimit(rawLimit);
   if (rawLimit !== null && limit === null) {
@@ -154,11 +183,13 @@ serve(async (req) => {
   }
   const includeStatus = includeStatusParsed ?? true;
   const format = responseFormat ?? DEFAULT_FORMAT;
-  const hours = WINDOW_HOURS[windowLabel] ?? WINDOW_HOURS[DEFAULT_WINDOW];
   const ifNoneMatch = req.headers.get("if-none-match");
   const requestFields = {
     timeseries_id: timeseriesId,
-    window: windowLabel,
+    window: range.windowLabel,
+    window_mode: range.mode,
+    days: range.days ?? null,
+    has_start_end: range.mode === "datetime",
     limit: limit ?? null,
     has_since: Boolean(since),
     include_status: includeStatus,
@@ -166,26 +197,25 @@ serve(async (req) => {
     has_if_none_match: Boolean(ifNoneMatch),
   };
 
-  const end = new Date();
-  const startTime = new Date(end.getTime() - hours * 60 * 60 * 1000);
   try {
     const stitched = await fetchTimeseriesRowsStitched({
       timeseriesId,
-      windowLabel,
       limit,
       since,
       includeStatus,
-      windowStart: startTime,
-      windowEnd: end,
+      requestStart: range.start,
+      requestEnd: range.end,
+      now,
     });
     const rows = stitched.rows;
     const nextSince = maxObservedTimestamp(rows, since);
     const columns = timeseriesColumns(includeStatus);
     const payload = {
       timeseries_id: timeseriesId,
-      window: windowLabel,
-      start: startTime.toISOString(),
-      end: end.toISOString(),
+      window: range.windowLabel,
+      window_mode: range.mode,
+      start: range.start.toISOString(),
+      end: range.end.toISOString(),
       since,
       next_since: nextSince,
       include_status: includeStatus,
@@ -232,21 +262,26 @@ function parseId(value: string | null): number | null {
 
 type TimeseriesRpcCallOptions = {
   timeseriesId: number;
-  windowLabel: string;
+  windowLabel: NamedWindowLabel;
   limit: number | null;
   since: string | null;
   includeStatus: boolean;
 };
 
-type StitchedFetchOptions = TimeseriesRpcCallOptions & {
-  windowStart: Date;
-  windowEnd: Date;
+type StitchedFetchOptions = {
+  timeseriesId: number;
+  limit: number | null;
+  since: string | null;
+  includeStatus: boolean;
+  requestStart: Date;
+  requestEnd: Date;
+  now: Date;
 };
 
 type StitchedFetchResult = {
   guideline: unknown;
   rows: TimeseriesRow[];
-  source: "ingest_only" | "ingest_history_stitched";
+  source: "ingest_only" | "history_only" | "ingest_history_stitched";
 };
 
 async function callTimeseriesRpc(
@@ -288,22 +323,46 @@ async function callTimeseriesRpc(
 async function fetchTimeseriesRowsStitched(
   {
     timeseriesId,
-    windowLabel,
     limit,
     since,
     includeStatus,
-    windowStart,
-    windowEnd,
+    requestStart,
+    requestEnd,
+    now,
   }: StitchedFetchOptions,
 ): Promise<StitchedFetchResult> {
-  const isLongWindow = windowLabel === "30d" || windowLabel === "31d";
-  const ingestWindowLabel = isLongWindow ? "7d" : windowLabel;
-  const ingestLimit = isLongWindow ? null : limit;
+  const splitBoundary = new Date(
+    now.getTime() - INGEST_SOURCE_OF_TRUTH_HOURS * HOUR_MS,
+  );
+  const historyStart = requestStart;
+  const historyEnd = requestEnd.getTime() < splitBoundary.getTime()
+    ? requestEnd
+    : splitBoundary;
+  const ingestStart = requestStart.getTime() > splitBoundary.getTime()
+    ? requestStart
+    : splitBoundary;
+  const ingestEnd = requestEnd.getTime() < now.getTime() ? requestEnd : now;
+  const hasHistoryWindow = historyEnd.getTime() > historyStart.getTime();
+  const hasIngestWindow = ingestEnd.getTime() > ingestStart.getTime();
+  const sinceMs = since ? Date.parse(since) : Number.NaN;
+  const hasSince = Number.isFinite(sinceMs);
+  const shouldFetchHistory = hasHistoryWindow &&
+    (!hasSince || sinceMs < historyEnd.getTime());
+  const shouldFetchIngestRows = hasIngestWindow &&
+    (!hasSince || sinceMs < ingestEnd.getTime());
+
+  const ingestWindowLabel = hasIngestWindow
+    ? selectIngestWindowLabel(ingestStart, now)
+    : "12h";
+  const ingestLimit = shouldFetchIngestRows
+    ? (hasHistoryWindow ? null : limit)
+    : 1;
+  const ingestSince = shouldFetchIngestRows ? since : null;
   const { data, error } = await callTimeseriesRpc({
     timeseriesId,
     windowLabel: ingestWindowLabel,
     limit: ingestLimit,
-    since,
+    since: ingestSince,
     includeStatus,
   });
   if (error) {
@@ -312,30 +371,12 @@ async function fetchTimeseriesRowsStitched(
 
   const ingestRow = Array.isArray(data) && data.length > 0 ? data[0] : null;
   const guideline = ingestRow?.guideline ?? null;
-  const ingestRows = normalizeTimeseriesRows(
-    Array.isArray(ingestRow?.data) ? ingestRow.data : [],
-    includeStatus,
-  );
-
-  // For <=7d windows, keep existing ingest-only read path.
-  if (!isLongWindow) {
-    return {
-      guideline,
-      rows: finalizeStitchedRows([], ingestRows, since, limit),
-      source: "ingest_only",
-    };
-  }
-
-  const splitBoundary = new Date(
-    windowEnd.getTime() - INGEST_SOURCE_OF_TRUTH_HOURS * 60 * 60 * 1000,
-  );
-  const historyStart = windowStart;
-  const historyEnd = splitBoundary < windowEnd ? splitBoundary : windowEnd;
-  const hasHistoryWindow = historyEnd.getTime() > historyStart.getTime();
-  const sinceMs = since ? Date.parse(since) : Number.NaN;
-  const hasSince = Number.isFinite(sinceMs);
-  const shouldFetchHistory = hasHistoryWindow &&
-    (!hasSince || sinceMs < historyEnd.getTime());
+  const ingestRows = shouldFetchIngestRows
+    ? normalizeTimeseriesRows(
+      Array.isArray(ingestRow?.data) ? ingestRow.data : [],
+      includeStatus,
+    )
+    : [];
 
   let historyRows: TimeseriesRow[] = [];
   if (shouldFetchHistory) {
@@ -348,11 +389,35 @@ async function fetchTimeseriesRowsStitched(
     historyRows = historyWindow.rows;
   }
 
+  const source: StitchedFetchResult["source"] = shouldFetchHistory && shouldFetchIngestRows
+    ? "ingest_history_stitched"
+    : shouldFetchHistory
+    ? "history_only"
+    : "ingest_only";
+
   return {
     guideline,
-    rows: finalizeStitchedRows(historyRows, ingestRows, since, limit),
-    source: shouldFetchHistory ? "ingest_history_stitched" : "ingest_only",
+    rows: finalizeStitchedRows(
+      historyRows,
+      ingestRows,
+      since,
+      limit,
+      requestStart,
+      requestEnd,
+    ),
+    source,
   };
+}
+
+function selectIngestWindowLabel(start: Date, now: Date): NamedWindowLabel {
+  const spanHours = (now.getTime() - start.getTime()) / HOUR_MS;
+  if (spanHours <= 12) {
+    return "12h";
+  }
+  if (spanHours <= 24) {
+    return "24h";
+  }
+  return "7d";
 }
 
 type HistoryWindowCallOptions = {
@@ -396,8 +461,17 @@ function finalizeStitchedRows(
   ingestRows: TimeseriesRow[],
   since: string | null,
   limit: number | null,
+  requestStart: Date,
+  requestEnd: Date,
 ): TimeseriesRow[] {
   let rows = mergeRowsPreferIngest(historyRows, ingestRows);
+  const startMs = requestStart.getTime();
+  const endMs = requestEnd.getTime();
+
+  rows = rows.filter((row) => {
+    const observedMs = Date.parse(row.observed_at);
+    return Number.isFinite(observedMs) && observedMs >= startMs && observedMs <= endMs;
+  });
 
   if (since) {
     const sinceMs = Date.parse(since);
@@ -445,15 +519,158 @@ function looksLikeHistoryWindowUnavailable(message: string): boolean {
     normalized.includes("relation \"uk_aq_history.observations\" does not exist");
 }
 
-function normalizeWindow(value: string | null): string {
-  if (!value) {
-    return DEFAULT_WINDOW;
+type WindowMode = "window" | "days" | "datetime";
+
+type ResolvedWindowRange = {
+  mode: WindowMode;
+  windowLabel: string;
+  start: Date;
+  end: Date;
+  days: number | null;
+};
+
+type ResolveRequestedRangeInput = {
+  rawWindow: string | null;
+  rawDays: string | null;
+  rawStart: string | null;
+  rawEnd: string | null;
+  now: Date;
+};
+
+type ResolveRequestedRangeResult =
+  | { ok: true; range: ResolvedWindowRange }
+  | { ok: false; error: string };
+
+function resolveRequestedRange(
+  { rawWindow, rawDays, rawStart, rawEnd, now }: ResolveRequestedRangeInput,
+): ResolveRequestedRangeResult {
+  const windowToken = normalizeOptionalParam(rawWindow);
+  const daysToken = normalizeOptionalParam(rawDays);
+  const startToken = normalizeOptionalParam(rawStart);
+  const endToken = normalizeOptionalParam(rawEnd);
+
+  const hasWindow = windowToken !== null;
+  const hasDays = daysToken !== null;
+  const hasDateTime = startToken !== null || endToken !== null;
+
+  if (hasDateTime && (startToken === null || endToken === null)) {
+    return { ok: false, error: "Provide both start and end (or start_utc and end_utc)." };
   }
-  const trimmed = value.trim().toLowerCase();
-  if (trimmed === "30d") {
-    return "31d";
+
+  const modeCount = Number(hasWindow) + Number(hasDays) + Number(hasDateTime);
+  if (modeCount > 1) {
+    return { ok: false, error: "Use only one range selector: window, days, or start/end." };
   }
-  return WINDOW_HOURS[trimmed] ? trimmed : DEFAULT_WINDOW;
+
+  if (hasWindow) {
+    const parsedWindow = parseNamedWindowLabel(windowToken);
+    if (!parsedWindow) {
+      return { ok: false, error: "Invalid window. Use 12h, 24h, 7d, or 31d." };
+    }
+    const hours = WINDOW_HOURS[parsedWindow];
+    return {
+      ok: true,
+      range: {
+        mode: "window",
+        windowLabel: parsedWindow,
+        start: new Date(now.getTime() - hours * HOUR_MS),
+        end: new Date(now.getTime()),
+        days: null,
+      },
+    };
+  }
+
+  if (hasDays) {
+    const parsedDays = parsePositiveInteger(daysToken);
+    if (parsedDays === null) {
+      return { ok: false, error: "Invalid days. Provide a positive integer." };
+    }
+    if (parsedDays > MAX_WINDOW_DAYS) {
+      return { ok: false, error: `days exceeds maximum supported range (${MAX_WINDOW_DAYS}).` };
+    }
+    return {
+      ok: true,
+      range: {
+        mode: "days",
+        windowLabel: `${parsedDays}d`,
+        start: new Date(now.getTime() - parsedDays * DAY_MS),
+        end: new Date(now.getTime()),
+        days: parsedDays,
+      },
+    };
+  }
+
+  if (hasDateTime) {
+    const startIso = normalizeTimestamp(startToken as string);
+    const endIso = normalizeTimestamp(endToken as string);
+    if (!startIso || !endIso) {
+      return { ok: false, error: "Invalid start/end. Provide ISO-8601 datetimes." };
+    }
+    const start = new Date(startIso);
+    const requestedEnd = new Date(endIso);
+    if (requestedEnd.getTime() <= start.getTime()) {
+      return { ok: false, error: "end must be greater than start." };
+    }
+    const end = requestedEnd.getTime() > now.getTime()
+      ? new Date(now.getTime())
+      : requestedEnd;
+    if (end.getTime() <= start.getTime()) {
+      return { ok: false, error: "start must be before the effective end time." };
+    }
+    const spanDays = (end.getTime() - start.getTime()) / DAY_MS;
+    if (spanDays > MAX_WINDOW_DAYS) {
+      return { ok: false, error: `Requested span exceeds maximum supported range (${MAX_WINDOW_DAYS} days).` };
+    }
+    return {
+      ok: true,
+      range: {
+        mode: "datetime",
+        windowLabel: "custom",
+        start,
+        end,
+        days: null,
+      },
+    };
+  }
+
+  const defaultWindow = DEFAULT_WINDOW as NamedWindowLabel;
+  return {
+    ok: true,
+    range: {
+      mode: "window",
+      windowLabel: defaultWindow,
+      start: new Date(now.getTime() - WINDOW_HOURS[defaultWindow] * HOUR_MS),
+      end: new Date(now.getTime()),
+      days: null,
+    },
+  };
+}
+
+function parseNamedWindowLabel(value: string): NamedWindowLabel | null {
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+  return Object.prototype.hasOwnProperty.call(WINDOW_HOURS, normalized)
+    ? normalized as NamedWindowLabel
+    : null;
+}
+
+function normalizeOptionalParam(value: string | null): string | null {
+  if (value === null) {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed || null;
+}
+
+function firstNonEmptyParam(...values: Array<string | null>): string | null {
+  for (const value of values) {
+    if (value !== null && value.trim()) {
+      return value;
+    }
+  }
+  return null;
 }
 
 function normalizeFormat(value: string | null): "objects" | "compact" | null {
@@ -485,10 +702,18 @@ function parseBooleanParam(value: string | null): boolean | null {
 }
 
 function parseOptionalLimit(value: string | null): number | null {
-  if (!value) {
+  return parsePositiveInteger(value);
+}
+
+function parsePositiveInteger(value: string | null | undefined): number | null {
+  if (value === null || value === undefined) {
     return null;
   }
-  const parsed = Number(value);
+  const trimmed = String(value).trim();
+  if (!trimmed || !/^\d+$/.test(trimmed)) {
+    return null;
+  }
+  const parsed = Number(trimmed);
   if (!Number.isFinite(parsed) || parsed < 1) {
     return null;
   }

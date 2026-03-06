@@ -444,27 +444,33 @@ curl "https://YOUR_PROJECT.supabase.co/functions/v1/uk_aq_latest?region=London&p
 - Purpose: Serve raw observation points for a single timeseries.
 - Triggered by: Web requests (read-only, no writes).
 - Auth mode: deployed with `verify_jwt=false` plus required header `X-UK-AQ-Upstream-Auth` (shared secret checked in-function).
-- Params: `timeseries_id` (required), `window` (`12h|24h|7d|31d`; `30d` accepted as alias and normalized to `31d`; default `24h`), optional `limit` (positive integer), optional `since` (ISO-8601 timestamp for incremental fetch), optional `include_status` (`true|false`, default `true`), optional `format` (`objects|compact`, default `objects`).
+- Params:
+  - required: `timeseries_id`
+  - optional range selector (use one only):
+    - `window` (`12h|24h|7d|31d`; default `24h` when no selector is provided)
+    - `days` (positive integer, max controlled by `UK_AQ_TIMESERIES_MAX_WINDOW_DAYS`, default `366`)
+    - `start` + `end` (ISO-8601 datetimes), or `start_utc` + `end_utc`
+  - optional response controls: `limit` (positive integer), `since` (ISO-8601), `include_status` (`true|false`, default `true`), `format` (`objects|compact`, default `objects`)
+- Validation:
+  - only one range selector is allowed (`window` or `days` or `start/end`); mixed selectors return `400`.
+  - invalid `window`, invalid datetime, or invalid `days` return `400`.
+  - for datetime mode, if `end` is in the future, the effective end is clamped to current UTC time.
 - Returns:
   - `data_format=objects`: row objects (`observed_at`, `value`, optional `status`)
   - `data_format=compact`: positional arrays with `columns` metadata (for lower payload size)
   - plus optional `guideline` (AQG_2021 24h) if found
 - Notes: when `limit` is omitted, all rows in the requested window are returned (no default cap).
 - Read path:
-  - `window=12h|24h|7d`: ingest RPC only (`uk_aq_timeseries_rpc`).
-  - `window=31d` (and legacy `30d` alias): stitched response:
-    - recent slice (last 7 days) from ingest RPC `uk_aq_timeseries_rpc` (source of truth),
-    - older slice (31d -> 7d boundary) from `rpc_observations_window`,
-    - merge on `observed_at` with ingest rows overriding overlaps.
+  - request interval is split at `now - 7 days` (ingest is source of truth for recent overlap).
+  - recent overlap is read from ingest RPC `uk_aq_timeseries_rpc`.
+  - older overlap is read from `rpc_observations_window`.
+  - rows are merged on `observed_at` with ingest rows overriding overlaps.
 - Request flow (exact):
   1. Website calls Cloudflare cache proxy route `/api/aq/timeseries`.
   2. Cache proxy maps that route to one upstream edge function: `uk_aq_timeseries`.
   3. `uk_aq_timeseries` calls ingest PostgREST (`SUPABASE_URL/rest/v1`).
-  4. For `12h|24h|7d`, edge function makes one DB RPC call (`uk_aq_timeseries_rpc`).
-  5. For `31d` (or incoming `30d` alias), edge function makes two DB RPC calls on the ingest PostgREST endpoint:
-     - `uk_aq_timeseries_rpc` for last 7 days,
-     - `rpc_observations_window` for older 31d -> 7d slice.
-  6. Edge function merges rows, returns one payload to Cloudflare, Cloudflare returns one payload to website.
+  4. Edge function calls `uk_aq_timeseries_rpc` for ingest overlap and `rpc_observations_window` for any older overlap.
+  5. Edge function merges rows, returns one payload to Cloudflare, Cloudflare returns one payload to website.
 - Important architecture note:
   - Cloudflare worker does not directly call both DB projects.
   - Cloudflare calls one edge function (`uk_aq_timeseries`), and that edge function performs the DB RPC reads.
@@ -477,7 +483,9 @@ curl "https://YOUR_PROJECT.supabase.co/functions/v1/uk_aq_latest?region=London&p
 Curl test example (shape check):
 ```bash
 curl "https://YOUR_PROJECT.supabase.co/functions/v1/uk_aq_timeseries?timeseries_id=123&window=24h"
-curl "https://YOUR_PROJECT.supabase.co/functions/v1/uk_aq_timeseries?timeseries_id=123&window=7d"
+curl "https://YOUR_PROJECT.supabase.co/functions/v1/uk_aq_timeseries?timeseries_id=123&window=31d"
+curl "https://YOUR_PROJECT.supabase.co/functions/v1/uk_aq_timeseries?timeseries_id=123&days=45"
+curl "https://YOUR_PROJECT.supabase.co/functions/v1/uk_aq_timeseries?timeseries_id=123&start=2026-02-01T00:00:00Z&end=2026-03-01T00:00:00Z"
 ```
 
 Note:
