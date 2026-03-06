@@ -444,13 +444,31 @@ curl "https://YOUR_PROJECT.supabase.co/functions/v1/uk_aq_latest?region=London&p
 - Purpose: Serve raw observation points for a single timeseries.
 - Triggered by: Web requests (read-only, no writes).
 - Auth mode: deployed with `verify_jwt=false` plus required header `X-UK-AQ-Upstream-Auth` (shared secret checked in-function).
-- Params: `timeseries_id` (required), `window` (`12h|24h|7d|30d`, default `24h`), optional `limit` (positive integer), optional `since` (ISO-8601 timestamp for incremental fetch), optional `include_status` (`true|false`, default `true`), optional `format` (`objects|compact`, default `objects`).
+- Params: `timeseries_id` (required), `window` (`12h|24h|7d|31d`; `30d` accepted as alias and normalized to `31d`; default `24h`), optional `limit` (positive integer), optional `since` (ISO-8601 timestamp for incremental fetch), optional `include_status` (`true|false`, default `true`), optional `format` (`objects|compact`, default `objects`).
 - Returns:
   - `data_format=objects`: row objects (`observed_at`, `value`, optional `status`)
   - `data_format=compact`: positional arrays with `columns` metadata (for lower payload size)
   - plus optional `guideline` (AQG_2021 24h) if found
 - Notes: when `limit` is omitted, all rows in the requested window are returned (no default cap).
-- RPC backing: `uk_aq_timeseries_rpc` via `/rest/v1/rpc/uk_aq_timeseries_rpc`.
+- Read path:
+  - `window=12h|24h|7d`: ingest RPC only (`uk_aq_timeseries_rpc`).
+  - `window=31d` (and legacy `30d` alias): stitched response:
+    - recent slice (last 7 days) from ingest RPC `uk_aq_timeseries_rpc` (source of truth),
+    - older slice (31d -> 7d boundary) from `rpc_observations_window`,
+    - merge on `observed_at` with ingest rows overriding overlaps.
+- Request flow (exact):
+  1. Website calls Cloudflare cache proxy route `/api/aq/timeseries`.
+  2. Cache proxy maps that route to one upstream edge function: `uk_aq_timeseries`.
+  3. `uk_aq_timeseries` calls ingest PostgREST (`SUPABASE_URL/rest/v1`).
+  4. For `12h|24h|7d`, edge function makes one DB RPC call (`uk_aq_timeseries_rpc`).
+  5. For `31d` (or incoming `30d` alias), edge function makes two DB RPC calls on the ingest PostgREST endpoint:
+     - `uk_aq_timeseries_rpc` for last 7 days,
+     - `rpc_observations_window` for older 31d -> 7d slice.
+  6. Edge function merges rows, returns one payload to Cloudflare, Cloudflare returns one payload to website.
+- Important architecture note:
+  - Cloudflare worker does not directly call both DB projects.
+  - Cloudflare calls one edge function (`uk_aq_timeseries`), and that edge function performs the DB RPC reads.
+  - If `rpc_observations_window` is unavailable in the ingest project, endpoint falls back to ingest-only output (no hard failure).
 - Conditional requests: supports `If-None-Match`; returns `304 Not Modified` with `ETag` when payload is unchanged.
 - Cache-Control: success responses use `public, max-age=60, s-maxage=300, stale-while-revalidate=300, stale-if-error=86400`; errors use `no-store`.
 - Egress observability: sampled success responses plus all `304`/`4xx`/`5xx`

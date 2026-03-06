@@ -13,8 +13,10 @@ const WINDOW_HOURS: Record<string, number> = {
   "12h": 12,
   "24h": 24,
   "7d": 24 * 7,
-  "30d": 24 * 30,
+  "30d": 24 * 31, // Backward-compatible alias.
+  "31d": 24 * 31,
 };
+const INGEST_SOURCE_OF_TRUTH_HOURS = 24 * 7;
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")
   ?? Deno.env.get("SB_SUPABASE_URL")
@@ -167,32 +169,30 @@ serve(async (req) => {
   const end = new Date();
   const startTime = new Date(end.getTime() - hours * 60 * 60 * 1000);
   try {
-    const { data, error } = await callTimeseriesRpc({
+    const stitched = await fetchTimeseriesRowsStitched({
       timeseriesId,
       windowLabel,
       limit,
       since,
       includeStatus,
+      windowStart: startTime,
+      windowEnd: end,
     });
-    if (error) {
-      throw new Error(error.message);
-    }
-    const row = Array.isArray(data) && data.length > 0 ? data[0] : null;
-    const rows = normalizeTimeseriesRows(Array.isArray(row?.data) ? row.data : [], includeStatus);
+    const rows = stitched.rows;
     const nextSince = maxObservedTimestamp(rows, since);
     const columns = timeseriesColumns(includeStatus);
     const payload = {
-      timeseries_id: row?.timeseries_id ?? timeseriesId,
-      window: row?.window ?? windowLabel,
-      start: row?.start ?? startTime.toISOString(),
-      end: row?.end ?? end.toISOString(),
+      timeseries_id: timeseriesId,
+      window: windowLabel,
+      start: startTime.toISOString(),
+      end: end.toISOString(),
       since,
       next_since: nextSince,
       include_status: includeStatus,
       data_format: format,
       columns,
-      count: row?.count ?? rows.length,
-      guideline: row?.guideline ?? null,
+      count: rows.length,
+      guideline: stitched.guideline,
       data: shapeTimeseriesData(rows, format, includeStatus),
     };
     const etag = await createWeakEtag({
@@ -207,6 +207,7 @@ serve(async (req) => {
       ...requestFields,
       result: "ok",
       row_count: rows.length,
+      source: stitched.source,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -235,6 +236,17 @@ type TimeseriesRpcCallOptions = {
   limit: number | null;
   since: string | null;
   includeStatus: boolean;
+};
+
+type StitchedFetchOptions = TimeseriesRpcCallOptions & {
+  windowStart: Date;
+  windowEnd: Date;
+};
+
+type StitchedFetchResult = {
+  guideline: unknown;
+  rows: TimeseriesRow[];
+  source: "ingest_only" | "ingest_history_stitched";
 };
 
 async function callTimeseriesRpc(
@@ -273,17 +285,174 @@ async function callTimeseriesRpc(
   );
 }
 
+async function fetchTimeseriesRowsStitched(
+  {
+    timeseriesId,
+    windowLabel,
+    limit,
+    since,
+    includeStatus,
+    windowStart,
+    windowEnd,
+  }: StitchedFetchOptions,
+): Promise<StitchedFetchResult> {
+  const isLongWindow = windowLabel === "30d" || windowLabel === "31d";
+  const ingestWindowLabel = isLongWindow ? "7d" : windowLabel;
+  const ingestLimit = isLongWindow ? null : limit;
+  const { data, error } = await callTimeseriesRpc({
+    timeseriesId,
+    windowLabel: ingestWindowLabel,
+    limit: ingestLimit,
+    since,
+    includeStatus,
+  });
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const ingestRow = Array.isArray(data) && data.length > 0 ? data[0] : null;
+  const guideline = ingestRow?.guideline ?? null;
+  const ingestRows = normalizeTimeseriesRows(
+    Array.isArray(ingestRow?.data) ? ingestRow.data : [],
+    includeStatus,
+  );
+
+  // For <=7d windows, keep existing ingest-only read path.
+  if (!isLongWindow) {
+    return {
+      guideline,
+      rows: finalizeStitchedRows([], ingestRows, since, limit),
+      source: "ingest_only",
+    };
+  }
+
+  const splitBoundary = new Date(
+    windowEnd.getTime() - INGEST_SOURCE_OF_TRUTH_HOURS * 60 * 60 * 1000,
+  );
+  const historyStart = windowStart;
+  const historyEnd = splitBoundary < windowEnd ? splitBoundary : windowEnd;
+  const hasHistoryWindow = historyEnd.getTime() > historyStart.getTime();
+  const sinceMs = since ? Date.parse(since) : Number.NaN;
+  const hasSince = Number.isFinite(sinceMs);
+  const shouldFetchHistory = hasHistoryWindow &&
+    (!hasSince || sinceMs < historyEnd.getTime());
+
+  let historyRows: TimeseriesRow[] = [];
+  if (shouldFetchHistory) {
+    const historyWindow = await callHistoryObservationsWindow({
+      timeseriesId,
+      startUtc: historyStart.toISOString(),
+      endUtc: historyEnd.toISOString(),
+      includeStatus,
+    });
+    historyRows = historyWindow.rows;
+  }
+
+  return {
+    guideline,
+    rows: finalizeStitchedRows(historyRows, ingestRows, since, limit),
+    source: shouldFetchHistory ? "ingest_history_stitched" : "ingest_only",
+  };
+}
+
+type HistoryWindowCallOptions = {
+  timeseriesId: number;
+  startUtc: string;
+  endUtc: string;
+  includeStatus: boolean;
+};
+
+async function callHistoryObservationsWindow(
+  { timeseriesId, startUtc, endUtc, includeStatus }: HistoryWindowCallOptions,
+): Promise<{ rows: TimeseriesRow[] }> {
+  const historyWindow = await postgrestRequest<any[]>(
+    "POST",
+    "rpc/rpc_observations_window",
+    undefined,
+    UK_AQ_PUBLIC_SCHEMA,
+    {
+      start_utc: startUtc,
+      end_utc: endUtc,
+      timeseries_id: timeseriesId,
+      station_id: null,
+    },
+  );
+  if (historyWindow.error) {
+    if (looksLikeHistoryWindowUnavailable(historyWindow.error.message)) {
+      // Keep endpoint available even if the optional history bridge RPC is unavailable.
+      return { rows: [] };
+    }
+    throw new Error(`history window fetch failed: ${historyWindow.error.message}`);
+  }
+  const rows = normalizeTimeseriesRows(
+    Array.isArray(historyWindow.data) ? historyWindow.data : [],
+    includeStatus,
+  );
+  return { rows };
+}
+
+function finalizeStitchedRows(
+  historyRows: TimeseriesRow[],
+  ingestRows: TimeseriesRow[],
+  since: string | null,
+  limit: number | null,
+): TimeseriesRow[] {
+  let rows = mergeRowsPreferIngest(historyRows, ingestRows);
+
+  if (since) {
+    const sinceMs = Date.parse(since);
+    if (Number.isFinite(sinceMs)) {
+      rows = rows.filter((row) => Date.parse(row.observed_at) > sinceMs);
+    }
+  }
+
+  if (limit !== null && rows.length > limit) {
+    rows = rows.slice(0, limit);
+  }
+
+  return rows;
+}
+
+function mergeRowsPreferIngest(
+  historyRows: TimeseriesRow[],
+  ingestRows: TimeseriesRow[],
+): TimeseriesRow[] {
+  const byObservedAt = new Map<string, TimeseriesRow>();
+  for (const row of historyRows) {
+    byObservedAt.set(row.observed_at, row);
+  }
+  // Ingest is source of truth and overwrites overlapping timestamps.
+  for (const row of ingestRows) {
+    byObservedAt.set(row.observed_at, row);
+  }
+  return Array.from(byObservedAt.values()).sort((a, b) =>
+    Date.parse(a.observed_at) - Date.parse(b.observed_at)
+  );
+}
+
 function looksLikeTimeseriesSignatureMismatch(message: string): boolean {
   const normalized = String(message || "").toLowerCase();
   return normalized.includes("could not find the function") &&
     normalized.includes("uk_aq_timeseries_rpc");
 }
 
+function looksLikeHistoryWindowUnavailable(message: string): boolean {
+  const normalized = String(message || "").toLowerCase();
+  return (
+    normalized.includes("could not find the function") &&
+      normalized.includes("rpc_observations_window")
+  ) ||
+    normalized.includes("relation \"uk_aq_history.observations\" does not exist");
+}
+
 function normalizeWindow(value: string | null): string {
   if (!value) {
     return DEFAULT_WINDOW;
   }
-  const trimmed = value.trim();
+  const trimmed = value.trim().toLowerCase();
+  if (trimmed === "30d") {
+    return "31d";
+  }
   return WINDOW_HOURS[trimmed] ? trimmed : DEFAULT_WINDOW;
 }
 

@@ -12,7 +12,7 @@ import math
 import os
 import re
 import threading
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -78,12 +78,14 @@ SCHEDULER_BACKEND_CONNECTOR_ALLOWLIST = {
 CACHE_LOCK = threading.Lock()
 CACHE_STATE: Dict[str, Any] = {"data": None, "generated_at": None}
 R2_CACHE_STATE: Dict[str, Any] = {"usage": None, "error": None, "generated_at": None}
+STORAGE_COVERAGE_CACHE_STATE: Dict[str, Any] = {"rows": None, "next_refresh_at": None}
 DISPATCH_RUNS_STATE: Dict[str, Any] = {
     "rows": [],
     "latest_created_at": None,
 }
 CACHE_TTL_SECONDS = 20
 R2_CACHE_TTL_SECONDS = 60 * 60
+COVERAGE_REFRESH_HOUR_UTC = 5
 UTC_DATETIME_MIN = datetime.min.replace(tzinfo=timezone.utc)
 R2_BYTES_PER_GB = 1024 ** 3
 R2_CLASS_A_ACTION_TYPES = {
@@ -814,6 +816,136 @@ def _normalize_iso_date(value: Any) -> Optional[str]:
     return None
 
 
+def _parse_iso_day(value: Any) -> Optional[date]:
+    normalized = _normalize_iso_date(value)
+    if not normalized:
+        return None
+    try:
+        return datetime.fromisoformat(normalized).date()
+    except ValueError:
+        return None
+
+
+def _latest_oldest_day_by_label(
+    db_size_metrics: Optional[List[Dict[str, Any]]],
+) -> Dict[str, Optional[date]]:
+    latest_rows: Dict[str, Tuple[datetime, Optional[date]]] = {}
+    for row in db_size_metrics or []:
+        label = str((row or {}).get("database_label") or "").strip().lower()
+        if label not in {"ingestdb", "historydb", "aggdailydb"}:
+            continue
+        bucket_hour = _parse_timestamp((row or {}).get("bucket_hour"))
+        recorded_at = _parse_timestamp((row or {}).get("recorded_at"))
+        sample_ts = bucket_hour or recorded_at
+        if sample_ts is None:
+            continue
+        oldest_day = _parse_iso_day((row or {}).get("oldest_observed_at"))
+        current = latest_rows.get(label)
+        if current is None or sample_ts >= current[0]:
+            latest_rows[label] = (sample_ts, oldest_day)
+
+    return {
+        "ingestdb": latest_rows.get("ingestdb", (UTC_DATETIME_MIN, None))[1],
+        "historydb": latest_rows.get("historydb", (UTC_DATETIME_MIN, None))[1],
+        "aggdailydb": latest_rows.get("aggdailydb", (UTC_DATETIME_MIN, None))[1],
+    }
+
+
+def _build_live_storage_coverage_days(
+    now: datetime,
+    db_size_metrics: Optional[List[Dict[str, Any]]],
+    r2_backup_window: Optional[Dict[str, Optional[str]]],
+) -> List[Dict[str, Any]]:
+    now_utc = now.astimezone(timezone.utc)
+    today_utc = now_utc.date()
+    oldest_by_label = _latest_oldest_day_by_label(db_size_metrics)
+
+    ingest_start = oldest_by_label.get("ingestdb")
+    history_start = oldest_by_label.get("historydb")
+    aggdaily_start = oldest_by_label.get("aggdailydb")
+    r2_start = _parse_iso_day((r2_backup_window or {}).get("min_day_utc"))
+    r2_end = _parse_iso_day((r2_backup_window or {}).get("max_day_utc"))
+    if r2_start and r2_end and r2_end < r2_start:
+        r2_start = None
+        r2_end = None
+
+    lower_bounds = [day for day in [ingest_start, history_start, aggdaily_start, r2_start] if day]
+    if not lower_bounds:
+        return []
+    start_day = min(lower_bounds)
+    end_day = max(
+        day for day in [today_utc, r2_end] if day is not None
+    )
+
+    rows: List[Dict[str, Any]] = []
+    cursor = start_day
+    while cursor <= end_day:
+        ingest = bool(ingest_start and ingest_start <= cursor <= today_utc)
+        history = bool(history_start and history_start <= cursor <= today_utc)
+        agg_daily = bool(aggdaily_start and aggdaily_start <= cursor <= today_utc)
+        r2 = bool(r2_start and r2_end and r2_start <= cursor <= r2_end)
+        if ingest:
+            # Operationally these layers are mutually exclusive by day.
+            r2 = False
+
+        rows.append(
+            {
+                "date": cursor.isoformat(),
+                "ingest": ingest,
+                "history": history,
+                "aggDaily": agg_daily,
+                "r2": r2,
+                "isToday": cursor == today_utc,
+            }
+        )
+        cursor += timedelta(days=1)
+
+    return rows
+
+
+def _next_storage_coverage_refresh(now_utc: datetime) -> datetime:
+    refresh_today = datetime(
+        now_utc.year,
+        now_utc.month,
+        now_utc.day,
+        COVERAGE_REFRESH_HOUR_UTC,
+        0,
+        0,
+        tzinfo=timezone.utc,
+    )
+    if now_utc < refresh_today:
+        return refresh_today
+    return refresh_today + timedelta(days=1)
+
+
+def _get_storage_coverage_days_cached(
+    now: datetime,
+    db_size_metrics: Optional[List[Dict[str, Any]]],
+    r2_backup_window: Optional[Dict[str, Optional[str]]],
+) -> List[Dict[str, Any]]:
+    now_utc = now.astimezone(timezone.utc)
+    with CACHE_LOCK:
+        cached_rows = STORAGE_COVERAGE_CACHE_STATE.get("rows")
+        next_refresh_at = STORAGE_COVERAGE_CACHE_STATE.get("next_refresh_at")
+        if (
+            isinstance(cached_rows, list)
+            and isinstance(next_refresh_at, datetime)
+            and now_utc < next_refresh_at
+        ):
+            return cached_rows
+
+    rows = _build_live_storage_coverage_days(
+        now=now_utc,
+        db_size_metrics=db_size_metrics,
+        r2_backup_window=r2_backup_window,
+    )
+    next_refresh_at = _next_storage_coverage_refresh(now_utc)
+    with CACHE_LOCK:
+        STORAGE_COVERAGE_CACHE_STATE["rows"] = rows
+        STORAGE_COVERAGE_CACHE_STATE["next_refresh_at"] = next_refresh_at
+    return rows
+
+
 def _fetch_r2_backup_window(
     base_url: str,
     headers: Dict[str, str],
@@ -1475,6 +1607,12 @@ def _build_dashboard(
         if isinstance(latest_created_at, datetime):
             next_dispatch_cursor = _to_postgrest_ts(latest_created_at)
 
+    storage_coverage_days = _get_storage_coverage_days_cached(
+        now=now,
+        db_size_metrics=db_size_metrics,
+        r2_backup_window=r2_backup_window,
+    )
+
     return {
         "project_ref": project_ref,
         "generated_at": now.isoformat().replace("+00:00", "Z"),
@@ -1486,6 +1624,8 @@ def _build_dashboard(
         "r2_usage_error": r2_usage_error,
         "r2_backup_window": r2_backup_window,
         "r2_backup_window_error": r2_backup_window_error,
+        "storage_coverage_source": "live",
+        "storage_coverage_days": storage_coverage_days,
         "pollutants": pollutants_payload,
         "dispatch_runs": dispatch_runs,
         "dispatcher_settings": dispatcher_settings,
