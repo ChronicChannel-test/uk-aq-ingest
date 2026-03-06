@@ -793,6 +793,21 @@
         return `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()}`;
       }
 
+      function parseUtcDayMs(value) {
+        if (!value) return null;
+        const raw = String(value).trim();
+        const dayMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (dayMatch) {
+          const year = Number(dayMatch[1]);
+          const month = Number(dayMatch[2]) - 1;
+          const day = Number(dayMatch[3]);
+          return Date.UTC(year, month, day);
+        }
+        const parsed = new Date(value);
+        if (Number.isNaN(parsed.getTime())) return null;
+        return Date.UTC(parsed.getUTCFullYear(), parsed.getUTCMonth(), parsed.getUTCDate());
+      }
+
       function formatDbOldestDayLabel(value) {
         const formatted = formatDateDdMmYyyy(value);
         if (!formatted) {
@@ -1609,7 +1624,25 @@
         const backupWindowMax = formatDateDdMmYyyy(
           r2BackupWindowObject ? r2BackupWindowObject.max_day_utc : null,
         ) || "--/--/----";
-        const backupWindowLabel = `CLOUDFLARE R2 BACKUP WINDOW - ${backupWindowMin} -> ${backupWindowMax}`;
+        const backupWindowMinDayMs = parseUtcDayMs(
+          r2BackupWindowObject ? r2BackupWindowObject.min_day_utc : null,
+        );
+        const backupWindowMaxDayMs = parseUtcDayMs(
+          r2BackupWindowObject ? r2BackupWindowObject.max_day_utc : null,
+        );
+        let backupWindowDays = null;
+        let backupWindowYears = null;
+        if (
+          backupWindowMinDayMs !== null &&
+          backupWindowMaxDayMs !== null &&
+          backupWindowMaxDayMs >= backupWindowMinDayMs
+        ) {
+          backupWindowDays = Math.floor(
+            (backupWindowMaxDayMs - backupWindowMinDayMs) / (24 * 60 * 60 * 1000),
+          ) + 1;
+          backupWindowYears = backupWindowDays / 365.25;
+        }
+        const backupWindowLabel = `CLOUDFLARE R2 BACKUP WINDOW - ${backupWindowMin} -> ${backupWindowMax} - ${backupWindowDays !== null ? backupWindowDays : "n/a"} Days - ${backupWindowYears !== null ? backupWindowYears.toFixed(1) : "n/a"} Years`;
         const getNextR2LimitsResetDate = () => {
           const now = new Date();
           let target = new Date(now.getFullYear(), now.getMonth(), 24);
