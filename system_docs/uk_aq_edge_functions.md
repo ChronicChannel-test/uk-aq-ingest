@@ -450,31 +450,32 @@ curl "https://YOUR_PROJECT.supabase.co/functions/v1/uk_aq_latest?region=London&p
     - `window` (`12h|24h|7d|31d`; default `24h` when no selector is provided)
     - `days` (positive integer, max controlled by `UK_AQ_TIMESERIES_MAX_WINDOW_DAYS`, default `366`)
     - `start` + `end` (ISO-8601 datetimes), or `start_utc` + `end_utc`
-  - optional response controls: `limit` (positive integer), `since` (ISO-8601), `include_status` (`true|false`, default `true`), `format` (`objects|compact`, default `objects`)
+  - optional response controls: `limit` (positive integer), `since` (ISO-8601), `format` (`objects|compact`, default `objects`)
 - Validation:
   - only one range selector is allowed (`window` or `days` or `start/end`); mixed selectors return `400`.
   - invalid `window`, invalid datetime, or invalid `days` return `400`.
   - for datetime mode, if `end` is in the future, the effective end is clamped to current UTC time.
 - Returns:
-  - `data_format=objects`: row objects (`observed_at`, `value`, optional `status`)
+  - `data_format=objects`: row objects (`observed_at`, `value`)
   - `data_format=compact`: positional arrays with `columns` metadata (for lower payload size)
   - plus optional `guideline` (AQG_2021 24h) if found
 - Notes: when `limit` is omitted, all rows in the requested window are returned (no default cap).
 - Read path:
   - request interval is split at `now - 7 days` (ingest is source of truth for recent overlap).
   - recent overlap is read from ingest RPC `uk_aq_timeseries_rpc`.
-  - older overlap is read from `rpc_observations_window`.
+  - older overlap is read directly from history project PostgREST (`HISTORY_SUPABASE_URL/rest/v1/observations`, schema `uk_aq_history`).
+  - if direct history read is unavailable, older overlap is skipped and the response remains ingest-only.
   - rows are merged on `observed_at` with ingest rows overriding overlaps.
 - Request flow (exact):
   1. Website calls Cloudflare cache proxy route `/api/aq/timeseries`.
   2. Cache proxy maps that route to one upstream edge function: `uk_aq_timeseries`.
   3. `uk_aq_timeseries` calls ingest PostgREST (`SUPABASE_URL/rest/v1`).
-  4. Edge function calls `uk_aq_timeseries_rpc` for ingest overlap and `rpc_observations_window` for any older overlap.
+  4. Edge function calls `uk_aq_timeseries_rpc` for ingest overlap and reads history rows from history project PostgREST for any older overlap.
   5. Edge function merges rows, returns one payload to Cloudflare, Cloudflare returns one payload to website.
 - Important architecture note:
   - Cloudflare worker does not directly call both DB projects.
-  - Cloudflare calls one edge function (`uk_aq_timeseries`), and that edge function performs the DB RPC reads.
-  - If `rpc_observations_window` is unavailable in the ingest project, endpoint falls back to ingest-only output (no hard failure).
+  - Cloudflare calls one edge function (`uk_aq_timeseries`), and that edge function performs the DB reads.
+  - If history direct-read config is unavailable, endpoint falls back to ingest-only output (no hard failure).
 - Conditional requests: supports `If-None-Match`; returns `304 Not Modified` with `ETag` when payload is unchanged.
 - Cache-Control: success responses use `public, max-age=60, s-maxage=300, stale-while-revalidate=300, stale-if-error=86400`; errors use `no-store`.
 - Egress observability: sampled success responses plus all `304`/`4xx`/`5xx`
@@ -545,6 +546,8 @@ Dropbox folders:
 Optional:
 - `UK_AQ_CORE_SCHEMA` (defaults to `uk_aq_core`; used for PostgREST profile headers)
 - `UK_AQ_RAW_SCHEMA` (defaults to `uk_aq_raw`; used for raw tables like `error_logs` and checkpoint tables)
+- `HISTORY_SCHEMA` / `HISTORY_DB_SCHEMA` (optional; default `uk_aq_history`; schema used by `uk_aq_timeseries` for direct history reads)
+- `UK_AQ_TIMESERIES_HISTORY_PAGE_SIZE` (optional; default `1000`; per-page row fetch size for `uk_aq_timeseries` direct history reads, capped at `5000`)
 - `HISTORY_OUTBOX_CLOUD_RUN_MAX_BATCHES` (optional; defaults to `30`; Cloud Run outbox batches per run)
 - `HISTORY_OUTBOX_CLOUD_RUN_CLAIM_BATCH_LIMIT` (optional; defaults to `20`; outbox claim size per batch in Cloud Run)
 - `HISTORY_OUTBOX_CLOUD_RUN_BUDGET_SECONDS` (optional; defaults to `540`; Cloud Run runtime budget)

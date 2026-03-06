@@ -1,7 +1,10 @@
 //trigger deploy 2026-02-09 13:34
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import "../_shared/fetch_egress_patch.ts";
-import { cacheControlHeaders, CACHE_CONTROL_SUCCESS_SMAXAGE_300 } from "../_shared/cache.ts";
+import {
+  CACHE_CONTROL_SUCCESS_SMAXAGE_300,
+  cacheControlHeaders,
+} from "../_shared/cache.ts";
 import { createWeakEtag, ifNoneMatchMatches } from "../_shared/etag.ts";
 import { logEndpointEgress } from "../_shared/egress_metrics.ts";
 import { validateWorkerUpstreamAuth } from "../_shared/worker_auth.ts";
@@ -24,19 +27,34 @@ const MAX_WINDOW_DAYS = parsePositiveInteger(
 ) ?? 366;
 const INGEST_SOURCE_OF_TRUTH_HOURS = 24 * 7;
 
-const SUPABASE_URL = Deno.env.get("SUPABASE_URL")
-  ?? Deno.env.get("SB_SUPABASE_URL")
-  ?? "";
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ??
+  Deno.env.get("SB_SUPABASE_URL") ??
+  "";
 const SB_SECRET_KEY = Deno.env.get("SB_SECRET_KEY") ?? "";
 const SUPABASE_PRIVILEGED_KEY = SB_SECRET_KEY;
-const UK_AQ_CORE_SCHEMA = Deno.env.get("UK_AQ_CORE_SCHEMA")
-  ?? "uk_aq_core";
-const UK_AQ_PUBLIC_SCHEMA = Deno.env.get("UK_AQ_PUBLIC_SCHEMA")
-  ?? "uk_aq_public";
+const HISTORY_SUPABASE_URL = Deno.env.get("HISTORY_SUPABASE_URL") ??
+  "";
+const HISTORY_SECRET_KEY = Deno.env.get("HISTORY_SECRET_KEY") ?? "";
+const UK_AQ_CORE_SCHEMA = Deno.env.get("UK_AQ_CORE_SCHEMA") ??
+  "uk_aq_core";
+const UK_AQ_PUBLIC_SCHEMA = Deno.env.get("UK_AQ_PUBLIC_SCHEMA") ??
+  "uk_aq_public";
+const HISTORY_SCHEMA = Deno.env.get("HISTORY_SCHEMA") ??
+  Deno.env.get("HISTORY_DB_SCHEMA") ??
+  "uk_aq_history";
+const HISTORY_PAGE_SIZE = Math.min(
+  5000,
+  Math.max(
+    100,
+    parsePositiveInteger(Deno.env.get("UK_AQ_TIMESERIES_HISTORY_PAGE_SIZE")) ??
+      1000,
+  ),
+);
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, if-none-match",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type, if-none-match",
   "Access-Control-Allow-Methods": "GET, OPTIONS",
   "Access-Control-Expose-Headers": "ETag",
 };
@@ -44,12 +62,28 @@ const CORS_HEADERS = {
 const REST_BASE_URL = SUPABASE_URL
   ? `${SUPABASE_URL.replace(/\/$/, "")}/rest/v1`
   : "";
+const HISTORY_REST_BASE_URL = HISTORY_SUPABASE_URL
+  ? `${HISTORY_SUPABASE_URL.replace(/\/$/, "")}/rest/v1`
+  : "";
 
-function postgrestHeaders(schema = UK_AQ_CORE_SCHEMA): Record<string, string> {
+type PostgrestQueryParams = Record<string, string | string[]>;
+
+type PostgrestRequestConfig = {
+  baseUrl?: string;
+  apiKey?: string;
+  caller?: string;
+};
+
+function postgrestHeaders(
+  apiKey: string,
+  schema = UK_AQ_CORE_SCHEMA,
+  caller = "uk_aq_timeseries",
+): Record<string, string> {
   const headers: Record<string, string> = {
-    apikey: SUPABASE_PRIVILEGED_KEY,
+    apikey: apiKey,
+    Authorization: `Bearer ${apiKey}`,
     "Content-Type": "application/json",
-    "x-ukaq-egress-caller": "uk_aq_timeseries",
+    "x-ukaq-egress-caller": caller,
   };
   if (schema && schema !== "public") {
     headers["Accept-Profile"] = schema;
@@ -61,28 +95,46 @@ function postgrestHeaders(schema = UK_AQ_CORE_SCHEMA): Record<string, string> {
 async function postgrestRequest<T>(
   method: string,
   path: string,
-  params?: Record<string, string>,
+  params?: PostgrestQueryParams,
   schema?: string,
   body?: unknown,
+  config?: PostgrestRequestConfig,
 ): Promise<{ data: T | null; error: { message: string } | null }> {
-  if (!REST_BASE_URL || !SUPABASE_PRIVILEGED_KEY) {
-    return { data: null, error: { message: "Missing SUPABASE_URL or SB_SECRET_KEY." } };
+  const baseUrl = config?.baseUrl ?? REST_BASE_URL;
+  const apiKey = config?.apiKey ?? SUPABASE_PRIVILEGED_KEY;
+  const caller = config?.caller ?? "uk_aq_timeseries";
+  if (!baseUrl || !apiKey) {
+    return {
+      data: null,
+      error: { message: "Missing SUPABASE_URL or SB_SECRET_KEY." },
+    };
   }
-  const url = new URL(`${REST_BASE_URL}/${path}`);
+  const url = new URL(`${baseUrl}/${path}`);
   for (const [key, value] of Object.entries(params ?? {})) {
     if (value !== undefined && value !== null) {
-      url.searchParams.set(key, String(value));
+      if (Array.isArray(value)) {
+        for (const part of value) {
+          if (part !== undefined && part !== null) {
+            url.searchParams.append(key, String(part));
+          }
+        }
+      } else {
+        url.searchParams.set(key, String(value));
+      }
     }
   }
   const resp = await fetch(url.toString(), {
     method,
-    headers: postgrestHeaders(schema),
+    headers: postgrestHeaders(apiKey, schema, caller),
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const contentType = resp.headers.get("content-type") ?? "";
-  const payload: any = contentType.includes("application/json") ? await resp.json() : await resp.text();
+  const payload: any = contentType.includes("application/json")
+    ? await resp.json()
+    : await resp.text();
   if (!resp.ok) {
-    const message = payload?.message || payload?.error_description || payload?.error || resp.statusText;
+    const message = payload?.message || payload?.error_description ||
+      payload?.error || resp.statusText;
     return { data: null, error: { message: String(message) } };
   }
   return { data: payload as T, error: null };
@@ -102,7 +154,10 @@ serve(async (req) => {
   if (req.method !== "GET") {
     return new Response("Method not allowed", {
       status: 405,
-      headers: { ...CORS_HEADERS, ...cacheControlHeaders(405, CACHE_CONTROL_SUCCESS_SMAXAGE_300) },
+      headers: {
+        ...CORS_HEADERS,
+        ...cacheControlHeaders(405, CACHE_CONTROL_SUCCESS_SMAXAGE_300),
+      },
     });
   }
   const startedAtMs = Date.now();
@@ -116,17 +171,23 @@ serve(async (req) => {
     });
   }
   if (!SUPABASE_URL || !SUPABASE_PRIVILEGED_KEY) {
-    return await finish(json({ error: "Missing SUPABASE_URL or SB_SECRET_KEY." }, 500), {
-      error_type: "missing_env",
-    });
+    return await finish(
+      json({ error: "Missing SUPABASE_URL or SB_SECRET_KEY." }, 500),
+      {
+        error_type: "missing_env",
+      },
+    );
   }
 
   const url = new URL(req.url);
   const timeseriesId = parseId(url.searchParams.get("timeseries_id"));
   if (!timeseriesId) {
-    return await finish(json({ error: "Missing or invalid timeseries_id." }, 400), {
-      error_type: "invalid_timeseries_id",
-    });
+    return await finish(
+      json({ error: "Missing or invalid timeseries_id." }, 400),
+      {
+        error_type: "invalid_timeseries_id",
+      },
+    );
   }
   const rawWindow = url.searchParams.get("window");
   const rawDays = url.searchParams.get("days");
@@ -155,33 +216,36 @@ serve(async (req) => {
   const rawLimit = url.searchParams.get("limit");
   const limit = parseOptionalLimit(rawLimit);
   if (rawLimit !== null && limit === null) {
-    return await finish(json({ error: "Invalid limit. Provide a positive integer or omit limit." }, 400), {
-      error_type: "invalid_limit",
-    });
+    return await finish(
+      json({
+        error: "Invalid limit. Provide a positive integer or omit limit.",
+      }, 400),
+      {
+        error_type: "invalid_limit",
+      },
+    );
   }
   const rawSince = url.searchParams.get("since");
   const since = rawSince === null ? null : normalizeTimestamp(rawSince);
   if (rawSince !== null && since === null) {
     return await finish(
-      json({ error: "Invalid since timestamp. Provide ISO-8601 datetime (e.g. 2026-02-07T10:30:00Z)." }, 400),
+      json({
+        error:
+          "Invalid since timestamp. Provide ISO-8601 datetime (e.g. 2026-02-07T10:30:00Z).",
+      }, 400),
       { error_type: "invalid_since" },
     );
   }
   const rawFormat = url.searchParams.get("format");
   const responseFormat = normalizeFormat(rawFormat);
   if (rawFormat !== null && responseFormat === null) {
-    return await finish(json({ error: "Invalid format. Use 'objects' or 'compact'." }, 400), {
-      error_type: "invalid_format",
-    });
+    return await finish(
+      json({ error: "Invalid format. Use 'objects' or 'compact'." }, 400),
+      {
+        error_type: "invalid_format",
+      },
+    );
   }
-  const rawIncludeStatus = url.searchParams.get("include_status");
-  const includeStatusParsed = parseBooleanParam(rawIncludeStatus);
-  if (rawIncludeStatus !== null && includeStatusParsed === null) {
-    return await finish(json({ error: "Invalid include_status. Use true/false." }, 400), {
-      error_type: "invalid_include_status",
-    });
-  }
-  const includeStatus = includeStatusParsed ?? true;
   const format = responseFormat ?? DEFAULT_FORMAT;
   const ifNoneMatch = req.headers.get("if-none-match");
   const requestFields = {
@@ -192,7 +256,6 @@ serve(async (req) => {
     has_start_end: range.mode === "datetime",
     limit: limit ?? null,
     has_since: Boolean(since),
-    include_status: includeStatus,
     format,
     has_if_none_match: Boolean(ifNoneMatch),
   };
@@ -202,14 +265,13 @@ serve(async (req) => {
       timeseriesId,
       limit,
       since,
-      includeStatus,
       requestStart: range.start,
       requestEnd: range.end,
       now,
     });
     const rows = stitched.rows;
     const nextSince = maxObservedTimestamp(rows, since);
-    const columns = timeseriesColumns(includeStatus);
+    const columns = timeseriesColumns();
     const payload = {
       timeseries_id: timeseriesId,
       window: range.windowLabel,
@@ -218,12 +280,11 @@ serve(async (req) => {
       end: range.end.toISOString(),
       since,
       next_since: nextSince,
-      include_status: includeStatus,
       data_format: format,
       columns,
       count: rows.length,
       guideline: stitched.guideline,
-      data: shapeTimeseriesData(rows, format, includeStatus),
+      data: shapeTimeseriesData(rows, format),
     };
     const etag = await createWeakEtag({
       endpoint: "uk_aq_timeseries",
@@ -231,7 +292,10 @@ serve(async (req) => {
       payload: etagPayload(payload),
     });
     if (ifNoneMatchMatches(ifNoneMatch, etag)) {
-      return await finish(notModified(etag), { ...requestFields, result: "not_modified" });
+      return await finish(notModified(etag), {
+        ...requestFields,
+        result: "not_modified",
+      });
     }
     return await finish(json(payload, 200, { ETag: etag }), {
       ...requestFields,
@@ -265,14 +329,12 @@ type TimeseriesRpcCallOptions = {
   windowLabel: NamedWindowLabel;
   limit: number | null;
   since: string | null;
-  includeStatus: boolean;
 };
 
 type StitchedFetchOptions = {
   timeseriesId: number;
   limit: number | null;
   since: string | null;
-  includeStatus: boolean;
   requestStart: Date;
   requestEnd: Date;
   now: Date;
@@ -285,7 +347,7 @@ type StitchedFetchResult = {
 };
 
 async function callTimeseriesRpc(
-  { timeseriesId, windowLabel, limit, since, includeStatus }: TimeseriesRpcCallOptions,
+  { timeseriesId, windowLabel, limit, since }: TimeseriesRpcCallOptions,
 ) {
   const withStatusArg = await postgrestRequest<any[]>(
     "POST",
@@ -297,7 +359,7 @@ async function callTimeseriesRpc(
       window_label: windowLabel,
       limit_rows: limit,
       since_ts: since,
-      include_status: includeStatus,
+      include_status: false,
     },
   );
   if (!withStatusArg.error) {
@@ -325,7 +387,6 @@ async function fetchTimeseriesRowsStitched(
     timeseriesId,
     limit,
     since,
-    includeStatus,
     requestStart,
     requestEnd,
     now,
@@ -363,7 +424,6 @@ async function fetchTimeseriesRowsStitched(
     windowLabel: ingestWindowLabel,
     limit: ingestLimit,
     since: ingestSince,
-    includeStatus,
   });
   if (error) {
     throw new Error(error.message);
@@ -374,7 +434,6 @@ async function fetchTimeseriesRowsStitched(
   const ingestRows = shouldFetchIngestRows
     ? normalizeTimeseriesRows(
       Array.isArray(ingestRow?.data) ? ingestRow.data : [],
-      includeStatus,
     )
     : [];
 
@@ -384,16 +443,17 @@ async function fetchTimeseriesRowsStitched(
       timeseriesId,
       startUtc: historyStart.toISOString(),
       endUtc: historyEnd.toISOString(),
-      includeStatus,
+      limit,
     });
     historyRows = historyWindow.rows;
   }
 
-  const source: StitchedFetchResult["source"] = shouldFetchHistory && shouldFetchIngestRows
-    ? "ingest_history_stitched"
-    : shouldFetchHistory
-    ? "history_only"
-    : "ingest_only";
+  const source: StitchedFetchResult["source"] =
+    shouldFetchHistory && shouldFetchIngestRows
+      ? "ingest_history_stitched"
+      : shouldFetchHistory
+      ? "history_only"
+      : "ingest_only";
 
   return {
     guideline,
@@ -424,36 +484,88 @@ type HistoryWindowCallOptions = {
   timeseriesId: number;
   startUtc: string;
   endUtc: string;
-  includeStatus: boolean;
+  limit: number | null;
 };
 
 async function callHistoryObservationsWindow(
-  { timeseriesId, startUtc, endUtc, includeStatus }: HistoryWindowCallOptions,
+  { timeseriesId, startUtc, endUtc, limit }: HistoryWindowCallOptions,
 ): Promise<{ rows: TimeseriesRow[] }> {
-  const historyWindow = await postgrestRequest<any[]>(
-    "POST",
-    "rpc/rpc_observations_window",
-    undefined,
-    UK_AQ_PUBLIC_SCHEMA,
-    {
-      start_utc: startUtc,
-      end_utc: endUtc,
-      timeseries_id: timeseriesId,
-      station_id: null,
-    },
-  );
-  if (historyWindow.error) {
-    if (looksLikeHistoryWindowUnavailable(historyWindow.error.message)) {
-      // Keep endpoint available even if the optional history bridge RPC is unavailable.
+  if (HISTORY_REST_BASE_URL && HISTORY_SECRET_KEY) {
+    const historyRows = await fetchHistoryRowsDirect({
+      timeseriesId,
+      startUtc,
+      endUtc,
+      limit,
+    });
+    if (historyRows === null) {
       return { rows: [] };
     }
-    throw new Error(`history window fetch failed: ${historyWindow.error.message}`);
+    return { rows: historyRows };
   }
-  const rows = normalizeTimeseriesRows(
-    Array.isArray(historyWindow.data) ? historyWindow.data : [],
-    includeStatus,
-  );
-  return { rows };
+  return { rows: [] };
+}
+
+async function fetchHistoryRowsDirect(
+  { timeseriesId, startUtc, endUtc, limit }: HistoryWindowCallOptions,
+): Promise<TimeseriesRow[] | null> {
+  const select = "observed_at,value";
+  const cappedLimit = limit === null ? null : Math.max(1, limit);
+  const rows: unknown[] = [];
+  let offset = 0;
+
+  while (true) {
+    const remaining = cappedLimit === null ? null : (cappedLimit - rows.length);
+    if (remaining !== null && remaining <= 0) {
+      break;
+    }
+    const pageLimit = remaining === null
+      ? HISTORY_PAGE_SIZE
+      : Math.min(HISTORY_PAGE_SIZE, remaining);
+    if (pageLimit <= 0) {
+      break;
+    }
+
+    const historyResp = await postgrestRequest<any[]>(
+      "GET",
+      "observations",
+      {
+        select,
+        timeseries_id: `eq.${timeseriesId}`,
+        observed_at: [
+          `gte.${startUtc}`,
+          `lt.${endUtc}`,
+        ],
+        order: "observed_at.asc",
+        limit: String(pageLimit),
+        offset: String(offset),
+      },
+      HISTORY_SCHEMA,
+      undefined,
+      {
+        baseUrl: HISTORY_REST_BASE_URL,
+        apiKey: HISTORY_SECRET_KEY,
+        caller: "uk_aq_timeseries_history",
+      },
+    );
+    if (historyResp.error) {
+      if (looksLikeHistoryDirectQueryUnavailable(historyResp.error.message)) {
+        return null;
+      }
+      throw new Error(
+        `history direct fetch failed: ${historyResp.error.message}`,
+      );
+    }
+
+    const chunk = Array.isArray(historyResp.data) ? historyResp.data : [];
+    rows.push(...chunk);
+
+    if (chunk.length < pageLimit) {
+      break;
+    }
+    offset += chunk.length;
+  }
+
+  return normalizeTimeseriesRows(rows);
 }
 
 function finalizeStitchedRows(
@@ -470,7 +582,8 @@ function finalizeStitchedRows(
 
   rows = rows.filter((row) => {
     const observedMs = Date.parse(row.observed_at);
-    return Number.isFinite(observedMs) && observedMs >= startMs && observedMs <= endMs;
+    return Number.isFinite(observedMs) && observedMs >= startMs &&
+      observedMs <= endMs;
   });
 
   if (since) {
@@ -510,13 +623,11 @@ function looksLikeTimeseriesSignatureMismatch(message: string): boolean {
     normalized.includes("uk_aq_timeseries_rpc");
 }
 
-function looksLikeHistoryWindowUnavailable(message: string): boolean {
+function looksLikeHistoryDirectQueryUnavailable(message: string): boolean {
   const normalized = String(message || "").toLowerCase();
-  return (
-    normalized.includes("could not find the function") &&
-      normalized.includes("rpc_observations_window")
-  ) ||
-    normalized.includes("relation \"uk_aq_history.observations\" does not exist");
+  return normalized.includes("could not find the table") ||
+    normalized.includes("schema must be one of the following") ||
+    normalized.includes("permission denied");
 }
 
 type WindowMode = "window" | "days" | "datetime";
@@ -554,12 +665,18 @@ function resolveRequestedRange(
   const hasDateTime = startToken !== null || endToken !== null;
 
   if (hasDateTime && (startToken === null || endToken === null)) {
-    return { ok: false, error: "Provide both start and end (or start_utc and end_utc)." };
+    return {
+      ok: false,
+      error: "Provide both start and end (or start_utc and end_utc).",
+    };
   }
 
   const modeCount = Number(hasWindow) + Number(hasDays) + Number(hasDateTime);
   if (modeCount > 1) {
-    return { ok: false, error: "Use only one range selector: window, days, or start/end." };
+    return {
+      ok: false,
+      error: "Use only one range selector: window, days, or start/end.",
+    };
   }
 
   if (hasWindow) {
@@ -586,7 +703,10 @@ function resolveRequestedRange(
       return { ok: false, error: "Invalid days. Provide a positive integer." };
     }
     if (parsedDays > MAX_WINDOW_DAYS) {
-      return { ok: false, error: `days exceeds maximum supported range (${MAX_WINDOW_DAYS}).` };
+      return {
+        ok: false,
+        error: `days exceeds maximum supported range (${MAX_WINDOW_DAYS}).`,
+      };
     }
     return {
       ok: true,
@@ -604,7 +724,10 @@ function resolveRequestedRange(
     const startIso = normalizeTimestamp(startToken as string);
     const endIso = normalizeTimestamp(endToken as string);
     if (!startIso || !endIso) {
-      return { ok: false, error: "Invalid start/end. Provide ISO-8601 datetimes." };
+      return {
+        ok: false,
+        error: "Invalid start/end. Provide ISO-8601 datetimes.",
+      };
     }
     const start = new Date(startIso);
     const requestedEnd = new Date(endIso);
@@ -615,11 +738,18 @@ function resolveRequestedRange(
       ? new Date(now.getTime())
       : requestedEnd;
     if (end.getTime() <= start.getTime()) {
-      return { ok: false, error: "start must be before the effective end time." };
+      return {
+        ok: false,
+        error: "start must be before the effective end time.",
+      };
     }
     const spanDays = (end.getTime() - start.getTime()) / DAY_MS;
     if (spanDays > MAX_WINDOW_DAYS) {
-      return { ok: false, error: `Requested span exceeds maximum supported range (${MAX_WINDOW_DAYS} days).` };
+      return {
+        ok: false,
+        error:
+          `Requested span exceeds maximum supported range (${MAX_WINDOW_DAYS} days).`,
+      };
     }
     return {
       ok: true,
@@ -681,22 +811,11 @@ function normalizeFormat(value: string | null): "objects" | "compact" | null {
   if (normalized === "objects" || normalized === "object") {
     return "objects";
   }
-  if (normalized === "compact" || normalized === "array" || normalized === "arrays") {
+  if (
+    normalized === "compact" || normalized === "array" ||
+    normalized === "arrays"
+  ) {
     return "compact";
-  }
-  return null;
-}
-
-function parseBooleanParam(value: string | null): boolean | null {
-  if (value === null) {
-    return null;
-  }
-  const normalized = value.trim().toLowerCase();
-  if (["1", "true", "yes", "on"].includes(normalized)) {
-    return true;
-  }
-  if (["0", "false", "no", "off"].includes(normalized)) {
-    return false;
   }
   return null;
 }
@@ -732,7 +851,10 @@ function normalizeTimestamp(value: string): string | null {
   return parsed.toISOString();
 }
 
-function maxObservedTimestamp(rows: any[], fallback: string | null): string | null {
+function maxObservedTimestamp(
+  rows: any[],
+  fallback: string | null,
+): string | null {
   let best = fallback ? normalizeTimestamp(fallback) : null;
   let bestMs = best ? Date.parse(best) : Number.NEGATIVE_INFINITY;
   rows.forEach((row) => {
@@ -756,16 +878,16 @@ function maxObservedTimestamp(rows: any[], fallback: string | null): string | nu
 type TimeseriesRow = {
   observed_at: string;
   value: number | null;
-  status?: string | null;
 };
 
 function normalizeTimeseriesRows(
   rows: unknown[],
-  includeStatus: boolean,
 ): TimeseriesRow[] {
   const normalizedRows: TimeseriesRow[] = [];
   for (const row of rows) {
-    const observedAt = normalizeTimestamp(String((row as any)?.observed_at ?? ""));
+    const observedAt = normalizeTimestamp(
+      String((row as any)?.observed_at ?? ""),
+    );
     if (!observedAt) {
       continue;
     }
@@ -775,37 +897,30 @@ function normalizeTimeseriesRows(
       : Number(rawValue);
     const baseRow: TimeseriesRow = {
       observed_at: observedAt,
-      value: parsedValue === null || Number.isFinite(parsedValue) ? parsedValue : null,
+      value: parsedValue === null || Number.isFinite(parsedValue)
+        ? parsedValue
+        : null,
     };
-    if (includeStatus) {
-      baseRow.status = (row as any)?.status == null ? null : String((row as any).status);
-    }
     normalizedRows.push(baseRow);
   }
   return normalizedRows;
 }
 
-function timeseriesColumns(includeStatus: boolean): string[] {
-  return includeStatus ? ["observed_at", "value", "status"] : ["observed_at", "value"];
+function timeseriesColumns(): string[] {
+  return ["observed_at", "value"];
 }
 
 function shapeTimeseriesData(
   rows: TimeseriesRow[],
   format: "objects" | "compact",
-  includeStatus: boolean,
 ): unknown[] {
   if (format === "compact") {
-    return rows.map((row) =>
-      includeStatus
-        ? [row.observed_at, row.value, row.status ?? null]
-        : [row.observed_at, row.value]
-    );
+    return rows.map((row) => [row.observed_at, row.value]);
   }
-  return rows.map((row) =>
-    includeStatus
-      ? { observed_at: row.observed_at, value: row.value, status: row.status ?? null }
-      : { observed_at: row.observed_at, value: row.value }
-  );
+  return rows.map((row) => ({
+    observed_at: row.observed_at,
+    value: row.value,
+  }));
 }
 
 function etagPayload(payload: {
@@ -813,7 +928,6 @@ function etagPayload(payload: {
   window: string;
   since: string | null;
   next_since: string | null;
-  include_status: boolean;
   data_format: string;
   columns: string[];
   count: number;
@@ -825,7 +939,6 @@ function etagPayload(payload: {
     window: payload.window,
     since: payload.since,
     next_since: payload.next_since,
-    include_status: payload.include_status,
     data_format: payload.data_format,
     columns: payload.columns,
     count: payload.count,
@@ -834,7 +947,11 @@ function etagPayload(payload: {
   };
 }
 
-function json(payload: unknown, status = 200, extraHeaders: Record<string, string> = {}): Response {
+function json(
+  payload: unknown,
+  status = 200,
+  extraHeaders: Record<string, string> = {},
+): Response {
   return new Response(JSON.stringify(payload), {
     status,
     headers: {
