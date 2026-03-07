@@ -456,10 +456,18 @@ def load_source_metadata(
 
 
 class PostgrestClient:
-    def __init__(self, *, base_url: str, secret_key: str, caller: str) -> None:
+    def __init__(
+        self,
+        *,
+        base_url: str,
+        secret_key: str,
+        caller: str,
+        project_label: str = "destination",
+    ) -> None:
         self.base_url = base_url.rstrip("/")
         self.secret_key = secret_key
         self.caller = caller
+        self.project_label = project_label
 
     def _headers(self, profile: str, extra: Optional[Dict[str, str]] = None) -> Dict[str, str]:
         headers: Dict[str, str] = {
@@ -503,7 +511,7 @@ class PostgrestClient:
                 raise SyncError(
                     "Destination project API does not expose schema "
                     f"'{CORE_SCHEMA}'. Add '{CORE_SCHEMA}' to Supabase API "
-                    "Exposed schemas for the destination (agg_daily) project, "
+                    f"Exposed schemas for the destination ({self.project_label}) project, "
                     "then re-run this workflow."
                 )
             raise SyncError(
@@ -755,11 +763,13 @@ def main() -> int:
         base_url=src_url,
         secret_key=src_key,
         caller=f"{caller_prefix}_source",
+        project_label="source",
     )
     dst_client = PostgrestClient(
         base_url=dst_url,
         secret_key=dst_key,
         caller=f"{caller_prefix}_dest",
+        project_label=sync_target_label,
     )
 
     source_columns, source_pk, source_meta_mode = load_source_metadata(
