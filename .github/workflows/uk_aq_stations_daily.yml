@@ -383,5 +383,18 @@ jobs:
           SRC_SECRET_KEY: ${{ secrets.SB_SECRET_KEY }}
           DST_SUPABASE_URL: ${{ vars.AGGDAILY_SUPABASE_URL }}
           DST_SECRET_KEY: ${{ secrets.AGGDAILY_SECRET_KEY }}
+          SYNC_TARGET_LABEL: aggdailydb
+          SYNC_CALLER_PREFIX: stations_daily_sync_aggdaily
+        run: |
+          python3 scripts/stations_daily/sync_aggdaily_uk_aq_core.py
+
+      - name: Sync uk_aq_core reference tables to History DB
+        env:
+          SRC_SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          SRC_SECRET_KEY: ${{ secrets.SB_SECRET_KEY }}
+          DST_SUPABASE_URL: ${{ vars.HISTORY_SUPABASE_URL }}
+          DST_SECRET_KEY: ${{ secrets.HISTORY_SECRET_KEY }}
+          SYNC_TARGET_LABEL: historydb
+          SYNC_CALLER_PREFIX: stations_daily_sync_history
         run: |
           python3 scripts/stations_daily/sync_aggdaily_uk_aq_core.py

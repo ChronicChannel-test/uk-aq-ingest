@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Sync uk_aq_core reference tables from ingest Supabase to agg_daily Supabase.
+"""Sync uk_aq_core reference tables from ingest Supabase to a destination Supabase.
 
 Sync semantics:
 - Source of truth rows are read from ingest via PostgREST.
@@ -740,6 +740,9 @@ def main() -> int:
     src_key = required_env("SRC_SECRET_KEY")
     dst_url = required_env("DST_SUPABASE_URL")
     dst_key = required_env("DST_SECRET_KEY")
+    sync_target_label = (os.getenv("SYNC_TARGET_LABEL") or "destination").strip() or "destination"
+    caller_prefix_raw = (os.getenv("SYNC_CALLER_PREFIX") or "stations_daily_sync_core").strip().lower()
+    caller_prefix = re.sub(r"[^a-z0-9_]+", "_", caller_prefix_raw).strip("_") or "stations_daily_sync_core"
 
     schema_sql_path = Path(
         os.getenv(
@@ -751,12 +754,12 @@ def main() -> int:
     src_client = PostgrestClient(
         base_url=src_url,
         secret_key=src_key,
-        caller="stations_daily_sync_aggdaily_source",
+        caller=f"{caller_prefix}_source",
     )
     dst_client = PostgrestClient(
         base_url=dst_url,
         secret_key=dst_key,
-        caller="stations_daily_sync_aggdaily_dest",
+        caller=f"{caller_prefix}_dest",
     )
 
     source_columns, source_pk, source_meta_mode = load_source_metadata(
@@ -781,8 +784,9 @@ def main() -> int:
         message = str(exc)
         if "PGRST202" in message or "Could not find the function" in message:
             raise SyncError(
-                "Destination metadata RPCs are missing. Apply aggdaily schema SQL first: "
-                "schemas/aggdaily_db/uk_aq_aggdaily_schema.sql"
+                "Destination metadata RPCs are missing. Ensure destination DB exposes "
+                "uk_aq_public.uk_aq_rpc_info_schema_columns(text, text[]) and "
+                "uk_aq_public.uk_aq_rpc_info_schema_primary_keys(text, text[])."
             ) from exc
         raise
 
@@ -873,7 +877,7 @@ def main() -> int:
     for table in SYNC_TABLES:
         print(json.dumps(table_stats[table], sort_keys=True))
 
-    print("uk_aq_core sync to agg_daily completed successfully.")
+    print(f"uk_aq_core sync to {sync_target_label} completed successfully.")
     return 0
 
 

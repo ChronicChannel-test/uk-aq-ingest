@@ -78,6 +78,12 @@
   - write/upload payload metrics (`uk_aq_public.uk_aq_observation_rpc_metrics_minute`)
 - Do not claim a Supabase egress improvement from write-path refactors unless endpoint/API egress metrics (or Supabase billing/usage counters) also move in the same direction.
 
+## R2/Cloudflare Cache Cost Policy
+- For AQI history served via R2 + Cloudflare, assume cost is primarily driven by R2 operation counts (especially Class B reads) and Worker request volume, not R2 bandwidth egress.
+- Prefer stable request URLs/params for normal traffic so Cloudflare cache can return warm-cache hits.
+- Use cache-buster/version params only for diagnostics, forced-refresh actions, or explicit bypass-cache testing.
+- When evaluating performance/cost changes, check cache-hit behavior (`CF-Cache-Status`) and distinguish cache-hit traffic from origin-fetch traffic.
+
 ## HistoryDB Granularity Policy
 - HistoryDB must preserve raw observation granularity at all times; do not propose aggregation/downsampling/rollups as the default storage strategy.
 - Do not suggest rollups, downsampling, or any aggregation-based size reduction unless the user explicitly asks for aggregation.
