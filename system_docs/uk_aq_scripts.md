@@ -249,6 +249,8 @@ python3 scripts/uk_aq_dashboard_local.py --port 8045
 Notes:
 - Serves the UI at `http://127.0.0.1:8045` and JSON at `/api/dashboard`.
 - The HTML lives at `data/uk_aq_dashboard/uk_aq_dashboard.html`.
+- Storage coverage calendar includes a `Force Refresh` button (left of `Previous`) that calls `/api/dashboard?force=1` to bypass server cache and rebuild calendar rows immediately.
+- Storage coverage uses per-day presence for aggdaily (`uk_aq_public.uk_aq_station_aqi_daily`), keeps ingest/history on `oldest_observed_at` range logic, makes top-row ingest/R2 mutually exclusive (R2 takes precedence), and refreshes automatically at 05:00 UTC daily (or immediately via `Force Refresh`).
 - Dispatcher feed shows gap-station context for OpenAQ runs as `(<n> GAP)` under Stations when `gap_stations_polled > 0`.
 - Includes a DB cluster size trend panel at the bottom (Ingest DB cluster bright red, History DB cluster medium blue, Agg Daily DB cluster medium green) with fixed `0-500 MB` y-axis and period selector (`6h`, `12h`, `24h`, `48h`, `7d`, `14d`, `28d`), sourced from `uk_aq_public.uk_aq_db_size_metrics_hourly` by default or from an external API when `UK_AQ_DB_SIZE_API_URL` is set; `size_bytes` represents cluster-wide size (`sum(pg_database_size(pg_database.datname))` over `pg_database`), legend rows show oldest observed day as `>=DD/MM/YYYY` (Agg Daily placeholder `>=--/--/----`), chart hover tooltips show bucket datetime, cluster size, and oldest observed day, and the R2 section includes an uppercase backup window heading (`CLOUDFLARE R2 BACKUP WINDOW - DD/MM/YYYY -> DD/MM/YYYY`) sourced from `uk_aq_public.uk_aq_rpc_r2_backup_window` (`uk_aq_ops.prune_day_gates`).
 - Requires a service role key (anon/authenticated JWTs will be rejected).
@@ -263,6 +265,8 @@ Environment:
 - `HISTORY_SUPABASE_URL` / `HISTORY_SECRET_KEY` (optional direct fallback when `UK_AQ_DB_SIZE_API_URL` is not set/unavailable)
 - `AGGDAILY_SUPABASE_URL` / `AGGDAILY_SECRET_KEY` (optional direct fallback when `UK_AQ_DB_SIZE_API_URL` is not set/unavailable)
 - `UK_AQ_R2_BACKUP_WINDOW_RPC` (optional; default `uk_aq_rpc_r2_backup_window`)
+- `UK_AQ_COVERAGE_DAY_FETCH_LIMIT` (optional; default `1000`, page size for per-day coverage fetches)
+- `UK_AQ_AGGDAILY_COVERAGE_DAYS_VIEW` (optional; default `uk_aq_station_aqi_daily`)
 
 ### `scripts/stations_daily/sync_aggdaily_uk_aq_core.py`
 Purpose:

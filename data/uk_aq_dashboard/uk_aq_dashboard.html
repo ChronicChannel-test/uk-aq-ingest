@@ -439,18 +439,26 @@
       }
 
       .coverage-calendar-nav-btn {
-        border: 1px solid #d0d0d0;
-        border-radius: 10px;
-        background: #ffffff;
-        color: #1f1c16;
-        font-family: "IBM Plex Mono", ui-monospace, monospace;
-        font-size: 12px;
-        padding: 6px 10px;
+        border: none;
+        border-radius: 12px;
+        background: #151515;
+        color: #ffffff;
+        font-family: "IBM Plex Sans", "Inter", ui-sans-serif, system-ui, sans-serif;
+        font-size: 13px;
+        font-weight: 600;
+        padding: 8px 14px;
         cursor: pointer;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
       }
 
       .coverage-calendar-nav-btn:hover {
-        background: #f5f5f5;
+        transform: translateY(-1px);
+        box-shadow: 0 0 0 3px rgba(31, 122, 122, 0.22), 0 8px 16px rgba(22, 20, 16, 0.3);
+      }
+
+      .coverage-calendar-nav-btn:focus-visible {
+        outline: none;
+        box-shadow: 0 0 0 3px rgba(31, 122, 122, 0.28), 0 8px 16px rgba(22, 20, 16, 0.3);
       }
 
       .coverage-calendar-grid {
@@ -2153,10 +2161,10 @@
 
       function summarizeCoverageSources(coverage) {
         const sources = [];
-        if (coverage.ingest) {
-          sources.push("Ingest DB");
-        } else if (coverage.r2) {
+        if (coverage.r2) {
           sources.push("Cloudflare R2");
+        } else if (coverage.ingest) {
+          sources.push("Ingest DB");
         }
         if (coverage.history) {
           sources.push("History DB");
@@ -2177,10 +2185,10 @@
 
         const cellsMarkup = calendarCells
           .map((cell) => {
-            const topLayer = cell.coverage.ingest
-              ? { key: "ingest", label: "Ingest DB", className: "coverage-bar-ingest" }
-              : cell.coverage.r2
-                ? { key: "r2", label: "Cloudflare R2", className: "coverage-bar-r2" }
+            const topLayer = cell.coverage.r2
+              ? { key: "r2", label: "Cloudflare R2", className: "coverage-bar-r2" }
+              : cell.coverage.ingest
+                ? { key: "ingest", label: "Ingest DB", className: "coverage-bar-ingest" }
                 : null;
             const middleLayer = cell.coverage.history
               ? { key: "history", label: "History DB", className: "coverage-bar-history" }
@@ -2221,8 +2229,9 @@
           <div class="coverage-calendar-head">
             <h2 class="coverage-calendar-title">${escapeHtml(formatCoverageMonthTitle(monthStartUtc))}</h2>
             <div class="coverage-calendar-nav">
-              <button type="button" class="coverage-calendar-nav-btn" data-action="prev-month">Previous</button>
-              <button type="button" class="coverage-calendar-nav-btn" data-action="next-month">Next</button>
+              <button type="button" class="settings-button r2-refresh-button" data-action="force-refresh">Force Refresh</button>
+              <button type="button" class="coverage-calendar-nav-btn" data-action="prev-month">&lt; Previous</button>
+              <button type="button" class="coverage-calendar-nav-btn" data-action="next-month">Next &gt;</button>
             </div>
           </div>
           <div class="coverage-calendar-grid">${cellsMarkup}</div>
@@ -2245,8 +2254,23 @@
           panel.replaceWith(nextPanel);
         };
 
+        const forceRefreshButton = panel.querySelector('[data-action="force-refresh"]');
         const prevButton = panel.querySelector('[data-action="prev-month"]');
         const nextButton = panel.querySelector('[data-action="next-month"]');
+        if (forceRefreshButton) {
+          forceRefreshButton.addEventListener("click", async () => {
+            forceRefreshButton.disabled = true;
+            forceRefreshButton.textContent = "Force Refreshing...";
+            try {
+              await loadDashboard({ forceRefresh: true });
+            } finally {
+              if (document.body.contains(forceRefreshButton)) {
+                forceRefreshButton.disabled = false;
+                forceRefreshButton.textContent = "Force Refresh";
+              }
+            }
+          });
+        }
         if (prevButton) {
           prevButton.addEventListener("click", () => handleMonthChange(-1));
         }
@@ -2447,12 +2471,16 @@
         return !allGoogleCloudRun;
       }
 
-      async function loadDashboard() {
+      async function loadDashboard(options = {}) {
+        const forceRefresh = Boolean(options.forceRefresh);
         setError("");
-        setStatus("Loading...");
+        setStatus(forceRefresh ? "Force refreshing..." : "Loading...");
         try {
           const params = new URLSearchParams();
           params.set("t", String(Date.now()));
+          if (forceRefresh) {
+            params.set("force", "1");
+          }
           if (dispatchCursor) {
             params.set("dispatch_cursor", dispatchCursor);
           }
@@ -2510,7 +2538,11 @@
           dashboardEl.appendChild(
             renderStorageCoverageCalendarPanel(data.storage_coverage_days),
           );
-          setStatus(`Updated ${formatTime(data.generated_at)} (local time)`);
+          if (forceRefresh) {
+            setStatus(`Force refreshed ${formatTime(data.generated_at)} (local time)`);
+          } else {
+            setStatus(`Updated ${formatTime(data.generated_at)} (local time)`);
+          }
           setDataMeta(data);
         } catch (err) {
           setError(err.message || String(err));

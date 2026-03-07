@@ -17,7 +17,7 @@ This repo houses ingestion, backfill, and connector tooling for UK AQ, plus Supa
 
 ## How this repo connects to the others
 - **Schema source**: `uk-aq-schema` provides the SQL DDL (tables, views, functions). Ingest queries here assume those schemas exist.
-- **History repo**: `uk-aq-history` (if present) contains long-run/backfill analysis scripts; this repo does the current ingest and operational backfills.
+- **Ops repo**: `CIC-test-uk-aq-ops` runs Cloud Run operational workers (prune, outbox, maintenance, backfill).
 - **Edge Functions**: owned and deployed from this repo under `supabase/functions/*`.
 - **Change flow**: schema changes in `uk-aq-schema` can require updating ingest SQL, RPCs, or column mappings here.
 
@@ -75,7 +75,7 @@ Dropbox/logging (used by multiple ingests):
 - System docs: `system_docs/`
 - Naming conventions: `AGENTS.md`
 - Schema repo (sibling): `../CIC-Test-UK-AQ-Schema/CIC-test-uk-aq-schema`
-- History repo (sibling): `../CIC-test-uk-aq-history/uk-aq-history`
+- Ops repo (sibling): `../CIC-test-uk-aq Operations/CIC-test-uk-aq-ops`
 
 ## WORKING STYLE (IMPORTANT)
 

@@ -7,6 +7,10 @@
 - Permission confirmed: all files under `/Users/mikehinford/Library/CloudStorage/Dropbox/Projects/CIC Website/CIC Air Quality Networks/CIC-Test-UK-AQ-Schema/CIC-test-uk-aq-schema` may be edited (except `archive/`).
 - Read the schema files at the start of the session.
 - Schema edits in the allowed paths do not require extra confirmation (except under `archive/`).
+- Canonical SQL DDL must live in the schema repo (`.../CIC-test-uk-aq-schema/schemas/...`), not only in ingest/ops worker folders.
+- When adding/changing AggDaily tables, update both:
+  - `schemas/aggdaily_db/uk_aq_aggdaily_schema.sql` (main schema file), and
+  - a focused schema-repo SQL file in `schemas/aggdaily_db/` if one is used for targeted apply.
 
 ## Naming
 - Prefer `uk_aq` in filenames, scripts, and docs (avoid `ukair`).
@@ -24,6 +28,7 @@
 ## Runtime
 - Use `python3` for all Python scripts and commands.
 - When writing regex patterns, avoid double-escaping (`\\d`) inside raw strings; use `\d` so year matching works correctly.
+- Platform constraint: Supabase Postgres 17 in this project does not support TimescaleDB. Do not suggest TimescaleDB, hypertables, or Timescale compression features; use standard Postgres approaches only.
 
 ## Supabase API
 - `uk_aq_core`, `uk_aq_raw`, and `uk_aq_public` are exposed to PostgREST.
@@ -32,7 +37,7 @@
 - Files in `archive/` can be referenced for context but must never be modified once created. Adding new files/directories under `archive/` is allowed.
 - Do not create archive copies for routine/small edits by default.
 - Create archive snapshots before major/high-risk changes (for example: broad refactors, cross-repo updates, schema-shape migrations, or large workflow rewires), and whenever the user explicitly asks.
-- For `/Users/mikehinford/Library/CloudStorage/Dropbox/Projects/CIC Website/CIC Air Quality Networks/CIC-Test-UK-AQ-Schema/CIC-test-uk-aq-schema` and `/Users/mikehinford/Library/CloudStorage/Dropbox/Projects/CIC Website/CIC Air Quality Networks/CIC-test-uk-aq-history/uk-aq-history`, edits are allowed for any file except under `archive/` directories. Archive files are read-only; new files may be added under `archive/` but must never be modified once created.
+- For `/Users/mikehinford/Library/CloudStorage/Dropbox/Projects/CIC Website/CIC Air Quality Networks/CIC-Test-UK-AQ-Schema/CIC-test-uk-aq-schema`, edits are allowed for any file except under `archive/` directories. Archive files are read-only; new files may be added under `archive/` but must never be modified once created.
 - The agent has permission to read files under `/Users/mikehinford/Library/CloudStorage/Dropbox/Apps/github-uk-air-quality-networks/CIC-Test` (including subdirectories).
 
 ## Permissions

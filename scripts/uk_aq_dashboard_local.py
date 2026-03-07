@@ -16,7 +16,7 @@ from datetime import date, datetime, timedelta, timezone
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 from urllib.parse import parse_qs, urlparse
 
 import requests
@@ -86,6 +86,14 @@ DISPATCH_RUNS_STATE: Dict[str, Any] = {
 CACHE_TTL_SECONDS = 20
 R2_CACHE_TTL_SECONDS = 60 * 60
 COVERAGE_REFRESH_HOUR_UTC = 5
+COVERAGE_DAY_FETCH_LIMIT = max(
+    100,
+    int(os.getenv("UK_AQ_COVERAGE_DAY_FETCH_LIMIT", "1000")),
+)
+AGGDAILY_COVERAGE_DAYS_VIEW = (
+    str(os.getenv("UK_AQ_AGGDAILY_COVERAGE_DAYS_VIEW") or "uk_aq_station_aqi_daily").strip()
+    or "uk_aq_station_aqi_daily"
+)
 UTC_DATETIME_MIN = datetime.min.replace(tzinfo=timezone.utc)
 R2_BYTES_PER_GB = 1024 ** 3
 R2_CLASS_A_ACTION_TYPES = {
@@ -194,15 +202,19 @@ def _load_env(path: Path) -> None:
             os.environ[key] = value
 
 
-def _postgrest_headers(service_role_key: str, write: bool = False) -> Dict[str, str]:
-    core_schema = os.getenv("UK_AQ_CORE_SCHEMA", "uk_aq_core")
+def _postgrest_headers(
+    service_role_key: str,
+    write: bool = False,
+    schema: Optional[str] = None,
+) -> Dict[str, str]:
+    target_schema = schema or os.getenv("UK_AQ_CORE_SCHEMA", "uk_aq_core")
     headers = {
         "apikey": service_role_key,
         "Authorization": f"Bearer {service_role_key}",
-        "Accept-Profile": core_schema,
+        "Accept-Profile": target_schema,
     }
     if write:
-        headers["Content-Profile"] = core_schema
+        headers["Content-Profile"] = target_schema
     return headers
 
 
@@ -855,14 +867,19 @@ def _build_live_storage_coverage_days(
     now: datetime,
     db_size_metrics: Optional[List[Dict[str, Any]]],
     r2_backup_window: Optional[Dict[str, Optional[str]]],
+    day_sets: Dict[str, Set[date]],
 ) -> List[Dict[str, Any]]:
     now_utc = now.astimezone(timezone.utc)
     today_utc = now_utc.date()
     oldest_by_label = _latest_oldest_day_by_label(db_size_metrics)
 
-    ingest_start = oldest_by_label.get("ingestdb")
-    history_start = oldest_by_label.get("historydb")
-    aggdaily_start = oldest_by_label.get("aggdailydb")
+    ingest_days = set(day_sets.get("ingestdb") or set())
+    history_days = set(day_sets.get("historydb") or set())
+    aggdaily_days = set(day_sets.get("aggdailydb") or set())
+
+    ingest_start = min(ingest_days) if ingest_days else oldest_by_label.get("ingestdb")
+    history_start = min(history_days) if history_days else oldest_by_label.get("historydb")
+    aggdaily_start = min(aggdaily_days) if aggdaily_days else oldest_by_label.get("aggdailydb")
     r2_start = _parse_iso_day((r2_backup_window or {}).get("min_day_utc"))
     r2_end = _parse_iso_day((r2_backup_window or {}).get("max_day_utc"))
     if r2_start and r2_end and r2_end < r2_start:
@@ -880,13 +897,34 @@ def _build_live_storage_coverage_days(
     rows: List[Dict[str, Any]] = []
     cursor = start_day
     while cursor <= end_day:
-        ingest = bool(ingest_start and ingest_start <= cursor <= today_utc)
-        history = bool(history_start and history_start <= cursor <= today_utc)
-        agg_daily = bool(aggdaily_start and aggdaily_start <= cursor <= today_utc)
+        ingest = bool(
+            cursor <= today_utc
+            and (
+                (cursor in ingest_days)
+                if ingest_days
+                else (ingest_start and ingest_start <= cursor <= today_utc)
+            )
+        )
+        history = bool(
+            cursor <= today_utc
+            and (
+                (cursor in history_days)
+                if history_days
+                else (history_start and history_start <= cursor <= today_utc)
+            )
+        )
+        agg_daily = bool(
+            cursor <= today_utc
+            and (
+                (cursor in aggdaily_days)
+                if aggdaily_days
+                else (aggdaily_start and aggdaily_start <= cursor <= today_utc)
+            )
+        )
         r2 = bool(r2_start and r2_end and r2_start <= cursor <= r2_end)
-        if ingest:
-            # Operationally these layers are mutually exclusive by day.
-            r2 = False
+        if r2:
+            # Top row is mutually exclusive: if archived in R2, do not show ingest red.
+            ingest = False
 
         rows.append(
             {
@@ -920,6 +958,8 @@ def _next_storage_coverage_refresh(now_utc: datetime) -> datetime:
 
 def _get_storage_coverage_days_cached(
     now: datetime,
+    base_url: str,
+    service_role_key: str,
     db_size_metrics: Optional[List[Dict[str, Any]]],
     r2_backup_window: Optional[Dict[str, Optional[str]]],
 ) -> List[Dict[str, Any]]:
@@ -934,16 +974,66 @@ def _get_storage_coverage_days_cached(
         ):
             return cached_rows
 
+    day_sets = _fetch_storage_day_sets()
     rows = _build_live_storage_coverage_days(
         now=now_utc,
         db_size_metrics=db_size_metrics,
         r2_backup_window=r2_backup_window,
+        day_sets=day_sets,
     )
     next_refresh_at = _next_storage_coverage_refresh(now_utc)
     with CACHE_LOCK:
         STORAGE_COVERAGE_CACHE_STATE["rows"] = rows
         STORAGE_COVERAGE_CACHE_STATE["next_refresh_at"] = next_refresh_at
     return rows
+
+
+def _extract_distinct_day_set(rows: List[Dict[str, Any]], field_name: str) -> Set[date]:
+    day_values: Set[date] = set()
+    for row in rows:
+        raw_value = None
+        if isinstance(row, dict):
+            raw_value = row.get(field_name)
+        parsed = _parse_iso_day(raw_value)
+        if parsed:
+            day_values.add(parsed)
+    return day_values
+
+
+def _fetch_aggdaily_day_set() -> Set[date]:
+    if not AGGDAILY_SUPABASE_URL or not AGGDAILY_SECRET_KEY:
+        return set()
+    aggdaily_base_url = f"{AGGDAILY_SUPABASE_URL.rstrip('/')}/rest/v1"
+    headers = _postgrest_headers(AGGDAILY_SECRET_KEY, schema=PUBLIC_SCHEMA)
+    rows = _fetch_all(
+        aggdaily_base_url,
+        headers,
+        AGGDAILY_COVERAGE_DAYS_VIEW,
+        {
+            "select": "observed_day",
+            "observed_day": "not.is.null",
+            "order": "observed_day.asc,station_id.asc",
+        },
+        limit=COVERAGE_DAY_FETCH_LIMIT,
+    )
+    return _extract_distinct_day_set(rows, "observed_day")
+
+
+def _fetch_storage_day_sets() -> Dict[str, Set[date]]:
+    day_sets: Dict[str, Set[date]] = {
+        "ingestdb": set(),
+        "historydb": set(),
+        "aggdailydb": set(),
+    }
+    # Keep ingest/history on oldest_observed_at range logic.
+    day_sets["ingestdb"] = set()
+    # Keep history on oldest_observed_at range logic to avoid false positives from pre-created partitions.
+    day_sets["historydb"] = set()
+    try:
+        day_sets["aggdailydb"] = _fetch_aggdaily_day_set()
+    except Exception:
+        day_sets["aggdailydb"] = set()
+    return day_sets
 
 
 def _fetch_r2_backup_window(
@@ -1609,6 +1699,8 @@ def _build_dashboard(
 
     storage_coverage_days = _get_storage_coverage_days_cached(
         now=now,
+        base_url=base_url,
+        service_role_key=service_role_key,
         db_size_metrics=db_size_metrics,
         r2_backup_window=r2_backup_window,
     )
@@ -1624,7 +1716,7 @@ def _build_dashboard(
         "r2_usage_error": r2_usage_error,
         "r2_backup_window": r2_backup_window,
         "r2_backup_window_error": r2_backup_window_error,
-        "storage_coverage_source": "live",
+        "storage_coverage_source": "live_per_day_presence",
         "storage_coverage_days": storage_coverage_days,
         "pollutants": pollutants_payload,
         "dispatch_runs": dispatch_runs,
@@ -1724,6 +1816,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
     def _serve_dashboard(self, parsed) -> None:
         dispatch_cursor: Optional[datetime] = None
         query = parse_qs(parsed.query, keep_blank_values=False)
+        force_refresh_raw = ((query.get("force") or [""])[0] or "").strip().lower()
+        force_refresh = force_refresh_raw in {"1", "true", "yes", "y", "on"}
         cursor_values = query.get("dispatch_cursor") or []
         if cursor_values:
             parsed_cursor = _parse_timestamp(cursor_values[0])
@@ -1732,6 +1826,12 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 # Reject far-future cursors; clamp old cursors via history window in fetch path.
                 if parsed_cursor <= now + timedelta(minutes=5):
                     dispatch_cursor = parsed_cursor
+        if force_refresh:
+            with CACHE_LOCK:
+                CACHE_STATE["data"] = None
+                CACHE_STATE["generated_at"] = None
+                STORAGE_COVERAGE_CACHE_STATE["rows"] = None
+                STORAGE_COVERAGE_CACHE_STATE["next_refresh_at"] = None
         try:
             data = _get_dashboard(
                 self.server.base_url,
