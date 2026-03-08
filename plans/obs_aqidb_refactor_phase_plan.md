@@ -21,6 +21,7 @@ Scope: cross-repo (`CIC-test-uk-aq-ingest`, `CIC-test-uk-aq-ops`, `CIC-test-uk-a
 | 6 | Website/API read-path + dashboard size charts | Not started | - |
 | 7 | Dropbox incremental backup (manifest-aware daily copy) | Not started | - |
 | 8 | Cutover, verification, decommission (`aggdailydb` removal) | Not started | - |
+| 9 | Backfill re-engineering (post hard-cut) | Not started | - |
 
 ## Phase Details
 
@@ -178,8 +179,25 @@ Exit criteria:
 - Legacy DB/schema/env/R2 naming removed from active code/workflows.
 - Decommission checklist signed off.
 
+### Phase 9: Backfill re-engineering (post hard-cut)
+Status: Not started
+
+Details:
+- Re-engineer backfill service contracts and mode model around final architecture:
+  - `local_to_aqilevels`
+  - `obs_aqi_to_r2`
+  - `source_to_all` (if retained after redesign review)
+- Split/clean run orchestration, checkpoints, retries, and observability for clearer failure boundaries.
+- Remove temporary/legacy assumptions from Phase 1 implementation and align with committed-day manifest rule.
+- Re-validate scheduler payloads, runbook paths, metrics names, and ops dashboards after redesign.
+
+Exit criteria:
+- Backfill code path is production-ready for final naming/storage contracts.
+- Retry/failure semantics are explicit, test-covered, and runbooked.
+- No residual legacy naming or legacy-mode behavior in active backfill runtime paths.
+
 ## Next Phase To Execute
-Recommended immediate next phase: Phase 2 (hard-cut rename prep and cutover runbook), then Phase 3.
+Recommended immediate next phase: Phase 3 (DB/schema rename + consolidation to `obs_aqidb`).
 
 ## Locked Dashboard Scope (2026-03-08)
 - Keep DB line chart, but only for full DB cluster sizes: `ingestdb` and `obs_aqidb`.
