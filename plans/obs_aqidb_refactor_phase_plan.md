@@ -16,7 +16,7 @@ Scope: cross-repo (`CIC-test-uk-aq-ingest`, `CIC-test-uk-aq-ops`, `CIC-test-uk-a
 | 1 | Cross-repo inventory + naming contract freeze | Complete | 2026-03-08 |
 | 2 | Hard-cut rename prep (runtime/config/workflow map) | Complete | 2026-03-08 |
 | 3 | DB/schema rename + consolidation to `obs_aqidb` | In progress | - |
-| 4 | R2 History contract + manifest-complete rule unification | Not started | - |
+| 4 | R2 History contract + manifest-complete rule unification | Complete | 2026-03-08 |
 | 5 | Retention policy refactor (configurable, default 14 days) | Not started | - |
 | 6 | Website/API read-path + dashboard size charts | Not started | - |
 | 7 | Dropbox incremental backup (manifest-aware daily copy) | Not started | - |
@@ -101,7 +101,7 @@ Current implementation artifacts:
 - `plans/obs_aqidb_refactor_phase3_runbook.md` (apply order + verification queries)
 
 ### Phase 4: R2 History contract + manifest-complete rule unification
-Status: Not started
+Status: Complete
 
 Details:
 - Rename R2 concept from "Backup" to "History" across runtime/docs/workflows.
@@ -120,6 +120,30 @@ Exit criteria:
 - All prune/serving/backup validators use manifest-complete contract only.
 - Both domains share the same completion semantics.
 - R2 hourly size metrics are persisted and queryable for chart rendering.
+
+Delivered in Phase 4:
+- Hard-cut runtime env names in ops prune/history-export path:
+  - `UK_AQ_R2_HISTORY_PHASE_B_ENABLED`
+  - `UK_AQ_R2_HISTORY_PART_MAX_ROWS`
+  - `UK_AQ_R2_HISTORY_CURSOR_FETCH_ROWS`
+  - `UK_AQ_R2_HISTORY_ROW_GROUP_SIZE`
+  - `UK_AQ_R2_HISTORY_MAX_CANDIDATES_PER_RUN`
+  - `UK_AQ_R2_HISTORY_STAGING_RETENTION_DAYS`
+  - `UK_AQ_R2_HISTORY_STAGING_PREFIX`
+  - `UK_AQ_R2_HISTORY_OBSERVATIONS_PREFIX`
+  - `UK_AQ_R2_HISTORY_RUNS_PREFIX`
+- Hard-cut committed R2 observations prefix default to `history/v1/observations` and moved ops-only staging/runs defaults under:
+  - `history/v1/_ops/observations/staging`
+  - `history/v1/_ops/observations/runs`
+- Removed legacy partition-drop completion checks (`_SUCCESS` marker and loose parquet scanning).
+- Partition retention drop eligibility now checks only committed day manifest:
+  - `history/v1/observations/day_utc=YYYY-MM-DD/manifest.json`
+- Tightened prune gate DB lookup to require committed-day evidence:
+  - `history_done = true`
+  - non-empty `history_manifest_key`
+  - non-null `history_completed_at`
+- Updated ops deploy workflows + GitHub env target mapping + runtime docs to new `UK_AQ_R2_HISTORY_*` contract.
+- Kept existing R2 hourly domain-size metrics path for both domains (`observations`, `aqilevels`) aligned to `history/v1/*`.
 
 ### Phase 5: Retention policy refactor (configurable, default 14 days)
 Status: Not started
@@ -209,7 +233,7 @@ Exit criteria:
 - No residual legacy naming or legacy-mode behavior in active backfill runtime paths.
 
 ## Next Phase To Execute
-Recommended immediate next phase: continue Phase 3 execution using `plans/obs_aqidb_refactor_phase3_runbook.md`.
+Recommended immediate next phase: execute Phase 5 retention policy refactor (configurable 14-day defaults for `uk_aq_observs` and `uk_aq_aqilevels`).
 
 ## Locked Dashboard Scope (2026-03-08)
 - Keep DB line chart, but only for full DB cluster sizes: `ingestdb` and `obs_aqidb`.

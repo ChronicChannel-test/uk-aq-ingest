@@ -263,7 +263,7 @@ Environment:
 - `UK_AQ_DB_SIZE_API_URL` (optional; Cloudflare/API endpoint for DB size metrics fan-in)
 - `UK_AQ_DB_SIZE_API_TOKEN` (optional; bearer token for `UK_AQ_DB_SIZE_API_URL`)
 - `OBS_AQIDB_SUPABASE_URL` / `OBS_AQIDB_SECRET_KEY` (optional direct fallback for `obs_aqidb` DB-size series when `UK_AQ_DB_SIZE_API_URL` is not set/unavailable)
-- `UK_AQ_R2_BACKUP_WINDOW_RPC` (optional; default `uk_aq_rpc_r2_backup_window`)
+- `UK_AQ_R2_HISTORY_WINDOW_RPC` (optional; default `uk_aq_rpc_r2_history_window`)
 - `UK_AQ_COVERAGE_DAY_FETCH_LIMIT` (optional; default `1000`, page size for per-day coverage fetches)
 - `UK_AQ_AQILEVELS_COVERAGE_DAYS_VIEW` (optional; default `uk_aq_station_aqi_daily`)
 

@@ -433,6 +433,16 @@ serve(async (req) => {
             }
             return true;
           });
+          const staleLastValueCandidates = series.filter((row) => {
+            if (!row.last_value_at) {
+              return false;
+            }
+            const parsed = new Date(row.last_value_at);
+            if (Number.isNaN(parsed.getTime())) {
+              return false;
+            }
+            return parsed < windowStart;
+          });
 
           const nullLastValueCandidates = series.filter((row) => !row.last_value_at);
           const bootstrapBatchSize = clampPositiveInt(
@@ -460,7 +470,20 @@ serve(async (req) => {
             series = withRecentLastValue.concat(bootstrapRows);
           }
 
-          if (beforeRecencyFilter !== series.length || bootstrapRows.length > 0) {
+          let staleRecoveryApplied = false;
+          if (requestedSeries?.length && series.length === 0 && staleLastValueCandidates.length > 0) {
+            const staleFallbackTake = typeof effectiveLimit === "number" && effectiveLimit > 0
+              ? Math.max(1, effectiveLimit)
+              : staleLastValueCandidates.length;
+            series = takeCircular(
+              staleLastValueCandidates,
+              nowBucket * Math.max(1, staleFallbackTake),
+              staleFallbackTake,
+            );
+            staleRecoveryApplied = true;
+          }
+
+          if (beforeRecencyFilter !== series.length || bootstrapRows.length > 0 || staleRecoveryApplied) {
             log.info("Timeseries recency filter applied", {
               total: beforeRecencyFilter,
               remaining_after_filter: withRecentLastValue.length,
@@ -469,6 +492,9 @@ serve(async (req) => {
               skipped_stale_last_value_at: skippedStaleLastValueAt,
               bootstrap_null_last_value_candidates: nullLastValueCandidates.length,
               bootstrap_null_last_value_selected: bootstrapRows.length,
+              stale_last_value_candidates: staleLastValueCandidates.length,
+              stale_recovery_applied: staleRecoveryApplied,
+              stale_recovery_selected: staleRecoveryApplied ? series.length : 0,
               window_hours: pollWindow,
             });
           }

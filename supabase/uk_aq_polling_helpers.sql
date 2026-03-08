@@ -143,6 +143,11 @@ begin
     where t.connector_id = v_connector_id
     group by t.station_id
   ),
+  station_with_timeseries as (
+    select distinct t.station_id
+    from timeseries t
+    where t.connector_id = v_connector_id
+  ),
   candidates as (
     select
       stn.id as station_id,
@@ -158,6 +163,8 @@ begin
       ) as last_observed_at,
       coalesce(sc.next_due_at, now()) as due_at
     from stations stn
+    join station_with_timeseries swt
+      on swt.station_id = stn.id
     left join uk_air_sos_station_checkpoints sc
       on sc.station_id = stn.id
     left join latest_obs lo

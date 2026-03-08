@@ -57,7 +57,7 @@ DB_SIZE_API_TOKEN = str(os.getenv("UK_AQ_DB_SIZE_API_TOKEN") or "").strip()
 OBS_AQIDB_SUPABASE_URL = str(os.getenv("OBS_AQIDB_SUPABASE_URL") or "").strip()
 OBS_AQIDB_SECRET_KEY = str(os.getenv("OBS_AQIDB_SECRET_KEY") or "").strip()
 PUBLIC_SCHEMA = os.getenv("UK_AQ_PUBLIC_SCHEMA", "uk_aq_public")
-R2_BACKUP_WINDOW_RPC = os.getenv("UK_AQ_R2_BACKUP_WINDOW_RPC", "uk_aq_rpc_r2_backup_window")
+R2_BACKUP_WINDOW_RPC = os.getenv("UK_AQ_R2_HISTORY_WINDOW_RPC", "uk_aq_rpc_r2_history_window")
 IN_FLIGHT_WARN_MINUTES = 5
 IN_FLIGHT_MAX_AGE_MINUTES = 180
 SCHEDULER_BACKEND_SUPABASE_FUNCTION = "supabase_function"
@@ -909,8 +909,13 @@ def _fetch_size_metrics(
     else:
         db_source_errors.append("ingestdb: missing base URL or service key")
 
-    if OBS_AQIDB_SUPABASE_URL and OBS_AQIDB_SECRET_KEY:
-        obs_aqidb_base_url = f"{OBS_AQIDB_SUPABASE_URL.rstrip('/')}/rest/v1"
+    obs_aqidb_base_url = (
+        f"{OBS_AQIDB_SUPABASE_URL.rstrip('/')}/rest/v1"
+        if OBS_AQIDB_SUPABASE_URL and OBS_AQIDB_SECRET_KEY
+        else None
+    )
+
+    if obs_aqidb_base_url and OBS_AQIDB_SECRET_KEY:
         obs_aqidb_rows, obs_aqidb_error = _fetch_metric_rows_from_supabase_view(
             base_url=obs_aqidb_base_url,
             service_role_key=OBS_AQIDB_SECRET_KEY,
@@ -931,13 +936,16 @@ def _fetch_size_metrics(
         db_source_errors.append("obs_aqidb: missing OBS_AQIDB_SUPABASE_URL or OBS_AQIDB_SECRET_KEY")
 
     schema_rows, schema_fetch_error = _fetch_metric_rows_from_supabase_view(
-        base_url=base_url,
-        service_role_key=ingest_key,
+        base_url=obs_aqidb_base_url,
+        service_role_key=OBS_AQIDB_SECRET_KEY,
         view_name="uk_aq_schema_size_metrics_hourly",
         select="bucket_hour,database_label,schema_name,size_bytes,oldest_observed_at,recorded_at",
         since=since,
         normalizer=_normalize_schema_size_metrics_rows,
-    ) if base_url and ingest_key else ([], "ingestdb: missing base URL or service key")
+    ) if obs_aqidb_base_url and OBS_AQIDB_SECRET_KEY else (
+        [],
+        "obs_aqidb: missing OBS_AQIDB_SUPABASE_URL or OBS_AQIDB_SECRET_KEY",
+    )
 
     r2_rows, r2_fetch_error = _fetch_metric_rows_from_supabase_view(
         base_url=base_url,

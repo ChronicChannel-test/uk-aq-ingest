@@ -194,6 +194,7 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
   - Cloud Run path uses station-level selector/checkpoints (`uk_air_sos_select_station_refs`, `uk_air_sos_station_checkpoints`) before passing scoped `timeseries_ids` into the same ingest handler.
   - Logs cron secret mismatch diagnostics (presence/length only) when authorization fails.
   - Skips timeseries with missing `last_value_at` or `last_value_at` older than the poll window.
+  - When `timeseries_ids` are explicitly scoped (Cloud Run path) and recency filtering would otherwise yield zero work, it falls back to polling stale `last_value_at` rows for that scoped set to recover after pauses.
   - Enforces a runtime budget and will return partial progress with `partial=true` when exceeded.
   - Dedupes observations by `observed_at` per timeseries before upsert to avoid duplicate conflict errors.
   - History dual-write rows are buffered and flushed in batches to reduce History RPC request count (`HISTORY_BUFFER_FLUSH_ROWS`, default `5000`).
