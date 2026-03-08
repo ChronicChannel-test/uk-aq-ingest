@@ -15,7 +15,7 @@ The worker:
 4. Runs OpenAQ ingest once with scoped `station_refs`.
 5. Writes run summary to `connectors`, `uk_aq_ingest_runs`, and `error_logs` on failures.
 6. Schedules the next run using Cloud Tasks based on earliest checkpoint due time.
-7. Publishes history rows using shared history mode (`HISTORY_WRITE_MODE`).
+7. Publishes history rows using shared history mode (`OBSERVS_WRITE_MODE`).
 
 Run-summary metric note:
 - `uk_aq_ingest_runs.stations_updated` is populated from response station activity
@@ -85,15 +85,15 @@ Delay floors are outcome-aware:
 - `OPENAQ_INGEST_SCRIPT_PATH` (default `/app/runtime/ingest_openaq/index.ts`)
 - `OPENAQ_SAFETY_SUCCESS_LOOKBACK_MINUTES` (default `10`; only used when `OPENAQ_TRIGGER_MODE=safety`; applies to recent `succeeded|success|partial|skipped` runs)
 - `OPENAQ_LAG_STAT` (default `min`; options `min|median|p25` for OpenAQ lag samples)
-- `OPENAQ_HISTORY_WRITE_MODE` (default in workflow: `pubsub_only`)
-- `GCP_HISTORY_PUBSUB_TOPIC` (default `uk-aq-history-observations`)
-- `HISTORY_PUBSUB_PUBLISH_BATCH_SIZE` (default `500`)
+- `OPENAQ_OBSERVS_WRITE_MODE` (default in workflow: `pubsub_only`)
+- `GCP_OBSERVS_PUBSUB_TOPIC` (default `uk-aq-observs-observations`)
+- `OBSERVS_PUBSUB_PUBLISH_BATCH_SIZE` (default `500`)
 
 ## IAM Notes
 
 - Job runtime SA needs `roles/cloudtasks.enqueuer` on the OpenAQ queue.
 - Job runtime SA needs `roles/cloudtasks.viewer` and `roles/cloudtasks.taskDeleter` on the OpenAQ queue for task reconciliation.
-- Job runtime SA needs `roles/pubsub.publisher` on `GCP_HISTORY_PUBSUB_TOPIC` when using `HISTORY_WRITE_MODE=pubsub_only`.
+- Job runtime SA needs `roles/pubsub.publisher` on `GCP_OBSERVS_PUBSUB_TOPIC` when using `OBSERVS_WRITE_MODE=pubsub_only`.
 - Task invoker SA needs `roles/run.invoker` on the OpenAQ Cloud Run Job.
 - Cloud Tasks service agent (`service-<project-number>@gcp-sa-cloudtasks.iam.gserviceaccount.com`) needs `roles/iam.serviceAccountTokenCreator` on the task invoker SA.
 - Scheduler SA needs `roles/run.invoker` on the OpenAQ Cloud Run Job.

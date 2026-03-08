@@ -1,20 +1,20 @@
-name: Deploy History Outbox Cloud Run Job
+name: Deploy Observs Outbox Cloud Run Job
 
 on:
   push:
     branches:
       - main
     paths:
-      - "workers/uk_aq_history_outbox_cloud_run/**"
+      - "workers/uk_aq_observs_outbox_cloud_run/**"
       - "supabase/functions/_shared/fetch_egress_patch.ts"
       - "supabase/functions/_shared/egress_metrics.ts"
-      - "supabase/functions/_shared/history_client.ts"
+      - "supabase/functions/_shared/observs_client.ts"
       - "scripts/gcp/**"
-      - ".github/workflows/uk_aq_history_outbox_cloud_run_deploy.yml"
+      - ".github/workflows/uk_aq_observs_outbox_cloud_run_deploy.yml"
   workflow_dispatch:
 
 jobs:
-  deploy-history-outbox-job:
+  deploy-observs-outbox-job:
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -23,32 +23,32 @@ jobs:
       PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
       REGION: ${{ vars.GCP_REGION || 'europe-west2' }}
       REPO: ${{ vars.GCP_ARTIFACT_REPO || 'uk-aq' }}
-      JOB_NAME: ${{ vars.GCP_HISTORY_OUTBOX_JOB_NAME || 'uk-aq-history-outbox-flush' }}
-      JOB_SERVICE_ACCOUNT: ${{ vars.GCP_HISTORY_OUTBOX_JOB_SERVICE_ACCOUNT || '' }}
-      JOB_TIMEOUT_SECONDS: ${{ vars.GCP_HISTORY_OUTBOX_JOB_TIMEOUT_SECONDS || '600' }}
-      JOB_MAX_RETRIES: ${{ vars.GCP_HISTORY_OUTBOX_JOB_MAX_RETRIES || '0' }}
-      SCHEDULER_ENABLED: ${{ vars.GCP_HISTORY_OUTBOX_SCHEDULER_ENABLED || 'true' }}
-      SCHEDULER_JOB_NAME: ${{ vars.GCP_HISTORY_OUTBOX_SCHEDULER_JOB_NAME || 'uk-aq-history-outbox-trigger' }}
-      SCHEDULER_CRON: ${{ vars.GCP_HISTORY_OUTBOX_SCHEDULER_CRON || '*/10 * * * *' }}
-      SCHEDULER_TIMEZONE: ${{ vars.GCP_HISTORY_OUTBOX_SCHEDULER_TIMEZONE || 'Etc/UTC' }}
-      SCHEDULER_MAX_RETRY_ATTEMPTS: ${{ vars.GCP_HISTORY_OUTBOX_SCHEDULER_MAX_RETRY_ATTEMPTS || '0' }}
-      SCHEDULER_SERVICE_ACCOUNT: ${{ vars.GCP_HISTORY_OUTBOX_SCHEDULER_SERVICE_ACCOUNT || '' }}
+      JOB_NAME: ${{ vars.GCP_OBSERVS_OUTBOX_JOB_NAME || 'uk-aq-observs-outbox-flush' }}
+      JOB_SERVICE_ACCOUNT: ${{ vars.GCP_OBSERVS_OUTBOX_JOB_SERVICE_ACCOUNT || '' }}
+      JOB_TIMEOUT_SECONDS: ${{ vars.GCP_OBSERVS_OUTBOX_JOB_TIMEOUT_SECONDS || '600' }}
+      JOB_MAX_RETRIES: ${{ vars.GCP_OBSERVS_OUTBOX_JOB_MAX_RETRIES || '0' }}
+      SCHEDULER_ENABLED: ${{ vars.GCP_OBSERVS_OUTBOX_SCHEDULER_ENABLED || 'true' }}
+      SCHEDULER_JOB_NAME: ${{ vars.GCP_OBSERVS_OUTBOX_SCHEDULER_JOB_NAME || 'uk-aq-observs-outbox-trigger' }}
+      SCHEDULER_CRON: ${{ vars.GCP_OBSERVS_OUTBOX_SCHEDULER_CRON || '*/10 * * * *' }}
+      SCHEDULER_TIMEZONE: ${{ vars.GCP_OBSERVS_OUTBOX_SCHEDULER_TIMEZONE || 'Etc/UTC' }}
+      SCHEDULER_MAX_RETRY_ATTEMPTS: ${{ vars.GCP_OBSERVS_OUTBOX_SCHEDULER_MAX_RETRY_ATTEMPTS || '0' }}
+      SCHEDULER_SERVICE_ACCOUNT: ${{ vars.GCP_OBSERVS_OUTBOX_SCHEDULER_SERVICE_ACCOUNT || '' }}
       SUPABASE_URL: ${{ vars.SUPABASE_URL }}
       OBS_AQIDB_SUPABASE_URL: ${{ vars.OBS_AQIDB_SUPABASE_URL }}
       UK_AQ_PUBLIC_SCHEMA: ${{ vars.UK_AQ_PUBLIC_SCHEMA || 'uk_aq_public' }}
       OBS_AQIDB_RPC_SCHEMA: ${{ vars.OBS_AQIDB_RPC_SCHEMA || 'uk_aq_public' }}
-      HISTORY_UPSERT_RPC: ${{ vars.HISTORY_UPSERT_RPC || 'uk_aq_rpc_history_observations_upsert' }}
-      HISTORY_OUTBOX_FLUSH_LIMIT: ${{ vars.HISTORY_OUTBOX_FLUSH_LIMIT || '3' }}
-      HISTORY_UPSERT_CHUNK_SIZE: ${{ vars.HISTORY_UPSERT_CHUNK_SIZE || '1000' }}
-      HISTORY_UPSERT_RPC_RETRIES: ${{ vars.HISTORY_UPSERT_RPC_RETRIES || '3' }}
-      HISTORY_UPSERT_RETRY_BASE_MS: ${{ vars.HISTORY_UPSERT_RETRY_BASE_MS || '1000' }}
-      HISTORY_UPSERT_TIMEOUT_SPLIT_MIN_ROWS: ${{ vars.HISTORY_UPSERT_TIMEOUT_SPLIT_MIN_ROWS || '32' }}
-      HISTORY_UPSERT_TIMEOUT_SPLIT_MAX_DEPTH: ${{ vars.HISTORY_UPSERT_TIMEOUT_SPLIT_MAX_DEPTH || '4' }}
-      HISTORY_OUTBOX_CLOUD_RUN_MAX_BATCHES: ${{ vars.HISTORY_OUTBOX_CLOUD_RUN_MAX_BATCHES || '30' }}
-      HISTORY_OUTBOX_CLOUD_RUN_CLAIM_BATCH_LIMIT: ${{ vars.HISTORY_OUTBOX_CLOUD_RUN_CLAIM_BATCH_LIMIT || '2' }}
-      HISTORY_OUTBOX_CLOUD_RUN_BUDGET_SECONDS: ${{ vars.HISTORY_OUTBOX_CLOUD_RUN_BUDGET_SECONDS || '540' }}
-      HISTORY_OUTBOX_CLOUD_RUN_SHUTDOWN_BUFFER_SECONDS: ${{ vars.HISTORY_OUTBOX_CLOUD_RUN_SHUTDOWN_BUFFER_SECONDS || '20' }}
-      HISTORY_OUTBOX_CLOUD_RUN_RPC_RETRIES: ${{ vars.HISTORY_OUTBOX_CLOUD_RUN_RPC_RETRIES || '3' }}
+      OBSERVS_UPSERT_RPC: ${{ vars.OBSERVS_UPSERT_RPC || 'uk_aq_rpc_observs_observations_upsert' }}
+      OBSERVS_OUTBOX_FLUSH_LIMIT: ${{ vars.OBSERVS_OUTBOX_FLUSH_LIMIT || '3' }}
+      OBSERVS_UPSERT_CHUNK_SIZE: ${{ vars.OBSERVS_UPSERT_CHUNK_SIZE || '1000' }}
+      OBSERVS_UPSERT_RPC_RETRIES: ${{ vars.OBSERVS_UPSERT_RPC_RETRIES || '3' }}
+      OBSERVS_UPSERT_RETRY_BASE_MS: ${{ vars.OBSERVS_UPSERT_RETRY_BASE_MS || '1000' }}
+      OBSERVS_UPSERT_TIMEOUT_SPLIT_MIN_ROWS: ${{ vars.OBSERVS_UPSERT_TIMEOUT_SPLIT_MIN_ROWS || '32' }}
+      OBSERVS_UPSERT_TIMEOUT_SPLIT_MAX_DEPTH: ${{ vars.OBSERVS_UPSERT_TIMEOUT_SPLIT_MAX_DEPTH || '4' }}
+      OBSERVS_OUTBOX_CLOUD_RUN_MAX_BATCHES: ${{ vars.OBSERVS_OUTBOX_CLOUD_RUN_MAX_BATCHES || '30' }}
+      OBSERVS_OUTBOX_CLOUD_RUN_CLAIM_BATCH_LIMIT: ${{ vars.OBSERVS_OUTBOX_CLOUD_RUN_CLAIM_BATCH_LIMIT || '2' }}
+      OBSERVS_OUTBOX_CLOUD_RUN_BUDGET_SECONDS: ${{ vars.OBSERVS_OUTBOX_CLOUD_RUN_BUDGET_SECONDS || '540' }}
+      OBSERVS_OUTBOX_CLOUD_RUN_SHUTDOWN_BUFFER_SECONDS: ${{ vars.OBSERVS_OUTBOX_CLOUD_RUN_SHUTDOWN_BUFFER_SECONDS || '20' }}
+      OBSERVS_OUTBOX_CLOUD_RUN_RPC_RETRIES: ${{ vars.OBSERVS_OUTBOX_CLOUD_RUN_RPC_RETRIES || '3' }}
       SB_SECRET_KEY: ${{ secrets.SB_SECRET_KEY }}
       OBS_AQIDB_SECRET_KEY: ${{ secrets.OBS_AQIDB_SECRET_KEY }}
       SB_SECRET_KEY_SECRET_NAME: ${{ vars.SB_SECRET_KEY_SECRET_NAME || 'SB_SECRET_KEY' }}
@@ -68,11 +68,11 @@ jobs:
           fi
           if [ -z "${JOB_SERVICE_ACCOUNT:-}" ]; then
             echo "Missing required service account setting."
-            echo "Set repo variable: GCP_HISTORY_OUTBOX_JOB_SERVICE_ACCOUNT"
+            echo "Set repo variable: GCP_OBSERVS_OUTBOX_JOB_SERVICE_ACCOUNT"
             exit 1
           fi
           if [[ "${JOB_SERVICE_ACCOUNT}" == *"-compute@developer.gserviceaccount.com" ]]; then
-            echo "Invalid GCP_HISTORY_OUTBOX_JOB_SERVICE_ACCOUNT: default compute service account is not allowed."
+            echo "Invalid GCP_OBSERVS_OUTBOX_JOB_SERVICE_ACCOUNT: default compute service account is not allowed."
             exit 1
           fi
           if [ -z "${SUPABASE_URL:-}" ]; then
@@ -130,12 +130,12 @@ jobs:
         run: |
           gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
 
-      - name: Build and push history outbox image
+      - name: Build and push observs outbox image
         id: build
         run: |
-          IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}/uk-aq-history-outbox:${GITHUB_SHA::12}"
+          IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}/uk-aq-observs-outbox:${GITHUB_SHA::12}"
           echo "image=${IMAGE}" >> "${GITHUB_OUTPUT}"
-          docker build -f workers/uk_aq_history_outbox_cloud_run/Dockerfile -t "${IMAGE}" .
+          docker build -f workers/uk_aq_observs_outbox_cloud_run/Dockerfile -t "${IMAGE}" .
           docker push "${IMAGE}"
 
       - name: Ensure Cloud Run job exists
@@ -236,18 +236,18 @@ jobs:
           add_env OBS_AQIDB_SUPABASE_URL
           add_env UK_AQ_PUBLIC_SCHEMA
           add_env OBS_AQIDB_RPC_SCHEMA
-          add_env HISTORY_UPSERT_RPC
-          add_env HISTORY_OUTBOX_FLUSH_LIMIT
-          add_env HISTORY_UPSERT_CHUNK_SIZE
-          add_env HISTORY_UPSERT_RPC_RETRIES
-          add_env HISTORY_UPSERT_RETRY_BASE_MS
-          add_env HISTORY_UPSERT_TIMEOUT_SPLIT_MIN_ROWS
-          add_env HISTORY_UPSERT_TIMEOUT_SPLIT_MAX_DEPTH
-          add_env HISTORY_OUTBOX_CLOUD_RUN_MAX_BATCHES
-          add_env HISTORY_OUTBOX_CLOUD_RUN_CLAIM_BATCH_LIMIT
-          add_env HISTORY_OUTBOX_CLOUD_RUN_BUDGET_SECONDS
-          add_env HISTORY_OUTBOX_CLOUD_RUN_SHUTDOWN_BUFFER_SECONDS
-          add_env HISTORY_OUTBOX_CLOUD_RUN_RPC_RETRIES
+          add_env OBSERVS_UPSERT_RPC
+          add_env OBSERVS_OUTBOX_FLUSH_LIMIT
+          add_env OBSERVS_UPSERT_CHUNK_SIZE
+          add_env OBSERVS_UPSERT_RPC_RETRIES
+          add_env OBSERVS_UPSERT_RETRY_BASE_MS
+          add_env OBSERVS_UPSERT_TIMEOUT_SPLIT_MIN_ROWS
+          add_env OBSERVS_UPSERT_TIMEOUT_SPLIT_MAX_DEPTH
+          add_env OBSERVS_OUTBOX_CLOUD_RUN_MAX_BATCHES
+          add_env OBSERVS_OUTBOX_CLOUD_RUN_CLAIM_BATCH_LIMIT
+          add_env OBSERVS_OUTBOX_CLOUD_RUN_BUDGET_SECONDS
+          add_env OBSERVS_OUTBOX_CLOUD_RUN_SHUTDOWN_BUFFER_SECONDS
+          add_env OBSERVS_OUTBOX_CLOUD_RUN_RPC_RETRIES
 
           secret_updates=()
           add_secret_binding "SB_SECRET_KEY" "${SB_SECRET_KEY_SECRET_NAME}" 1

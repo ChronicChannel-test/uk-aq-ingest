@@ -10,7 +10,7 @@ on:
       - "supabase/functions/_shared/cache.ts"
       - "supabase/functions/_shared/fetch_egress_patch.ts"
       - "supabase/functions/_shared/egress_metrics.ts"
-      - "supabase/functions/_shared/history_client.ts"
+      - "supabase/functions/_shared/observs_client.ts"
       - "scripts/gcp/**"
       - ".github/workflows/uk_aq_uk_air_sos_cloud_run_deploy.yml"
   workflow_dispatch:
@@ -45,9 +45,9 @@ jobs:
       UK_AQ_CORE_SCHEMA: ${{ vars.UK_AQ_CORE_SCHEMA || 'uk_aq_core' }}
       UK_AQ_RAW_SCHEMA: ${{ vars.UK_AQ_RAW_SCHEMA || 'uk_aq_raw' }}
       OBS_AQIDB_RPC_SCHEMA: ${{ vars.OBS_AQIDB_RPC_SCHEMA || 'uk_aq_public' }}
-      HISTORY_WRITE_MODE: ${{ vars.UK_AIR_SOS_HISTORY_WRITE_MODE || vars.HISTORY_WRITE_MODE || 'pubsub_only' }}
-      GCP_HISTORY_PUBSUB_TOPIC: ${{ vars.GCP_HISTORY_PUBSUB_TOPIC || 'uk-aq-history-observations' }}
-      HISTORY_PUBSUB_PUBLISH_BATCH_SIZE: ${{ vars.HISTORY_PUBSUB_PUBLISH_BATCH_SIZE || '500' }}
+      OBSERVS_WRITE_MODE: ${{ vars.UK_AIR_SOS_OBSERVS_WRITE_MODE || vars.OBSERVS_WRITE_MODE || 'pubsub_only' }}
+      GCP_OBSERVS_PUBSUB_TOPIC: ${{ vars.GCP_OBSERVS_PUBSUB_TOPIC || 'uk-aq-observs-observations' }}
+      OBSERVS_PUBSUB_PUBLISH_BATCH_SIZE: ${{ vars.OBSERVS_PUBSUB_PUBLISH_BATCH_SIZE || '500' }}
       UK_AIR_SOS_BASE_URL: ${{ vars.UK_AIR_SOS_BASE_URL || 'https://uk-air.defra.gov.uk/sos-ukair/api/v1' }}
       UK_AIR_SOS_SERVICE_LABEL: ${{ vars.UK_AIR_SOS_SERVICE_LABEL || 'UK-AIR-SOS' }}
       UK_AIR_SOS_CONNECTOR_CODE: ${{ vars.UK_AIR_SOS_CONNECTOR_CODE || 'uk_air_sos' }}
@@ -100,18 +100,18 @@ jobs:
             echo "Missing required secret: SUPABASE_URL"
             exit 1
           fi
-          history_mode="$(printf '%s' "${HISTORY_WRITE_MODE:-}" | tr '[:upper:]' '[:lower:]')"
-          if [ "${history_mode}" = "pubsub_only" ] && [ -z "${GCP_HISTORY_PUBSUB_TOPIC:-}" ]; then
-            echo "HISTORY_WRITE_MODE=pubsub_only requires GCP_HISTORY_PUBSUB_TOPIC."
+          observs_mode="$(printf '%s' "${OBSERVS_WRITE_MODE:-}" | tr '[:upper:]' '[:lower:]')"
+          if [ "${observs_mode}" = "pubsub_only" ] && [ -z "${GCP_OBSERVS_PUBSUB_TOPIC:-}" ]; then
+            echo "OBSERVS_WRITE_MODE=pubsub_only requires GCP_OBSERVS_PUBSUB_TOPIC."
             exit 1
           fi
-          if [ "${history_mode}" = "direct" ]; then
+          if [ "${observs_mode}" = "direct" ]; then
             if [ -z "${OBS_AQIDB_SUPABASE_URL:-}" ]; then
-              echo "HISTORY_WRITE_MODE=direct requires OBS_AQIDB_SUPABASE_URL."
+              echo "OBSERVS_WRITE_MODE=direct requires OBS_AQIDB_SUPABASE_URL."
               exit 1
             fi
             if [ -z "${OBS_AQIDB_SECRET_KEY:-}" ]; then
-              echo "HISTORY_WRITE_MODE=direct requires OBS_AQIDB_SECRET_KEY."
+              echo "OBSERVS_WRITE_MODE=direct requires OBS_AQIDB_SECRET_KEY."
               exit 1
             fi
           fi
@@ -170,23 +170,23 @@ jobs:
           docker build -f workers/uk_aq_uk_air_sos_cloud_run/Dockerfile -t "${IMAGE}" .
           docker push "${IMAGE}"
 
-      - name: Ensure history Pub/Sub topic + publisher IAM binding
+      - name: Ensure observs Pub/Sub topic + publisher IAM binding
         run: |
           set -euo pipefail
-          history_mode="$(printf '%s' "${HISTORY_WRITE_MODE:-}" | tr '[:upper:]' '[:lower:]')"
-          if [ "${history_mode}" != "pubsub_only" ]; then
-            echo "Skipping Pub/Sub publisher setup (HISTORY_WRITE_MODE=${HISTORY_WRITE_MODE})."
+          observs_mode="$(printf '%s' "${OBSERVS_WRITE_MODE:-}" | tr '[:upper:]' '[:lower:]')"
+          if [ "${observs_mode}" != "pubsub_only" ]; then
+            echo "Skipping Pub/Sub publisher setup (OBSERVS_WRITE_MODE=${OBSERVS_WRITE_MODE})."
             exit 0
           fi
 
-          if gcloud pubsub topics describe "${GCP_HISTORY_PUBSUB_TOPIC}" --project "${PROJECT_ID}" >/dev/null 2>&1; then
-            echo "Pub/Sub topic exists: ${GCP_HISTORY_PUBSUB_TOPIC}"
+          if gcloud pubsub topics describe "${GCP_OBSERVS_PUBSUB_TOPIC}" --project "${PROJECT_ID}" >/dev/null 2>&1; then
+            echo "Pub/Sub topic exists: ${GCP_OBSERVS_PUBSUB_TOPIC}"
           else
-            gcloud pubsub topics create "${GCP_HISTORY_PUBSUB_TOPIC}" --project "${PROJECT_ID}"
-            echo "Created Pub/Sub topic: ${GCP_HISTORY_PUBSUB_TOPIC}"
+            gcloud pubsub topics create "${GCP_OBSERVS_PUBSUB_TOPIC}" --project "${PROJECT_ID}"
+            echo "Created Pub/Sub topic: ${GCP_OBSERVS_PUBSUB_TOPIC}"
           fi
 
-          gcloud pubsub topics add-iam-policy-binding "${GCP_HISTORY_PUBSUB_TOPIC}" \
+          gcloud pubsub topics add-iam-policy-binding "${GCP_OBSERVS_PUBSUB_TOPIC}" \
             --project "${PROJECT_ID}" \
             --member "serviceAccount:${SOS_SERVICE_ACCOUNT}" \
             --role "roles/pubsub.publisher" >/dev/null
@@ -222,11 +222,11 @@ jobs:
 
           upsert_secret "${SB_SECRET_KEY_SECRET_NAME}" "${SB_SECRET_KEY}" 1
           upsert_secret "${SB_UK_AQ_CRON_SECRET_SECRET_NAME}" "${SB_UK_AQ_CRON_SECRET}" 0
-          history_mode="$(printf '%s' "${HISTORY_WRITE_MODE:-}" | tr '[:upper:]' '[:lower:]')"
-          if [ "${history_mode}" = "direct" ]; then
+          observs_mode="$(printf '%s' "${OBSERVS_WRITE_MODE:-}" | tr '[:upper:]' '[:lower:]')"
+          if [ "${observs_mode}" = "direct" ]; then
             upsert_secret "${OBS_AQIDB_SECRET_KEY_SECRET_NAME}" "${OBS_AQIDB_SECRET_KEY}" 1
           else
-            echo "Skipping OBS_AQIDB_SECRET_KEY secret sync (HISTORY_WRITE_MODE=${HISTORY_WRITE_MODE})."
+            echo "Skipping OBS_AQIDB_SECRET_KEY secret sync (OBSERVS_WRITE_MODE=${OBSERVS_WRITE_MODE})."
           fi
           upsert_secret "${DROPBOX_APP_KEY_SECRET_NAME}" "${DROPBOX_APP_KEY}" 0
           upsert_secret "${DROPBOX_APP_SECRET_SECRET_NAME}" "${DROPBOX_APP_SECRET}" 0
@@ -282,9 +282,9 @@ jobs:
           add_env SUPABASE_URL
           add_env UK_AQ_CORE_SCHEMA
           add_env UK_AQ_RAW_SCHEMA
-          add_env HISTORY_WRITE_MODE
-          add_env GCP_HISTORY_PUBSUB_TOPIC
-          add_env HISTORY_PUBSUB_PUBLISH_BATCH_SIZE
+          add_env OBSERVS_WRITE_MODE
+          add_env GCP_OBSERVS_PUBSUB_TOPIC
+          add_env OBSERVS_PUBSUB_PUBLISH_BATCH_SIZE
           add_env UK_AIR_SOS_BASE_URL
           add_env UK_AIR_SOS_SERVICE_LABEL
           add_env UK_AIR_SOS_CONNECTOR_CODE
@@ -306,14 +306,14 @@ jobs:
             add_env OBS_AQIDB_RPC_SCHEMA
           fi
 
-          history_mode="$(printf '%s' "${HISTORY_WRITE_MODE:-}" | tr '[:upper:]' '[:lower:]')"
+          observs_mode="$(printf '%s' "${OBSERVS_WRITE_MODE:-}" | tr '[:upper:]' '[:lower:]')"
           secret_updates=()
           add_secret_binding "SB_SECRET_KEY" "${SB_SECRET_KEY_SECRET_NAME}" 1
           add_secret_binding "SB_UK_AQ_CRON_SECRET" "${SB_UK_AQ_CRON_SECRET_SECRET_NAME}" 0
-          if [ "${history_mode}" = "direct" ]; then
+          if [ "${observs_mode}" = "direct" ]; then
             add_secret_binding "OBS_AQIDB_SECRET_KEY" "${OBS_AQIDB_SECRET_KEY_SECRET_NAME}" 1
           else
-            echo "Skipping OBS_AQIDB_SECRET_KEY secret binding (HISTORY_WRITE_MODE=${HISTORY_WRITE_MODE})."
+            echo "Skipping OBS_AQIDB_SECRET_KEY secret binding (OBSERVS_WRITE_MODE=${OBSERVS_WRITE_MODE})."
           fi
           add_secret_binding "DROPBOX_APP_KEY" "${DROPBOX_APP_KEY_SECRET_NAME}" 0
           add_secret_binding "DROPBOX_APP_SECRET" "${DROPBOX_APP_SECRET_SECRET_NAME}" 0

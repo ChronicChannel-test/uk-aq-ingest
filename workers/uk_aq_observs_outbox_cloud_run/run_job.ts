@@ -1,10 +1,10 @@
 import "../../supabase/functions/_shared/fetch_egress_patch.ts";
 
 import {
-  flushHistoryOutbox,
-  type HistoryOutboxFlushStats,
+  flushObservsOutbox,
+  type ObservsOutboxFlushStats,
   type MainRpcCaller,
-} from "../../supabase/functions/_shared/history_client.ts";
+} from "../../supabase/functions/_shared/observs_client.ts";
 
 type RpcError = { message: string };
 
@@ -13,7 +13,7 @@ type RpcResult<T> = {
   error: RpcError | null;
 };
 
-type FlushSummary = HistoryOutboxFlushStats & {
+type FlushSummary = ObservsOutboxFlushStats & {
   batches: number;
   max_batches: number;
   warnings: string[];
@@ -32,23 +32,23 @@ const MAIN_RPC_SCHEMA = (Deno.env.get("UK_AQ_PUBLIC_SCHEMA") || "uk_aq_public")
   .trim();
 
 const FLUSH_MAX_BATCHES = parsePositiveInt(
-  Deno.env.get("HISTORY_OUTBOX_CLOUD_RUN_MAX_BATCHES"),
+  Deno.env.get("OBSERVS_OUTBOX_CLOUD_RUN_MAX_BATCHES"),
   30,
 );
 const FLUSH_BUDGET_SECONDS = parsePositiveInt(
-  Deno.env.get("HISTORY_OUTBOX_CLOUD_RUN_BUDGET_SECONDS"),
+  Deno.env.get("OBSERVS_OUTBOX_CLOUD_RUN_BUDGET_SECONDS"),
   540,
 );
 const FLUSH_SHUTDOWN_BUFFER_SECONDS = parsePositiveInt(
-  Deno.env.get("HISTORY_OUTBOX_CLOUD_RUN_SHUTDOWN_BUFFER_SECONDS"),
+  Deno.env.get("OBSERVS_OUTBOX_CLOUD_RUN_SHUTDOWN_BUFFER_SECONDS"),
   20,
 );
 const MAIN_RPC_RETRIES = parsePositiveInt(
-  Deno.env.get("HISTORY_OUTBOX_CLOUD_RUN_RPC_RETRIES"),
+  Deno.env.get("OBSERVS_OUTBOX_CLOUD_RUN_RPC_RETRIES"),
   3,
 );
 const CLAIM_BATCH_LIMIT = parsePositiveInt(
-  Deno.env.get("HISTORY_OUTBOX_CLOUD_RUN_CLAIM_BATCH_LIMIT"),
+  Deno.env.get("OBSERVS_OUTBOX_CLOUD_RUN_CLAIM_BATCH_LIMIT"),
   20,
 );
 const MIN_BATCH_BUDGET_MS = 4000;
@@ -102,7 +102,7 @@ async function mainRpc<T>(
     Accept: "application/json",
     "Accept-Profile": MAIN_RPC_SCHEMA,
     "Content-Profile": MAIN_RPC_SCHEMA,
-    "x-ukaq-egress-caller": "uk_aq_history_outbox_cloud_run",
+    "x-ukaq-egress-caller": "uk_aq_observs_outbox_cloud_run",
   };
 
   for (let attempt = 1; attempt <= MAIN_RPC_RETRIES; attempt += 1) {
@@ -141,7 +141,7 @@ async function mainRpc<T>(
   return { data: null, error: { message: "unknown_main_rpc_error" } };
 }
 
-function historyConfigured(): boolean {
+function observsConfigured(): boolean {
   return Boolean(OBS_AQIDB_SUPABASE_URL && OBS_AQIDB_SECRET_KEY);
 }
 
@@ -189,10 +189,10 @@ function summarizeForError(summary: FlushSummary): string {
   return JSON.stringify(payload);
 }
 
-async function flushHistoryOutboxInBudget(): Promise<FlushSummary> {
+async function flushObservsOutboxInBudget(): Promise<FlushSummary> {
   const summary = buildEmptySummary();
-  if (!historyConfigured()) {
-    summary.stop_reason = "history_not_configured";
+  if (!observsConfigured()) {
+    summary.stop_reason = "observs_not_configured";
     return summary;
   }
 
@@ -205,11 +205,11 @@ async function flushHistoryOutboxInBudget(): Promise<FlushSummary> {
     }
 
     const batchWarnings: string[] = [];
-    const stats = await flushHistoryOutbox(
+    const stats = await flushObservsOutbox(
       mainRpc as MainRpcCaller,
       (message) => {
         batchWarnings.push(message);
-        console.warn("history_outbox_flush_warning", { message });
+        console.warn("observs_outbox_flush_warning", { message });
       },
       { claim_batch_limit: CLAIM_BATCH_LIMIT },
     );
@@ -240,7 +240,7 @@ async function flushHistoryOutboxInBudget(): Promise<FlushSummary> {
 
 async function main(): Promise<void> {
   const now = new Date().toISOString();
-  console.log("history_outbox_cloud_run_start", {
+  console.log("observs_outbox_cloud_run_start", {
     checked_at: now,
     max_batches: FLUSH_MAX_BATCHES,
     claim_batch_limit: CLAIM_BATCH_LIMIT,
@@ -248,23 +248,23 @@ async function main(): Promise<void> {
     shutdown_buffer_seconds: FLUSH_SHUTDOWN_BUFFER_SECONDS,
   });
 
-  const summary = await flushHistoryOutboxInBudget();
-  console.log("history_outbox_cloud_run_summary", {
+  const summary = await flushObservsOutboxInBudget();
+  console.log("observs_outbox_cloud_run_summary", {
     checked_at: now,
-    history_outbox: summary,
+    observs_outbox: summary,
   });
 
   if (summary.errors.length > 0) {
-    throw new Error(`history_outbox_flush_error ${summarizeForError(summary)}`);
+    throw new Error(`observs_outbox_flush_error ${summarizeForError(summary)}`);
   }
   if (summary.claimed > 0 && summary.rows_resolved === 0) {
     throw new Error(
-      `history_outbox_flush_no_resolve ${summarizeForError(summary)}`,
+      `observs_outbox_flush_no_resolve ${summarizeForError(summary)}`,
     );
   }
   if (summary.claimed === 0 && hasSevereWarning(summary.warnings)) {
     throw new Error(
-      `history_outbox_flush_claim_or_resolve_warning ${summarizeForError(summary)}`,
+      `observs_outbox_flush_claim_or_resolve_warning ${summarizeForError(summary)}`,
     );
   }
 }

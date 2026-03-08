@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Move observations older than a cutoff to the history DB in batches.
+# Move observations older than a cutoff to the observs DB in batches.
 #
 # Defaults:
 #   CUTOFF_DAYS=14
@@ -9,13 +9,13 @@ set -euo pipefail
 #
 # Environment:
 #   SUPABASE_DB_URL
-#   SBASE_HISTORY_DB_URL
+#   OBS_AQIDB_SUPABASE_DB_URL
 # Optional:
 #   CUTOFF_DAYS
 #   BATCH_SIZE
 #
 # Example:
-#   CUTOFF_DAYS=21 BATCH_SIZE=20000 ./scripts/uk_aq_move_history_observations.sh
+#   CUTOFF_DAYS=21 BATCH_SIZE=20000 ./scripts/uk_aq_move_observations.sh
 
 if [ -f .env ]; then
   set -a
@@ -48,8 +48,8 @@ if [ -z "${SUPABASE_DB_URL:-}" ]; then
   echo "SUPABASE_DB_URL is missing." >&2
   exit 1
 fi
-if [ -z "${SBASE_HISTORY_DB_URL:-}" ]; then
-  echo "SBASE_HISTORY_DB_URL is missing." >&2
+if [ -z "${OBS_AQIDB_SUPABASE_DB_URL:-}" ]; then
+  echo "OBS_AQIDB_SUPABASE_DB_URL is missing." >&2
   exit 1
 fi
 
@@ -63,7 +63,7 @@ BATCH=0
 
 while true; do
   BATCH=$((BATCH + 1))
-  CSV_HIST="$TMP_DIR/history_${BATCH}.csv"
+  CSV_HIST="$TMP_DIR/observs_${BATCH}.csv"
   CSV_KEYS="$TMP_DIR/keys_${BATCH}.csv"
   rm -f "$CSV_HIST" "$CSV_KEYS"
 
@@ -95,7 +95,7 @@ SQL
   SELECTED=$(wc -l < "$CSV_KEYS" | tr -d ' ')
   TOTAL_SELECTED=$((TOTAL_SELECTED + SELECTED))
 
-  INSERTED=$(psql "$SBASE_HISTORY_DB_URL" -v ON_ERROR_STOP=1 -q -t -A <<SQL
+  INSERTED=$(psql "$OBS_AQIDB_SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -q -t -A <<SQL
 DROP TABLE IF EXISTS tmp_hist;
 CREATE TEMP TABLE tmp_hist (
   connector_id integer,
@@ -106,7 +106,7 @@ CREATE TEMP TABLE tmp_hist (
 );
 \copy tmp_hist FROM '${CSV_HIST}' WITH (FORMAT csv);
 WITH ins AS (
-  INSERT INTO uk_aq_history.observations (
+  INSERT INTO uk_aq_observs.observations (
     connector_id,
     timeseries_id,
     observed_at,

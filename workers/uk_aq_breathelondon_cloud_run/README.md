@@ -6,7 +6,7 @@ existing `supabase/functions/ingest_breathelondon/index.ts` logic.
 It keeps behavior aligned with the Edge function path:
 
 - station/timeseries/observation ingest
-- history dual-write via shared mode (workflow default `HISTORY_WRITE_MODE=pubsub_only`)
+- observs dual-write via shared mode (workflow default `OBSERVS_WRITE_MODE=pubsub_only`)
 - Dropbox raw/log/error uploads
 - connector run status updates
 - `uk_aq_ingest_runs` run row insert
@@ -66,10 +66,10 @@ gcloud run deploy uk-aq-breathelondon-ingest \
 
 ## Optional but recommended
 
-- `HISTORY_WRITE_MODE` (workflow default: `pubsub_only`)
-- `GCP_HISTORY_PUBSUB_TOPIC` (required for `HISTORY_WRITE_MODE=pubsub_only`)
-- `HISTORY_PUBSUB_PUBLISH_BATCH_SIZE` (default `500`)
-- `OBS_AQIDB_SUPABASE_URL`, `OBS_AQIDB_SECRET_KEY`, `OBS_AQIDB_RPC_SCHEMA` (required when `HISTORY_WRITE_MODE=direct`; not injected for `pubsub_only`/`outbox_only`)
+- `OBSERVS_WRITE_MODE` (workflow default: `pubsub_only`)
+- `GCP_OBSERVS_PUBSUB_TOPIC` (required for `OBSERVS_WRITE_MODE=pubsub_only`)
+- `OBSERVS_PUBSUB_PUBLISH_BATCH_SIZE` (default `500`)
+- `OBS_AQIDB_SUPABASE_URL`, `OBS_AQIDB_SECRET_KEY`, `OBS_AQIDB_RPC_SCHEMA` (required when `OBSERVS_WRITE_MODE=direct`; not injected for `pubsub_only`/`outbox_only`)
 - `DROPBOX_APP_KEY`
 - `DROPBOX_APP_SECRET`
 - `DROPBOX_REFRESH_TOKEN`

@@ -3,9 +3,9 @@ import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import "../_shared/fetch_egress_patch.ts";
 import { cacheControlHeaders } from "../_shared/cache.ts";
 import {
-  type HistoryObservationRow,
-  writeHistoryWithOutbox,
-} from "../_shared/history_client.ts";
+  type ObservsObservationRow,
+  writeObservsWithOutbox,
+} from "../_shared/observs_client.ts";
 
 type PollRequest = {
   connector_code?: string;
@@ -2890,8 +2890,8 @@ serve(async (req) => {
       observations_rows_input: 0,
       observations_rows_prepared: 0,
       observations_rows_deduped_prewrite: 0,
-      history_rows_prepared: 0,
-      history_rows_deduped_prewrite: 0,
+      observs_rows_prepared: 0,
+      observs_rows_deduped_prewrite: 0,
       series_polled: 0,
       window_hours: windowHours,
       last_observed_at: null,
@@ -3366,8 +3366,8 @@ serve(async (req) => {
   let observationsRowsInput = 0;
   let observationsRowsPrepared = 0;
   let observationsRowsDedupedPrewrite = 0;
-  let historyRowsPrepared = 0;
-  let historyRowsDedupedPrewrite = 0;
+  let observsRowsPrepared = 0;
+  let observsRowsDedupedPrewrite = 0;
   const seriesPolled = observationsByTimeseries.size;
   let lastObservedAt: string | null = null;
   let timeseriesLastUpdated = 0;
@@ -3398,31 +3398,31 @@ serve(async (req) => {
     observationsRowsPrepared = observationRows.length;
     observationsRowsDedupedPrewrite = observationDedupe.deduped;
 
-    const historyRows: HistoryObservationRow[] = observationRows.map((row) => ({
+    const observsRows: ObservsObservationRow[] = observationRows.map((row) => ({
       connector_id: Number(row.connector_id),
       timeseries_id: Number(row.timeseries_id),
       observed_at: String(row.observed_at),
       value: typeof row.value === "number" ? row.value : null,
       status: row.status == null ? null : String(row.status),
     }));
-    historyRowsPrepared = historyRows.length;
-    historyRowsDedupedPrewrite = observationsRowsDedupedPrewrite;
+    observsRowsPrepared = observsRows.length;
+    observsRowsDedupedPrewrite = observationsRowsDedupedPrewrite;
 
     observationsUpserted = await upsertObservations(observationRows);
-    if (historyRows.length) {
-      await writeHistoryWithOutbox(rpcRequest, historyRows, (message) => {
-        logLine("WARN", "OpenAQ history write warning", {
+    if (observsRows.length) {
+      await writeObservsWithOutbox(rpcRequest, observsRows, (message) => {
+        logLine("WARN", "OpenAQ observs write warning", {
           connector_id: connector.id,
           message,
-          rows: historyRows.length,
+          rows: observsRows.length,
         });
         void logError({
           severity: "warn",
-          message: "OpenAQ history dual-write warning",
+          message: "OpenAQ observs dual-write warning",
           connector_id: connector.id,
           context: {
             warning: message,
-            rows: historyRows.length,
+            rows: observsRows.length,
           },
         });
       });
@@ -3874,8 +3874,8 @@ serve(async (req) => {
     observations_rows_input: observationsRowsInput,
     observations_rows_prepared: observationsRowsPrepared,
     observations_rows_deduped_prewrite: observationsRowsDedupedPrewrite,
-    history_rows_prepared: historyRowsPrepared,
-    history_rows_deduped_prewrite: historyRowsDedupedPrewrite,
+    observs_rows_prepared: observsRowsPrepared,
+    observs_rows_deduped_prewrite: observsRowsDedupedPrewrite,
     series_polled: seriesPolled,
     last_observed_at: lastObservedAt,
     rate_limit_remaining: rateLimitState.remaining,
@@ -3977,8 +3977,8 @@ serve(async (req) => {
     observations_rows_input: observationsRowsInput,
     observations_rows_prepared: observationsRowsPrepared,
     observations_rows_deduped_prewrite: observationsRowsDedupedPrewrite,
-    history_rows_prepared: historyRowsPrepared,
-    history_rows_deduped_prewrite: historyRowsDedupedPrewrite,
+    observs_rows_prepared: observsRowsPrepared,
+    observs_rows_deduped_prewrite: observsRowsDedupedPrewrite,
     series_polled: seriesPolled,
     window_hours: windowHours,
     last_observed_at: lastObservedAt,

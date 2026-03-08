@@ -9,14 +9,14 @@ Usage:
 Options:
   --env-file PATH         Env file to source first (default: .env in ingest repo)
   --main-db-url URL       MAIN DB Postgres URL (overrides SUPABASE_DB_URL)
-  --history-db-url URL    HISTORY DB Postgres URL (overrides OBS_AQIDB_SUPABASE_DB_URL/SBASE_HISTORY_DB_URL)
+  --obs-aqidb-db-url URL  OBS_AQIDB Postgres URL (overrides OBS_AQIDB_SUPABASE_DB_URL)
   --main-only             Run MAIN DB checks only
-  --history-only          Run HISTORY DB checks only
+  --obs-aqidb-only        Run OBS_AQIDB checks only
   -h, --help              Show this help
 
 Environment fallback:
   MAIN DB:    SUPABASE_DB_URL
-  HISTORY DB: OBS_AQIDB_SUPABASE_DB_URL or SBASE_HISTORY_DB_URL
+  OBS_AQIDB: OBS_AQIDB_SUPABASE_DB_URL
 EOF
 }
 
@@ -25,9 +25,9 @@ INGEST_REPO="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
 
 ENV_FILE="${INGEST_REPO}/.env"
 MAIN_DB_URL="${MAIN_DB_URL:-${SUPABASE_DB_URL:-}}"
-HISTORY_DB_URL="${HISTORY_DB_URL:-${OBS_AQIDB_SUPABASE_DB_URL:-${SBASE_HISTORY_DB_URL:-}}}"
+OBS_AQIDB_DB_URL="${OBS_AQIDB_DB_URL:-${OBS_AQIDB_SUPABASE_DB_URL:-}}"
 RUN_MAIN=1
-RUN_HISTORY=1
+RUN_OBS_AQIDB=1
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -39,18 +39,18 @@ while [[ $# -gt 0 ]]; do
       MAIN_DB_URL="${2:-}"
       shift 2
       ;;
-    --history-db-url)
-      HISTORY_DB_URL="${2:-}"
+    --obs-aqidb-db-url)
+      OBS_AQIDB_DB_URL="${2:-}"
       shift 2
       ;;
     --main-only)
       RUN_MAIN=1
-      RUN_HISTORY=0
+      RUN_OBS_AQIDB=0
       shift
       ;;
-    --history-only)
+    --obs-aqidb-only)
       RUN_MAIN=0
-      RUN_HISTORY=1
+      RUN_OBS_AQIDB=1
       shift
       ;;
     -h|--help)
@@ -72,7 +72,7 @@ if [[ -n "${ENV_FILE}" && -f "${ENV_FILE}" ]]; then
   set +a
   # Re-resolve in case env file populated them.
   [[ -z "${MAIN_DB_URL}" ]] && MAIN_DB_URL="${SUPABASE_DB_URL:-}"
-  [[ -z "${HISTORY_DB_URL}" ]] && HISTORY_DB_URL="${OBS_AQIDB_SUPABASE_DB_URL:-${SBASE_HISTORY_DB_URL:-}}"
+  [[ -z "${OBS_AQIDB_DB_URL}" ]] && OBS_AQIDB_DB_URL="${OBS_AQIDB_SUPABASE_DB_URL:-}"
 fi
 
 if ! command -v psql >/dev/null 2>&1; then
@@ -85,8 +85,8 @@ if [[ "${RUN_MAIN}" -eq 1 && -z "${MAIN_DB_URL}" ]]; then
   exit 1
 fi
 
-if [[ "${RUN_HISTORY}" -eq 1 && -z "${HISTORY_DB_URL}" ]]; then
-  echo "HISTORY DB URL missing. Set OBS_AQIDB_SUPABASE_DB_URL/SBASE_HISTORY_DB_URL or pass --history-db-url." >&2
+if [[ "${RUN_OBS_AQIDB}" -eq 1 && -z "${OBS_AQIDB_DB_URL}" ]]; then
+  echo "OBS_AQIDB URL missing. Set OBS_AQIDB_SUPABASE_DB_URL or pass --obs-aqidb-db-url." >&2
   exit 1
 fi
 
@@ -105,7 +105,7 @@ with target_cols as (
   from information_schema.columns
   where
     (table_schema = 'uk_aq_core' and table_name in ('connectors','timeseries') and column_name = 'id')
-    or (table_schema in ('uk_aq_core','uk_aq_raw','uk_aq_history') and column_name in ('connector_id','timeseries_id'))
+    or (table_schema in ('uk_aq_core','uk_aq_raw','uk_aq_observs') and column_name in ('connector_id','timeseries_id'))
 )
 select * from target_cols
 where data_type <> 'integer'
@@ -122,7 +122,7 @@ begin
       and data_type <> 'integer'
     )
     or (
-      table_schema in ('uk_aq_core','uk_aq_raw','uk_aq_history')
+      table_schema in ('uk_aq_core','uk_aq_raw','uk_aq_observs')
       and column_name in ('connector_id','timeseries_id')
       and data_type <> 'integer'
     );
@@ -242,14 +242,14 @@ end as ts_rows;
 SQL
 }
 
-run_history_checks() {
-  echo "=== HISTORY DB all-clear ==="
-  psql "${HISTORY_DB_URL}" -v ON_ERROR_STOP=1 <<'SQL'
+run_obs_aqidb_checks() {
+  echo "=== OBS_AQIDB all-clear ==="
+  psql "${OBS_AQIDB_DB_URL}" -v ON_ERROR_STOP=1 <<'SQL'
 \pset pager off
 
 select table_schema, table_name, column_name, data_type
 from information_schema.columns
-where table_schema = 'uk_aq_history'
+where table_schema = 'uk_aq_observs'
   and table_name = 'observations'
   and column_name in ('connector_id','timeseries_id');
 
@@ -258,19 +258,19 @@ declare v_bad int;
 begin
   select count(*) into v_bad
   from information_schema.columns
-  where table_schema = 'uk_aq_history'
+  where table_schema = 'uk_aq_observs'
     and table_name = 'observations'
     and column_name in ('connector_id','timeseries_id')
     and data_type <> 'integer';
 
   if v_bad > 0 then
-    raise exception 'FAIL: uk_aq_history.observations still has non-integer connector/timeseries ids';
+    raise exception 'FAIL: uk_aq_observs.observations still has non-integer connector/timeseries ids';
   end if;
 end $$;
 
-select 1 from uk_aq_history.observations limit 1;
+select 1 from uk_aq_observs.observations limit 1;
 
-\echo 'HISTORY DB ALL-CLEAR'
+\echo 'OBS_AQIDB ALL-CLEAR'
 SQL
 }
 
@@ -278,8 +278,8 @@ if [[ "${RUN_MAIN}" -eq 1 ]]; then
   run_main_checks
 fi
 
-if [[ "${RUN_HISTORY}" -eq 1 ]]; then
-  run_history_checks
+if [[ "${RUN_OBS_AQIDB}" -eq 1 ]]; then
+  run_obs_aqidb_checks
 fi
 
 echo "All requested checks completed."

@@ -20,9 +20,9 @@ Use this file as the working checklist. Keep `plans/egress_reduction_plan.md` as
 - [x] Station trend clients now send `If-None-Match` for `uk_aq_timeseries` (`index`, `uk_aq_bristol`, `uk_aq_surbiton`).
 - [x] Station trend clients now request compact series payloads with `include_status=false` and persist chart cache (`since`/`ETag`/points/guideline) in `localStorage`.
 - [x] History outbox throughput defaults tuned in code:
-  - `HISTORY_OUTBOX_CLOUD_RUN_CLAIM_BATCH_LIMIT=20`
-  - `HISTORY_OUTBOX_FLUSH_LIMIT=40`
-  - `HISTORY_UPSERT_CHUNK_SIZE=5000`
+  - `OBSERVS_OUTBOX_CLOUD_RUN_CLAIM_BATCH_LIMIT=20`
+  - `OBSERVS_OUTBOX_FLUSH_LIMIT=40`
+  - `OBSERVS_UPSERT_CHUNK_SIZE=5000`
 - [x] History dual-write payload path now normalizes + dedupes rows by `(connector_id, timeseries_id, observed_at)` before history upsert/outbox enqueue (Edge shared helper + SensorCommunity Cloud Run worker).
 
 ## Next (in order)
@@ -40,7 +40,7 @@ Use this file as the working checklist. Keep `plans/egress_reduction_plan.md` as
 - [ ] Compare 24h write payload volume before vs after dedupe in both DBs using `uk_aq_public.uk_aq_observation_rpc_metrics_minute`.
 - [ ] Measure history project API request baseline (`usage.api-requests-count`, `usage.api-counts`) and record daily deltas.
 - [x] Refactor high-churn ingestors to batch history writes per run (reduce `writeHistoryWithOutbox` calls inside tight loops).
-- [ ] Verify queue drain + runtime budget with current outbox defaults (`HISTORY_OUTBOX_CLOUD_RUN_CLAIM_BATCH_LIMIT=20`, `HISTORY_OUTBOX_FLUSH_LIMIT=40`, `HISTORY_UPSERT_CHUNK_SIZE=5000`).
+- [ ] Verify queue drain + runtime budget with current outbox defaults (`OBSERVS_OUTBOX_CLOUD_RUN_CLAIM_BATCH_LIMIT=20`, `OBSERVS_OUTBOX_FLUSH_LIMIT=40`, `OBSERVS_UPSERT_CHUNK_SIZE=5000`).
 - [x] Validate history index footprint and remove duplicate PK-like btree index if present.
 
 ## Validation Queries

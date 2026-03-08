@@ -12,7 +12,7 @@ export type MainRpcCaller = <T>(
   args?: Record<string, unknown>,
 ) => Promise<RpcResult<T>>;
 
-export type HistoryObservationRow = {
+export type ObservsObservationRow = {
   connector_id: number;
   timeseries_id: number;
   observed_at: string;
@@ -21,35 +21,35 @@ export type HistoryObservationRow = {
   status: string | null;
 };
 
-type HistoryOutboxClaimRow = {
+type ObservsOutboxClaimRow = {
   id: string;
   payload: unknown;
   attempts: number;
 };
 
-type HistoryOutboxResolveRow = {
+type ObservsOutboxResolveRow = {
   rows_resolved: number;
 };
 
-type HistoryOutboxEnqueueRow = {
+type ObservsOutboxEnqueueRow = {
   rows_enqueued: number;
 };
 
-type HistoryReceiptUpsertRow = {
+type ObservsReceiptUpsertRow = {
   rows_upserted: number;
 };
 
-type HistoryUpsertRow = {
+type ObservsUpsertRow = {
   observations_upserted: number;
 };
 
-export type HistorySyncReceiptRow = {
+export type ObservsSyncReceiptRow = {
   connector_id: number;
   timeseries_id: number;
   observed_day: string;
 };
 
-export type HistoryOutboxFlushStats = {
+export type ObservsOutboxFlushStats = {
   claimed: number;
   delivered: number;
   failed: number;
@@ -57,17 +57,17 @@ export type HistoryOutboxFlushStats = {
   rows_resolved: number;
 };
 
-export type HistoryWriteStats = {
+export type ObservsWriteStats = {
   written: number;
   receipts_upserted: number;
   enqueued: number;
 };
 
-export type HistoryOutboxFlushOptions = {
+export type ObservsOutboxFlushOptions = {
   claim_batch_limit?: number;
 };
 
-type HistoryWriteMode = "direct" | "outbox_only" | "pubsub_only";
+type ObservsWriteMode = "direct" | "outbox_only" | "pubsub_only";
 
 const OBS_AQIDB_SUPABASE_URL = (
   Deno.env.get("OBS_AQIDB_SUPABASE_URL") ?? ""
@@ -77,57 +77,57 @@ const OBS_AQIDB_SECRET_KEY = (
   Deno.env.get("OBS_AQIDB_SECRET_KEY") ?? ""
 ).trim();
 
-const OBS_AQIDB_RPC_SCHEMA = normalizeHistoryRpcSchema(
+const OBS_AQIDB_RPC_SCHEMA = normalizeObservsRpcSchema(
   (Deno.env.get("OBS_AQIDB_RPC_SCHEMA") ?? "uk_aq_public").trim(),
 );
 
-function normalizeHistoryRpcSchema(raw: string): string {
+function normalizeObservsRpcSchema(raw: string): string {
   const normalized = raw.trim().toLowerCase();
-  // History RPC functions live in uk_aq_public.
+  // Observs RPC functions live in uk_aq_public.
   if (
-    !normalized || normalized === "uk_aq_history" || normalized === "public"
+    !normalized || normalized === "uk_aq_observs" || normalized === "public"
   ) {
     return "uk_aq_public";
   }
   return raw.trim();
 }
 
-const HISTORY_UPSERT_RPC = (Deno.env.get("HISTORY_UPSERT_RPC") ||
-  "uk_aq_rpc_history_observations_upsert")
+const OBSERVS_UPSERT_RPC = (Deno.env.get("OBSERVS_UPSERT_RPC") ||
+  "uk_aq_rpc_observs_observations_upsert")
   .trim();
 
-const HISTORY_OUTBOX_FLUSH_LIMIT = parsePositiveInt(
-  Deno.env.get("HISTORY_OUTBOX_FLUSH_LIMIT"),
+const OBSERVS_OUTBOX_FLUSH_LIMIT = parsePositiveInt(
+  Deno.env.get("OBSERVS_OUTBOX_FLUSH_LIMIT"),
   40,
 );
 
-const HISTORY_UPSERT_CHUNK_SIZE = parsePositiveInt(
-  Deno.env.get("HISTORY_UPSERT_CHUNK_SIZE"),
+const OBSERVS_UPSERT_CHUNK_SIZE = parsePositiveInt(
+  Deno.env.get("OBSERVS_UPSERT_CHUNK_SIZE"),
   5000,
 );
 
-const HISTORY_UPSERT_RPC_RETRIES = parsePositiveInt(
-  Deno.env.get("HISTORY_UPSERT_RPC_RETRIES"),
+const OBSERVS_UPSERT_RPC_RETRIES = parsePositiveInt(
+  Deno.env.get("OBSERVS_UPSERT_RPC_RETRIES"),
   3,
 );
 
-const HISTORY_UPSERT_RETRY_BASE_MS = parsePositiveInt(
-  Deno.env.get("HISTORY_UPSERT_RETRY_BASE_MS"),
+const OBSERVS_UPSERT_RETRY_BASE_MS = parsePositiveInt(
+  Deno.env.get("OBSERVS_UPSERT_RETRY_BASE_MS"),
   1000,
 );
 
-const HISTORY_UPSERT_TIMEOUT_SPLIT_MIN_ROWS = parsePositiveInt(
-  Deno.env.get("HISTORY_UPSERT_TIMEOUT_SPLIT_MIN_ROWS"),
+const OBSERVS_UPSERT_TIMEOUT_SPLIT_MIN_ROWS = parsePositiveInt(
+  Deno.env.get("OBSERVS_UPSERT_TIMEOUT_SPLIT_MIN_ROWS"),
   32,
 );
 
-const HISTORY_UPSERT_TIMEOUT_SPLIT_MAX_DEPTH = parsePositiveInt(
-  Deno.env.get("HISTORY_UPSERT_TIMEOUT_SPLIT_MAX_DEPTH"),
+const OBSERVS_UPSERT_TIMEOUT_SPLIT_MAX_DEPTH = parsePositiveInt(
+  Deno.env.get("OBSERVS_UPSERT_TIMEOUT_SPLIT_MAX_DEPTH"),
   4,
 );
 
-const HISTORY_WRITE_MODE = normalizeHistoryWriteMode(
-  Deno.env.get("HISTORY_WRITE_MODE"),
+const OBSERVS_WRITE_MODE = normalizeObservsWriteMode(
+  Deno.env.get("OBSERVS_WRITE_MODE"),
 );
 
 const GCP_PROJECT_ID = (
@@ -136,17 +136,17 @@ const GCP_PROJECT_ID = (
     ""
 ).trim();
 
-const GCP_HISTORY_PUBSUB_TOPIC = (
-  Deno.env.get("GCP_HISTORY_PUBSUB_TOPIC") ??
+const GCP_OBSERVS_PUBSUB_TOPIC = (
+  Deno.env.get("GCP_OBSERVS_PUBSUB_TOPIC") ??
     ""
 ).trim();
 
-const HISTORY_PUBSUB_PUBLISH_BATCH_SIZE = parsePositiveInt(
-  Deno.env.get("HISTORY_PUBSUB_PUBLISH_BATCH_SIZE"),
+const OBSERVS_PUBSUB_PUBLISH_BATCH_SIZE = parsePositiveInt(
+  Deno.env.get("OBSERVS_PUBSUB_PUBLISH_BATCH_SIZE"),
   500,
 );
 
-let historyClientCache: ReturnType<typeof createClient> | null = null;
+let observsClientCache: ReturnType<typeof createClient> | null = null;
 
 function parsePositiveInt(raw: string | undefined, fallback: number): number {
   const value = Number(raw ?? "");
@@ -156,7 +156,7 @@ function parsePositiveInt(raw: string | undefined, fallback: number): number {
   return Math.max(1, Math.trunc(value));
 }
 
-function normalizeHistoryWriteMode(raw: string | undefined): HistoryWriteMode {
+function normalizeObservsWriteMode(raw: string | undefined): ObservsWriteMode {
   const value = (raw ?? "").trim().toLowerCase();
   if (value === "direct") {
     return "direct";
@@ -205,7 +205,7 @@ function float64FromHex(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function normalizeHistoryValue(
+function normalizeObservsValue(
   value: unknown,
   valueFloat8Hex: unknown,
 ): { value: number | null; valueFloat8Hex: string | null } {
@@ -264,14 +264,14 @@ function normalizeStatus(value: unknown): string | null {
   return status ? status : null;
 }
 
-export function prepareHistoryRows(
-  historyRows: HistoryObservationRow[],
-): HistoryObservationRow[] {
-  if (!historyRows.length) {
+export function prepareObservsRows(
+  observsRows: ObservsObservationRow[],
+): ObservsObservationRow[] {
+  if (!observsRows.length) {
     return [];
   }
-  const dedup = new Map<string, HistoryObservationRow>();
-  for (const row of historyRows) {
+  const dedup = new Map<string, ObservsObservationRow>();
+  for (const row of observsRows) {
     const connectorId = asPositiveInt(row.connector_id);
     const timeseriesId = asPositiveInt(row.timeseries_id);
     const observedAt = toObservedAt(row.observed_at);
@@ -279,7 +279,7 @@ export function prepareHistoryRows(
       continue;
     }
     const key = `${connectorId}:${timeseriesId}:${observedAt}`;
-    const normalizedValue = normalizeHistoryValue(
+    const normalizedValue = normalizeObservsValue(
       row.value,
       row.value_float8_hex,
     );
@@ -318,16 +318,16 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function isHistoryStatementTimeoutError(message: string): boolean {
+function isObservsStatementTimeoutError(message: string): boolean {
   return /statement timeout|canceling statement due to statement timeout/i.test(
     message,
   );
 }
 
-function isRetryableHistoryUpsertError(message: string): boolean {
+function isRetryableObservsUpsertError(message: string): boolean {
   const normalized = message.toLowerCase();
   return (
-    isHistoryStatementTimeoutError(normalized) ||
+    isObservsStatementTimeoutError(normalized) ||
     normalized.includes("deadlock detected") ||
     normalized.includes("could not serialize access due to") ||
     normalized.includes("connection terminated") ||
@@ -341,19 +341,19 @@ function isRetryableHistoryUpsertError(message: string): boolean {
 }
 
 function pubsubTopicPath(): string {
-  if (!GCP_HISTORY_PUBSUB_TOPIC) {
+  if (!GCP_OBSERVS_PUBSUB_TOPIC) {
     return "";
   }
-  if (GCP_HISTORY_PUBSUB_TOPIC.startsWith("projects/")) {
-    return GCP_HISTORY_PUBSUB_TOPIC;
+  if (GCP_OBSERVS_PUBSUB_TOPIC.startsWith("projects/")) {
+    return GCP_OBSERVS_PUBSUB_TOPIC;
   }
   if (!GCP_PROJECT_ID) {
     return "";
   }
-  return `projects/${GCP_PROJECT_ID}/topics/${GCP_HISTORY_PUBSUB_TOPIC}`;
+  return `projects/${GCP_PROJECT_ID}/topics/${GCP_OBSERVS_PUBSUB_TOPIC}`;
 }
 
-function historyPubsubConfigured(): boolean {
+function observsPubsubConfigured(): boolean {
   return Boolean(pubsubTopicPath());
 }
 
@@ -384,8 +384,8 @@ type PubsubPublishResponse = {
   messageIds?: unknown;
 };
 
-async function publishHistoryRowsToPubsub(
-  preparedRows: HistoryObservationRow[],
+async function publishObservsRowsToPubsub(
+  preparedRows: ObservsObservationRow[],
 ): Promise<number> {
   if (!preparedRows.length) {
     return 0;
@@ -393,7 +393,7 @@ async function publishHistoryRowsToPubsub(
   const topicPath = pubsubTopicPath();
   if (!topicPath) {
     throw new Error(
-      "History Pub/Sub is not configured (missing GCP_HISTORY_PUBSUB_TOPIC or GCP_PROJECT_ID).",
+      "Observs Pub/Sub is not configured (missing GCP_OBSERVS_PUBSUB_TOPIC or GCP_PROJECT_ID).",
     );
   }
 
@@ -401,7 +401,7 @@ async function publishHistoryRowsToPubsub(
   let published = 0;
 
   for (
-    const chunk of chunkRows(preparedRows, HISTORY_PUBSUB_PUBLISH_BATCH_SIZE)
+    const chunk of chunkRows(preparedRows, OBSERVS_PUBSUB_PUBLISH_BATCH_SIZE)
   ) {
     const messages = chunk.map((row) => ({
       data: btoa(JSON.stringify(row)),
@@ -431,7 +431,7 @@ async function publishHistoryRowsToPubsub(
       const message = typeof payload === "object" && payload !== null
         ? JSON.stringify(payload)
         : `HTTP ${response.status}`;
-      throw new Error(`History Pub/Sub publish failed: ${message}`);
+      throw new Error(`Observs Pub/Sub publish failed: ${message}`);
     }
     const messageIds = payload?.messageIds;
     published += Array.isArray(messageIds) ? messageIds.length : chunk.length;
@@ -452,19 +452,19 @@ function countRowsFromPayload<T extends string>(
   return value;
 }
 
-function historyConfigured(): boolean {
+function observsConfigured(): boolean {
   return Boolean(OBS_AQIDB_SUPABASE_URL && OBS_AQIDB_SECRET_KEY);
 }
 
-export function createSupabaseHistoryClient(): ReturnType<typeof createClient> {
-  if (!historyConfigured()) {
+export function createSupabaseObservsClient(): ReturnType<typeof createClient> {
+  if (!observsConfigured()) {
     throw new Error(
-      "History client is not configured (missing OBS_AQIDB_SUPABASE_URL or OBS_AQIDB_SECRET_KEY)",
+      "Observs client is not configured (missing OBS_AQIDB_SUPABASE_URL or OBS_AQIDB_SECRET_KEY)",
     );
   }
-  if (!historyClientCache) {
+  if (!observsClientCache) {
     const schema = OBS_AQIDB_RPC_SCHEMA || "uk_aq_public";
-    historyClientCache = createClient(
+    observsClientCache = createClient(
       OBS_AQIDB_SUPABASE_URL,
       OBS_AQIDB_SECRET_KEY,
       ({
@@ -472,24 +472,24 @@ export function createSupabaseHistoryClient(): ReturnType<typeof createClient> {
         db: { schema: schema as never },
         global: {
           headers: {
-            "X-Client-Info": "uk-aq-ingest-history-dualwrite",
+            "X-Client-Info": "uk-aq-ingest-observs-dualwrite",
           },
         },
       }) as never,
     );
   }
-  return historyClientCache;
+  return observsClientCache;
 }
 
-async function upsertHistoryChunk(
-  history: ReturnType<typeof createClient>,
-  chunk: HistoryObservationRow[],
+async function upsertObservsChunk(
+  observs: ReturnType<typeof createClient>,
+  chunk: ObservsObservationRow[],
 ): Promise<number> {
-  const { data, error } = await history.rpc(HISTORY_UPSERT_RPC, {
+  const { data, error } = await observs.rpc(OBSERVS_UPSERT_RPC, {
     rows: chunk,
   });
   if (error) {
-    throw new Error(error.message || "unknown_history_upsert_error");
+    throw new Error(error.message || "unknown_observs_upsert_error");
   }
   return countRowsFromPayload(
     (Array.isArray(data) ? data : null) as
@@ -500,23 +500,23 @@ async function upsertHistoryChunk(
   );
 }
 
-async function upsertHistoryChunkWithFallback(
-  history: ReturnType<typeof createClient>,
-  chunk: HistoryObservationRow[],
+async function upsertObservsChunkWithFallback(
+  observs: ReturnType<typeof createClient>,
+  chunk: ObservsObservationRow[],
   splitDepth = 0,
 ): Promise<number> {
-  let lastMessage = "unknown_history_upsert_error";
+  let lastMessage = "unknown_observs_upsert_error";
 
-  for (let attempt = 1; attempt <= HISTORY_UPSERT_RPC_RETRIES; attempt += 1) {
+  for (let attempt = 1; attempt <= OBSERVS_UPSERT_RPC_RETRIES; attempt += 1) {
     try {
-      return await upsertHistoryChunk(history, chunk);
+      return await upsertObservsChunk(observs, chunk);
     } catch (error) {
       lastMessage = shortError(error);
       if (
-        attempt < HISTORY_UPSERT_RPC_RETRIES &&
-        isRetryableHistoryUpsertError(lastMessage)
+        attempt < OBSERVS_UPSERT_RPC_RETRIES &&
+        isRetryableObservsUpsertError(lastMessage)
       ) {
-        await sleep(Math.min(5000, HISTORY_UPSERT_RETRY_BASE_MS * attempt));
+        await sleep(Math.min(5000, OBSERVS_UPSERT_RETRY_BASE_MS * attempt));
         continue;
       }
       break;
@@ -524,59 +524,59 @@ async function upsertHistoryChunkWithFallback(
   }
 
   if (
-    isHistoryStatementTimeoutError(lastMessage) &&
-    splitDepth < HISTORY_UPSERT_TIMEOUT_SPLIT_MAX_DEPTH &&
-    chunk.length >= HISTORY_UPSERT_TIMEOUT_SPLIT_MIN_ROWS * 2
+    isObservsStatementTimeoutError(lastMessage) &&
+    splitDepth < OBSERVS_UPSERT_TIMEOUT_SPLIT_MAX_DEPTH &&
+    chunk.length >= OBSERVS_UPSERT_TIMEOUT_SPLIT_MIN_ROWS * 2
   ) {
     const midpoint = Math.floor(chunk.length / 2);
     const left = chunk.slice(0, midpoint);
     const right = chunk.slice(midpoint);
     if (!left.length || !right.length) {
-      throw new Error(`History upsert failed: ${lastMessage}`);
+      throw new Error(`Observs upsert failed: ${lastMessage}`);
     }
-    const leftWritten = await upsertHistoryChunkWithFallback(
-      history,
+    const leftWritten = await upsertObservsChunkWithFallback(
+      observs,
       left,
       splitDepth + 1,
     );
-    const rightWritten = await upsertHistoryChunkWithFallback(
-      history,
+    const rightWritten = await upsertObservsChunkWithFallback(
+      observs,
       right,
       splitDepth + 1,
     );
     return leftWritten + rightWritten;
   }
 
-  throw new Error(`History upsert failed: ${lastMessage}`);
+  throw new Error(`Observs upsert failed: ${lastMessage}`);
 }
 
-export async function historyUpsertObservations(
-  historyRows: HistoryObservationRow[],
+export async function observsUpsertObservations(
+  observsRows: ObservsObservationRow[],
 ): Promise<number> {
-  const preparedRows = prepareHistoryRows(historyRows);
+  const preparedRows = prepareObservsRows(observsRows);
   if (!preparedRows.length) {
     return 0;
   }
 
-  const history = createSupabaseHistoryClient();
+  const observs = createSupabaseObservsClient();
   let written = 0;
 
-  for (const chunk of chunkRows(preparedRows, HISTORY_UPSERT_CHUNK_SIZE)) {
-    written += await upsertHistoryChunkWithFallback(history, chunk);
+  for (const chunk of chunkRows(preparedRows, OBSERVS_UPSERT_CHUNK_SIZE)) {
+    written += await upsertObservsChunkWithFallback(observs, chunk);
   }
 
   return written;
 }
 
-export function buildHistorySyncReceipts(
+export function buildObservsSyncReceipts(
   rows: Array<
     Pick<
-      HistoryObservationRow,
+      ObservsObservationRow,
       "connector_id" | "timeseries_id" | "observed_at"
     >
   >,
-): HistorySyncReceiptRow[] {
-  const dedup = new Map<string, HistorySyncReceiptRow>();
+): ObservsSyncReceiptRow[] {
+  const dedup = new Map<string, ObservsSyncReceiptRow>();
   for (const row of rows) {
     const connectorId = asFiniteNumber(row.connector_id);
     const timeseriesId = asFiniteNumber(row.timeseries_id);
@@ -594,19 +594,19 @@ export function buildHistorySyncReceipts(
   return Array.from(dedup.values());
 }
 
-export async function upsertHistorySyncReceipts(
+export async function upsertObservsSyncReceipts(
   mainRpc: MainRpcCaller,
-  rows: HistorySyncReceiptRow[],
+  rows: ObservsSyncReceiptRow[],
 ): Promise<number> {
   if (!rows.length) {
     return 0;
   }
-  const { data, error } = await mainRpc<HistoryReceiptUpsertRow[]>(
-    "uk_aq_rpc_history_sync_receipt_daily_upsert",
+  const { data, error } = await mainRpc<ObservsReceiptUpsertRow[]>(
+    "uk_aq_rpc_observs_sync_receipt_daily_upsert",
     { rows },
   );
   if (error) {
-    throw new Error(`History receipt upsert failed: ${error.message}`);
+    throw new Error(`Observs receipt upsert failed: ${error.message}`);
   }
   return countRowsFromPayload(
     data as Array<Record<"rows_upserted", number>> | null,
@@ -615,22 +615,22 @@ export async function upsertHistorySyncReceipts(
   );
 }
 
-export async function enqueueHistoryOutbox(
+export async function enqueueObservsOutbox(
   mainRpc: MainRpcCaller,
-  historyRows: HistoryObservationRow[],
+  observsRows: ObservsObservationRow[],
 ): Promise<number> {
-  const preparedRows = prepareHistoryRows(historyRows);
+  const preparedRows = prepareObservsRows(observsRows);
   if (!preparedRows.length) {
     return 0;
   }
-  const { data, error } = await mainRpc<HistoryOutboxEnqueueRow[]>(
-    "uk_aq_rpc_history_outbox_enqueue",
+  const { data, error } = await mainRpc<ObservsOutboxEnqueueRow[]>(
+    "uk_aq_rpc_observs_outbox_enqueue",
     {
       entries: [{ payload: preparedRows }],
     },
   );
   if (error) {
-    throw new Error(`History outbox enqueue failed: ${error.message}`);
+    throw new Error(`Observs outbox enqueue failed: ${error.message}`);
   }
   return countRowsFromPayload(
     data as Array<Record<"rows_enqueued", number>> | null,
@@ -639,18 +639,18 @@ export async function enqueueHistoryOutbox(
   );
 }
 
-export async function writeHistoryWithOutbox(
+export async function writeObservsWithOutbox(
   mainRpc: MainRpcCaller,
-  historyRows: HistoryObservationRow[],
+  observsRows: ObservsObservationRow[],
   onWarning?: (message: string) => void,
-): Promise<HistoryWriteStats> {
-  const preparedRows = prepareHistoryRows(historyRows);
+): Promise<ObservsWriteStats> {
+  const preparedRows = prepareObservsRows(observsRows);
   if (!preparedRows.length) {
     return { written: 0, receipts_upserted: 0, enqueued: 0 };
   }
 
-  if (HISTORY_WRITE_MODE === "outbox_only") {
-    const enqueued = await enqueueHistoryOutbox(mainRpc, preparedRows);
+  if (OBSERVS_WRITE_MODE === "outbox_only") {
+    const enqueued = await enqueueObservsOutbox(mainRpc, preparedRows);
     return {
       written: 0,
       receipts_upserted: 0,
@@ -658,13 +658,13 @@ export async function writeHistoryWithOutbox(
     };
   }
 
-  if (HISTORY_WRITE_MODE === "pubsub_only") {
-    if (!historyPubsubConfigured()) {
+  if (OBSERVS_WRITE_MODE === "pubsub_only") {
+    if (!observsPubsubConfigured()) {
       throw new Error(
-        "HISTORY_WRITE_MODE=pubsub_only but Pub/Sub is not configured.",
+        "OBSERVS_WRITE_MODE=pubsub_only but Pub/Sub is not configured.",
       );
     }
-    const enqueued = await publishHistoryRowsToPubsub(preparedRows);
+    const enqueued = await publishObservsRowsToPubsub(preparedRows);
     return {
       written: 0,
       receipts_upserted: 0,
@@ -672,23 +672,23 @@ export async function writeHistoryWithOutbox(
     };
   }
 
-  if (!historyConfigured()) {
-    onWarning?.("History DB is not configured; skipping history write.");
+  if (!observsConfigured()) {
+    onWarning?.("Observs DB is not configured; skipping observs write.");
     return { written: 0, receipts_upserted: 0, enqueued: 0 };
   }
 
   try {
-    const written = await historyUpsertObservations(preparedRows);
-    const receipts = buildHistorySyncReceipts(preparedRows);
-    const receiptsUpserted = await upsertHistorySyncReceipts(mainRpc, receipts);
+    const written = await observsUpsertObservations(preparedRows);
+    const receipts = buildObservsSyncReceipts(preparedRows);
+    const receiptsUpserted = await upsertObservsSyncReceipts(mainRpc, receipts);
     return {
       written,
       receipts_upserted: receiptsUpserted,
       enqueued: 0,
     };
   } catch (error) {
-    const enqueued = await enqueueHistoryOutbox(mainRpc, preparedRows);
-    onWarning?.(`History write failed, queued to outbox: ${shortError(error)}`);
+    const enqueued = await enqueueObservsOutbox(mainRpc, preparedRows);
+    onWarning?.(`Observs write failed, queued to outbox: ${shortError(error)}`);
     return {
       written: 0,
       receipts_upserted: 0,
@@ -697,12 +697,12 @@ export async function writeHistoryWithOutbox(
   }
 }
 
-export async function flushHistoryOutbox(
+export async function flushObservsOutbox(
   mainRpc: MainRpcCaller,
   onWarning?: (message: string) => void,
-  options: HistoryOutboxFlushOptions = {},
-): Promise<HistoryOutboxFlushStats> {
-  const stats: HistoryOutboxFlushStats = {
+  options: ObservsOutboxFlushOptions = {},
+): Promise<ObservsOutboxFlushStats> {
+  const stats: ObservsOutboxFlushStats = {
     claimed: 0,
     delivered: 0,
     failed: 0,
@@ -710,25 +710,25 @@ export async function flushHistoryOutbox(
     rows_resolved: 0,
   };
 
-  if (!historyConfigured()) {
+  if (!observsConfigured()) {
     return stats;
   }
 
-  const claimResult = await mainRpc<HistoryOutboxClaimRow[]>(
-    "uk_aq_rpc_history_outbox_claim",
+  const claimResult = await mainRpc<ObservsOutboxClaimRow[]>(
+    "uk_aq_rpc_observs_outbox_claim",
     {
       batch_limit: (() => {
         const candidate = Number(options.claim_batch_limit);
         if (Number.isFinite(candidate) && candidate > 0) {
           return Math.max(1, Math.trunc(candidate));
         }
-        return HISTORY_OUTBOX_FLUSH_LIMIT;
+        return OBSERVS_OUTBOX_FLUSH_LIMIT;
       })(),
     },
   );
 
   if (claimResult.error) {
-    onWarning?.(`History outbox claim failed: ${claimResult.error.message}`);
+    onWarning?.(`Observs outbox claim failed: ${claimResult.error.message}`);
     return stats;
   }
 
@@ -743,14 +743,14 @@ export async function flushHistoryOutbox(
     ok: boolean;
     error?: string;
   }> = [];
-  const deliveryRows: HistoryObservationRow[] = [];
+  const deliveryRows: ObservsObservationRow[] = [];
   const deliveryIds: string[] = [];
 
   for (const row of claimedRows) {
     const payloadRows = Array.isArray(row.payload)
-      ? row.payload as HistoryObservationRow[]
+      ? row.payload as ObservsObservationRow[]
       : [];
-    const preparedRows = prepareHistoryRows(payloadRows);
+    const preparedRows = prepareObservsRows(payloadRows);
     if (!preparedRows.length) {
       resolutions.push({ id: row.id, ok: true });
       continue;
@@ -760,12 +760,12 @@ export async function flushHistoryOutbox(
   }
 
   if (deliveryIds.length > 0) {
-    const mergedRows = prepareHistoryRows(deliveryRows);
+    const mergedRows = prepareObservsRows(deliveryRows);
     try {
-      const delivered = await historyUpsertObservations(mergedRows);
+      const delivered = await observsUpsertObservations(mergedRows);
       stats.delivered += delivered;
-      const receipts = buildHistorySyncReceipts(mergedRows);
-      stats.receipts_upserted += await upsertHistorySyncReceipts(
+      const receipts = buildObservsSyncReceipts(mergedRows);
+      stats.receipts_upserted += await upsertObservsSyncReceipts(
         mainRpc,
         receipts,
       );
@@ -783,19 +783,19 @@ export async function flushHistoryOutbox(
         });
       }
       onWarning?.(
-        `History outbox batch delivery failed for ${deliveryIds.length} entries: ${message}`,
+        `Observs outbox batch delivery failed for ${deliveryIds.length} entries: ${message}`,
       );
     }
   }
 
-  const resolveResult = await mainRpc<HistoryOutboxResolveRow[]>(
-    "uk_aq_rpc_history_outbox_resolve",
+  const resolveResult = await mainRpc<ObservsOutboxResolveRow[]>(
+    "uk_aq_rpc_observs_outbox_resolve",
     { resolutions },
   );
 
   if (resolveResult.error) {
     onWarning?.(
-      `History outbox resolve failed: ${resolveResult.error.message}`,
+      `Observs outbox resolve failed: ${resolveResult.error.message}`,
     );
     return stats;
   }

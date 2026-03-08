@@ -38,24 +38,24 @@ Then set MAIN project runtime secrets:
 
 1. `OBS_AQIDB_SUPABASE_URL`
 2. `OBS_AQIDB_SECRET_KEY`
-3. Optional: `HISTORY_UPSERT_RPC` (default `uk_aq_rpc_history_observations_upsert`)
-4. Optional: `HISTORY_OUTBOX_FLUSH_LIMIT` (default `40`)
-5. Optional: `HISTORY_UPSERT_CHUNK_SIZE` (default `5000`)
-6. Optional: `HISTORY_OUTBOX_CLOUD_RUN_MAX_BATCHES` (default `30`)
-7. Optional: `HISTORY_OUTBOX_CLOUD_RUN_CLAIM_BATCH_LIMIT` (default `20`)
-8. Optional: `HISTORY_OUTBOX_CLOUD_RUN_BUDGET_SECONDS` (default `540`)
+3. Optional: `OBSERVS_UPSERT_RPC` (default `uk_aq_rpc_observs_observations_upsert`)
+4. Optional: `OBSERVS_OUTBOX_FLUSH_LIMIT` (default `40`)
+5. Optional: `OBSERVS_UPSERT_CHUNK_SIZE` (default `5000`)
+6. Optional: `OBSERVS_OUTBOX_CLOUD_RUN_MAX_BATCHES` (default `30`)
+7. Optional: `OBSERVS_OUTBOX_CLOUD_RUN_CLAIM_BATCH_LIMIT` (default `20`)
+8. Optional: `OBSERVS_OUTBOX_CLOUD_RUN_BUDGET_SECONDS` (default `540`)
 
 ## 2. HISTORY DB install
 
 Run SQL in this order.
 
-1. `../CIC-Test-UK-AQ-Schema/uk-aq-schema/schemas/history_db/uk_aq_history_schema.sql`
-2. `../CIC-Test-UK-AQ-Schema/uk-aq-schema/schemas/history_db/history_db_dualwrite_bootstrap.sql`
+1. `../CIC-Test-UK-AQ-Schema/uk-aq-schema/schemas/observs_db/uk_aq_observs_schema.sql`
+2. `../CIC-Test-UK-AQ-Schema/uk-aq-schema/schemas/observs_db/observs_db_dualwrite_bootstrap.sql`
 
 Notes:
 
 1. History observations uses ID keys: `(connector_id, timeseries_id, observed_at)`.
-2. History upsert RPC: `uk_aq_public.uk_aq_rpc_history_observations_upsert`.
+2. History upsert RPC: `uk_aq_public.uk_aq_rpc_observs_observations_upsert`.
 3. History write payload metrics are available in both `uk_aq_public.uk_aq_history_rpc_metrics_minute` and `uk_aq_public.uk_aq_observation_rpc_metrics_minute` (alias view with matching shape to main DB).
 
 ## 3. Connector setup actions after install
@@ -132,12 +132,12 @@ Use dedicated service accounts (not default compute SAs) for deploy and runtime.
    - Required roles/bindings:
      - Secret Manager access to runtime secrets (`roles/secretmanager.secretAccessor`).
      - `roles/cloudtasks.enqueuer` on OpenAQ task queue.
-     - `roles/pubsub.publisher` on history topic (`GCP_HISTORY_PUBSUB_TOPIC`) when `OPENAQ_HISTORY_WRITE_MODE=pubsub_only`.
+     - `roles/pubsub.publisher` on history topic (`GCP_OBSERVS_PUBSUB_TOPIC`) when `OPENAQ_OBSERVS_WRITE_MODE=pubsub_only`.
 
 3. Sensor.Community runtime SA (`GCP_SCOMM_JOB_SERVICE_ACCOUNT`, e.g. `uk-aq-scomm-job@...`)
    - Required roles/bindings:
      - Secret Manager access to runtime secrets (`roles/secretmanager.secretAccessor`).
-     - `roles/pubsub.publisher` on history topic (`GCP_HISTORY_PUBSUB_TOPIC`) when `SCOMM_HISTORY_WRITE_MODE=pubsub_only`.
+     - `roles/pubsub.publisher` on history topic (`GCP_OBSERVS_PUBSUB_TOPIC`) when `SCOMM_OBSERVS_WRITE_MODE=pubsub_only`.
 
 4. UK-AIR SOS runtime SA (`GCP_UK_AIR_SOS_JOB_SERVICE_ACCOUNT`, e.g. `uk-aq-sos-job@...`)
    - Required roles/bindings:
@@ -147,20 +147,20 @@ Use dedicated service accounts (not default compute SAs) for deploy and runtime.
    - Required roles/bindings:
      - Secret Manager access to runtime secrets (`roles/secretmanager.secretAccessor`).
 
-6. History outbox runtime SA (`GCP_HISTORY_OUTBOX_JOB_SERVICE_ACCOUNT`, e.g. `uk-aq-history-outbox-flusher@...`)
+6. History outbox runtime SA (`GCP_OBSERVS_OUTBOX_JOB_SERVICE_ACCOUNT`, e.g. `uk-aq-observs-outbox-flusher@...`)
    - Required roles/bindings:
      - Secret Manager access to runtime secrets (`roles/secretmanager.secretAccessor`).
 
-7. History Pub/Sub writer runtime SA (`GCP_HISTORY_PUBSUB_SERVICE_ACCOUNT` or legacy `GCP_HISTORY_PUBSUB_JOB_SERVICE_ACCOUNT`, e.g. `uk-aq-history-pubsub@...`)
+7. History Pub/Sub writer runtime SA (`GCP_OBSERVS_PUBSUB_SERVICE_ACCOUNT` or legacy `GCP_OBSERVS_PUBSUB_JOB_SERVICE_ACCOUNT`, e.g. `uk-aq-observs-pubsub@...`)
    - Required roles/bindings:
      - Secret Manager access to runtime secrets (`roles/secretmanager.secretAccessor`).
-     - `roles/pubsub.subscriber` on history subscription (`uk-aq-history-observations-sub` by default).
+     - `roles/pubsub.subscriber` on history subscription (`uk-aq-observs-observations-sub` by default).
 
 8. Scheduler invoker SA(s)
    - Examples:
      - Shared: `uk-aq-scheduler-invoker@...`
      - OpenAQ-specific: `GCP_OPENAQ_SCHEDULER_SERVICE_ACCOUNT`
-     - History Pub/Sub specific: `GCP_HISTORY_PUBSUB_SCHEDULER_SERVICE_ACCOUNT`
+     - History Pub/Sub specific: `GCP_OBSERVS_PUBSUB_SCHEDULER_SERVICE_ACCOUNT`
   - Required roles/bindings:
      - `roles/run.invoker` on each target Cloud Run service/job.
 
@@ -175,9 +175,9 @@ Use dedicated service accounts (not default compute SAs) for deploy and runtime.
 
 ### 6.2 Pub/Sub-specific notes for history flow
 
-1. Topic: `GCP_HISTORY_PUBSUB_TOPIC` (default `uk-aq-history-observations`)
+1. Topic: `GCP_OBSERVS_PUBSUB_TOPIC` (default `uk-aq-observs-observations`)
    - Publisher SAs: OpenAQ runtime SA and Sensor.Community runtime SA (and any other connector migrated to `pubsub_only`).
-2. Subscription: `uk-aq-history-observations-sub` (default in history Pub/Sub deploy workflow)
+2. Subscription: `uk-aq-observs-observations-sub` (default in history Pub/Sub deploy workflow)
    - Subscriber SA: history Pub/Sub writer runtime SA.
 3. Recommended subscription settings for this project:
    - Ack deadline: `600` seconds.

@@ -570,7 +570,7 @@
         background: #ff2d2d;
       }
 
-      .coverage-bar-history {
+      .coverage-bar-observs {
         background: #3b82f6;
       }
 
@@ -2355,7 +2355,7 @@
        * @typedef {Object} DayCoverage
        * @property {string} date
        * @property {boolean} ingest
-       * @property {boolean} history
+       * @property {boolean} observs
        * @property {boolean} aggDaily
        * @property {boolean} r2
        * @property {boolean=} isToday
@@ -2374,7 +2374,7 @@
             return {
               date: toUtcDateKey(dateObj),
               ingest: Boolean(row && row.ingest),
-              history: Boolean(row && row.history),
+              observs: Boolean(row && row.observs),
               aggDaily: Boolean(row && row.aggDaily),
               r2: Boolean(row && row.r2),
               isToday: Boolean(row && row.isToday),
@@ -2410,7 +2410,7 @@
           const row = coverageByDate.get(dateKey) || {
             date: dateKey,
             ingest: false,
-            history: false,
+            observs: false,
             aggDaily: false,
             r2: false,
             isToday: dateKey === todayKey,
@@ -2425,7 +2425,7 @@
             coverage: {
               date: row.date,
               ingest: Boolean(row.ingest),
-              history: Boolean(row.history),
+              observs: Boolean(row.observs),
               aggDaily: Boolean(row.aggDaily),
               r2: Boolean(row.r2),
               isToday,
@@ -2442,8 +2442,8 @@
         } else if (coverage.ingest) {
           sources.push("Ingest DB");
         }
-        if (coverage.history) {
-          sources.push("History DB");
+        if (coverage.observs) {
+          sources.push("Observs & AQI DB");
         }
         if (coverage.aggDaily) {
           sources.push("Agg Daily DB");
@@ -2466,8 +2466,8 @@
               : cell.coverage.ingest
                 ? { key: "ingest", label: "Ingest DB", className: "coverage-bar-ingest" }
                 : null;
-            const middleLayer = cell.coverage.history
-              ? { key: "history", label: "History DB", className: "coverage-bar-history" }
+            const middleLayer = cell.coverage.observs
+              ? { key: "observs", label: "Observs & AQI DB", className: "coverage-bar-observs" }
               : null;
             const bottomLayer = cell.coverage.aggDaily
               ? { key: "aggDaily", label: "Agg Daily DB", className: "coverage-bar-aggdaily" }
@@ -2512,7 +2512,7 @@
           </div>
           <div class="coverage-calendar-grid">${cellsMarkup}</div>
           <div class="footnote">
-            Top row: Ingest DB (red) or Cloudflare R2 (orange). Middle row: History DB (blue). Bottom row: Agg Daily DB (green).
+            Top row: Ingest DB (red) or Cloudflare R2 (orange). Middle row: Observs & AQI DB (blue). Bottom row: Agg Daily DB (green).
           </div>
         `;
 

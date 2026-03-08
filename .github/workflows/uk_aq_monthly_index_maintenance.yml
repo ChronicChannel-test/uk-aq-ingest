@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       MAIN_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
-      HISTORY_DB_URL: ${{ secrets.OBS_AQIDB_SUPABASE_DB_URL }}
+      OBS_AQIDB_DB_URL: ${{ secrets.OBS_AQIDB_SUPABASE_DB_URL }}
       RUN_MODE: ${{ inputs.run_mode || 'apply' }}
       DENSITY_THRESHOLD: "80"
       FRAGMENTATION_THRESHOLD: "15"
@@ -46,7 +46,7 @@ jobs:
             echo "Missing required secret: SUPABASE_DB_URL" >&2
             exit 1
           fi
-          if [ -z "${HISTORY_DB_URL:-}" ]; then
+          if [ -z "${OBS_AQIDB_DB_URL:-}" ]; then
             echo "Missing required secret: OBS_AQIDB_SUPABASE_DB_URL" >&2
             exit 1
           fi
@@ -85,8 +85,8 @@ jobs:
             "
           }
 
-          list_history_indexes() {
-            psql_cmd "${HISTORY_DB_URL}" -At -c "
+          list_obs_aqidb_indexes() {
+            psql_cmd "${OBS_AQIDB_DB_URL}" -At -c "
               select format('%I.%I', i_ns.nspname, i.relname) as index_qname
               from pg_index x
               join pg_class t on t.oid = x.indrelid
@@ -94,7 +94,7 @@ jobs:
               join pg_class i on i.oid = x.indexrelid
               join pg_namespace i_ns on i_ns.oid = i.relnamespace
               join pg_am am on am.oid = i.relam
-              where t_ns.nspname = 'uk_aq_history'
+              where t_ns.nspname = 'uk_aq_observs'
                 and t.relname = 'observations'
                 and am.amname = 'btree'
                 and pg_relation_size(i.oid) > 0
@@ -195,15 +195,15 @@ jobs:
           }
 
           ensure_pgstattuple "${MAIN_DB_URL}"
-          ensure_pgstattuple "${HISTORY_DB_URL}"
+          ensure_pgstattuple "${OBS_AQIDB_DB_URL}"
 
           echo -e "db\tindex\tbefore_bytes\tafter_bytes\tsaved_bytes\tbefore_density\tafter_density\tbefore_frag\tafter_frag\taction" > index_maintenance_results.tsv
 
           mapfile -t main_indexes < <(list_main_indexes)
-          mapfile -t history_indexes < <(list_history_indexes)
+          mapfile -t obs_aqidb_indexes < <(list_obs_aqidb_indexes)
 
           reindex_if_needed "main" "${MAIN_DB_URL}" "${main_indexes[@]}"
-          reindex_if_needed "history" "${HISTORY_DB_URL}" "${history_indexes[@]}"
+          reindex_if_needed "obs_aqidb" "${OBS_AQIDB_DB_URL}" "${obs_aqidb_indexes[@]}"
 
           {
             echo "## Monthly Index Maintenance"

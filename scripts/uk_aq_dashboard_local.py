@@ -32,9 +32,9 @@ EXCLUDED_CONNECTORS_BY_POLLUTANT = {
     "pm10": {"breathelondon"},
     "no2": {"sensorcommunity"},
 }
-DISPATCH_HISTORY_WINDOW_MINUTES = max(
+DISPATCH_OBSERVS_WINDOW_MINUTES = max(
     30,
-    int(os.getenv("DISPATCH_HISTORY_WINDOW_MINUTES", "240")),
+    int(os.getenv("DISPATCH_OBSERVS_WINDOW_MINUTES", "240")),
 )
 DISPATCH_FETCH_LIMIT = max(
     100,
@@ -1027,7 +1027,6 @@ def _latest_oldest_day_by_label(
     return {
         "ingestdb": latest_rows.get("ingestdb", (UTC_DATETIME_MIN, None))[1],
         "obs_aqidb": latest_rows.get("obs_aqidb", (UTC_DATETIME_MIN, None))[1],
-        "historydb": latest_rows.get("obs_aqidb", (UTC_DATETIME_MIN, None))[1],
         "aggdailydb": latest_rows.get("aggdailydb", (UTC_DATETIME_MIN, None))[1],
     }
 
@@ -1043,11 +1042,11 @@ def _build_live_storage_coverage_days(
     oldest_by_label = _latest_oldest_day_by_label(db_size_metrics)
 
     ingest_days = set(day_sets.get("ingestdb") or set())
-    history_days = set(day_sets.get("historydb") or set())
+    observs_days = set(day_sets.get("obs_aqidb") or set())
     aggdaily_days = set(day_sets.get("aggdailydb") or set())
 
     ingest_start = min(ingest_days) if ingest_days else oldest_by_label.get("ingestdb")
-    history_start = min(history_days) if history_days else oldest_by_label.get("historydb")
+    observs_start = min(observs_days) if observs_days else oldest_by_label.get("obs_aqidb")
     aggdaily_start = min(aggdaily_days) if aggdaily_days else oldest_by_label.get("aggdailydb")
     r2_start = _parse_iso_day((r2_backup_window or {}).get("min_day_utc"))
     r2_end = _parse_iso_day((r2_backup_window or {}).get("max_day_utc"))
@@ -1055,7 +1054,7 @@ def _build_live_storage_coverage_days(
         r2_start = None
         r2_end = None
 
-    lower_bounds = [day for day in [ingest_start, history_start, aggdaily_start, r2_start] if day]
+    lower_bounds = [day for day in [ingest_start, observs_start, aggdaily_start, r2_start] if day]
     if not lower_bounds:
         return []
     start_day = min(lower_bounds)
@@ -1074,12 +1073,12 @@ def _build_live_storage_coverage_days(
                 else (ingest_start and ingest_start <= cursor <= today_utc)
             )
         )
-        history = bool(
+        observs = bool(
             cursor <= today_utc
             and (
-                (cursor in history_days)
-                if history_days
-                else (history_start and history_start <= cursor <= today_utc)
+                (cursor in observs_days)
+                if observs_days
+                else (observs_start and observs_start <= cursor <= today_utc)
             )
         )
         agg_daily = bool(
@@ -1099,7 +1098,7 @@ def _build_live_storage_coverage_days(
             {
                 "date": cursor.isoformat(),
                 "ingest": ingest,
-                "history": history,
+                "observs": observs,
                 "aggDaily": agg_daily,
                 "r2": r2,
                 "isToday": cursor == today_utc,
@@ -1191,13 +1190,13 @@ def _fetch_aggdaily_day_set() -> Set[date]:
 def _fetch_storage_day_sets() -> Dict[str, Set[date]]:
     day_sets: Dict[str, Set[date]] = {
         "ingestdb": set(),
-        "historydb": set(),
+        "obs_aqidb": set(),
         "aggdailydb": set(),
     }
-    # Keep ingest/history on oldest_observed_at range logic.
+    # Keep ingest/observs on oldest_observed_at range logic.
     day_sets["ingestdb"] = set()
-    # Keep history on oldest_observed_at range logic to avoid false positives from pre-created partitions.
-    day_sets["historydb"] = set()
+    # Keep observs on oldest_observed_at range logic to avoid false positives from pre-created partitions.
+    day_sets["obs_aqidb"] = set()
     try:
         day_sets["aggdailydb"] = _fetch_aggdaily_day_set()
     except Exception:
@@ -1510,7 +1509,7 @@ def _get_ingest_runs_cached(
     now: datetime,
     dispatch_cursor: Optional[datetime] = None,
 ) -> List[Dict[str, Any]]:
-    window_start = now - timedelta(minutes=DISPATCH_HISTORY_WINDOW_MINUTES)
+    window_start = now - timedelta(minutes=DISPATCH_OBSERVS_WINDOW_MINUTES)
     with CACHE_LOCK:
         cached_rows: List[Dict[str, Any]] = list(DISPATCH_RUNS_STATE.get("rows") or [])
         latest_created_at = DISPATCH_RUNS_STATE.get("latest_created_at")
@@ -2003,7 +2002,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             parsed_cursor = _parse_timestamp(cursor_values[0])
             if isinstance(parsed_cursor, datetime):
                 now = datetime.now(timezone.utc)
-                # Reject far-future cursors; clamp old cursors via history window in fetch path.
+                # Reject far-future cursors; clamp old cursors via observs window in fetch path.
                 if parsed_cursor <= now + timedelta(minutes=5):
                     dispatch_cursor = parsed_cursor
         if force_refresh:

@@ -656,8 +656,8 @@ const STORED_RESPONSE_PAYLOAD_KEYS = [
   "observations_rows_input",
   "observations_rows_prepared",
   "observations_rows_deduped_prewrite",
-  "history_rows_prepared",
-  "history_rows_deduped_prewrite",
+  "observs_rows_prepared",
+  "observs_rows_deduped_prewrite",
   "series_polled",
 ] as const;
 
@@ -1725,11 +1725,11 @@ async function main(): Promise<void> {
       observations_rows_deduped_prewrite: toIntegerOrNull(
         summary.payload?.observations_rows_deduped_prewrite,
       ),
-      history_rows_prepared: toIntegerOrNull(
-        summary.payload?.history_rows_prepared,
+      observs_rows_prepared: toIntegerOrNull(
+        summary.payload?.observs_rows_prepared,
       ),
-      history_rows_deduped_prewrite: toIntegerOrNull(
-        summary.payload?.history_rows_deduped_prewrite,
+      observs_rows_deduped_prewrite: toIntegerOrNull(
+        summary.payload?.observs_rows_deduped_prewrite,
       ),
       series_polled: toIntegerOrNull(summary.payload?.series_polled),
       partial: summary.payload?.partial === true,

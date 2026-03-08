@@ -3,9 +3,9 @@ import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import "../_shared/fetch_egress_patch.ts";
 import { cacheControlHeaders } from "../_shared/cache.ts";
 import {
-  type HistoryObservationRow,
-  writeHistoryWithOutbox,
-} from "../_shared/history_client.ts";
+  type ObservsObservationRow,
+  writeObservsWithOutbox,
+} from "../_shared/observs_client.ts";
 
 type PollRequest = {
   api_key?: string;
@@ -96,7 +96,7 @@ const DEFAULT_INITIAL_DAYS = 7;
 const DEFAULT_WINDOW_HOURS = 24;
 const DEFAULT_SLEEP_SECONDS = 0.2;
 const DEFAULT_BATCH_SIZE = 500;
-const DEFAULT_HISTORY_BUFFER_FLUSH_ROWS = 5000;
+const DEFAULT_OBSERVS_BUFFER_FLUSH_ROWS = 5000;
 const DEFAULT_TIMEOUT_MS = 30_000;
 const DEFAULT_MAX_RUNTIME_SECONDS = 120;
 const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
@@ -1042,19 +1042,19 @@ function dedupeExactObservationRows(
   return { rows: preparedRows, deduped: rows.length - preparedRows.length };
 }
 
-function toHistoryObservationRows(
+function toObservsObservationRows(
   rows: Record<string, unknown>[],
   connectorId: number,
   timeseriesId: number,
-): HistoryObservationRow[] {
-  const historyRows: HistoryObservationRow[] = [];
+): ObservsObservationRow[] {
+  const observsRows: ObservsObservationRow[] = [];
   for (const row of rows) {
     const observedAt = asString(row.observed_at);
     if (!observedAt) {
       continue;
     }
     const numericValue = Number(row.value);
-    historyRows.push({
+    observsRows.push({
       connector_id: connectorId,
       timeseries_id: timeseriesId,
       observed_at: observedAt,
@@ -1062,7 +1062,7 @@ function toHistoryObservationRows(
       status: asString(row.status) ?? null,
     });
   }
-  return historyRows;
+  return observsRows;
 }
 
 async function updateTimeseriesLastValues(
@@ -1751,10 +1751,10 @@ serve(async (req) => {
   let seriesPolled = 0;
   let timeseriesUpdated = 0;
   let checkpointsUpserted = 0;
-  let historyWritten = 0;
-  let historyReceiptsUpserted = 0;
-  let historyEnqueued = 0;
-  let historyFlushes = 0;
+  let observsWritten = 0;
+  let observsReceiptsUpserted = 0;
+  let observsEnqueued = 0;
+  let observsFlushes = 0;
   let stationsSelected = 0;
   let stationsRequested: number | null = null;
   let runLastObservedAt: string | null = null;
@@ -1762,8 +1762,8 @@ serve(async (req) => {
   let observationsRowsInput = 0;
   let observationsRowsPrepared = 0;
   let observationsRowsDedupedPrewrite = 0;
-  let historyRowsPrepared = 0;
-  let historyRowsDedupedPrewrite = 0;
+  let observsRowsPrepared = 0;
+  let observsRowsDedupedPrewrite = 0;
   const runStartedAt = Date.now();
   const maxRuntimeSeconds = Number.isFinite(BREATHELONDON_MAX_RUNTIME_SECONDS)
     ? Math.max(30, BREATHELONDON_MAX_RUNTIME_SECONDS)
@@ -1801,13 +1801,13 @@ serve(async (req) => {
       const windowHours = asNumber(request.window_hours, DEFAULT_WINDOW_HOURS) ?? DEFAULT_WINDOW_HOURS;
       const sleepSeconds = asNumber(request.sleep_seconds, DEFAULT_SLEEP_SECONDS) ?? DEFAULT_SLEEP_SECONDS;
       const batchSize = asNumber(request.batch_size, DEFAULT_BATCH_SIZE) ?? DEFAULT_BATCH_SIZE;
-      const historyBufferFlushRows = Math.max(
+      const observsBufferFlushRows = Math.max(
         1,
         Math.trunc(
           asNumber(
-            Deno.env.get("HISTORY_BUFFER_FLUSH_ROWS"),
-            DEFAULT_HISTORY_BUFFER_FLUSH_ROWS,
-          ) ?? DEFAULT_HISTORY_BUFFER_FLUSH_ROWS,
+            Deno.env.get("OBSERVS_BUFFER_FLUSH_ROWS"),
+            DEFAULT_OBSERVS_BUFFER_FLUSH_ROWS,
+          ) ?? DEFAULT_OBSERVS_BUFFER_FLUSH_ROWS,
         ),
       );
       const limit = asNumber(request.limit);
@@ -2024,43 +2024,43 @@ serve(async (req) => {
               const phenomenonIds = dryRun
                 ? await fetchPhenomenaIds(connector.id, speciesList)
                 : await upsertPhenomena(connector.id, speciesList);
-              const historyRowsPending: HistoryObservationRow[] = [];
-              const flushPendingHistoryRows = async (
+              const observsRowsPending: ObservsObservationRow[] = [];
+              const flushPendingObservsRows = async (
                 force = false,
                 reason = "threshold",
               ) => {
-                if (!historyRowsPending.length) {
+                if (!observsRowsPending.length) {
                   return;
                 }
-                if (!force && historyRowsPending.length < historyBufferFlushRows) {
+                if (!force && observsRowsPending.length < observsBufferFlushRows) {
                   return;
                 }
-                const rows = historyRowsPending.splice(0, historyRowsPending.length);
+                const rows = observsRowsPending.splice(0, observsRowsPending.length);
                 try {
-                  const stats = await writeHistoryWithOutbox(
+                  const stats = await writeObservsWithOutbox(
                     publicRpcRequest,
                     rows,
                     (message) => {
-                      log.warn("History dual-write warning.", {
+                      log.warn("Observs dual-write warning.", {
                         message,
                         rows: rows.length,
                         reason,
                       });
-                      errors.push("history_dual_write");
+                      errors.push("observs_dual_write");
                     },
                   );
-                  historyFlushes += 1;
-                  historyWritten += stats.written;
-                  historyReceiptsUpserted += stats.receipts_upserted;
-                  historyEnqueued += stats.enqueued;
+                  observsFlushes += 1;
+                  observsWritten += stats.written;
+                  observsReceiptsUpserted += stats.receipts_upserted;
+                  observsEnqueued += stats.enqueued;
                 } catch (error) {
                   const message = error instanceof Error ? error.message : String(error);
-                  log.warn("History dual-write flush failed.", {
+                  log.warn("Observs dual-write flush failed.", {
                     message,
                     rows: rows.length,
                     reason,
                   });
-                  errors.push("history_dual_write_flush");
+                  errors.push("observs_dual_write_flush");
                 }
               };
 
@@ -2201,9 +2201,9 @@ serve(async (req) => {
                         observationsRowsInput += freshRows.length;
                         observationsRowsPrepared += preparedRows.length;
                         observationsRowsDedupedPrewrite += observationDedupe.deduped;
-                        historyRowsDedupedPrewrite += observationDedupe.deduped;
+                        observsRowsDedupedPrewrite += observationDedupe.deduped;
                         if (dryRun) {
-                          historyRowsPrepared += toHistoryObservationRows(
+                          observsRowsPrepared += toObservsObservationRows(
                             preparedRows,
                             Number(connector.id),
                             timeseriesId,
@@ -2211,14 +2211,14 @@ serve(async (req) => {
                         } else {
                           for (const batch of chunk(preparedRows, batchSize)) {
                             observationsUpserted += await upsertObservations(batch);
-                            const historyRows = toHistoryObservationRows(
+                            const observsRows = toObservsObservationRows(
                               batch,
                               Number(connector.id),
                               timeseriesId,
                             );
-                            historyRowsPrepared += historyRows.length;
-                            historyRowsPending.push(...historyRows);
-                            await flushPendingHistoryRows(false, "batch_threshold");
+                            observsRowsPrepared += observsRows.length;
+                            observsRowsPending.push(...observsRows);
+                            await flushPendingObservsRows(false, "batch_threshold");
                           }
                         }
                       }
@@ -2303,7 +2303,7 @@ serve(async (req) => {
                 }
               }
 
-              await flushPendingHistoryRows(true, "run_complete");
+              await flushPendingObservsRows(true, "run_complete");
               await flushUpdates();
 
               responsePayload = {
@@ -2318,12 +2318,12 @@ serve(async (req) => {
                 observations_rows_input: observationsRowsInput,
                 observations_rows_prepared: observationsRowsPrepared,
                 observations_rows_deduped_prewrite: observationsRowsDedupedPrewrite,
-                history_rows_prepared: historyRowsPrepared,
-                history_rows_deduped_prewrite: historyRowsDedupedPrewrite,
-                history_written: historyWritten,
-                history_receipts_upserted: historyReceiptsUpserted,
-                history_enqueued: historyEnqueued,
-                history_flushes: historyFlushes,
+                observs_rows_prepared: observsRowsPrepared,
+                observs_rows_deduped_prewrite: observsRowsDedupedPrewrite,
+                observs_written: observsWritten,
+                observs_receipts_upserted: observsReceiptsUpserted,
+                observs_enqueued: observsEnqueued,
+                observs_flushes: observsFlushes,
                 timeseries_updated: timeseriesUpdated,
                 series_polled: seriesPolled,
                 checkpoints_upserted: checkpointsUpserted,
@@ -2391,12 +2391,12 @@ serve(async (req) => {
     observations_rows_input: observationsRowsInput,
     observations_rows_prepared: observationsRowsPrepared,
     observations_rows_deduped_prewrite: observationsRowsDedupedPrewrite,
-    history_rows_prepared: historyRowsPrepared,
-    history_rows_deduped_prewrite: historyRowsDedupedPrewrite,
-    history_written: historyWritten,
-    history_receipts_upserted: historyReceiptsUpserted,
-    history_enqueued: historyEnqueued,
-    history_flushes: historyFlushes,
+    observs_rows_prepared: observsRowsPrepared,
+    observs_rows_deduped_prewrite: observsRowsDedupedPrewrite,
+    observs_written: observsWritten,
+    observs_receipts_upserted: observsReceiptsUpserted,
+    observs_enqueued: observsEnqueued,
+    observs_flushes: observsFlushes,
     timeseries_updated: timeseriesUpdated,
     series_polled: seriesPolled,
     checkpoints_upserted: checkpointsUpserted,

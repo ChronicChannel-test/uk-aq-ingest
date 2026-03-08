@@ -27,7 +27,7 @@ uk_aq_history	266
 uk_aq_aggdaily	164
 OBS_AQIDB_SUPABASE_URL	84
 OBS_AQIDB_SECRET_KEY	73
-historydb	71
+obs_aqidb	71
 AGGDAILY_SUPABASE_URL	60
 aggdailydb	53
 history_to_r2	42
@@ -46,7 +46,7 @@ UK_AQ_OBS_AQIDB_DB_LABEL	6
 - Mitigation: land schema repo rename changes first, apply to target DB, then ship app code referencing new schemas only.
 
 3. DB label contract break
-- Multiple services enforce label allow-lists including `historydb` and `aggdailydb`.
+- Multiple services enforce label allow-lists including `obs_aqidb` and `aggdailydb`.
 - Mitigation: update all label checks + dashboards/metrics labels in same cut.
 
 4. Completion contract inconsistency

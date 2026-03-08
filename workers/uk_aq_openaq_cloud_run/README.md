@@ -13,11 +13,11 @@ This Cloud Run service runs OpenAQ ingest in Google Cloud using the existing
 5. Records run status in `connectors` + `uk_aq_ingest_runs` (+ `error_logs` on failure).
 6. Schedules the next run as a one-off Cloud Task at computed due time
    (fallback to a short delay when no due checkpoint is available).
-7. Writes history via shared history client mode:
-   - `HISTORY_WRITE_MODE=pubsub_only` publishes per-row history messages to
+7. Writes observs via shared observs client mode:
+   - `OBSERVS_WRITE_MODE=pubsub_only` publishes per-row observs messages to
      Pub/Sub (direct cutover path for this worker).
-   - `HISTORY_WRITE_MODE=outbox_only` keeps main DB outbox behavior.
-   - `HISTORY_WRITE_MODE=direct` performs direct history RPC writes.
+   - `OBSERVS_WRITE_MODE=outbox_only` keeps main DB outbox behavior.
+   - `OBSERVS_WRITE_MODE=direct` performs direct observs RPC writes.
 
 If no station refs are due, run is recorded as `skipped` (`no_station_refs`) and
 the worker only schedules the next check task.
@@ -97,10 +97,10 @@ gcloud run deploy uk-aq-openaq-ingest \
 - `OPENAQ_INGEST_SCRIPT_PATH` (default `/app/runtime/ingest_openaq/index.ts`)
 - `OPENAQ_DROPBOX_UPLOAD_SOURCE` (default `cloud_run` for this worker)
 - `SB_UK_AQ_CRON_SECRET` (if set, local call sends `x-cron-secret`)
-- `OBS_AQIDB_SUPABASE_URL`, `OBS_AQIDB_SECRET_KEY`, `OBS_AQIDB_RPC_SCHEMA` (required when `HISTORY_WRITE_MODE=direct`; not injected for `pubsub_only`/`outbox_only`)
-- `HISTORY_WRITE_MODE` (default in deploy workflow: `pubsub_only`)
-- `GCP_HISTORY_PUBSUB_TOPIC` (required when `HISTORY_WRITE_MODE=pubsub_only`)
-- `HISTORY_PUBSUB_PUBLISH_BATCH_SIZE` (optional; defaults to `500`)
+- `OBS_AQIDB_SUPABASE_URL`, `OBS_AQIDB_SECRET_KEY`, `OBS_AQIDB_RPC_SCHEMA` (required when `OBSERVS_WRITE_MODE=direct`; not injected for `pubsub_only`/`outbox_only`)
+- `OBSERVS_WRITE_MODE` (default in deploy workflow: `pubsub_only`)
+- `GCP_OBSERVS_PUBSUB_TOPIC` (required when `OBSERVS_WRITE_MODE=pubsub_only`)
+- `OBSERVS_PUBSUB_PUBLISH_BATCH_SIZE` (optional; defaults to `500`)
 - `DROPBOX_APP_KEY`, `DROPBOX_APP_SECRET`, `DROPBOX_REFRESH_TOKEN`
 - `OPENAQ_RAW_DROPBOX_ALLOWED_SUPABASE_URL` (or `UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL`)
 - `UK_AQ_DROPBOX_ROOT` (default `/CIC-Test`)

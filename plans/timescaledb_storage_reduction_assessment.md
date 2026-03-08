@@ -1,4 +1,4 @@
-# TimescaleDB Storage Reduction Assessment for Supabase historydb
+# TimescaleDB Storage Reduction Assessment for Supabase obs_aqidb
 
 ## Scope and safety guardrails
 
@@ -14,12 +14,12 @@ I reviewed the ingest repo for how history observations are written and queried.
 
 ### Key findings from repo code and docs
 
-1. History writes flow through an RPC named `uk_aq_rpc_history_observations_upsert`, called from shared edge code (`supabase/functions/_shared/history_client.ts`).
+1. History writes flow through an RPC named `uk_aq_rpc_observs_observations_upsert`, called from shared edge code (`supabase/functions/_shared/history_client.ts`).
 2. History tables live in schema `uk_aq_history`, while callable RPCs live in `uk_aq_public`.
 3. Current history key shape in docs is ID-based `(connector_id, timeseries_id, observed_at)`.
 4. Existing operational docs reference a separate schema repo path for history DDL:
-   - `.../schemas/history_db/uk_aq_history_schema.sql`
-   - `.../schemas/history_db/history_db_dualwrite_bootstrap.sql`
+   - `.../schemas/observs_db/uk_aq_observs_schema.sql`
+   - `.../schemas/observs_db/observs_db_dualwrite_bootstrap.sql`
 
 ### External schema repo access note
 

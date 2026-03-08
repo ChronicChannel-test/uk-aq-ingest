@@ -61,7 +61,7 @@ UK_AQ_EDGE_UPSTREAM_SECRET=...
   - `secrets.SB_PUBLISHABLE_DEFAULT_KEY`
   - optional `secrets.SB_UK_AQ_CRON_SECRET` header.
 
-### `uk_aq_history_egress_monitor.yml`
+### `uk_aq_observs_egress_monitor.yml`
 - Trigger: schedule every 5 minutes, or manual dispatch.
 - Purpose: trigger `uk_aq_egress_monitor` against the history Supabase project for history-side endpoint/caller egress visibility.
 - Auth/config:
@@ -88,7 +88,7 @@ UK_AQ_EDGE_UPSTREAM_SECRET=...
   - `SUPABASE_DB_URL` (main DB direct connection string)
   - `OBS_AQIDB_SUPABASE_DB_URL` (history DB direct connection string)
 
-### `uk_aq_history_edge_deploy.yml`
+### `uk_aq_observs_edge_deploy.yml`
 - Trigger: manual dispatch; push to `supabase/functions/uk_aq_egress_monitor/**`, `supabase/config.toml`, or this workflow.
 - Purpose: deploy `uk_aq_egress_monitor` to the history Supabase project with `verify_jwt` disabled (`--no-verify-jwt`) so monitor invocations can use publishable key + cron secret only.
 - Auth/config:
@@ -205,14 +205,14 @@ UK_AQ_EDGE_UPSTREAM_SECRET=...
   - Metadata: host equals `uk-aq-cache-cic-test.chronicillnesschannel.co.uk` and path in (`/api/aq/stations`, `/api/aq/la-hex`, `/api/aq/pcon-hex`, `/api/aq/stations-chart`); threshold `30 requests` per `1 minute` per IP; action `Managed Challenge`.
   - Burst shield: host equals `uk-aq-cache-cic-test.chronicillnesschannel.co.uk` and path starts with `/api/aq/`; threshold `600 requests` per `5 minutes` per IP; action `Block` (15-minute timeout).
 
-### `uk_aq_history_outbox_cloud_run_deploy.yml`
-- Trigger: push to `main` affecting `workers/uk_aq_history_outbox_cloud_run/**`, or manual dispatch.
+### `uk_aq_observs_outbox_cloud_run_deploy.yml`
+- Trigger: push to `main` affecting `workers/uk_aq_observs_outbox_cloud_run/**`, or manual dispatch.
 - Also watches shared egress patch/runtime files:
   - `supabase/functions/_shared/fetch_egress_patch.ts`
   - `supabase/functions/_shared/egress_metrics.ts`
   - `supabase/functions/_shared/history_client.ts`
 - Purpose: deploy the dedicated Cloud Run job that flushes history outbox on a 10-minute schedule.
-- Job: `workers/uk_aq_history_outbox_cloud_run`.
+- Job: `workers/uk_aq_observs_outbox_cloud_run`.
 - Runtime:
   - Small per-batch claims, bounded runtime budget, and retry-aware RPC calls.
   - Scheduler target uses Google Cloud Scheduler -> Cloud Run Jobs API (`:run`).
@@ -221,15 +221,15 @@ UK_AQ_EDGE_UPSTREAM_SECRET=...
   - `OBS_AQIDB_SUPABASE_URL`, `OBS_AQIDB_SECRET_KEY`,
   - GCP deploy/auth secrets as in other Cloud Run workflows.
 
-### `uk_aq_history_pubsub_cloud_run_deploy.yml`
-- Trigger: push to `main` affecting `workers/uk_aq_history_pubsub_cloud_run/**`, or manual dispatch.
+### `uk_aq_observs_pubsub_cloud_run_deploy.yml`
+- Trigger: push to `main` affecting `workers/uk_aq_observs_pubsub_cloud_run/**`, or manual dispatch.
 - Also watches shared egress patch/runtime files:
   - `supabase/functions/_shared/fetch_egress_patch.ts`
   - `supabase/functions/_shared/egress_metrics.ts`
   - `supabase/functions/_shared/history_client.ts`
 - Purpose: deploy the hourly-triggered Cloud Run service that drains history Pub/Sub messages and writes mixed-row batches to history DB.
-- Default service name: `uk-aq-history-pubsub-writer`.
-- Worker: `workers/uk_aq_history_pubsub_cloud_run`.
+- Default service name: `uk-aq-observs-pubsub-writer`.
+- Worker: `workers/uk_aq_observs_pubsub_cloud_run`.
 - Runtime:
   - Pulls from one Pub/Sub subscription.
   - Merges rows across connectors, deduplicates by `(connector_id, timeseries_id, observed_at)`, and upserts in chunks.
@@ -276,9 +276,9 @@ UK_AQ_EDGE_UPSTREAM_SECRET=...
   - `SUPABASE_URL`, `SB_SECRET_KEY` (required by workflow)
   - `BREATHELONDON_API_KEY`
 - Optional:
-  - `OBS_AQIDB_SUPABASE_URL`, `OBS_AQIDB_SECRET_KEY` (required only for `HISTORY_WRITE_MODE=direct`; not injected for `pubsub_only`/`outbox_only`)
-  - `BREATHELONDON_HISTORY_WRITE_MODE` (workflow default `pubsub_only`)
-  - `GCP_HISTORY_PUBSUB_TOPIC`, `HISTORY_PUBSUB_PUBLISH_BATCH_SIZE`
+  - `OBS_AQIDB_SUPABASE_URL`, `OBS_AQIDB_SECRET_KEY` (required only for `OBSERVS_WRITE_MODE=direct`; not injected for `pubsub_only`/`outbox_only`)
+  - `BREATHELONDON_OBSERVS_WRITE_MODE` (workflow default `pubsub_only`)
+  - `GCP_OBSERVS_PUBSUB_TOPIC`, `OBSERVS_PUBSUB_PUBLISH_BATCH_SIZE`
   - `SB_UK_AQ_CRON_SECRET`
   - Dropbox secrets (`DROPBOX_*`) and raw-upload allowlist env (`BREATHELONDON_RAW_DROPBOX_ALLOWED_SUPABASE_URL` or legacy `UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL`)
 
@@ -295,9 +295,9 @@ UK_AQ_EDGE_UPSTREAM_SECRET=...
   - `GCP_UK_AIR_SOS_SERVICE_ACCOUNT` (or legacy `GCP_UK_AIR_SOS_JOB_SERVICE_ACCOUNT`)
   - `SUPABASE_URL`, `SB_SECRET_KEY` (required by workflow)
 - Optional:
-  - `OBS_AQIDB_SUPABASE_URL`, `OBS_AQIDB_SECRET_KEY` (required only for `HISTORY_WRITE_MODE=direct`; not injected for `pubsub_only`/`outbox_only`)
-  - `UK_AIR_SOS_HISTORY_WRITE_MODE` (workflow default `pubsub_only`)
-  - `GCP_HISTORY_PUBSUB_TOPIC`, `HISTORY_PUBSUB_PUBLISH_BATCH_SIZE`
+  - `OBS_AQIDB_SUPABASE_URL`, `OBS_AQIDB_SECRET_KEY` (required only for `OBSERVS_WRITE_MODE=direct`; not injected for `pubsub_only`/`outbox_only`)
+  - `UK_AIR_SOS_OBSERVS_WRITE_MODE` (workflow default `pubsub_only`)
+  - `GCP_OBSERVS_PUBSUB_TOPIC`, `OBSERVS_PUBSUB_PUBLISH_BATCH_SIZE`
   - `SB_UK_AQ_CRON_SECRET`
   - Dropbox secrets (`DROPBOX_*`) and raw-upload allowlist env (`UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL`).
 
@@ -316,9 +316,9 @@ UK_AQ_EDGE_UPSTREAM_SECRET=...
   - `SUPABASE_URL`, `SB_SECRET_KEY` (required by workflow)
   - `OPENAQ_API_KEY`
 - Optional:
-  - `OBS_AQIDB_SUPABASE_URL`, `OBS_AQIDB_SECRET_KEY` (required only for `HISTORY_WRITE_MODE=direct`; not injected for `pubsub_only`/`outbox_only`)
-  - `OPENAQ_HISTORY_WRITE_MODE` (workflow default `pubsub_only` for direct history Pub/Sub publishing)
-  - `GCP_HISTORY_PUBSUB_TOPIC`, `HISTORY_PUBSUB_PUBLISH_BATCH_SIZE`
+  - `OBS_AQIDB_SUPABASE_URL`, `OBS_AQIDB_SECRET_KEY` (required only for `OBSERVS_WRITE_MODE=direct`; not injected for `pubsub_only`/`outbox_only`)
+  - `OPENAQ_OBSERVS_WRITE_MODE` (workflow default `pubsub_only` for direct history Pub/Sub publishing)
+  - `GCP_OBSERVS_PUBSUB_TOPIC`, `OBSERVS_PUBSUB_PUBLISH_BATCH_SIZE`
   - `SB_UK_AQ_CRON_SECRET`
   - Dropbox secrets (`DROPBOX_*`) and raw-upload allowlist env (`OPENAQ_RAW_DROPBOX_ALLOWED_SUPABASE_URL` or legacy `UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL`)
   - `GCP_OPENAQ_TASK_QUEUE_ID`, `GCP_OPENAQ_TASK_INVOKER_SERVICE_ACCOUNT`, `GCP_OPENAQ_SCHEDULER_SERVICE_ACCOUNT`.
@@ -338,9 +338,9 @@ UK_AQ_EDGE_UPSTREAM_SECRET=...
   - `GCP_SCOMM_JOB_SERVICE_ACCOUNT` (runtime service account used by Cloud Run service)
   - `SUPABASE_URL`, `SB_SECRET_KEY` (required by workflow)
 - Optional:
-  - `OBS_AQIDB_SUPABASE_URL`, `OBS_AQIDB_SECRET_KEY` (required only for `HISTORY_WRITE_MODE=direct`; not injected for `pubsub_only`/`outbox_only`)
-  - `SCOMM_HISTORY_WRITE_MODE` (workflow default `pubsub_only`)
-  - `GCP_HISTORY_PUBSUB_TOPIC`, `HISTORY_PUBSUB_PUBLISH_BATCH_SIZE`
+  - `OBS_AQIDB_SUPABASE_URL`, `OBS_AQIDB_SECRET_KEY` (required only for `OBSERVS_WRITE_MODE=direct`; not injected for `pubsub_only`/`outbox_only`)
+  - `SCOMM_OBSERVS_WRITE_MODE` (workflow default `pubsub_only`)
+  - `GCP_OBSERVS_PUBSUB_TOPIC`, `OBSERVS_PUBSUB_PUBLISH_BATCH_SIZE`
   - Dropbox secrets (`DROPBOX_*`) and raw-upload allowlist env (`SCOMM_RAW_DROPBOX_ALLOWED_SUPABASE_URL` / `UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL`)
 
 ### `uk_aq_validate_github_env_targets.yml`

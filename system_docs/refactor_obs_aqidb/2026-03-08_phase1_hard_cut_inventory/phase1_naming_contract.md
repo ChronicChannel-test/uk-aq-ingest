@@ -12,7 +12,7 @@ Scope: `CIC-test-uk-aq-ingest`, `CIC-test-uk-aq-ops`, `CIC-test-uk-aq-schema`
 
 ### Databases
 - `ingestdb` (unchanged)
-- `obs_aqidb` (replaces both `historydb` role and `aggdailydb` role)
+- `obs_aqidb` (replaces both `obs_aqidb` role and `aggdailydb` role)
 
 ### Schemas in `obs_aqidb`
 - `uk_aq_observs` (rename from `uk_aq_history`)

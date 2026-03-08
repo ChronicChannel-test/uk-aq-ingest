@@ -10,7 +10,7 @@ COPY supabase/functions/ingest_uk_air_sos/index.ts /app/runtime/ingest_uk_air_so
 COPY supabase/functions/_shared/cache.ts /app/runtime/_shared/cache.ts
 COPY supabase/functions/_shared/fetch_egress_patch.ts /app/runtime/_shared/fetch_egress_patch.ts
 COPY supabase/functions/_shared/egress_metrics.ts /app/runtime/_shared/egress_metrics.ts
-COPY supabase/functions/_shared/history_client.ts /app/runtime/_shared/history_client.ts
+COPY supabase/functions/_shared/observs_client.ts /app/runtime/_shared/observs_client.ts
 COPY supabase/functions/_shared/fetch_egress_patch.ts /app/supabase/functions/_shared/fetch_egress_patch.ts
 COPY supabase/functions/_shared/egress_metrics.ts /app/supabase/functions/_shared/egress_metrics.ts
 

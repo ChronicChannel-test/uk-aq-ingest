@@ -13,9 +13,9 @@ This worker runs Sensor.Community ingest directly in Cloud Run Service
 - Claims dispatch with `uk_aq_public.uk_aq_rpc_dispatch_claim`.
 - Fetches Sensor.Community data directly from `data.sensor.community`.
 - Upserts stations, phenomena, timeseries, and observations directly via PostgREST.
-- Dual-writes observations to history DB (with main DB outbox fallback) when history env is configured.
-- Supports `HISTORY_WRITE_MODE=pubsub_only` to publish history rows directly to GCP Pub/Sub.
-- Normalizes and deduplicates history observation rows on `(connector_id, timeseries_id, observed_at)` before history upsert/outbox enqueue.
+- Dual-writes observations to observs DB (with main DB outbox fallback) when observs env is configured.
+- Supports `OBSERVS_WRITE_MODE=pubsub_only` to publish observs rows directly to GCP Pub/Sub.
+- Normalizes and deduplicates observs observation rows on `(connector_id, timeseries_id, observed_at)` before observs upsert/outbox enqueue.
 - Uploads run log + raw payload snapshot to Dropbox when Dropbox env/secrets are configured and allowed for the active Supabase URL.
   - Log artifact: `uk_aq_log_cloud_run_scomm_<timestamp>.json`
   - Raw artifact: `uk_aq_raw_cloud_run_scomm_<timestamp>.zip`
@@ -31,8 +31,8 @@ The previous proxy worker (Cloud Run -> Supabase Edge function) is archived at:
 - `SB_SECRET_KEY`
 - `UK_AQ_CORE_SCHEMA` (optional; default `uk_aq_core`)
 - `UK_AQ_RAW_SCHEMA` (optional; default `uk_aq_raw`)
-- `OBS_AQIDB_SUPABASE_URL` (required when `HISTORY_WRITE_MODE=direct`; optional for `pubsub_only`/`outbox_only`)
-- `OBS_AQIDB_SECRET_KEY` (required when `HISTORY_WRITE_MODE=direct`; not injected for `pubsub_only`/`outbox_only`)
+- `OBS_AQIDB_SUPABASE_URL` (required when `OBSERVS_WRITE_MODE=direct`; optional for `pubsub_only`/`outbox_only`)
+- `OBS_AQIDB_SECRET_KEY` (required when `OBSERVS_WRITE_MODE=direct`; not injected for `pubsub_only`/`outbox_only`)
 - `OBS_AQIDB_RPC_SCHEMA` (optional; default `uk_aq_public`; used for direct mode RPC profile)
 - `DROPBOX_APP_KEY` (required for Dropbox upload)
 - `DROPBOX_APP_SECRET` (required for Dropbox upload)
@@ -55,11 +55,11 @@ The previous proxy worker (Cloud Run -> Supabase Edge function) is archived at:
 - `SCOMM_SOURCE_RETRIES` (default `3`)
 - `SCOMM_UPSERT_CHUNK_SIZE` (default `500`)
 - `SCOMM_TRIGGER_MODE` (default `manual`; set by service wrapper for observability)
-- `HISTORY_UPSERT_RPC` (default `uk_aq_rpc_history_observations_upsert`)
-- `HISTORY_UPSERT_CHUNK_SIZE` (default `5000`)
-- `HISTORY_WRITE_MODE` (default `outbox_only`; supports `outbox_only`, `direct`, `pubsub_only`)
-- `GCP_HISTORY_PUBSUB_TOPIC` (required when `HISTORY_WRITE_MODE=pubsub_only`)
-- `HISTORY_PUBSUB_PUBLISH_BATCH_SIZE` (default `500`; publish chunk size when `HISTORY_WRITE_MODE=pubsub_only`)
+- `OBSERVS_UPSERT_RPC` (default `uk_aq_rpc_observs_observations_upsert`)
+- `OBSERVS_UPSERT_CHUNK_SIZE` (default `5000`)
+- `OBSERVS_WRITE_MODE` (default `outbox_only`; supports `outbox_only`, `direct`, `pubsub_only`)
+- `GCP_OBSERVS_PUBSUB_TOPIC` (required when `OBSERVS_WRITE_MODE=pubsub_only`)
+- `OBSERVS_PUBSUB_PUBLISH_BATCH_SIZE` (default `500`; publish chunk size when `OBSERVS_WRITE_MODE=pubsub_only`)
 - `SCOMM_DROPBOX_ROOT` or `UK_AQ_DROPBOX_ROOT` (default `/CIC-Test`)
 - `SCOMM_RAW_DROPBOX_FOLDER` or `UK_AIR_RAW_DROPBOX_FOLDER`
   (default `/connectors/sensorcommunity/raw_data`)

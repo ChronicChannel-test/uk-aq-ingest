@@ -39,15 +39,15 @@ const UK_AQ_CORE_SCHEMA = Deno.env.get("UK_AQ_CORE_SCHEMA") ??
   "uk_aq_core";
 const UK_AQ_PUBLIC_SCHEMA = Deno.env.get("UK_AQ_PUBLIC_SCHEMA") ??
   "uk_aq_public";
-const OBS_AQIDB_READ_SCHEMA = resolveHistoryReadSchema(
+const OBS_AQIDB_READ_SCHEMA = resolveObservsReadSchema(
   Deno.env.get("OBS_AQIDB_READ_SCHEMA") ??
-    "uk_aq_history",
+    "uk_aq_observs",
 );
-const HISTORY_PAGE_SIZE = Math.min(
+const OBSERVS_PAGE_SIZE = Math.min(
   5000,
   Math.max(
     100,
-    parsePositiveInteger(Deno.env.get("UK_AQ_TIMESERIES_HISTORY_PAGE_SIZE")) ??
+    parsePositiveInteger(Deno.env.get("UK_AQ_TIMESERIES_OBSERVS_PAGE_SIZE")) ??
       1000,
   ),
 );
@@ -63,17 +63,17 @@ const CORS_HEADERS = {
 const REST_BASE_URL = SUPABASE_URL
   ? `${SUPABASE_URL.replace(/\/$/, "")}/rest/v1`
   : "";
-const HISTORY_REST_BASE_URL = OBS_AQIDB_SUPABASE_URL
+const OBSERVS_REST_BASE_URL = OBS_AQIDB_SUPABASE_URL
   ? `${OBS_AQIDB_SUPABASE_URL.replace(/\/$/, "")}/rest/v1`
   : "";
 
-function resolveHistoryReadSchema(raw: string): string {
+function resolveObservsReadSchema(raw: string): string {
   const trimmed = (raw || "").trim();
   const normalized = trimmed.toLowerCase();
-  // For direct table reads we always need uk_aq_history-style table schema.
+  // For direct table reads we always need uk_aq_observs-style table schema.
   // If configured with an RPC/public schema by mistake, force table schema.
   if (!normalized || normalized === "uk_aq_public" || normalized === "public") {
-    return "uk_aq_history";
+    return "uk_aq_observs";
   }
   return trimmed;
 }
@@ -355,7 +355,7 @@ type StitchedFetchOptions = {
 type StitchedFetchResult = {
   guideline: unknown;
   rows: TimeseriesRow[];
-  source: "ingest_only" | "history_only" | "ingest_history_stitched";
+  source: "ingest_only" | "observs_only" | "ingest_observs_stitched";
 };
 
 async function callTimeseriesRpc(
@@ -407,20 +407,20 @@ async function fetchTimeseriesRowsStitched(
   const splitBoundary = new Date(
     now.getTime() - INGEST_SOURCE_OF_TRUTH_HOURS * HOUR_MS,
   );
-  const historyStart = requestStart;
-  const historyEnd = requestEnd.getTime() < splitBoundary.getTime()
+  const observsStart = requestStart;
+  const observsEnd = requestEnd.getTime() < splitBoundary.getTime()
     ? requestEnd
     : splitBoundary;
   const ingestStart = requestStart.getTime() > splitBoundary.getTime()
     ? requestStart
     : splitBoundary;
   const ingestEnd = requestEnd.getTime() < now.getTime() ? requestEnd : now;
-  const hasHistoryWindow = historyEnd.getTime() > historyStart.getTime();
+  const hasObservsWindow = observsEnd.getTime() > observsStart.getTime();
   const hasIngestWindow = ingestEnd.getTime() > ingestStart.getTime();
   const sinceMs = since ? Date.parse(since) : Number.NaN;
   const hasSince = Number.isFinite(sinceMs);
-  const shouldFetchHistory = hasHistoryWindow &&
-    (!hasSince || sinceMs < historyEnd.getTime());
+  const shouldFetchObservs = hasObservsWindow &&
+    (!hasSince || sinceMs < observsEnd.getTime());
   const shouldFetchIngestRows = hasIngestWindow &&
     (!hasSince || sinceMs < ingestEnd.getTime());
 
@@ -428,7 +428,7 @@ async function fetchTimeseriesRowsStitched(
     ? selectIngestWindowLabel(ingestStart, now)
     : "12h";
   const ingestLimit = shouldFetchIngestRows
-    ? (hasHistoryWindow ? null : limit)
+    ? (hasObservsWindow ? null : limit)
     : 1;
   const ingestSince = shouldFetchIngestRows ? since : null;
   const { data, error } = await callTimeseriesRpc({
@@ -449,28 +449,28 @@ async function fetchTimeseriesRowsStitched(
     )
     : [];
 
-  let historyRows: TimeseriesRow[] = [];
-  if (shouldFetchHistory) {
-    const historyWindow = await callHistoryObservationsWindow({
+  let observsRows: TimeseriesRow[] = [];
+  if (shouldFetchObservs) {
+    const observsWindow = await callObservsObservationsWindow({
       timeseriesId,
-      startUtc: historyStart.toISOString(),
-      endUtc: historyEnd.toISOString(),
+      startUtc: observsStart.toISOString(),
+      endUtc: observsEnd.toISOString(),
       limit,
     });
-    historyRows = historyWindow.rows;
+    observsRows = observsWindow.rows;
   }
 
   const source: StitchedFetchResult["source"] =
-    shouldFetchHistory && shouldFetchIngestRows
-      ? "ingest_history_stitched"
-      : shouldFetchHistory
-      ? "history_only"
+    shouldFetchObservs && shouldFetchIngestRows
+      ? "ingest_observs_stitched"
+      : shouldFetchObservs
+      ? "observs_only"
       : "ingest_only";
 
   return {
     guideline,
     rows: finalizeStitchedRows(
-      historyRows,
+      observsRows,
       ingestRows,
       since,
       limit,
@@ -492,33 +492,33 @@ function selectIngestWindowLabel(start: Date, now: Date): NamedWindowLabel {
   return "7d";
 }
 
-type HistoryWindowCallOptions = {
+type ObservsWindowCallOptions = {
   timeseriesId: number;
   startUtc: string;
   endUtc: string;
   limit: number | null;
 };
 
-async function callHistoryObservationsWindow(
-  { timeseriesId, startUtc, endUtc, limit }: HistoryWindowCallOptions,
+async function callObservsObservationsWindow(
+  { timeseriesId, startUtc, endUtc, limit }: ObservsWindowCallOptions,
 ): Promise<{ rows: TimeseriesRow[] }> {
-  if (HISTORY_REST_BASE_URL && OBS_AQIDB_SECRET_KEY) {
-    const historyRows = await fetchHistoryRowsDirect({
+  if (OBSERVS_REST_BASE_URL && OBS_AQIDB_SECRET_KEY) {
+    const observsRows = await fetchObservsRowsDirect({
       timeseriesId,
       startUtc,
       endUtc,
       limit,
     });
-    if (historyRows === null) {
+    if (observsRows === null) {
       return { rows: [] };
     }
-    return { rows: historyRows };
+    return { rows: observsRows };
   }
   return { rows: [] };
 }
 
-async function fetchHistoryRowsDirect(
-  { timeseriesId, startUtc, endUtc, limit }: HistoryWindowCallOptions,
+async function fetchObservsRowsDirect(
+  { timeseriesId, startUtc, endUtc, limit }: ObservsWindowCallOptions,
 ): Promise<TimeseriesRow[] | null> {
   const select = "observed_at,value";
   const cappedLimit = limit === null ? null : Math.max(1, limit);
@@ -531,13 +531,13 @@ async function fetchHistoryRowsDirect(
       break;
     }
     const pageLimit = remaining === null
-      ? HISTORY_PAGE_SIZE
-      : Math.min(HISTORY_PAGE_SIZE, remaining);
+      ? OBSERVS_PAGE_SIZE
+      : Math.min(OBSERVS_PAGE_SIZE, remaining);
     if (pageLimit <= 0) {
       break;
     }
 
-    const historyResp = await postgrestRequest<any[]>(
+    const observsResp = await postgrestRequest<any[]>(
       "GET",
       "observations",
       {
@@ -554,21 +554,21 @@ async function fetchHistoryRowsDirect(
       OBS_AQIDB_READ_SCHEMA,
       undefined,
       {
-        baseUrl: HISTORY_REST_BASE_URL,
+        baseUrl: OBSERVS_REST_BASE_URL,
         apiKey: OBS_AQIDB_SECRET_KEY,
-        caller: "uk_aq_timeseries_history",
+        caller: "uk_aq_timeseries_observs",
       },
     );
-    if (historyResp.error) {
-      if (looksLikeHistoryDirectQueryUnavailable(historyResp.error.message)) {
+    if (observsResp.error) {
+      if (looksLikeObservsDirectQueryUnavailable(observsResp.error.message)) {
         return null;
       }
       throw new Error(
-        `history direct fetch failed: ${historyResp.error.message}`,
+        `observs direct fetch failed: ${observsResp.error.message}`,
       );
     }
 
-    const chunk = Array.isArray(historyResp.data) ? historyResp.data : [];
+    const chunk = Array.isArray(observsResp.data) ? observsResp.data : [];
     rows.push(...chunk);
 
     if (chunk.length < pageLimit) {
@@ -581,14 +581,14 @@ async function fetchHistoryRowsDirect(
 }
 
 function finalizeStitchedRows(
-  historyRows: TimeseriesRow[],
+  observsRows: TimeseriesRow[],
   ingestRows: TimeseriesRow[],
   since: string | null,
   limit: number | null,
   requestStart: Date,
   requestEnd: Date,
 ): TimeseriesRow[] {
-  let rows = mergeRowsPreferIngest(historyRows, ingestRows);
+  let rows = mergeRowsPreferIngest(observsRows, ingestRows);
   const startMs = requestStart.getTime();
   const endMs = requestEnd.getTime();
 
@@ -613,11 +613,11 @@ function finalizeStitchedRows(
 }
 
 function mergeRowsPreferIngest(
-  historyRows: TimeseriesRow[],
+  observsRows: TimeseriesRow[],
   ingestRows: TimeseriesRow[],
 ): TimeseriesRow[] {
   const byObservedAt = new Map<string, TimeseriesRow>();
-  for (const row of historyRows) {
+  for (const row of observsRows) {
     byObservedAt.set(row.observed_at, row);
   }
   // Ingest is source of truth and overwrites overlapping timestamps.
@@ -635,7 +635,7 @@ function looksLikeTimeseriesSignatureMismatch(message: string): boolean {
     normalized.includes("uk_aq_timeseries_rpc");
 }
 
-function looksLikeHistoryDirectQueryUnavailable(message: string): boolean {
+function looksLikeObservsDirectQueryUnavailable(message: string): boolean {
   const normalized = String(message || "").toLowerCase();
   return normalized.includes("could not find the table") ||
     normalized.includes("schema must be one of the following") ||

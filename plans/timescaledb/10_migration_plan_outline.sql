@@ -42,7 +42,7 @@
 -- select date_trunc('day', observed_at) as day_bucket, count(*) from uk_aq_history.observations_ts group by 1;
 
 -- 5) Dual-write window (application/RPC writes to both old and new tables)
--- Option A: modify uk_aq_public.uk_aq_rpc_history_observations_upsert to write both tables.
+-- Option A: modify uk_aq_public.uk_aq_rpc_observs_observations_upsert to write both tables.
 -- Option B: keep RPC writing old table and add trigger forwarding to new table.
 
 -- 6) Read switch

@@ -3,9 +3,9 @@ import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import "../_shared/fetch_egress_patch.ts";
 import { cacheControlHeaders } from "../_shared/cache.ts";
 import {
-  type HistoryObservationRow,
-  writeHistoryWithOutbox,
-} from "../_shared/history_client.ts";
+  type ObservsObservationRow,
+  writeObservsWithOutbox,
+} from "../_shared/observs_client.ts";
 
 type PollRequest = {
   connector_id?: string;
@@ -1070,9 +1070,9 @@ function dedupeExactObservationRows(
   return { rows: preparedRows, deduped: rows.length - preparedRows.length };
 }
 
-function toHistoryObservationRow(
+function toObservsObservationRow(
   observationRow: Record<string, unknown>,
-): HistoryObservationRow | null {
+): ObservsObservationRow | null {
   const observedAt = String(observationRow.observed_at ?? "").trim();
   if (!observedAt) {
     return null;
@@ -1763,8 +1763,8 @@ serve(async (req) => {
   let observationsRowsInput = 0;
   let observationsRowsPrepared = 0;
   let observationsRowsDedupedPrewrite = 0;
-  let historyRowsPrepared = 0;
-  let historyRowsDedupedPrewrite = 0;
+  let observsRowsPrepared = 0;
+  let observsRowsDedupedPrewrite = 0;
   let stationsProcessed = 0;
   const runStartedAt = Date.now();
   const maxRuntimeSeconds = Number.isFinite(SCOMM_MAX_RUNTIME_SECONDS)
@@ -2119,7 +2119,7 @@ serve(async (req) => {
               }
 
               const rawObservationRows: Array<Record<string, unknown>> = [];
-              let historyRows: HistoryObservationRow[] = [];
+              let observsRows: ObservsObservationRow[] = [];
               if (!budgetStopPhase) {
                 for (const entry of observationsByTimeseries.values()) {
                   if (!checkBudget("during_observation_build")) {
@@ -2148,21 +2148,21 @@ serve(async (req) => {
               const observationRows = observationDedupe.rows;
               observationsRowsPrepared = observationRows.length;
               observationsRowsDedupedPrewrite = observationDedupe.deduped;
-              historyRows = observationRows.map(toHistoryObservationRow)
-                .filter((row): row is HistoryObservationRow => row !== null);
-              historyRowsPrepared = historyRows.length;
-              historyRowsDedupedPrewrite = observationsRowsDedupedPrewrite;
+              observsRows = observationRows.map(toObservsObservationRow)
+                .filter((row): row is ObservsObservationRow => row !== null);
+              observsRowsPrepared = observsRows.length;
+              observsRowsDedupedPrewrite = observationsRowsDedupedPrewrite;
 
               if (!budgetStopPhase && checkBudget("before_dual_write")) {
                 const [observationWriteResult] = await Promise.all([
                   upsertObservations(observationRows),
-                  writeHistoryWithOutbox(
+                  writeObservsWithOutbox(
                     publicRpcRequest,
-                    historyRows,
+                    observsRows,
                     (message) => {
-                      log.warn("History dual-write warning.", {
+                      log.warn("Observs dual-write warning.", {
                         message,
-                        rows: historyRows.length,
+                        rows: observsRows.length,
                       });
                     },
                   ),
@@ -2229,9 +2229,9 @@ serve(async (req) => {
                 observations_rows_prepared: observationsRowsPrepared,
                 observations_rows_deduped_prewrite:
                   observationsRowsDedupedPrewrite,
-                history_rows_prepared: historyRowsPrepared,
-                history_rows_deduped_prewrite:
-                  historyRowsDedupedPrewrite,
+                observs_rows_prepared: observsRowsPrepared,
+                observs_rows_deduped_prewrite:
+                  observsRowsDedupedPrewrite,
                 series_polled: seriesPolled,
                 last_observed_at: lastObservedAt,
                 partial: timeBudgetHit || Boolean(budgetStopPhase),

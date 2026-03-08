@@ -31,7 +31,7 @@ Env quick reference (Supabase blocks secrets prefixed with `SUPABASE_`):
 | Context | Required | Optional |
 | --- | --- | --- |
 | Local scripts (.env) | `SUPABASE_URL`, `SB_SECRET_KEY` | `UK_AIR_SOS_BASE_URL`, `UK_AIR_SOS_SERVICE_LABEL` |
-| Edge function runtime (Supabase secrets) | `SB_SUPABASE_URL`, `SB_SECRET_KEY` | `UK_AIR_SOS_BASE_URL`, `UK_AIR_SOS_SERVICE_LABEL`, `OBS_AQIDB_SUPABASE_URL`, `OBS_AQIDB_SECRET_KEY`, `HISTORY_UPSERT_RPC`, `HISTORY_OUTBOX_FLUSH_LIMIT`, `HISTORY_UPSERT_CHUNK_SIZE`, `UK_AQ_EGRESS_LOG_SAMPLE_RATE`, `UK_AQ_EGRESS_METRICS_DB_ENABLED`, `UK_AQ_EGRESS_METRICS_CLEANUP_SAMPLE_RATE`, `UK_AQ_EGRESS_METRICS_CLEANUP_MIN_INTERVAL_MS`, `UK_AQ_EGRESS_METRICS_AGG_RETENTION_DAYS`, `UK_AQ_EGRESS_METRICS_RAW_RETENTION_DAYS`, `DISPATCH_TIME_BUDGET_MS`, `DISPATCH_SHUTDOWN_BUFFER_MS`, `DISPATCH_EDGE_CALL_TIMEOUT_MS` |
+| Edge function runtime (Supabase secrets) | `SB_SUPABASE_URL`, `SB_SECRET_KEY` | `UK_AIR_SOS_BASE_URL`, `UK_AIR_SOS_SERVICE_LABEL`, `OBS_AQIDB_SUPABASE_URL`, `OBS_AQIDB_SECRET_KEY`, `OBSERVS_UPSERT_RPC`, `OBSERVS_OUTBOX_FLUSH_LIMIT`, `OBSERVS_UPSERT_CHUNK_SIZE`, `UK_AQ_EGRESS_LOG_SAMPLE_RATE`, `UK_AQ_EGRESS_METRICS_DB_ENABLED`, `UK_AQ_EGRESS_METRICS_CLEANUP_SAMPLE_RATE`, `UK_AQ_EGRESS_METRICS_CLEANUP_MIN_INTERVAL_MS`, `UK_AQ_EGRESS_METRICS_AGG_RETENTION_DAYS`, `UK_AQ_EGRESS_METRICS_RAW_RETENTION_DAYS`, `DISPATCH_TIME_BUDGET_MS`, `DISPATCH_SHUTDOWN_BUFFER_MS`, `DISPATCH_EDGE_CALL_TIMEOUT_MS` |
 | GitHub Actions deploy | `SUPABASE_ACCESS_TOKEN`, `SUPABASE_URL`, `SB_SECRET_KEY`, `SUPABASE_PROJECT_REF` (Secrets) | `UK_AIR_SOS_BASE_URL`, `UK_AIR_SOS_SERVICE_LABEL` (Secrets) |
 
 Install dependencies in a virtual environment:
@@ -110,20 +110,20 @@ Use this flow when creating fresh MAIN + HISTORY projects.
    - In this repo, run/paste:
      - `supabase/uk_aq_polling_helpers.sql`
 2. HISTORY DB project:
-   - In the schema repo (`../CIC-Test-UK-AQ-Schema/uk-aq-schema/schemas/history_db`), run/paste:
-     - `uk_aq_history_schema.sql`
-     - `history_db_dualwrite_bootstrap.sql`
+   - In the schema repo (`../CIC-Test-UK-AQ-Schema/uk-aq-schema/schemas/observs_db`), run/paste:
+     - `uk_aq_observs_schema.sql`
+     - `observs_db_dualwrite_bootstrap.sql`
    - History observations are keyed by `(connector_id, timeseries_id, observed_at)`.
 3. Set MAIN runtime secrets:
    - `OBS_AQIDB_SUPABASE_URL`
    - `OBS_AQIDB_SECRET_KEY`
    - Optional overrides:
-     - `HISTORY_UPSERT_RPC` (default `uk_aq_rpc_history_observations_upsert`)
-     - `HISTORY_OUTBOX_FLUSH_LIMIT` (default `40`)
-     - `HISTORY_UPSERT_CHUNK_SIZE` (default `5000`)
-     - `HISTORY_OUTBOX_CLOUD_RUN_MAX_BATCHES` (Cloud Run outbox batches per run; default `30`)
-     - `HISTORY_OUTBOX_CLOUD_RUN_CLAIM_BATCH_LIMIT` (Cloud Run claim size per batch; default `20`)
-     - `HISTORY_OUTBOX_CLOUD_RUN_BUDGET_SECONDS` (Cloud Run per-run budget; default `540`)
+     - `OBSERVS_UPSERT_RPC` (default `uk_aq_rpc_observs_observations_upsert`)
+     - `OBSERVS_OUTBOX_FLUSH_LIMIT` (default `40`)
+     - `OBSERVS_UPSERT_CHUNK_SIZE` (default `5000`)
+     - `OBSERVS_OUTBOX_CLOUD_RUN_MAX_BATCHES` (Cloud Run outbox batches per run; default `30`)
+     - `OBSERVS_OUTBOX_CLOUD_RUN_CLAIM_BATCH_LIMIT` (Cloud Run claim size per batch; default `20`)
+     - `OBSERVS_OUTBOX_CLOUD_RUN_BUDGET_SECONDS` (Cloud Run per-run budget; default `540`)
 4. Operational notes:
    - Outbox retries history delivery without backfill exports.
    - `uk_aq_raw.history_sync_receipt_daily` records per-day delivery receipts for future safe retention deletes.

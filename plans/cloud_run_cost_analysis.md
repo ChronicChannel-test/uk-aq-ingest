@@ -21,8 +21,8 @@ Label status for attribution:
   - `.github/workflows/uk_aq_breathelondon_cloud_run_deploy.yml:322`
   - `.github/workflows/uk_aq_scomm_cloud_run_deploy.yml:320`
   - `.github/workflows/uk_aq_uk_air_sos_cloud_run_deploy.yml:322`
-  - `.github/workflows/uk_aq_history_outbox_cloud_run_deploy.yml:288`
-  - `.github/workflows/uk_aq_history_pubsub_cloud_run_deploy.yml:333`
+  - `.github/workflows/uk_aq_observs_outbox_cloud_run_deploy.yml:288`
+  - `.github/workflows/uk_aq_observs_pubsub_cloud_run_deploy.yml:333`
 - Workflows also verify label presence post-deploy (`gcloud run jobs describe ... metadata.labels`).
 
 ## 2) Inventory table of jobs (config + schedule)
@@ -34,8 +34,8 @@ Repo scan (deploy/scheduler/labels) found Cloud Run job deployment in these work
 - `.github/workflows/uk_aq_breathelondon_cloud_run_deploy.yml:316` (`gcloud run jobs update`), `.github/workflows/uk_aq_breathelondon_cloud_run_deploy.yml:322` (`--update-labels`), `.github/workflows/uk_aq_breathelondon_cloud_run_deploy.yml:378` (scheduler update/create).
 - `.github/workflows/uk_aq_scomm_cloud_run_deploy.yml:317` (`gcloud run jobs update`), `.github/workflows/uk_aq_scomm_cloud_run_deploy.yml:320` (`--update-labels`).
 - `.github/workflows/uk_aq_uk_air_sos_cloud_run_deploy.yml:316` (`gcloud run jobs update`), `.github/workflows/uk_aq_uk_air_sos_cloud_run_deploy.yml:322` (`--update-labels`), `.github/workflows/uk_aq_uk_air_sos_cloud_run_deploy.yml:377` (scheduler update/create).
-- `.github/workflows/uk_aq_history_outbox_cloud_run_deploy.yml:282` (`gcloud run jobs update`), `.github/workflows/uk_aq_history_outbox_cloud_run_deploy.yml:288` (`--update-labels`), `.github/workflows/uk_aq_history_outbox_cloud_run_deploy.yml:334` (scheduler update/create).
-- `.github/workflows/uk_aq_history_pubsub_cloud_run_deploy.yml:327` (`gcloud run jobs update`), `.github/workflows/uk_aq_history_pubsub_cloud_run_deploy.yml:333` (`--update-labels`), `.github/workflows/uk_aq_history_pubsub_cloud_run_deploy.yml:379` (scheduler update/create).
+- `.github/workflows/uk_aq_observs_outbox_cloud_run_deploy.yml:282` (`gcloud run jobs update`), `.github/workflows/uk_aq_observs_outbox_cloud_run_deploy.yml:288` (`--update-labels`), `.github/workflows/uk_aq_observs_outbox_cloud_run_deploy.yml:334` (scheduler update/create).
+- `.github/workflows/uk_aq_observs_pubsub_cloud_run_deploy.yml:327` (`gcloud run jobs update`), `.github/workflows/uk_aq_observs_pubsub_cloud_run_deploy.yml:333` (`--update-labels`), `.github/workflows/uk_aq_observs_pubsub_cloud_run_deploy.yml:379` (scheduler update/create).
 
 | Job | Region | Trigger(s) | CPU / Memory | Timeout | Retries | TaskCount / Parallelism | Service account | VPC connector | Labels |
 |---|---|---|---|---:|---:|---:|---|---|---|
@@ -43,8 +43,8 @@ Repo scan (deploy/scheduler/labels) found Cloud Run job deployment in these work
 | `uk-aq-breathelondon-ingest` | `europe-west2` | Scheduler: `*/2 * * * *` | `1000m` / `512Mi` | 900s | 0 | 1 / 1 | `uk-aq-breathelondon-job@...` | none | `job_name=uk-aq-breathelondon-ingest` |
 | `uk-aq-sos-ingest` | `europe-west2` | Scheduler: `*/2 * * * *` | `1000m` / `512Mi` | 900s | 0 | 1 / 1 | `uk-aq-sos-job@...` | none | `job_name=uk-aq-sos-ingest` |
 | `uk-aq-scomm-ingest` | `europe-west2` | Scheduler: `*/2 * * * *` | `1000m` / `512Mi` | 600s | 0 | 1 / 1 | `uk-aq-scomm-job@...` | none | `job_name=uk-aq-scomm-ingest` |
-| `uk-aq-history-outbox-flush` | `europe-west2` | Scheduler: `*/10 * * * *` | `1000m` / `512Mi` | 600s | 0 | 1 / 1 | `uk-aq-history-outbox-flusher@...` | none | `job_name=uk-aq-history-outbox-flush` |
-| `uk-aq-history-pubsub-writer` | `europe-west2` | Scheduler: `0 * * * *` | `1000m` / `512Mi` | 1500s | 0 | 1 / 1 | `uk-aq-history-pubsub-job@...` | none | `job_name=uk-aq-history-pubsub-writer` |
+| `uk-aq-observs-outbox-flush` | `europe-west2` | Scheduler: `*/10 * * * *` | `1000m` / `512Mi` | 600s | 0 | 1 / 1 | `uk-aq-observs-outbox-flusher@...` | none | `job_name=uk-aq-observs-outbox-flush` |
+| `uk-aq-observs-pubsub-writer` | `europe-west2` | Scheduler: `0 * * * *` | `1000m` / `512Mi` | 1500s | 0 | 1 / 1 | `uk-aq-observs-pubsub-job@...` | none | `job_name=uk-aq-observs-pubsub-writer` |
 
 Notes:
 - All jobs are `gen2` execution environment.
@@ -65,8 +65,8 @@ Assumptions:
 | 2 | `uk-aq-breathelondon-ingest` | 488 | 11.00 | 78.90 | 1.0% | 719.9 | 19,981.4 |
 | 3 | `uk-aq-sos-ingest` | 488 | 10.79 | 28.36 | 1.0% | 719.9 | 9,382.0 |
 | 4 | `uk-aq-scomm-ingest` | 488 | 11.11 | 17.14 | 0.0% | 719.9 | 8,897.3 |
-| 5 | `uk-aq-history-outbox-flush` | 98 | 11.25 | 14.78 | 0.0% | 144.6 | 1,669.5 |
-| 6 | `uk-aq-history-pubsub-writer` | 17 | 20.44 | 23.13 | 0.0% | 25.1 | 509.5 |
+| 5 | `uk-aq-observs-outbox-flush` | 98 | 11.25 | 14.78 | 0.0% | 144.6 | 1,669.5 |
+| 6 | `uk-aq-observs-pubsub-writer` | 17 | 20.44 | 23.13 | 0.0% | 25.1 | 509.5 |
 
 ## 4) Findings
 

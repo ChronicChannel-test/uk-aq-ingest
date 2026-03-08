@@ -11,7 +11,7 @@ This Cloud Run service runs UK-AIR SOS ingest in Google Cloud using the existing
 4. Resolves scoped `timeseries_ids` for those stations and invokes local SOS ingest once.
 5. Records run status in `connectors` + `uk_aq_ingest_runs` (+ `error_logs` on failure).
 6. Updates `uk_aq_raw.uk_air_sos_station_checkpoints` after successful/partial runs.
-7. Writes history via shared history client mode (`HISTORY_WRITE_MODE`, workflow default `pubsub_only`).
+7. Writes observs via shared observs client mode (`OBSERVS_WRITE_MODE`, workflow default `pubsub_only`).
 
 Run feed note:
 - If the ingest response omits `last_observed_at`, the worker derives it from
@@ -80,10 +80,10 @@ gcloud run deploy uk-aq-sos-ingest \
 - `UK_AIR_SOS_MAX_RUNTIME_SECONDS` (ingest runtime budget inside handler)
 - `UK_AIR_SOS_LOCAL_PORT` (default `8000`; local ingest server port, separate from Cloud Run `PORT`)
 - `SB_UK_AQ_CRON_SECRET` (if set, local call sends `x-cron-secret`)
-- `HISTORY_WRITE_MODE` (workflow default: `pubsub_only`)
-- `GCP_HISTORY_PUBSUB_TOPIC` (required for `HISTORY_WRITE_MODE=pubsub_only`)
-- `HISTORY_PUBSUB_PUBLISH_BATCH_SIZE` (default `500`)
-- `OBS_AQIDB_SUPABASE_URL`, `OBS_AQIDB_SECRET_KEY`, `OBS_AQIDB_RPC_SCHEMA` (required when `HISTORY_WRITE_MODE=direct`; not injected for `pubsub_only`/`outbox_only`)
+- `OBSERVS_WRITE_MODE` (workflow default: `pubsub_only`)
+- `GCP_OBSERVS_PUBSUB_TOPIC` (required for `OBSERVS_WRITE_MODE=pubsub_only`)
+- `OBSERVS_PUBSUB_PUBLISH_BATCH_SIZE` (default `500`)
+- `OBS_AQIDB_SUPABASE_URL`, `OBS_AQIDB_SECRET_KEY`, `OBS_AQIDB_RPC_SCHEMA` (required when `OBSERVS_WRITE_MODE=direct`; not injected for `pubsub_only`/`outbox_only`)
 - `DROPBOX_APP_KEY`, `DROPBOX_APP_SECRET`, `DROPBOX_REFRESH_TOKEN`
 - `UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL`
 - `UK_AQ_DROPBOX_ROOT`, `UK_AIR_RAW_DROPBOX_FOLDER`

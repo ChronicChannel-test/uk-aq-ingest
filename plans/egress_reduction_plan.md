@@ -13,7 +13,7 @@ Status markers:
 
 Current state snapshot (Monday, February 9, 2026):
 - History outbox backlog is actively reducing again (from ~4,585 rows at 12:07 UTC to ~4,516 rows at 12:54 UTC).
-- History outbox draining now runs via dedicated Cloud Run job (`workers/uk_aq_history_outbox_cloud_run`) on a 10-minute scheduler.
+- History outbox draining now runs via dedicated Cloud Run job (`workers/uk_aq_observs_outbox_cloud_run`) on a 10-minute scheduler.
 - Highest remaining egress pressure is still front-end map polling (`uk_aq_latest` with `limit=10000`) and repeated high-frequency requests.
 
 ---
@@ -21,11 +21,11 @@ Current state snapshot (Monday, February 9, 2026):
 ## Immediate Next (execution order)
 
 1) 🎯 Complete deploy and runtime verification for outbox auto-drain
-- Deploy `uk_aq_history_outbox_cloud_run` and verify `history_outbox` stats in Cloud Run logs.
+- Deploy `uk_aq_observs_outbox_cloud_run` and verify `observs_outbox` stats in Cloud Run logs.
 - Confirm queue continues to trend down over at least 2-4 hours on Monday, February 9, 2026.
 - If drain rate is too low, tune:
-  - `HISTORY_OUTBOX_CLOUD_RUN_MAX_BATCHES` (Cloud Run batches/run)
-  - `HISTORY_OUTBOX_FLUSH_LIMIT` (rows/claim batch)
+  - `OBSERVS_OUTBOX_CLOUD_RUN_MAX_BATCHES` (Cloud Run batches/run)
+  - `OBSERVS_OUTBOX_FLUSH_LIMIT` (rows/claim batch)
 
 2) 🎯 Prevent new bad backlog from old bundles
 - Redeploy all active `ingest_*` edge functions so history dual-write/runtime behavior is consistent.
@@ -431,7 +431,7 @@ One row per Supabase-related call site (active code + notable test/demo scripts)
 5) ✅ Move hex-map time-window filtering server-side (`uk_aq_latest`) instead of client-side `last_value_at` filtering.
 6) ✅ Add visibility gating for map polling (UK and C&R tabs): poll only when the tab panel and document are visible; pause when hidden and refresh once on re-visibility.
 7) ⏳ Refactor ingest flows to batch history dual-write calls at run scope (avoid repeated `writeHistoryWithOutbox` in tight loops).
-8) ⏳ Increase history outbox throughput knobs to reduce per-run RPC churn (`HISTORY_OUTBOX_CLOUD_RUN_CLAIM_BATCH_LIMIT`, `HISTORY_OUTBOX_FLUSH_LIMIT`, `HISTORY_UPSERT_CHUNK_SIZE`) and validate against runtime budget.
+8) ⏳ Increase history outbox throughput knobs to reduce per-run RPC churn (`OBSERVS_OUTBOX_CLOUD_RUN_CLAIM_BATCH_LIMIT`, `OBSERVS_OUTBOX_FLUSH_LIMIT`, `OBSERVS_UPSERT_CHUNK_SIZE`) and validate against runtime budget.
 9) ⏳ Add strict exact-value pre-write dedupe in ingest paths before:
    - main observations payload write
    - history outbox/Pub/Sub publish payload write

@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 
 const PORT = Number(Deno.env.get("PORT") || "8000");
-const RUN_JOB_SCRIPT = "/app/workers/uk_aq_history_pubsub_cloud_run/run_job.ts";
+const RUN_JOB_SCRIPT = "/app/workers/uk_aq_observs_pubsub_cloud_run/run_job.ts";
 const ALLOWED_TRIGGER_MODES = new Set(["scheduler", "manual"]);
 
 let inFlight = false;
@@ -14,7 +14,7 @@ function resolveTriggerMode(req: Request, body: unknown): string {
     return queryMode;
   }
 
-  const headerMode = (req.headers.get("x-history-pubsub-trigger-mode") || "")
+  const headerMode = (req.headers.get("x-observs-pubsub-trigger-mode") || "")
     .trim()
     .toLowerCase();
   if (headerMode && ALLOWED_TRIGGER_MODES.has(headerMode)) {
@@ -47,7 +47,7 @@ async function runJob(triggerMode: string): Promise<Deno.CommandStatus> {
     ],
     env: {
       ...Deno.env.toObject(),
-      HISTORY_PUBSUB_TRIGGER_MODE: triggerMode,
+      OBSERVS_PUBSUB_TRIGGER_MODE: triggerMode,
     },
     stdout: "inherit",
     stderr: "inherit",
@@ -60,7 +60,7 @@ serve(async (req: Request) => {
     return new Response(
       JSON.stringify({
         ok: true,
-        service: "uk_aq_history_pubsub_cloud_run",
+        service: "uk_aq_observs_pubsub_cloud_run",
       }),
       {
         status: 200,

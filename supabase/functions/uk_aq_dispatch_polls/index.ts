@@ -74,7 +74,7 @@ type ErrorLogEntry = {
   connector_id?: string | number | null;
 };
 
-type HistoryOutboxDrainSummary = {
+type ObservsOutboxDrainSummary = {
   claimed: number;
   delivered: number;
   failed: number;
@@ -1185,7 +1185,7 @@ async function publicRpcRequest<T>(
   );
 }
 
-function emptyHistoryOutboxDrainSummary(): HistoryOutboxDrainSummary {
+function emptyObservsOutboxDrainSummary(): ObservsOutboxDrainSummary {
   return {
     batches: 0,
     max_batches: 0,
@@ -1449,7 +1449,7 @@ serve(async (req) => {
 
   const dispatchStartedAtMs = Date.now();
   const now = new Date();
-  const historyOutbox = emptyHistoryOutboxDrainSummary();
+  const observsOutbox = emptyObservsOutboxDrainSummary();
   const results = new Map<string, DispatchResult>();
   let connectors: ConnectorRow[] = [];
   let latestRuns = new Map<string, IngestRunRow>();
@@ -1465,7 +1465,7 @@ serve(async (req) => {
     });
     return jsonResponse({
       error: "load_connectors_failed",
-      history_outbox: historyOutbox,
+      observs_outbox: observsOutbox,
     }, 500);
   }
 
@@ -1491,7 +1491,7 @@ serve(async (req) => {
     return jsonResponse({
       checked_at: now.toISOString(),
       in_flight: inFlight,
-      history_outbox: historyOutbox,
+      observs_outbox: observsOutbox,
       results: TARGET_CONNECTORS.map((code) => results.get(code)),
     });
   }
@@ -1524,7 +1524,7 @@ serve(async (req) => {
       return jsonResponse({
         error: "dispatch_queue_claim_failed",
         dispatch_mode: dispatchMode,
-        history_outbox: historyOutbox,
+        observs_outbox: observsOutbox,
       }, 500);
     }
 
@@ -1560,7 +1560,7 @@ serve(async (req) => {
             message:
               "Queue currently leased by another run_queue worker; no additional jobs claimed in this call.",
             due_connectors: dueWithoutQueue,
-            history_outbox: historyOutbox,
+            observs_outbox: observsOutbox,
             queue: { claimed: 0, enqueued: 0, resolved: 0 },
             results: TARGET_CONNECTORS.map((code) => results.get(code)),
           });
@@ -1583,7 +1583,7 @@ serve(async (req) => {
           dispatch_mode: dispatchMode,
           due_connectors: dueWithoutQueue,
           dispatcher_settings: settings,
-          history_outbox: historyOutbox,
+          observs_outbox: observsOutbox,
           queue: { claimed: 0, enqueued: 0, resolved: 0 },
         }, 409);
       }
@@ -1598,7 +1598,7 @@ serve(async (req) => {
         checked_at: now.toISOString(),
         dispatch_mode: dispatchMode,
         dispatcher_settings: settings,
-        history_outbox: historyOutbox,
+        observs_outbox: observsOutbox,
         queue: { claimed: 0, enqueued: 0, resolved: 0 },
         results: TARGET_CONNECTORS.map((code) => results.get(code)),
       });
@@ -1665,7 +1665,7 @@ serve(async (req) => {
         checked_at: now.toISOString(),
         dispatch_mode: dispatchMode,
         dispatcher_settings: settings,
-        history_outbox: historyOutbox,
+        observs_outbox: observsOutbox,
         queue: {
           claimed: queueClaimRows.length,
           enqueued: 0,
@@ -1713,7 +1713,7 @@ serve(async (req) => {
       return jsonResponse({
         checked_at: now.toISOString(),
         dispatch_mode: dispatchMode,
-        history_outbox: historyOutbox,
+        observs_outbox: observsOutbox,
         results: TARGET_CONNECTORS.map((code) => results.get(code)),
       });
     }
@@ -1786,7 +1786,7 @@ serve(async (req) => {
       return jsonResponse({
         error: "dispatch_queue_enqueue_failed",
         dispatch_mode: dispatchMode,
-        history_outbox: historyOutbox,
+        observs_outbox: observsOutbox,
       }, 500);
     }
     for (const item of selected) {
@@ -1800,7 +1800,7 @@ serve(async (req) => {
       checked_at: now.toISOString(),
       dispatch_mode: dispatchMode,
       dispatcher_settings: settings,
-      history_outbox: historyOutbox,
+      observs_outbox: observsOutbox,
       queue: {
         enqueued: queueEnqueued,
         selected: selected.map((item) => item.connectorCode),
@@ -2261,7 +2261,7 @@ serve(async (req) => {
     checked_at: now.toISOString(),
     dispatch_mode: dispatchMode,
     dispatcher_settings: settings,
-    history_outbox: historyOutbox,
+    observs_outbox: observsOutbox,
     queue: {
       claimed: queueClaimRows.length,
       enqueued: queueEnqueued,

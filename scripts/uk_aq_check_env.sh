@@ -64,7 +64,7 @@ main_vars=(
   SUPABASE_SECRETS_ENV
 )
 
-history_vars=(
+obs_aqi_vars=(
   OBS_AQIDB_SUPABASE_URL
   OBS_AQIDB_SUPABASE_PROJECT_REF
   OBS_AQIDB_RPC_SCHEMA
@@ -148,16 +148,16 @@ echo "UK-AQ env check"
 echo "Env file: $ENV_FILE"
 
 check_presence_group "Main" "${main_vars[@]}"
-check_presence_group "History" "${history_vars[@]}"
+check_presence_group "Obs AQI DB" "${obs_aqi_vars[@]}"
 if [[ -z "${SB_SECRET_KEY:-}" ]]; then
   fail "Main key check: set SB_SECRET_KEY"
 fi
 if [[ -z "${OBS_AQIDB_SECRET_KEY:-}" ]]; then
-  fail "History key check: set OBS_AQIDB_SECRET_KEY"
+  fail "Obs AQI DB key check: set OBS_AQIDB_SECRET_KEY"
 fi
 
-HISTORY_PRIV_KEY="${OBS_AQIDB_SECRET_KEY:-}"
-HISTORY_PRIV_KEY_NAME="OBS_AQIDB_SECRET_KEY"
+OBS_AQI_PRIV_KEY="${OBS_AQIDB_SECRET_KEY:-}"
+OBS_AQI_PRIV_KEY_NAME="OBS_AQIDB_SECRET_KEY"
 
 echo
 echo "[Secrets] Masked preview"
@@ -176,8 +176,8 @@ echo "[Refs] Project alignment"
 main_ref_url="$(extract_ref_from_url "${SUPABASE_URL:-}")"
 main_ref_env="${SUPABASE_PROJECT_REF:-}"
 main_ref_db="$(extract_ref_from_db_url)"
-history_ref_url="$(extract_ref_from_url "${OBS_AQIDB_SUPABASE_URL:-}")"
-history_ref_env="${OBS_AQIDB_SUPABASE_PROJECT_REF:-}"
+obs_aqi_ref_url="$(extract_ref_from_url "${OBS_AQIDB_SUPABASE_URL:-}")"
+obs_aqi_ref_env="${OBS_AQIDB_SUPABASE_PROJECT_REF:-}"
 
 if [[ -n "$main_ref_url" && -n "$main_ref_env" && "$main_ref_url" == "$main_ref_env" ]]; then
   ok "SUPABASE_URL ref matches SUPABASE_PROJECT_REF ($main_ref_env)"
@@ -191,10 +191,10 @@ else
   fail "SUPABASE_DB_URL ref ($main_ref_db) does not match SUPABASE_PROJECT_REF ($main_ref_env)"
 fi
 
-if [[ -n "$history_ref_url" && -n "$history_ref_env" && "$history_ref_url" == "$history_ref_env" ]]; then
-  ok "OBS_AQIDB_SUPABASE_URL ref matches OBS_AQIDB_SUPABASE_PROJECT_REF ($history_ref_env)"
+if [[ -n "$obs_aqi_ref_url" && -n "$obs_aqi_ref_env" && "$obs_aqi_ref_url" == "$obs_aqi_ref_env" ]]; then
+  ok "OBS_AQIDB_SUPABASE_URL ref matches OBS_AQIDB_SUPABASE_PROJECT_REF ($obs_aqi_ref_env)"
 else
-  fail "OBS_AQIDB_SUPABASE_URL ref ($history_ref_url) does not match OBS_AQIDB_SUPABASE_PROJECT_REF ($history_ref_env)"
+  fail "OBS_AQIDB_SUPABASE_URL ref ($obs_aqi_ref_url) does not match OBS_AQIDB_SUPABASE_PROJECT_REF ($obs_aqi_ref_env)"
 fi
 
 if [[ "${UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL:-}" == "${SUPABASE_URL:-}" ]]; then
@@ -213,7 +213,7 @@ fi
 
 echo
 echo "[JWT] Token claims (JWT-formatted keys)"
-export HISTORY_PRIV_KEY
+export OBS_AQI_PRIV_KEY
 python3 - <<'PY'
 import base64
 import json
@@ -240,13 +240,13 @@ for key in ("SB_SECRET_KEY",):
     ref = payload.get("ref")
     print(f"OK    {key} role={role} ref={ref}")
 
-history_token = (os.environ.get("HISTORY_PRIV_KEY", "") or "").strip()
-history_payload = decode_payload(history_token)
-if not history_payload:
+obs_aqi_token = (os.environ.get("OBS_AQI_PRIV_KEY", "") or "").strip()
+obs_aqi_payload = decode_payload(obs_aqi_token)
+if not obs_aqi_payload:
     print("WARN  OBS_AQIDB_SECRET_KEY is not a JWT payload (or invalid)")
 else:
-    role = history_payload.get("role")
-    ref = history_payload.get("ref")
+    role = obs_aqi_payload.get("role")
+    ref = obs_aqi_payload.get("ref")
     print(f"OK    OBS_AQIDB_SECRET_KEY role={role} ref={ref}")
 PY
 
@@ -276,11 +276,11 @@ if (( NO_NETWORK == 0 )); then
     fail "Main privileged key (SB_SECRET_KEY) main /rest/v1/ check returned HTTP $code"
   fi
 
-  code="$(http_code -H "apikey: ${HISTORY_PRIV_KEY:-}" "${OBS_AQIDB_SUPABASE_URL:-}/rest/v1/")"
+  code="$(http_code -H "apikey: ${OBS_AQI_PRIV_KEY:-}" "${OBS_AQIDB_SUPABASE_URL:-}/rest/v1/")"
   if [[ "$code" == "200" ]]; then
-    ok "${HISTORY_PRIV_KEY_NAME} can access history /rest/v1/ (200)"
+    ok "${OBS_AQI_PRIV_KEY_NAME} can access obs_aqidb /rest/v1/ (200)"
   else
-    fail "${HISTORY_PRIV_KEY_NAME} history /rest/v1/ check returned HTTP $code"
+    fail "${OBS_AQI_PRIV_KEY_NAME} obs_aqidb /rest/v1/ check returned HTTP $code"
   fi
 else
   echo

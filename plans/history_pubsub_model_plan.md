@@ -26,7 +26,7 @@ Source: `uk_aq_public.uk_aq_history_rpc_metrics_minute` (history DB)
   - Rows input: `264,668`
   - Rows upserted: `162,485`
   - Upsert ratio: `61.4%`
-- Dominant endpoint: `rpc/uk_aq_rpc_history_observations_upsert` (effectively 100% of measured history payload).
+- Dominant endpoint: `rpc/uk_aq_rpc_observs_observations_upsert` (effectively 100% of measured history payload).
 
 Interpretation:
 - Current cost is driven mostly by high request count + repeated rows, not many distinct endpoints.
@@ -107,7 +107,7 @@ Why:
 ## Target architecture (recommended)
 
 1. Publisher:
-- Ingest runtimes publish history rows/messages to `uk-aq-history-observations` topic.
+- Ingest runtimes publish history rows/messages to `uk-aq-observs-observations` topic.
 - Include idempotency fields in each message:
   - `connector_id`
   - `timeseries_id`
@@ -122,7 +122,7 @@ Why:
 3. Hourly writer job:
 - Cloud Run Job (or Cloud Run service + Cloud Scheduler every hour).
 - Pull messages in batches, aggregate and dedupe in-memory by PK tuple.
-- Upsert in chunks to history RPC (`uk_aq_rpc_history_observations_upsert`).
+- Upsert in chunks to history RPC (`uk_aq_rpc_observs_observations_upsert`).
 - Ack only after successful upsert.
 
 4. Fallback controls:

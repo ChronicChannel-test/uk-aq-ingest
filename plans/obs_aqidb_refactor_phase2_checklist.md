@@ -22,7 +22,7 @@ Phase 2 prepares and executes the hard-cut runtime/config rename and introduces 
 ## Workstream A: Schema SQL (repo: `CIC-test-uk-aq-schema`)
 
 ### A1. Rename-safe DB label contract
-- [ ] Update DB size metric label checks from (`ingestdb`, `historydb`, `aggdailydb`) to (`ingestdb`, `obs_aqidb`) in canonical SQL.
+- [ ] Update DB size metric label checks from (`ingestdb`, `obs_aqidb`, `aggdailydb`) to (`ingestdb`, `obs_aqidb`) in canonical SQL.
 - [ ] Update all related RPC argument validation and checks.
 
 Acceptance:
@@ -112,7 +112,7 @@ Acceptance:
   - `obs_aqidb`
 
 Acceptance:
-- [ ] No historydb/aggdailydb legend lines or paths remain.
+- [ ] No obs_aqidb/aggdailydb legend lines or paths remain.
 
 ### D2. Add schema stacked area chart
 - [x] Add stacked area chart under DB line chart.

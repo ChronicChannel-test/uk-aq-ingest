@@ -3,9 +3,9 @@ import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import "../_shared/fetch_egress_patch.ts";
 import { cacheControlHeaders } from "../_shared/cache.ts";
 import {
-  type HistoryObservationRow,
-  writeHistoryWithOutbox,
-} from "../_shared/history_client.ts";
+  type ObservsObservationRow,
+  writeObservsWithOutbox,
+} from "../_shared/observs_client.ts";
 
 type PollRequest = {
   connector_id?: string;
@@ -52,7 +52,7 @@ const DEFAULT_WINDOW_HOURS = 6;
 const DEFAULT_MAX_RUNTIME_SECONDS = 120;
 const DEFAULT_TIMEOUT_MS = 30_000;
 const DEFAULT_BOOTSTRAP_NULL_LAST_VALUE_BATCH = 50;
-const DEFAULT_HISTORY_BUFFER_FLUSH_ROWS = 5000;
+const DEFAULT_OBSERVS_BUFFER_FLUSH_ROWS = 5000;
 const PAGE_SIZE = 1000;
 const CONCURRENCY_LIMIT = 5;
 
@@ -321,46 +321,46 @@ serve(async (req) => {
         responsePayload = { status: "poll_disabled", connector_id: connector.id };
         log.info("Polling disabled for connector.", { connector_id: connector.id });
       } else {
-        const historyBufferFlushRows = clampPositiveInt(
-          Number(Deno.env.get("HISTORY_BUFFER_FLUSH_ROWS") ?? ""),
-          DEFAULT_HISTORY_BUFFER_FLUSH_ROWS,
+        const observsBufferFlushRows = clampPositiveInt(
+          Number(Deno.env.get("OBSERVS_BUFFER_FLUSH_ROWS") ?? ""),
+          DEFAULT_OBSERVS_BUFFER_FLUSH_ROWS,
         );
-        const historyRowsPending: HistoryObservationRow[] = [];
-        let historyFlushes = 0;
-        let historyWritten = 0;
-        let historyReceiptsUpserted = 0;
-        let historyEnqueued = 0;
-        const flushPendingHistoryRows = async (
+        const observsRowsPending: ObservsObservationRow[] = [];
+        let observsFlushes = 0;
+        let observsWritten = 0;
+        let observsReceiptsUpserted = 0;
+        let observsEnqueued = 0;
+        const flushPendingObservsRows = async (
           reason: string,
           force = false,
         ) => {
-          if (!historyRowsPending.length) {
+          if (!observsRowsPending.length) {
             return;
           }
-          if (!force && historyRowsPending.length < historyBufferFlushRows) {
+          if (!force && observsRowsPending.length < observsBufferFlushRows) {
             return;
           }
-          const rows = historyRowsPending.splice(0, historyRowsPending.length);
+          const rows = observsRowsPending.splice(0, observsRowsPending.length);
           try {
-            const stats = await writeHistoryWithOutbox(
+            const stats = await writeObservsWithOutbox(
               publicRpcRequest,
               rows,
               (message) => {
-                log.warn("History dual-write warning", {
+                log.warn("Observs dual-write warning", {
                   message,
                   rows: rows.length,
                   reason,
                 });
               },
             );
-            historyFlushes += 1;
-            historyWritten += stats.written;
-            historyReceiptsUpserted += stats.receipts_upserted;
-            historyEnqueued += stats.enqueued;
+            observsFlushes += 1;
+            observsWritten += stats.written;
+            observsReceiptsUpserted += stats.receipts_upserted;
+            observsEnqueued += stats.enqueued;
           } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
-            errors.push("history_flush_failed");
-            log.warn("History dual-write flush failed.", {
+            errors.push("observs_flush_failed");
+            log.warn("Observs dual-write flush failed.", {
               message,
               rows: rows.length,
               reason,
@@ -368,7 +368,7 @@ serve(async (req) => {
             await errorLogger.logError({
               source: "edge",
               severity: "error",
-              message: "History dual-write flush failed.",
+              message: "Observs dual-write flush failed.",
               context: {
                 connector_id: connector?.id ?? requestedConnectorId ?? null,
                 rows: rows.length,
@@ -537,7 +537,7 @@ serve(async (req) => {
                   throw new Error(`observations upsert failed for ${row.id}: ${error.message}`);
                 }
                 observationsUpserted += observationRows.length;
-                const historyRows = observationRows.map((point) => {
+                const observsRows = observationRows.map((point) => {
                   const numericValue = Number(point.value);
                   return {
                     connector_id: Number(point.connector_id),
@@ -545,9 +545,9 @@ serve(async (req) => {
                     observed_at: String(point.observed_at),
                     value: Number.isFinite(numericValue) ? numericValue : null,
                     status: point.status == null ? null : String(point.status),
-                  } satisfies HistoryObservationRow;
+                  } satisfies ObservsObservationRow;
                 });
-                historyRowsPending.push(...historyRows);
+                observsRowsPending.push(...observsRows);
               }
               await upsertLastValue(
                 row.id,
@@ -584,7 +584,7 @@ serve(async (req) => {
               max_runtime_seconds: maxRuntimeSeconds,
             });
           }
-          await flushPendingHistoryRows("run_complete", true);
+          await flushPendingObservsRows("run_complete", true);
 
           if (checkpointCandidates.length) {
             await upsertUkAirSosTimeseriesCheckpoints(
@@ -624,10 +624,10 @@ serve(async (req) => {
             connector_id: connector.id,
             series_polled: polled,
             observations_upserted: observationsUpserted,
-            history_written: historyWritten,
-            history_receipts_upserted: historyReceiptsUpserted,
-            history_enqueued: historyEnqueued,
-            history_flushes: historyFlushes,
+            observs_written: observsWritten,
+            observs_receipts_upserted: observsReceiptsUpserted,
+            observs_enqueued: observsEnqueued,
+            observs_flushes: observsFlushes,
             errors,
             partial: timeBudgetHit,
             stopped_reason: timeBudgetHit ? "runtime_budget_exceeded" : null,

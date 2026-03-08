@@ -49,34 +49,34 @@ const OBS_AQIDB_SUPABASE_URL = (process.env.OBS_AQIDB_SUPABASE_URL || "").trim()
 const OBS_AQIDB_SECRET_KEY = (
   process.env.OBS_AQIDB_SECRET_KEY || ""
 ).trim();
-const OBS_AQIDB_RPC_SCHEMA = normalizeHistoryRpcSchema(
+const OBS_AQIDB_RPC_SCHEMA = normalizeObservsRpcSchema(
   (process.env.OBS_AQIDB_RPC_SCHEMA || "uk_aq_public").trim(),
 );
-const HISTORY_UPSERT_RPC = (
-  process.env.HISTORY_UPSERT_RPC ||
-  "uk_aq_rpc_history_observations_upsert"
+const OBSERVS_UPSERT_RPC = (
+  process.env.OBSERVS_UPSERT_RPC ||
+  "uk_aq_rpc_observs_observations_upsert"
 ).trim();
-const HISTORY_UPSERT_CHUNK_SIZE = parsePositiveInt(
-  process.env.HISTORY_UPSERT_CHUNK_SIZE,
+const OBSERVS_UPSERT_CHUNK_SIZE = parsePositiveInt(
+  process.env.OBSERVS_UPSERT_CHUNK_SIZE,
   5000,
 );
-const HISTORY_WRITE_MODE = normalizeHistoryWriteMode(
-  process.env.HISTORY_WRITE_MODE,
+const OBSERVS_WRITE_MODE = normalizeObservsWriteMode(
+  process.env.OBSERVS_WRITE_MODE,
 );
 const GCP_PROJECT_ID = (
   process.env.GCP_PROJECT_ID ||
   process.env.GOOGLE_CLOUD_PROJECT ||
   ""
 ).trim();
-const GCP_HISTORY_PUBSUB_TOPIC = (
-  process.env.GCP_HISTORY_PUBSUB_TOPIC ||
+const GCP_OBSERVS_PUBSUB_TOPIC = (
+  process.env.GCP_OBSERVS_PUBSUB_TOPIC ||
   ""
 ).trim();
-const HISTORY_PUBSUB_PUBLISH_BATCH_SIZE = parsePositiveInt(
-  process.env.HISTORY_PUBSUB_PUBLISH_BATCH_SIZE,
+const OBSERVS_PUBSUB_PUBLISH_BATCH_SIZE = parsePositiveInt(
+  process.env.OBSERVS_PUBSUB_PUBLISH_BATCH_SIZE,
   500,
 );
-const HISTORY_REST_BASE_URL = OBS_AQIDB_SUPABASE_URL
+const OBSERVS_REST_BASE_URL = OBS_AQIDB_SUPABASE_URL
   ? buildRestBaseUrl(OBS_AQIDB_SUPABASE_URL)
   : "";
 
@@ -232,15 +232,15 @@ function parseTriggerMode(raw) {
   return "manual";
 }
 
-function normalizeHistoryRpcSchema(raw) {
+function normalizeObservsRpcSchema(raw) {
   const normalized = String(raw || "").trim().toLowerCase();
-  if (!normalized || normalized === "uk_aq_history" || normalized === "public") {
+  if (!normalized || normalized === "uk_aq_observs" || normalized === "public") {
     return "uk_aq_public";
   }
   return String(raw).trim();
 }
 
-function normalizeHistoryWriteMode(raw) {
+function normalizeObservsWriteMode(raw) {
   const normalized = String(raw || "").trim().toLowerCase();
   if (normalized === "direct") {
     return "direct";
@@ -316,25 +316,25 @@ function buildRestBaseUrl(url) {
   return `${String(url || "").replace(/\/$/, "")}/rest/v1`;
 }
 
-function historyConfigured() {
+function observsConfigured() {
   return Boolean(OBS_AQIDB_SUPABASE_URL && OBS_AQIDB_SECRET_KEY);
 }
 
-function historyPubsubTopicPath() {
-  if (!GCP_HISTORY_PUBSUB_TOPIC) {
+function observsPubsubTopicPath() {
+  if (!GCP_OBSERVS_PUBSUB_TOPIC) {
     return "";
   }
-  if (GCP_HISTORY_PUBSUB_TOPIC.startsWith("projects/")) {
-    return GCP_HISTORY_PUBSUB_TOPIC;
+  if (GCP_OBSERVS_PUBSUB_TOPIC.startsWith("projects/")) {
+    return GCP_OBSERVS_PUBSUB_TOPIC;
   }
   if (!GCP_PROJECT_ID) {
     return "";
   }
-  return `projects/${GCP_PROJECT_ID}/topics/${GCP_HISTORY_PUBSUB_TOPIC}`;
+  return `projects/${GCP_PROJECT_ID}/topics/${GCP_OBSERVS_PUBSUB_TOPIC}`;
 }
 
-function historyPubsubConfigured() {
-  return Boolean(historyPubsubTopicPath());
+function observsPubsubConfigured() {
+  return Boolean(observsPubsubTopicPath());
 }
 
 async function fetchGoogleAccessToken() {
@@ -360,21 +360,21 @@ async function fetchGoogleAccessToken() {
   return token;
 }
 
-async function publishHistoryRowsToPubsub(preparedRows) {
+async function publishObservsRowsToPubsub(preparedRows) {
   if (!preparedRows.length) {
     return 0;
   }
-  const topicPath = historyPubsubTopicPath();
+  const topicPath = observsPubsubTopicPath();
   if (!topicPath) {
     throw new Error(
-      "History Pub/Sub is not configured (missing GCP_HISTORY_PUBSUB_TOPIC or GCP_PROJECT_ID).",
+      "Observs Pub/Sub is not configured (missing GCP_OBSERVS_PUBSUB_TOPIC or GCP_PROJECT_ID).",
     );
   }
 
   const token = await fetchGoogleAccessToken();
   let published = 0;
 
-  for (const rowsChunk of chunk(preparedRows, HISTORY_PUBSUB_PUBLISH_BATCH_SIZE)) {
+  for (const rowsChunk of chunk(preparedRows, OBSERVS_PUBSUB_PUBLISH_BATCH_SIZE)) {
     const messages = rowsChunk.map((row) => ({
       data: Buffer.from(JSON.stringify(row), "utf8").toString("base64"),
       attributes: {
@@ -400,7 +400,7 @@ async function publishHistoryRowsToPubsub(preparedRows) {
       const message = payload && typeof payload === "object"
         ? JSON.stringify(payload)
         : `HTTP ${response.status}`;
-      throw new Error(`History Pub/Sub publish failed: ${message}`);
+      throw new Error(`Observs Pub/Sub publish failed: ${message}`);
     }
     const messageIds = Array.isArray(payload?.messageIds)
       ? payload.messageIds
@@ -489,17 +489,17 @@ async function postgrestRequest(method, path, options = {}) {
   };
 }
 
-async function historyPostgrestRequest(method, path, options = {}) {
-  if (!historyConfigured()) {
+async function observsPostgrestRequest(method, path, options = {}) {
+  if (!observsConfigured()) {
     throw new Error(
-      "History DB is not configured (missing OBS_AQIDB_SUPABASE_URL or OBS_AQIDB_SECRET_KEY).",
+      "Observs DB is not configured (missing OBS_AQIDB_SUPABASE_URL or OBS_AQIDB_SECRET_KEY).",
     );
   }
   return postgrestRequest(method, path, {
     ...options,
     schema: options.schema || OBS_AQIDB_RPC_SCHEMA,
     apiKey: OBS_AQIDB_SECRET_KEY,
-    restBaseUrl: HISTORY_REST_BASE_URL,
+    restBaseUrl: OBSERVS_REST_BASE_URL,
   });
 }
 
@@ -1176,7 +1176,7 @@ function shortError(error) {
   return message.length > 400 ? `${message.slice(0, 397)}...` : message;
 }
 
-function toHistoryObservationRow(
+function toObservsObservationRow(
   observationRow,
 ) {
   const observedAt = String(observationRow?.observed_at || "").trim();
@@ -1193,7 +1193,7 @@ function toHistoryObservationRow(
   };
 }
 
-function normalizeHistoryStatus(value) {
+function normalizeObservsStatus(value) {
   if (value === null || value === undefined) {
     return null;
   }
@@ -1233,7 +1233,7 @@ function float64FromHex(value) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function normalizeHistoryValue(value, valueFloat8Hex) {
+function normalizeObservsValue(value, valueFloat8Hex) {
   const fromHex = float64FromHex(valueFloat8Hex);
   if (fromHex !== null) {
     return {
@@ -1254,12 +1254,12 @@ function normalizeHistoryValue(value, valueFloat8Hex) {
   };
 }
 
-function prepareHistoryRows(historyRows) {
-  if (!Array.isArray(historyRows) || historyRows.length === 0) {
+function prepareObservsRows(observsRows) {
+  if (!Array.isArray(observsRows) || observsRows.length === 0) {
     return [];
   }
   const dedup = new Map();
-  for (const row of historyRows) {
+  for (const row of observsRows) {
     const connectorId = toIntegerOrNull(row?.connector_id);
     const timeseriesId = toIntegerOrNull(row?.timeseries_id);
     const observedAt = normalizeObservedAtIso(row?.observed_at);
@@ -1270,7 +1270,7 @@ function prepareHistoryRows(historyRows) {
     ) {
       continue;
     }
-    const normalizedValue = normalizeHistoryValue(
+    const normalizedValue = normalizeObservsValue(
       row?.value,
       row?.value_float8_hex,
     );
@@ -1281,13 +1281,13 @@ function prepareHistoryRows(historyRows) {
       observed_at: observedAt,
       value: normalizedValue.value,
       value_float8_hex: normalizedValue.value_float8_hex,
-      status: normalizeHistoryStatus(row?.status),
+      status: normalizeObservsStatus(row?.status),
     });
   }
   return Array.from(dedup.values());
 }
 
-function buildHistorySyncReceipts(rows) {
+function buildObservsSyncReceipts(rows) {
   const dedup = new Map();
   for (const row of rows) {
     const connectorId = Number(row.connector_id);
@@ -1306,22 +1306,22 @@ function buildHistorySyncReceipts(rows) {
   return Array.from(dedup.values());
 }
 
-async function historyUpsertObservations(historyRows) {
-  const preparedRows = prepareHistoryRows(historyRows);
+async function observsUpsertObservations(observsRows) {
+  const preparedRows = prepareObservsRows(observsRows);
   if (!preparedRows.length) {
     return 0;
   }
 
   let written = 0;
-  for (const rowsChunk of chunk(preparedRows, HISTORY_UPSERT_CHUNK_SIZE)) {
-    const response = await historyPostgrestRequest(
+  for (const rowsChunk of chunk(preparedRows, OBSERVS_UPSERT_CHUNK_SIZE)) {
+    const response = await observsPostgrestRequest(
       "POST",
-      `rpc/${HISTORY_UPSERT_RPC}`,
+      `rpc/${OBSERVS_UPSERT_RPC}`,
       { body: { rows: rowsChunk } },
     );
     if (!response.ok) {
       throw new Error(
-        `History upsert failed (${response.status}): ${response.text}`,
+        `Observs upsert failed (${response.status}): ${response.text}`,
       );
     }
     written += countRowsFromPayload(
@@ -1333,17 +1333,17 @@ async function historyUpsertObservations(historyRows) {
   return written;
 }
 
-async function upsertHistorySyncReceipts(rows) {
+async function upsertObservsSyncReceipts(rows) {
   if (!rows.length) {
     return 0;
   }
   const response = await mainRpcRequest(
-    "uk_aq_rpc_history_sync_receipt_daily_upsert",
+    "uk_aq_rpc_observs_sync_receipt_daily_upsert",
     { rows },
   );
   if (!response.ok) {
     throw new Error(
-      `History receipt upsert failed (${response.status}): ${response.text}`,
+      `Observs receipt upsert failed (${response.status}): ${response.text}`,
     );
   }
   return countRowsFromPayload(
@@ -1353,17 +1353,17 @@ async function upsertHistorySyncReceipts(rows) {
   );
 }
 
-async function enqueueHistoryOutbox(historyRows) {
-  const preparedRows = prepareHistoryRows(historyRows);
+async function enqueueObservsOutbox(observsRows) {
+  const preparedRows = prepareObservsRows(observsRows);
   if (!preparedRows.length) {
     return 0;
   }
-  const response = await mainRpcRequest("uk_aq_rpc_history_outbox_enqueue", {
+  const response = await mainRpcRequest("uk_aq_rpc_observs_outbox_enqueue", {
     entries: [{ payload: preparedRows }],
   });
   if (!response.ok) {
     throw new Error(
-      `History outbox enqueue failed (${response.status}): ${response.text}`,
+      `Observs outbox enqueue failed (${response.status}): ${response.text}`,
     );
   }
   return countRowsFromPayload(
@@ -1373,14 +1373,14 @@ async function enqueueHistoryOutbox(historyRows) {
   );
 }
 
-async function writeHistoryWithOutbox(historyRows) {
-  const preparedRows = prepareHistoryRows(historyRows);
+async function writeObservsWithOutbox(observsRows) {
+  const preparedRows = prepareObservsRows(observsRows);
   if (!preparedRows.length) {
     return { written: 0, receipts_upserted: 0, enqueued: 0 };
   }
 
-  if (HISTORY_WRITE_MODE === "outbox_only") {
-    const enqueued = await enqueueHistoryOutbox(preparedRows);
+  if (OBSERVS_WRITE_MODE === "outbox_only") {
+    const enqueued = await enqueueObservsOutbox(preparedRows);
     return {
       written: 0,
       receipts_upserted: 0,
@@ -1388,13 +1388,13 @@ async function writeHistoryWithOutbox(historyRows) {
     };
   }
 
-  if (HISTORY_WRITE_MODE === "pubsub_only") {
-    if (!historyPubsubConfigured()) {
+  if (OBSERVS_WRITE_MODE === "pubsub_only") {
+    if (!observsPubsubConfigured()) {
       throw new Error(
-        "HISTORY_WRITE_MODE=pubsub_only but Pub/Sub is not configured.",
+        "OBSERVS_WRITE_MODE=pubsub_only but Pub/Sub is not configured.",
       );
     }
-    const enqueued = await publishHistoryRowsToPubsub(preparedRows);
+    const enqueued = await publishObservsRowsToPubsub(preparedRows);
     return {
       written: 0,
       receipts_upserted: 0,
@@ -1402,22 +1402,22 @@ async function writeHistoryWithOutbox(historyRows) {
     };
   }
 
-  if (!historyConfigured()) {
+  if (!observsConfigured()) {
     return { written: 0, receipts_upserted: 0, enqueued: 0 };
   }
 
   try {
-    const written = await historyUpsertObservations(preparedRows);
-    const receipts = buildHistorySyncReceipts(preparedRows);
-    const receiptsUpserted = await upsertHistorySyncReceipts(receipts);
+    const written = await observsUpsertObservations(preparedRows);
+    const receipts = buildObservsSyncReceipts(preparedRows);
+    const receiptsUpserted = await upsertObservsSyncReceipts(receipts);
     return {
       written,
       receipts_upserted: receiptsUpserted,
       enqueued: 0,
     };
   } catch (error) {
-    const enqueued = await enqueueHistoryOutbox(preparedRows);
-    logSummary("history_dual_write_warning", {
+    const enqueued = await enqueueObservsOutbox(preparedRows);
+    logSummary("observs_dual_write_warning", {
       rows: preparedRows.length,
       message: shortError(error),
       enqueued,
@@ -1748,9 +1748,9 @@ async function runDirectIngest(connectorId, overwriteStationName, dropboxCapture
       observations_upserted: 0,
       series_polled: 0,
       last_observed_at: null,
-      history_written: 0,
-      history_receipts_upserted: 0,
-      history_enqueued: 0,
+      observs_written: 0,
+      observs_receipts_upserted: 0,
+      observs_enqueued: 0,
     };
   }
 
@@ -1829,12 +1829,12 @@ async function runDirectIngest(connectorId, overwriteStationName, dropboxCapture
 
   const observationDedupe = dedupeExactObservationRows(rawObservationRows);
   const observationRows = observationDedupe.rows;
-  const historyRows = observationRows.map((row) => toHistoryObservationRow(row))
+  const observsRows = observationRows.map((row) => toObservsObservationRow(row))
     .filter((row) => row !== null);
 
-  const [observationsUpserted, historyWriteStats] = await Promise.all([
+  const [observationsUpserted, observsWriteStats] = await Promise.all([
     upsertObservations(observationRows),
-    writeHistoryWithOutbox(historyRows),
+    writeObservsWithOutbox(observsRows),
   ]);
 
   return {
@@ -1847,13 +1847,13 @@ async function runDirectIngest(connectorId, overwriteStationName, dropboxCapture
     observations_rows_input: rawObservationRows.length,
     observations_rows_prepared: observationRows.length,
     observations_rows_deduped_prewrite: observationDedupe.deduped,
-    history_rows_prepared: historyRows.length,
-    history_rows_deduped_prewrite: observationDedupe.deduped,
+    observs_rows_prepared: observsRows.length,
+    observs_rows_deduped_prewrite: observationDedupe.deduped,
     series_polled: timeseriesPayload.length,
     last_observed_at: lastObservedAt,
-    history_written: historyWriteStats.written,
-    history_receipts_upserted: historyWriteStats.receipts_upserted,
-    history_enqueued: historyWriteStats.enqueued,
+    observs_written: observsWriteStats.written,
+    observs_receipts_upserted: observsWriteStats.receipts_upserted,
+    observs_enqueued: observsWriteStats.enqueued,
   };
 }
 
@@ -2132,12 +2132,12 @@ async function main() {
     observations_rows_prepared: payload?.observations_rows_prepared ?? null,
     observations_rows_deduped_prewrite:
       payload?.observations_rows_deduped_prewrite ?? null,
-    history_rows_prepared: payload?.history_rows_prepared ?? null,
-    history_rows_deduped_prewrite:
-      payload?.history_rows_deduped_prewrite ?? null,
-    history_written: payload?.history_written ?? null,
-    history_receipts_upserted: payload?.history_receipts_upserted ?? null,
-    history_enqueued: payload?.history_enqueued ?? null,
+    observs_rows_prepared: payload?.observs_rows_prepared ?? null,
+    observs_rows_deduped_prewrite:
+      payload?.observs_rows_deduped_prewrite ?? null,
+    observs_written: payload?.observs_written ?? null,
+    observs_receipts_upserted: payload?.observs_receipts_upserted ?? null,
+    observs_enqueued: payload?.observs_enqueued ?? null,
   });
 }
 

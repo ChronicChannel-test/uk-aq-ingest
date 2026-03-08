@@ -1,13 +1,13 @@
 import "../../supabase/functions/_shared/fetch_egress_patch.ts";
 
 import {
-  buildHistorySyncReceipts,
-  historyUpsertObservations,
-  prepareHistoryRows,
-  type HistoryObservationRow,
+  buildObservsSyncReceipts,
+  observsUpsertObservations,
+  prepareObservsRows,
+  type ObservsObservationRow,
   type MainRpcCaller,
-  upsertHistorySyncReceipts,
-} from "../../supabase/functions/_shared/history_client.ts";
+  upsertObservsSyncReceipts,
+} from "../../supabase/functions/_shared/observs_client.ts";
 
 type RpcError = { message: string };
 
@@ -58,37 +58,37 @@ const PUBSUB_PROJECT_ID = (
 ).trim();
 
 const PUBSUB_SUBSCRIPTION = (
-  Deno.env.get("HISTORY_PUBSUB_SUBSCRIPTION") ||
-  "uk-aq-history-observations-sub"
+  Deno.env.get("OBSERVS_PUBSUB_SUBSCRIPTION") ||
+  "uk-aq-observs-observations-sub"
 ).trim();
 
 const PUBSUB_PULL_MAX_MESSAGES = parsePositiveInt(
-  Deno.env.get("HISTORY_PUBSUB_PULL_MAX_MESSAGES"),
+  Deno.env.get("OBSERVS_PUBSUB_PULL_MAX_MESSAGES"),
   1000,
 );
 
 const WRITER_MAX_BATCHES = parsePositiveInt(
-  Deno.env.get("HISTORY_PUBSUB_WRITER_MAX_BATCHES"),
+  Deno.env.get("OBSERVS_PUBSUB_WRITER_MAX_BATCHES"),
   24,
 );
 
 const WRITER_BUDGET_SECONDS = parsePositiveInt(
-  Deno.env.get("HISTORY_PUBSUB_WRITER_BUDGET_SECONDS"),
+  Deno.env.get("OBSERVS_PUBSUB_WRITER_BUDGET_SECONDS"),
   1200,
 );
 
 const WRITER_SHUTDOWN_BUFFER_SECONDS = parsePositiveInt(
-  Deno.env.get("HISTORY_PUBSUB_WRITER_SHUTDOWN_BUFFER_SECONDS"),
+  Deno.env.get("OBSERVS_PUBSUB_WRITER_SHUTDOWN_BUFFER_SECONDS"),
   20,
 );
 
 const WRITER_RPC_RETRIES = parsePositiveInt(
-  Deno.env.get("HISTORY_PUBSUB_WRITER_RPC_RETRIES"),
+  Deno.env.get("OBSERVS_PUBSUB_WRITER_RPC_RETRIES"),
   3,
 );
 
 const WRITER_PUBSUB_RETRIES = parsePositiveInt(
-  Deno.env.get("HISTORY_PUBSUB_WRITER_PUBSUB_RETRIES"),
+  Deno.env.get("OBSERVS_PUBSUB_WRITER_PUBSUB_RETRIES"),
   3,
 );
 
@@ -215,7 +215,7 @@ async function mainRpc<T>(
     Accept: "application/json",
     "Accept-Profile": MAIN_RPC_SCHEMA,
     "Content-Profile": MAIN_RPC_SCHEMA,
-    "x-ukaq-egress-caller": "uk_aq_history_pubsub_cloud_run",
+    "x-ukaq-egress-caller": "uk_aq_observs_pubsub_cloud_run",
   };
 
   for (let attempt = 1; attempt <= WRITER_RPC_RETRIES; attempt += 1) {
@@ -322,7 +322,7 @@ async function ackPubsubMessages(ackIds: string[]): Promise<void> {
 
 function decodeMessageRow(message: PubsubPullMessage): {
   ackId: string | null;
-  row: HistoryObservationRow | null;
+  row: ObservsObservationRow | null;
 } {
   const ackId = typeof message.ackId === "string" && message.ackId.trim()
     ? message.ackId
@@ -342,7 +342,7 @@ function decodeMessageRow(message: PubsubPullMessage): {
     const valueRaw = record.value;
     const statusRaw = record.status;
 
-    const row: HistoryObservationRow = {
+    const row: ObservsObservationRow = {
       connector_id: Number(record.connector_id),
       timeseries_id: Number(record.timeseries_id),
       observed_at: String(record.observed_at || ""),
@@ -402,7 +402,7 @@ async function flushPubsubInBudget(): Promise<WriterSummary> {
 
     const malformedAckIds: string[] = [];
     const validAckIds: string[] = [];
-    const rows: HistoryObservationRow[] = [];
+    const rows: ObservsObservationRow[] = [];
 
     for (const message of pulled) {
       const decoded = decodeMessageRow(message);
@@ -431,7 +431,7 @@ async function flushPubsubInBudget(): Promise<WriterSummary> {
     }
 
     summary.decoded_rows += rows.length;
-    const preparedRows = prepareHistoryRows(rows);
+    const preparedRows = prepareObservsRows(rows);
     summary.deduped_rows += preparedRows.length;
 
     if (!preparedRows.length) {
@@ -452,19 +452,19 @@ async function flushPubsubInBudget(): Promise<WriterSummary> {
     }
 
     try {
-      const delivered = await historyUpsertObservations(preparedRows);
+      const delivered = await observsUpsertObservations(preparedRows);
       summary.delivered += delivered;
-      const receipts = buildHistorySyncReceipts(preparedRows);
-      summary.receipts_upserted += await upsertHistorySyncReceipts(
+      const receipts = buildObservsSyncReceipts(preparedRows);
+      summary.receipts_upserted += await upsertObservsSyncReceipts(
         mainRpc as MainRpcCaller,
         receipts,
       );
     } catch (error) {
       summary.errors.push(
-        `History upsert failed for batch ${idx + 1}: ${shortError(error)}`,
+        `Observs upsert failed for batch ${idx + 1}: ${shortError(error)}`,
       );
       summary.stopped_early = true;
-      summary.stop_reason = "history_upsert_failed";
+      summary.stop_reason = "observs_upsert_failed";
       break;
     }
 
@@ -486,7 +486,7 @@ async function flushPubsubInBudget(): Promise<WriterSummary> {
 
 async function main(): Promise<void> {
   const now = new Date().toISOString();
-  console.log("history_pubsub_cloud_run_start", {
+  console.log("observs_pubsub_cloud_run_start", {
     checked_at: now,
     max_batches: WRITER_MAX_BATCHES,
     pull_max_messages: PUBSUB_PULL_MAX_MESSAGES,
@@ -496,13 +496,13 @@ async function main(): Promise<void> {
   });
 
   const summary = await flushPubsubInBudget();
-  console.log("history_pubsub_cloud_run_summary", {
+  console.log("observs_pubsub_cloud_run_summary", {
     checked_at: now,
-    history_pubsub: summary,
+    observs_pubsub: summary,
   });
 
   if (summary.errors.length > 0) {
-    throw new Error(`history_pubsub_flush_error ${summarizeForError(summary)}`);
+    throw new Error(`observs_pubsub_flush_error ${summarizeForError(summary)}`);
   }
 }
 

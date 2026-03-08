@@ -53,7 +53,7 @@ Per run, worker updates:
     `max(timeseries.last_value_at)` across selected timeseries ids.
 - `uk_aq_raw.error_logs` on ingest failure
 - `uk_aq_raw.uk_air_sos_station_checkpoints` after successful/partial runs
-- History observations via shared history mode (`HISTORY_WRITE_MODE`, default `pubsub_only`)
+- History observations via shared history mode (`OBSERVS_WRITE_MODE`, default `pubsub_only`)
 - Dropbox artifacts use `uk_aq_*_cloud_run_*` filename prefixes
   (`UK_AIR_SOS_DROPBOX_UPLOAD_SOURCE=cloud_run`).
 

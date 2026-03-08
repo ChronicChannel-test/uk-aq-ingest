@@ -9,7 +9,7 @@ Hourly database size points logged by the DB size logger Cloud Run service.
 
 ## Columns
 - `bucket_hour` (timestamptz, PK part): UTC hour bucket for the sample.
-- `database_label` (text, PK part): Database identifier (`ingestdb`, `historydb`, or `aggdailydb`).
+- `database_label` (text, PK part): Database identifier (`ingestdb`, `obs_aqidb`, or `aggdailydb`).
 - `database_name` (text): Postgres database name returned by `current_database()` in the source project.
 - `size_bytes` (bigint): Cluster-wide database size in bytes from `sum(pg_database_size(pg_database.datname))` over `pg_database`.
 - `oldest_observed_at` (timestamptz, nullable): Oldest `observed_at` currently present in that DB's observations table (null when unavailable, e.g. Agg Daily DB placeholder).

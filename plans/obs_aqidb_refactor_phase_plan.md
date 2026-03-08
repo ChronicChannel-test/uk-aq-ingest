@@ -77,7 +77,7 @@ Details:
   - `uk_aq_history` -> `uk_aq_observs`
   - `uk_aq_aggdaily` -> `uk_aq_aqilevels`
 - Update SQL DDL/RPCs and schema-qualified references in schema repo first, then ingest/ops code.
-- Remove any DB-label constraints that still require `historydb`/`aggdailydb`.
+- Remove any DB-label constraints that still require `obs_aqidb`/`aggdailydb`.
 - Add schema-size hourly metrics storage in ingest DB for dashboarding:
   - new table for hourly schema totals for `uk_aq_observs` and `uk_aq_aqilevels` (in `obs_aqidb`),
   - include oldest day field per schema for legend rendering.
