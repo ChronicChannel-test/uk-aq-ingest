@@ -544,7 +544,7 @@
         flex: 1 1 auto;
         min-height: 0;
         display: grid;
-        grid-template-rows: repeat(3, minmax(0, 1fr));
+        grid-template-rows: repeat(2, minmax(0, 1fr));
         gap: 6px;
       }
 
@@ -572,10 +572,6 @@
 
       .coverage-bar-observs {
         background: #3b82f6;
-      }
-
-      .coverage-bar-aggdaily {
-        background: #2f9e44;
       }
 
       .coverage-bar-r2 {
@@ -2356,7 +2352,6 @@
        * @property {string} date
        * @property {boolean} ingest
        * @property {boolean} observs
-       * @property {boolean} aggDaily
        * @property {boolean} r2
        * @property {boolean=} isToday
        */
@@ -2375,7 +2370,6 @@
               date: toUtcDateKey(dateObj),
               ingest: Boolean(row && row.ingest),
               observs: Boolean(row && row.observs),
-              aggDaily: Boolean(row && row.aggDaily),
               r2: Boolean(row && row.r2),
               isToday: Boolean(row && row.isToday),
             };
@@ -2411,7 +2405,6 @@
             date: dateKey,
             ingest: false,
             observs: false,
-            aggDaily: false,
             r2: false,
             isToday: dateKey === todayKey,
           };
@@ -2426,7 +2419,6 @@
               date: row.date,
               ingest: Boolean(row.ingest),
               observs: Boolean(row.observs),
-              aggDaily: Boolean(row.aggDaily),
               r2: Boolean(row.r2),
               isToday,
             },
@@ -2444,9 +2436,6 @@
         }
         if (coverage.observs) {
           sources.push("Observs & AQI DB");
-        }
-        if (coverage.aggDaily) {
-          sources.push("Agg Daily DB");
         }
         return sources;
       }
@@ -2468,9 +2457,6 @@
                 : null;
             const middleLayer = cell.coverage.observs
               ? { key: "observs", label: "Observs & AQI DB", className: "coverage-bar-observs" }
-              : null;
-            const bottomLayer = cell.coverage.aggDaily
-              ? { key: "aggDaily", label: "Agg Daily DB", className: "coverage-bar-aggdaily" }
               : null;
             const cellSources = summarizeCoverageSources(cell.coverage);
             const dayTooltip = `${cell.dateKey} • ${
@@ -2494,7 +2480,6 @@
                 <div class="coverage-bars">
                   <div class="coverage-bar-slot">${renderBar(topLayer)}</div>
                   <div class="coverage-bar-slot">${renderBar(middleLayer)}</div>
-                  <div class="coverage-bar-slot">${renderBar(bottomLayer)}</div>
                 </div>
               </div>
             `;
@@ -2512,7 +2497,7 @@
           </div>
           <div class="coverage-calendar-grid">${cellsMarkup}</div>
           <div class="footnote">
-            Top row: Ingest DB (red) or Cloudflare R2 (orange). Middle row: Observs & AQI DB (blue). Bottom row: Agg Daily DB (green).
+            Top row: Ingest DB (red) or Cloudflare R2 (orange). Middle row: Observs & AQI DB (blue).
           </div>
         `;
 

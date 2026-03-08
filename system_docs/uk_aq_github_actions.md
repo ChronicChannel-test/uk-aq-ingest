@@ -118,7 +118,7 @@ UK_AQ_EDGE_UPSTREAM_SECRET=...
 - Script: `python3 scripts/breathelondon/breathelondon_list_stations.py --to-supabase`.
 - Script: `python3 scripts/uk_aq_refresh_station_geo_aiven.py` (refresh PCON/LA codes from Aiven).
 - Export: `python3 scripts/uk_aq_export_stations_dropbox.py` (uploads `uk_aq_stations_<timestamp>.json`).
-- Final mirror step: `python3 scripts/stations_daily/sync_aggdaily_uk_aq_core.py`.
+- Final mirror step: `python3 scripts/stations_daily/sync_obs_aqidb_uk_aq_core.py`.
   - Mirrors `uk_aq_core.connectors`, `uk_aq_core.phenomena`, `uk_aq_core.stations`, `uk_aq_core.timeseries`.
   - Also syncs FK dependency tables (`observed_properties`, `categories`, `offerings`, `features`, `procedures`) so the mirrored tables can be applied with exact FK constraints.
   - Sync mode: upsert by PK plus hard-delete missing PKs in destination.
@@ -127,11 +127,11 @@ UK_AQ_EDGE_UPSTREAM_SECRET=...
 - Secrets: `SUPABASE_URL`, `SB_SECRET_KEY`, `UK_AIR_SOS_BASE_URL`,
   `BREATHELONDON_API_KEY`, `BREATHELONDON_BASE_URL` (optional), `DROPBOX_APP_KEY`,
   `DROPBOX_APP_SECRET`, `DROPBOX_REFRESH_TOKEN`, `UK_AQ_DROPBOX_ROOT`, `UK_AQ_STATIONS_DROPBOX_DIR`,
-  `PCON_AIVEN_PG_DSN`, `AGGDAILY_SECRET_KEY`.
-- Vars: `AGGDAILY_SUPABASE_URL`.
+  `PCON_AIVEN_PG_DSN`, `OBS_AQIDB_SECRET_KEY`.
+- Vars: `OBS_AQIDB_SUPABASE_URL`.
 - Vars: `PCON_VERSION`, `LA_VERSION` (optional; defaults to latest in Aiven).
-- Agg Daily bootstrap SQL (run once on empty Agg Daily DB before enabling mirror step):
-  - `CIC-test-uk-aq-schema/schemas/aggdaily_db/uk_aq_aggdaily_schema.sql`
+- Agg Daily bootstrap SQL (run once on empty Obs AQI DB before enabling mirror step):
+  - `CIC-test-uk-aq-schema/schemas/aqilevels_db/uk_aq_aqilevels_schema.sql`
   - This file creates `uk_aq_core` mirrored table structures and required metadata RPCs in `uk_aq_public`.
 
 ### `uk_aq_pcon_aiven_refresh.yml`

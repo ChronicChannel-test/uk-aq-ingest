@@ -3,16 +3,16 @@
 Hourly database size points logged by the DB size logger Cloud Run service.
 
 ## Purpose
-- Persist ingest DB, history DB, and Agg Daily DB size trends for dashboard charting.
+- Persist ingest DB, history DB, and Obs AQI DB size trends for dashboard charting.
 - Keep one consolidated metrics series in ingest DB (`database_label` differentiates DBs).
 - Support bounded retention cleanup without affecting observation granularity.
 
 ## Columns
 - `bucket_hour` (timestamptz, PK part): UTC hour bucket for the sample.
-- `database_label` (text, PK part): Database identifier (`ingestdb`, `obs_aqidb`, or `aggdailydb`).
+- `database_label` (text, PK part): Database identifier (`ingestdb`, `obs_aqidb`, or `obs_aqidb`).
 - `database_name` (text): Postgres database name returned by `current_database()` in the source project.
 - `size_bytes` (bigint): Cluster-wide database size in bytes from `sum(pg_database_size(pg_database.datname))` over `pg_database`.
-- `oldest_observed_at` (timestamptz, nullable): Oldest `observed_at` currently present in that DB's observations table (null when unavailable, e.g. Agg Daily DB placeholder).
+- `oldest_observed_at` (timestamptz, nullable): Oldest `observed_at` currently present in that DB's observations table (null when unavailable, e.g. Obs AQI DB placeholder).
 - `source` (text): Writer source tag (default `uk_aq_db_size_logger_cloud_run`).
 - `recorded_at` (timestamptz): Exact sample timestamp.
 - `created_at` (timestamptz): Row creation timestamp.

@@ -377,24 +377,13 @@ jobs:
         run: |
           python3 scripts/uk_aq_export_stations_dropbox.py
 
-      - name: Sync uk_aq_core reference tables to Agg Daily
-        env:
-          SRC_SUPABASE_URL: ${{ vars.SUPABASE_URL }}
-          SRC_SECRET_KEY: ${{ secrets.SB_SECRET_KEY }}
-          DST_SUPABASE_URL: ${{ vars.AGGDAILY_SUPABASE_URL }}
-          DST_SECRET_KEY: ${{ secrets.AGGDAILY_SECRET_KEY }}
-          SYNC_TARGET_LABEL: aggdailydb
-          SYNC_CALLER_PREFIX: stations_daily_sync_aggdaily
-        run: |
-          python3 scripts/stations_daily/sync_aggdaily_uk_aq_core.py
-
-      - name: Sync uk_aq_core reference tables to Observs DB
+      - name: Sync uk_aq_core reference tables to Obs AQI DB
         env:
           SRC_SUPABASE_URL: ${{ vars.SUPABASE_URL }}
           SRC_SECRET_KEY: ${{ secrets.SB_SECRET_KEY }}
           DST_SUPABASE_URL: ${{ vars.OBS_AQIDB_SUPABASE_URL }}
           DST_SECRET_KEY: ${{ secrets.OBS_AQIDB_SECRET_KEY }}
           SYNC_TARGET_LABEL: obs_aqidb
-          SYNC_CALLER_PREFIX: stations_daily_sync_observs
+          SYNC_CALLER_PREFIX: stations_daily_sync_obs_aqidb
         run: |
-          python3 scripts/stations_daily/sync_aggdaily_uk_aq_core.py
+          python3 scripts/stations_daily/sync_obs_aqidb_uk_aq_core.py

@@ -56,8 +56,6 @@ DB_SIZE_API_URL = str(os.getenv("UK_AQ_DB_SIZE_API_URL") or "").strip()
 DB_SIZE_API_TOKEN = str(os.getenv("UK_AQ_DB_SIZE_API_TOKEN") or "").strip()
 OBS_AQIDB_SUPABASE_URL = str(os.getenv("OBS_AQIDB_SUPABASE_URL") or "").strip()
 OBS_AQIDB_SECRET_KEY = str(os.getenv("OBS_AQIDB_SECRET_KEY") or "").strip()
-AGGDAILY_SUPABASE_URL = str(os.getenv("AGGDAILY_SUPABASE_URL") or "").strip()
-AGGDAILY_SECRET_KEY = str(os.getenv("AGGDAILY_SECRET_KEY") or "").strip()
 PUBLIC_SCHEMA = os.getenv("UK_AQ_PUBLIC_SCHEMA", "uk_aq_public")
 R2_BACKUP_WINDOW_RPC = os.getenv("UK_AQ_R2_BACKUP_WINDOW_RPC", "uk_aq_rpc_r2_backup_window")
 IN_FLIGHT_WARN_MINUTES = 5
@@ -86,14 +84,6 @@ DISPATCH_RUNS_STATE: Dict[str, Any] = {
 CACHE_TTL_SECONDS = 20
 R2_CACHE_TTL_SECONDS = 60 * 60
 COVERAGE_REFRESH_HOUR_UTC = 5
-COVERAGE_DAY_FETCH_LIMIT = max(
-    100,
-    int(os.getenv("UK_AQ_COVERAGE_DAY_FETCH_LIMIT", "1000")),
-)
-AGGDAILY_COVERAGE_DAYS_VIEW = (
-    str(os.getenv("UK_AQ_AGGDAILY_COVERAGE_DAYS_VIEW") or "uk_aq_station_aqi_daily").strip()
-    or "uk_aq_station_aqi_daily"
-)
 UTC_DATETIME_MIN = datetime.min.replace(tzinfo=timezone.utc)
 R2_BYTES_PER_GB = 1024 ** 3
 R2_CLASS_A_ACTION_TYPES = {
@@ -1027,7 +1017,6 @@ def _latest_oldest_day_by_label(
     return {
         "ingestdb": latest_rows.get("ingestdb", (UTC_DATETIME_MIN, None))[1],
         "obs_aqidb": latest_rows.get("obs_aqidb", (UTC_DATETIME_MIN, None))[1],
-        "aggdailydb": latest_rows.get("aggdailydb", (UTC_DATETIME_MIN, None))[1],
     }
 
 
@@ -1043,18 +1032,16 @@ def _build_live_storage_coverage_days(
 
     ingest_days = set(day_sets.get("ingestdb") or set())
     observs_days = set(day_sets.get("obs_aqidb") or set())
-    aggdaily_days = set(day_sets.get("aggdailydb") or set())
 
     ingest_start = min(ingest_days) if ingest_days else oldest_by_label.get("ingestdb")
     observs_start = min(observs_days) if observs_days else oldest_by_label.get("obs_aqidb")
-    aggdaily_start = min(aggdaily_days) if aggdaily_days else oldest_by_label.get("aggdailydb")
     r2_start = _parse_iso_day((r2_backup_window or {}).get("min_day_utc"))
     r2_end = _parse_iso_day((r2_backup_window or {}).get("max_day_utc"))
     if r2_start and r2_end and r2_end < r2_start:
         r2_start = None
         r2_end = None
 
-    lower_bounds = [day for day in [ingest_start, observs_start, aggdaily_start, r2_start] if day]
+    lower_bounds = [day for day in [ingest_start, observs_start, r2_start] if day]
     if not lower_bounds:
         return []
     start_day = min(lower_bounds)
@@ -1081,14 +1068,6 @@ def _build_live_storage_coverage_days(
                 else (observs_start and observs_start <= cursor <= today_utc)
             )
         )
-        agg_daily = bool(
-            cursor <= today_utc
-            and (
-                (cursor in aggdaily_days)
-                if aggdaily_days
-                else (aggdaily_start and aggdaily_start <= cursor <= today_utc)
-            )
-        )
         r2 = bool(r2_start and r2_end and r2_start <= cursor <= r2_end)
         if r2:
             # Top row is mutually exclusive: if archived in R2, do not show ingest red.
@@ -1099,7 +1078,6 @@ def _build_live_storage_coverage_days(
                 "date": cursor.isoformat(),
                 "ingest": ingest,
                 "observs": observs,
-                "aggDaily": agg_daily,
                 "r2": r2,
                 "isToday": cursor == today_utc,
             }
@@ -1156,51 +1134,15 @@ def _get_storage_coverage_days_cached(
     return rows
 
 
-def _extract_distinct_day_set(rows: List[Dict[str, Any]], field_name: str) -> Set[date]:
-    day_values: Set[date] = set()
-    for row in rows:
-        raw_value = None
-        if isinstance(row, dict):
-            raw_value = row.get(field_name)
-        parsed = _parse_iso_day(raw_value)
-        if parsed:
-            day_values.add(parsed)
-    return day_values
-
-
-def _fetch_aggdaily_day_set() -> Set[date]:
-    if not AGGDAILY_SUPABASE_URL or not AGGDAILY_SECRET_KEY:
-        return set()
-    aggdaily_base_url = f"{AGGDAILY_SUPABASE_URL.rstrip('/')}/rest/v1"
-    headers = _postgrest_headers(AGGDAILY_SECRET_KEY, schema=PUBLIC_SCHEMA)
-    rows = _fetch_all(
-        aggdaily_base_url,
-        headers,
-        AGGDAILY_COVERAGE_DAYS_VIEW,
-        {
-            "select": "observed_day",
-            "observed_day": "not.is.null",
-            "order": "observed_day.asc,station_id.asc",
-        },
-        limit=COVERAGE_DAY_FETCH_LIMIT,
-    )
-    return _extract_distinct_day_set(rows, "observed_day")
-
-
 def _fetch_storage_day_sets() -> Dict[str, Set[date]]:
     day_sets: Dict[str, Set[date]] = {
         "ingestdb": set(),
         "obs_aqidb": set(),
-        "aggdailydb": set(),
     }
     # Keep ingest/observs on oldest_observed_at range logic.
     day_sets["ingestdb"] = set()
     # Keep observs on oldest_observed_at range logic to avoid false positives from pre-created partitions.
     day_sets["obs_aqidb"] = set()
-    try:
-        day_sets["aggdailydb"] = _fetch_aggdaily_day_set()
-    except Exception:
-        day_sets["aggdailydb"] = set()
     return day_sets
 
 

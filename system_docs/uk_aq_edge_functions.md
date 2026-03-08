@@ -142,19 +142,19 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
   - Mixed rows across connectors are processed in the same batch, reducing history RPC call overhead.
 
 ### DB Size Logger (Cloud Run)
-- Purpose: Sample cluster-wide DB size (sum of `pg_database_size(datname)` across `pg_database`) from ingest DB, history DB, and optional Agg Daily DB once per run, then upsert hourly points into ingest DB.
+- Purpose: Sample cluster-wide DB size (sum of `pg_database_size(datname)` across `pg_database`) from ingest DB, history DB, and optional Obs AQI DB once per run, then upsert hourly points into ingest DB.
 - Triggered by: Cloud Scheduler -> Cloud Run service (`workers/uk_aq_db_size_logger_cloud_run`).
 - Reads:
   - Ingest DB RPC: `uk_aq_public.uk_aq_rpc_database_size_bytes`
   - History DB RPC: `uk_aq_public.uk_aq_rpc_database_size_bytes`
-  - Agg Daily DB RPC (optional): `uk_aq_public.uk_aq_rpc_database_size_bytes`
+  - Obs AQI DB RPC (optional): `uk_aq_public.uk_aq_rpc_database_size_bytes`
 - Writes (ingest DB):
   - RPC: `uk_aq_public.uk_aq_rpc_db_size_metric_upsert`
   - RPC: `uk_aq_public.uk_aq_rpc_db_size_metric_cleanup`
   - Table: `uk_aq_raw.db_size_metrics_hourly`
   - View: `uk_aq_public.uk_aq_db_size_metrics_hourly`
 - Notes:
-  - Upsert key is `(bucket_hour, database_label)` with labels `ingestdb`, `obs_aqidb`, and `aggdailydb`.
+  - Upsert key is `(bucket_hour, database_label)` with labels `ingestdb`, `obs_aqidb`, and `obs_aqidb`.
   - Size RPC payload includes `oldest_observed_at` (min `observed_at` in that DB); logger stores it in `uk_aq_raw.db_size_metrics_hourly.oldest_observed_at`.
   - Cleanup RPC trims old rows by retention days (`UK_AQ_DB_SIZE_RETENTION_DAYS`, default `120`).
   - Cloud Run CPU/memory/concurrency are managed in deploy workflow vars (`GCP_DB_SIZE_LOGGER_*`).

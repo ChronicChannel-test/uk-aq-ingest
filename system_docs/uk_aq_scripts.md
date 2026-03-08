@@ -265,11 +265,11 @@ Environment:
 - `OBS_AQIDB_SUPABASE_URL` / `OBS_AQIDB_SECRET_KEY` (optional direct fallback for `obs_aqidb` DB-size series when `UK_AQ_DB_SIZE_API_URL` is not set/unavailable)
 - `UK_AQ_R2_BACKUP_WINDOW_RPC` (optional; default `uk_aq_rpc_r2_backup_window`)
 - `UK_AQ_COVERAGE_DAY_FETCH_LIMIT` (optional; default `1000`, page size for per-day coverage fetches)
-- `UK_AQ_AGGDAILY_COVERAGE_DAYS_VIEW` (optional; default `uk_aq_station_aqi_daily`)
+- `UK_AQ_AQILEVELS_COVERAGE_DAYS_VIEW` (optional; default `uk_aq_station_aqi_daily`)
 
-### `scripts/stations_daily/sync_aggdaily_uk_aq_core.py`
+### `scripts/stations_daily/sync_obs_aqidb_uk_aq_core.py`
 Purpose:
-- Mirror `uk_aq_core` reference tables from ingest DB into Agg Daily DB as an exact PK set match.
+- Mirror `uk_aq_core` reference tables from ingest DB into Obs AQI DB as an exact PK set match.
 - Sync scope is limited to:
   - `uk_aq_core.connectors`
   - `uk_aq_core.phenomena`
@@ -293,8 +293,8 @@ Environment:
 
 Notes:
 - Destination metadata is read via `uk_aq_public.uk_aq_rpc_info_schema_columns` and `uk_aq_public.uk_aq_rpc_info_schema_primary_keys`.
-- Apply agg_daily schema SQL first on Agg Daily DB:
-  - `CIC-test-uk-aq-schema/schemas/aggdaily_db/uk_aq_aggdaily_schema.sql`
+- Apply agg_daily schema SQL first on Obs AQI DB:
+  - `CIC-test-uk-aq-schema/schemas/aqilevels_db/uk_aq_aqilevels_schema.sql`
 
 ### `scripts/uk_aq_station_snapshot_local.py`
 Purpose:
