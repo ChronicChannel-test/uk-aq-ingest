@@ -32,15 +32,15 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ??
   "";
 const SB_SECRET_KEY = Deno.env.get("SB_SECRET_KEY") ?? "";
 const SUPABASE_PRIVILEGED_KEY = SB_SECRET_KEY;
-const HISTORY_SUPABASE_URL = Deno.env.get("HISTORY_SUPABASE_URL") ??
+const OBS_AQIDB_SUPABASE_URL = Deno.env.get("OBS_AQIDB_SUPABASE_URL") ??
   "";
-const HISTORY_SECRET_KEY = Deno.env.get("HISTORY_SECRET_KEY") ?? "";
+const OBS_AQIDB_SECRET_KEY = Deno.env.get("OBS_AQIDB_SECRET_KEY") ?? "";
 const UK_AQ_CORE_SCHEMA = Deno.env.get("UK_AQ_CORE_SCHEMA") ??
   "uk_aq_core";
 const UK_AQ_PUBLIC_SCHEMA = Deno.env.get("UK_AQ_PUBLIC_SCHEMA") ??
   "uk_aq_public";
-const HISTORY_READ_SCHEMA = resolveHistoryReadSchema(
-  Deno.env.get("HISTORY_READ_SCHEMA") ??
+const OBS_AQIDB_READ_SCHEMA = resolveHistoryReadSchema(
+  Deno.env.get("OBS_AQIDB_READ_SCHEMA") ??
     "uk_aq_history",
 );
 const HISTORY_PAGE_SIZE = Math.min(
@@ -63,8 +63,8 @@ const CORS_HEADERS = {
 const REST_BASE_URL = SUPABASE_URL
   ? `${SUPABASE_URL.replace(/\/$/, "")}/rest/v1`
   : "";
-const HISTORY_REST_BASE_URL = HISTORY_SUPABASE_URL
-  ? `${HISTORY_SUPABASE_URL.replace(/\/$/, "")}/rest/v1`
+const HISTORY_REST_BASE_URL = OBS_AQIDB_SUPABASE_URL
+  ? `${OBS_AQIDB_SUPABASE_URL.replace(/\/$/, "")}/rest/v1`
   : "";
 
 function resolveHistoryReadSchema(raw: string): string {
@@ -502,7 +502,7 @@ type HistoryWindowCallOptions = {
 async function callHistoryObservationsWindow(
   { timeseriesId, startUtc, endUtc, limit }: HistoryWindowCallOptions,
 ): Promise<{ rows: TimeseriesRow[] }> {
-  if (HISTORY_REST_BASE_URL && HISTORY_SECRET_KEY) {
+  if (HISTORY_REST_BASE_URL && OBS_AQIDB_SECRET_KEY) {
     const historyRows = await fetchHistoryRowsDirect({
       timeseriesId,
       startUtc,
@@ -551,11 +551,11 @@ async function fetchHistoryRowsDirect(
         limit: String(pageLimit),
         offset: String(offset),
       },
-      HISTORY_READ_SCHEMA,
+      OBS_AQIDB_READ_SCHEMA,
       undefined,
       {
         baseUrl: HISTORY_REST_BASE_URL,
-        apiKey: HISTORY_SECRET_KEY,
+        apiKey: OBS_AQIDB_SECRET_KEY,
         caller: "uk_aq_timeseries_history",
       },
     );

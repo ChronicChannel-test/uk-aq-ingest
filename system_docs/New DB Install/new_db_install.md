@@ -36,8 +36,8 @@ Notes:
 
 Then set MAIN project runtime secrets:
 
-1. `HISTORY_SUPABASE_URL`
-2. `HISTORY_SECRET_KEY`
+1. `OBS_AQIDB_SUPABASE_URL`
+2. `OBS_AQIDB_SECRET_KEY`
 3. Optional: `HISTORY_UPSERT_RPC` (default `uk_aq_rpc_history_observations_upsert`)
 4. Optional: `HISTORY_OUTBOX_FLUSH_LIMIT` (default `40`)
 5. Optional: `HISTORY_UPSERT_CHUNK_SIZE` (default `5000`)

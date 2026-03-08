@@ -65,10 +65,10 @@ main_vars=(
 )
 
 history_vars=(
-  HISTORY_SUPABASE_URL
-  HISTORY_SUPABASE_PROJECT_REF
-  HISTORY_RPC_SCHEMA
-  HISTORY_READ_SCHEMA
+  OBS_AQIDB_SUPABASE_URL
+  OBS_AQIDB_SUPABASE_PROJECT_REF
+  OBS_AQIDB_RPC_SCHEMA
+  OBS_AQIDB_READ_SCHEMA
 )
 
 failures=0
@@ -152,12 +152,12 @@ check_presence_group "History" "${history_vars[@]}"
 if [[ -z "${SB_SECRET_KEY:-}" ]]; then
   fail "Main key check: set SB_SECRET_KEY"
 fi
-if [[ -z "${HISTORY_SECRET_KEY:-}" ]]; then
-  fail "History key check: set HISTORY_SECRET_KEY"
+if [[ -z "${OBS_AQIDB_SECRET_KEY:-}" ]]; then
+  fail "History key check: set OBS_AQIDB_SECRET_KEY"
 fi
 
-HISTORY_PRIV_KEY="${HISTORY_SECRET_KEY:-}"
-HISTORY_PRIV_KEY_NAME="HISTORY_SECRET_KEY"
+HISTORY_PRIV_KEY="${OBS_AQIDB_SECRET_KEY:-}"
+HISTORY_PRIV_KEY_NAME="OBS_AQIDB_SECRET_KEY"
 
 echo
 echo "[Secrets] Masked preview"
@@ -166,7 +166,7 @@ for var in \
   SB_SECRET_KEY \
   SUPABASE_ACCESS_TOKEN \
   SB_UK_AQ_CRON_SECRET \
-  HISTORY_SECRET_KEY; do
+  OBS_AQIDB_SECRET_KEY; do
   value="${!var:-}"
   printf "%-32s len=%-4s value=%s\n" "$var" "${#value}" "$(mask_value "$value")"
 done
@@ -176,8 +176,8 @@ echo "[Refs] Project alignment"
 main_ref_url="$(extract_ref_from_url "${SUPABASE_URL:-}")"
 main_ref_env="${SUPABASE_PROJECT_REF:-}"
 main_ref_db="$(extract_ref_from_db_url)"
-history_ref_url="$(extract_ref_from_url "${HISTORY_SUPABASE_URL:-}")"
-history_ref_env="${HISTORY_SUPABASE_PROJECT_REF:-}"
+history_ref_url="$(extract_ref_from_url "${OBS_AQIDB_SUPABASE_URL:-}")"
+history_ref_env="${OBS_AQIDB_SUPABASE_PROJECT_REF:-}"
 
 if [[ -n "$main_ref_url" && -n "$main_ref_env" && "$main_ref_url" == "$main_ref_env" ]]; then
   ok "SUPABASE_URL ref matches SUPABASE_PROJECT_REF ($main_ref_env)"
@@ -192,9 +192,9 @@ else
 fi
 
 if [[ -n "$history_ref_url" && -n "$history_ref_env" && "$history_ref_url" == "$history_ref_env" ]]; then
-  ok "HISTORY_SUPABASE_URL ref matches HISTORY_SUPABASE_PROJECT_REF ($history_ref_env)"
+  ok "OBS_AQIDB_SUPABASE_URL ref matches OBS_AQIDB_SUPABASE_PROJECT_REF ($history_ref_env)"
 else
-  fail "HISTORY_SUPABASE_URL ref ($history_ref_url) does not match HISTORY_SUPABASE_PROJECT_REF ($history_ref_env)"
+  fail "OBS_AQIDB_SUPABASE_URL ref ($history_ref_url) does not match OBS_AQIDB_SUPABASE_PROJECT_REF ($history_ref_env)"
 fi
 
 if [[ "${UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL:-}" == "${SUPABASE_URL:-}" ]]; then
@@ -243,11 +243,11 @@ for key in ("SB_SECRET_KEY",):
 history_token = (os.environ.get("HISTORY_PRIV_KEY", "") or "").strip()
 history_payload = decode_payload(history_token)
 if not history_payload:
-    print("WARN  HISTORY_SECRET_KEY is not a JWT payload (or invalid)")
+    print("WARN  OBS_AQIDB_SECRET_KEY is not a JWT payload (or invalid)")
 else:
     role = history_payload.get("role")
     ref = history_payload.get("ref")
-    print(f"OK    HISTORY_SECRET_KEY role={role} ref={ref}")
+    print(f"OK    OBS_AQIDB_SECRET_KEY role={role} ref={ref}")
 PY
 
 if (( NO_NETWORK == 0 )); then
@@ -276,7 +276,7 @@ if (( NO_NETWORK == 0 )); then
     fail "Main privileged key (SB_SECRET_KEY) main /rest/v1/ check returned HTTP $code"
   fi
 
-  code="$(http_code -H "apikey: ${HISTORY_PRIV_KEY:-}" "${HISTORY_SUPABASE_URL:-}/rest/v1/")"
+  code="$(http_code -H "apikey: ${HISTORY_PRIV_KEY:-}" "${OBS_AQIDB_SUPABASE_URL:-}/rest/v1/")"
   if [[ "$code" == "200" ]]; then
     ok "${HISTORY_PRIV_KEY_NAME} can access history /rest/v1/ (200)"
   else

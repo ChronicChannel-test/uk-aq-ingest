@@ -45,8 +45,8 @@ type WriterSummary = {
 
 const SUPABASE_URL = requiredEnv("SUPABASE_URL");
 const SUPABASE_PRIVILEGED_KEY = requiredEnvAny(["SB_SECRET_KEY"]);
-requiredEnv("HISTORY_SUPABASE_URL");
-requiredEnv("HISTORY_SECRET_KEY");
+requiredEnv("OBS_AQIDB_SUPABASE_URL");
+requiredEnv("OBS_AQIDB_SECRET_KEY");
 
 const MAIN_RPC_SCHEMA = (Deno.env.get("UK_AQ_PUBLIC_SCHEMA") || "uk_aq_public")
   .trim();

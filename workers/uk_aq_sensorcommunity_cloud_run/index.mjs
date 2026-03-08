@@ -45,12 +45,12 @@ const UK_AQ_CORE_SCHEMA = process.env.UK_AQ_CORE_SCHEMA || "uk_aq_core";
 const UK_AQ_RAW_SCHEMA = process.env.UK_AQ_RAW_SCHEMA || "uk_aq_raw";
 const REST_BASE_URL = buildRestBaseUrl(SUPABASE_URL);
 
-const HISTORY_SUPABASE_URL = (process.env.HISTORY_SUPABASE_URL || "").trim();
-const HISTORY_SECRET_KEY = (
-  process.env.HISTORY_SECRET_KEY || ""
+const OBS_AQIDB_SUPABASE_URL = (process.env.OBS_AQIDB_SUPABASE_URL || "").trim();
+const OBS_AQIDB_SECRET_KEY = (
+  process.env.OBS_AQIDB_SECRET_KEY || ""
 ).trim();
-const HISTORY_RPC_SCHEMA = normalizeHistoryRpcSchema(
-  (process.env.HISTORY_RPC_SCHEMA || "uk_aq_public").trim(),
+const OBS_AQIDB_RPC_SCHEMA = normalizeHistoryRpcSchema(
+  (process.env.OBS_AQIDB_RPC_SCHEMA || "uk_aq_public").trim(),
 );
 const HISTORY_UPSERT_RPC = (
   process.env.HISTORY_UPSERT_RPC ||
@@ -76,8 +76,8 @@ const HISTORY_PUBSUB_PUBLISH_BATCH_SIZE = parsePositiveInt(
   process.env.HISTORY_PUBSUB_PUBLISH_BATCH_SIZE,
   500,
 );
-const HISTORY_REST_BASE_URL = HISTORY_SUPABASE_URL
-  ? buildRestBaseUrl(HISTORY_SUPABASE_URL)
+const HISTORY_REST_BASE_URL = OBS_AQIDB_SUPABASE_URL
+  ? buildRestBaseUrl(OBS_AQIDB_SUPABASE_URL)
   : "";
 
 const DROPBOX_APP_KEY = (process.env.DROPBOX_APP_KEY || "").trim();
@@ -317,7 +317,7 @@ function buildRestBaseUrl(url) {
 }
 
 function historyConfigured() {
-  return Boolean(HISTORY_SUPABASE_URL && HISTORY_SECRET_KEY);
+  return Boolean(OBS_AQIDB_SUPABASE_URL && OBS_AQIDB_SECRET_KEY);
 }
 
 function historyPubsubTopicPath() {
@@ -492,13 +492,13 @@ async function postgrestRequest(method, path, options = {}) {
 async function historyPostgrestRequest(method, path, options = {}) {
   if (!historyConfigured()) {
     throw new Error(
-      "History DB is not configured (missing HISTORY_SUPABASE_URL or HISTORY_SECRET_KEY).",
+      "History DB is not configured (missing OBS_AQIDB_SUPABASE_URL or OBS_AQIDB_SECRET_KEY).",
     );
   }
   return postgrestRequest(method, path, {
     ...options,
-    schema: options.schema || HISTORY_RPC_SCHEMA,
-    apiKey: HISTORY_SECRET_KEY,
+    schema: options.schema || OBS_AQIDB_RPC_SCHEMA,
+    apiKey: OBS_AQIDB_SECRET_KEY,
     restBaseUrl: HISTORY_REST_BASE_URL,
   });
 }

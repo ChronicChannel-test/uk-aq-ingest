@@ -69,16 +69,16 @@ export type HistoryOutboxFlushOptions = {
 
 type HistoryWriteMode = "direct" | "outbox_only" | "pubsub_only";
 
-const HISTORY_SUPABASE_URL = (
-  Deno.env.get("HISTORY_SUPABASE_URL") ?? ""
+const OBS_AQIDB_SUPABASE_URL = (
+  Deno.env.get("OBS_AQIDB_SUPABASE_URL") ?? ""
 ).trim();
 
-const HISTORY_SECRET_KEY = (
-  Deno.env.get("HISTORY_SECRET_KEY") ?? ""
+const OBS_AQIDB_SECRET_KEY = (
+  Deno.env.get("OBS_AQIDB_SECRET_KEY") ?? ""
 ).trim();
 
-const HISTORY_RPC_SCHEMA = normalizeHistoryRpcSchema(
-  (Deno.env.get("HISTORY_RPC_SCHEMA") ?? "uk_aq_public").trim(),
+const OBS_AQIDB_RPC_SCHEMA = normalizeHistoryRpcSchema(
+  (Deno.env.get("OBS_AQIDB_RPC_SCHEMA") ?? "uk_aq_public").trim(),
 );
 
 function normalizeHistoryRpcSchema(raw: string): string {
@@ -453,20 +453,20 @@ function countRowsFromPayload<T extends string>(
 }
 
 function historyConfigured(): boolean {
-  return Boolean(HISTORY_SUPABASE_URL && HISTORY_SECRET_KEY);
+  return Boolean(OBS_AQIDB_SUPABASE_URL && OBS_AQIDB_SECRET_KEY);
 }
 
 export function createSupabaseHistoryClient(): ReturnType<typeof createClient> {
   if (!historyConfigured()) {
     throw new Error(
-      "History client is not configured (missing HISTORY_SUPABASE_URL or HISTORY_SECRET_KEY)",
+      "History client is not configured (missing OBS_AQIDB_SUPABASE_URL or OBS_AQIDB_SECRET_KEY)",
     );
   }
   if (!historyClientCache) {
-    const schema = HISTORY_RPC_SCHEMA || "uk_aq_public";
+    const schema = OBS_AQIDB_RPC_SCHEMA || "uk_aq_public";
     historyClientCache = createClient(
-      HISTORY_SUPABASE_URL,
-      HISTORY_SECRET_KEY,
+      OBS_AQIDB_SUPABASE_URL,
+      OBS_AQIDB_SECRET_KEY,
       ({
         auth: { persistSession: false, autoRefreshToken: false },
         db: { schema: schema as never },

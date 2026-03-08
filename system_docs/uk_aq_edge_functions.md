@@ -4,7 +4,7 @@ This project uses Supabase Edge Functions for polling and serving data. The Edge
 functions run inside Supabase and need their own environment variables (Project
 Settings -> Functions -> Environment Variables). They do not read the local .env.
 
-History dual-write note: shared history writes normalize `HISTORY_RPC_SCHEMA`
+History dual-write note: shared history writes normalize `OBS_AQIDB_RPC_SCHEMA`
 values `uk_aq_history` and `public` to `uk_aq_public` for RPC calls, because
 history RPCs are exposed from `uk_aq_public`.
 History dual-write write-path note: rows are normalized and deduplicated on
@@ -39,7 +39,7 @@ full capture (`UK_AQ_POSTGREST_EGRESS_CAPTURE_SAMPLE_RATE=1`); `304`/`4xx`/`5xx`
 remain always logged.
 Multi-project capture note: PostgREST capture supports multiple Supabase origins
 via `UK_AQ_POSTGREST_EGRESS_CAPTURE_URLS` (comma-separated) and automatically
-includes `SUPABASE_URL`/`SB_SUPABASE_URL` and `HISTORY_SUPABASE_URL` when set.
+includes `SUPABASE_URL`/`SB_SUPABASE_URL` and `OBS_AQIDB_SUPABASE_URL` when set.
 Caller attribution note: PostgREST metric endpoints now include caller tags
 when available (`postgrest:<path>|caller=<function_name>`), and outgoing
 PostgREST requests from major edge functions set `x-ukaq-egress-caller` so
@@ -463,9 +463,9 @@ curl "https://YOUR_PROJECT.supabase.co/functions/v1/uk_aq_latest?region=London&p
 - Read path:
   - request interval is split at `now - 7 days` (ingest is source of truth for recent overlap).
   - recent overlap is read from ingest RPC `uk_aq_timeseries_rpc`.
-  - older overlap is read directly from history project PostgREST (`HISTORY_SUPABASE_URL/rest/v1/observations`, schema `uk_aq_history`).
+  - older overlap is read directly from history project PostgREST (`OBS_AQIDB_SUPABASE_URL/rest/v1/observations`, schema `uk_aq_history`).
   - history read schema resolution order is:
-    `HISTORY_READ_SCHEMA` -> `uk_aq_history`.
+    `OBS_AQIDB_READ_SCHEMA` -> `uk_aq_history`.
   - if resolved schema is `uk_aq_public` or `public`, the function auto-switches to `uk_aq_history` for direct table reads.
   - if direct history read is unavailable, older overlap is skipped and the response remains ingest-only.
   - rows are merged on `observed_at` with ingest rows overriding overlaps.
@@ -549,8 +549,8 @@ Dropbox folders:
 Optional:
 - `UK_AQ_CORE_SCHEMA` (defaults to `uk_aq_core`; used for PostgREST profile headers)
 - `UK_AQ_RAW_SCHEMA` (defaults to `uk_aq_raw`; used for raw tables like `error_logs` and checkpoint tables)
-- `HISTORY_RPC_SCHEMA` (optional; default `uk_aq_public`; schema used by history RPC/write paths)
-- `HISTORY_READ_SCHEMA` (optional; default `uk_aq_history`; schema used by `uk_aq_timeseries` direct history reads)
+- `OBS_AQIDB_RPC_SCHEMA` (optional; default `uk_aq_public`; schema used by history RPC/write paths)
+- `OBS_AQIDB_READ_SCHEMA` (optional; default `uk_aq_history`; schema used by `uk_aq_timeseries` direct history reads)
 - `UK_AQ_TIMESERIES_HISTORY_PAGE_SIZE` (optional; default `1000`; per-page row fetch size for `uk_aq_timeseries` direct history reads, capped at `5000`)
 - `HISTORY_OUTBOX_CLOUD_RUN_MAX_BATCHES` (optional; defaults to `30`; Cloud Run outbox batches per run)
 - `HISTORY_OUTBOX_CLOUD_RUN_CLAIM_BATCH_LIMIT` (optional; defaults to `20`; outbox claim size per batch in Cloud Run)
@@ -567,7 +567,7 @@ Optional:
 - `UK_AQ_DB_SIZE_RETENTION_DAYS` (optional; defaults to `120`; DB-size metrics retention)
 - `UK_AQ_DB_SIZE_RPC_RETRIES` (optional; defaults to `3`; DB-size logger RPC retry count)
 - `UK_AQ_INGEST_DB_LABEL` (optional; defaults to `ingestdb`; label stored for ingest DB points)
-- `UK_AQ_HISTORY_DB_LABEL` (optional; defaults to `historydb`; label stored for history DB points)
+- `UK_AQ_OBS_AQIDB_DB_LABEL` (optional; defaults to `historydb`; label stored for history DB points)
 - `HISTORY_WRITE_MODE` (optional; defaults to `outbox_only`; `outbox_only` queues history rows to main outbox for asynchronous flush, `direct` attempts immediate history upsert then falls back to outbox, `pubsub_only` publishes rows to Pub/Sub and does not use main DB outbox)
 - `GCP_PROJECT_ID` (required when `HISTORY_WRITE_MODE=pubsub_only` unless `GOOGLE_CLOUD_PROJECT` is set)
 - `GCP_HISTORY_PUBSUB_TOPIC` (optional; required when `HISTORY_WRITE_MODE=pubsub_only`; accepts topic id or full `projects/.../topics/...` path)
@@ -588,7 +588,7 @@ Optional:
 - `UK_AQ_EGRESS_METRICS_RAW_RETENTION_DAYS` (optional; defaults to `7`; raw `304`/error event retention)
 - `UK_AQ_POSTGREST_EGRESS_CAPTURE_ENABLED` (optional; defaults to `true`; enables `/rest/v1/*` fetch instrumentation in edge functions and Cloud Run workers that import the shared patch)
 - `UK_AQ_POSTGREST_EGRESS_CAPTURE_SAMPLE_RATE` (optional; defaults to `1`; sampling for captured PostgREST `2xx` fetch metrics)
-- `UK_AQ_POSTGREST_EGRESS_CAPTURE_URLS` (optional; comma-separated Supabase base URLs/origins to track in addition to `SUPABASE_URL` and `HISTORY_SUPABASE_URL`)
+- `UK_AQ_POSTGREST_EGRESS_CAPTURE_URLS` (optional; comma-separated Supabase base URLs/origins to track in addition to `SUPABASE_URL` and `OBS_AQIDB_SUPABASE_URL`)
 - `UK_AQ_EGRESS_MONITOR_LOOKBACK_MINUTES` (optional; defaults to `60`; monitor lookback window)
 - `UK_AQ_EGRESS_MONITOR_TOP_N` (optional; defaults to `20`; monitor top endpoint count)
 - `UK_AQ_EGRESS_MONITOR_ALERT_MB` (optional; defaults to `250`; warning threshold for MB in lookback window)

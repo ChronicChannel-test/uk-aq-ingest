@@ -16,13 +16,13 @@ Design choices:
 
 - `SUPABASE_URL`
 - `SB_SECRET_KEY`
-- `HISTORY_SUPABASE_URL`
-- `HISTORY_SECRET_KEY`
+- `OBS_AQIDB_SUPABASE_URL`
+- `OBS_AQIDB_SECRET_KEY`
 
 ## Optional env vars
 
 - `UK_AQ_PUBLIC_SCHEMA` (default `uk_aq_public`)
-- `HISTORY_RPC_SCHEMA` (default `uk_aq_public`)
+- `OBS_AQIDB_RPC_SCHEMA` (default `uk_aq_public`)
 - `HISTORY_UPSERT_RPC` (default `uk_aq_rpc_history_observations_upsert`)
 - `HISTORY_OUTBOX_FLUSH_LIMIT` (default `40`)
 - `HISTORY_UPSERT_CHUNK_SIZE` (default `5000`)

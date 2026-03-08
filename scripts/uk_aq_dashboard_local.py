@@ -54,8 +54,8 @@ DB_SIZE_LOOKBACK_DAYS = max(
 )
 DB_SIZE_API_URL = str(os.getenv("UK_AQ_DB_SIZE_API_URL") or "").strip()
 DB_SIZE_API_TOKEN = str(os.getenv("UK_AQ_DB_SIZE_API_TOKEN") or "").strip()
-HISTORY_SUPABASE_URL = str(os.getenv("HISTORY_SUPABASE_URL") or "").strip()
-HISTORY_SECRET_KEY = str(os.getenv("HISTORY_SECRET_KEY") or "").strip()
+OBS_AQIDB_SUPABASE_URL = str(os.getenv("OBS_AQIDB_SUPABASE_URL") or "").strip()
+OBS_AQIDB_SECRET_KEY = str(os.getenv("OBS_AQIDB_SECRET_KEY") or "").strip()
 AGGDAILY_SUPABASE_URL = str(os.getenv("AGGDAILY_SUPABASE_URL") or "").strip()
 AGGDAILY_SECRET_KEY = str(os.getenv("AGGDAILY_SECRET_KEY") or "").strip()
 PUBLIC_SCHEMA = os.getenv("UK_AQ_PUBLIC_SCHEMA", "uk_aq_public")
@@ -615,7 +615,7 @@ def _normalize_db_size_metrics_rows(rows: List[Dict[str, Any]]) -> List[Dict[str
     normalized: List[Dict[str, Any]] = []
     for row in rows:
         label = str(row.get("database_label") or "").strip().lower()
-        if label not in {"ingestdb", "historydb", "aggdailydb"}:
+        if label not in {"ingestdb", "obs_aqidb"}:
             continue
         bucket_hour = _parse_timestamp(row.get("bucket_hour"))
         recorded_at = _parse_timestamp(row.get("recorded_at"))
@@ -652,11 +652,91 @@ def _normalize_db_size_metrics_rows(rows: List[Dict[str, Any]]) -> List[Dict[str
     return normalized
 
 
-def _fetch_db_size_metrics_from_supabase_source(
+def _normalize_schema_size_metrics_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    normalized: List[Dict[str, Any]] = []
+    for row in rows:
+        database_label = str(row.get("database_label") or "").strip().lower()
+        schema_name = str(row.get("schema_name") or "").strip().lower()
+        if database_label != "obs_aqidb":
+            continue
+        if schema_name not in {"uk_aq_observs", "uk_aq_aqilevels"}:
+            continue
+        bucket_hour = _parse_timestamp(row.get("bucket_hour"))
+        recorded_at = _parse_timestamp(row.get("recorded_at"))
+        oldest_observed_at = _parse_timestamp(row.get("oldest_observed_at"))
+        if bucket_hour is None:
+            continue
+        raw_size = row.get("size_bytes")
+        try:
+            size_bytes = int(raw_size)
+        except (TypeError, ValueError):
+            continue
+        if size_bytes < 0:
+            continue
+        normalized.append(
+            {
+                "bucket_hour": bucket_hour.isoformat().replace("+00:00", "Z"),
+                "database_label": database_label,
+                "schema_name": schema_name,
+                "size_bytes": size_bytes,
+                "oldest_observed_at": (
+                    oldest_observed_at.isoformat().replace("+00:00", "Z")
+                    if isinstance(oldest_observed_at, datetime)
+                    else None
+                ),
+                "recorded_at": (
+                    recorded_at.isoformat().replace("+00:00", "Z")
+                    if isinstance(recorded_at, datetime)
+                    else None
+                ),
+            }
+        )
+
+    normalized.sort(key=lambda item: _parse_timestamp(item.get("bucket_hour")) or UTC_DATETIME_MIN)
+    return normalized
+
+
+def _normalize_r2_domain_size_metrics_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    normalized: List[Dict[str, Any]] = []
+    for row in rows:
+        domain_name = str(row.get("domain_name") or "").strip().lower()
+        if domain_name not in {"observations", "aqilevels"}:
+            continue
+        bucket_hour = _parse_timestamp(row.get("bucket_hour"))
+        recorded_at = _parse_timestamp(row.get("recorded_at"))
+        if bucket_hour is None:
+            continue
+        raw_size = row.get("size_bytes")
+        try:
+            size_bytes = int(raw_size)
+        except (TypeError, ValueError):
+            continue
+        if size_bytes < 0:
+            continue
+        normalized.append(
+            {
+                "bucket_hour": bucket_hour.isoformat().replace("+00:00", "Z"),
+                "domain_name": domain_name,
+                "size_bytes": size_bytes,
+                "recorded_at": (
+                    recorded_at.isoformat().replace("+00:00", "Z")
+                    if isinstance(recorded_at, datetime)
+                    else None
+                ),
+            }
+        )
+
+    normalized.sort(key=lambda item: _parse_timestamp(item.get("bucket_hour")) or UTC_DATETIME_MIN)
+    return normalized
+
+
+def _fetch_metric_rows_from_supabase_view(
     base_url: str,
     service_role_key: str,
+    view_name: str,
+    select: str,
     since: datetime,
-    expected_label: str,
+    normalizer,
 ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
     public_headers: Dict[str, str] = {}
     public_headers["apikey"] = service_role_key
@@ -664,10 +744,10 @@ def _fetch_db_size_metrics_from_supabase_source(
     public_headers["Accept-Profile"] = PUBLIC_SCHEMA
     try:
         rows = _fetch_json(
-            f"{base_url}/uk_aq_db_size_metrics_hourly",
+            f"{base_url}/{view_name}",
             public_headers,
             {
-                "select": "bucket_hour,database_label,database_name,size_bytes,oldest_observed_at,recorded_at",
+                "select": select,
                 "bucket_hour": f"gte.{_to_postgrest_ts(since)}",
                 "order": "bucket_hour.asc",
                 "limit": "5000",
@@ -675,20 +755,22 @@ def _fetch_db_size_metrics_from_supabase_source(
         )
     except Exception as exc:
         return [], str(exc)
-    normalized = _normalize_db_size_metrics_rows(rows)
-    filtered = [
-        row
-        for row in normalized
-        if str(row.get("database_label") or "").strip().lower() == expected_label
-    ]
-    return filtered, None
+    return normalizer(rows), None
 
 
-def _fetch_db_size_metrics_from_external_api(
+def _fetch_size_metrics_from_external_api(
     now: datetime,
-) -> Tuple[Optional[List[Dict[str, Any]]], Optional[str]]:
+) -> Tuple[
+    Optional[List[Dict[str, Any]]],
+    Optional[List[Dict[str, Any]]],
+    Optional[List[Dict[str, Any]]],
+    Optional[str],
+    Optional[str],
+    Optional[str],
+    Optional[str],
+]:
     if not DB_SIZE_API_URL:
-        return None, None
+        return None, None, None, None, None, None, None
 
     params = {
         "lookback_days": str(DB_SIZE_LOOKBACK_DAYS),
@@ -707,109 +789,195 @@ def _fetch_db_size_metrics_from_external_api(
             timeout=60,
         )
     except requests.RequestException as exc:
-        return None, f"External DB size API request failed ({exc.__class__.__name__})"
+        return None, None, None, None, None, None, f"External DB size API request failed ({exc.__class__.__name__})"
 
     if not resp.ok:
-        return (
-            None,
-            (
-                f"External DB size API HTTP {resp.status_code}: "
-                f"{_safe_response_text(resp)}"
-            ),
-        )
+        return (None, None, None, None, None, None, (
+            f"External DB size API HTTP {resp.status_code}: "
+            f"{_safe_response_text(resp)}"
+        ))
 
     try:
         payload = resp.json()
     except ValueError:
-        return None, "External DB size API returned non-JSON payload"
+        return None, None, None, None, None, None, "External DB size API returned non-JSON payload"
 
-    rows: Any = None
-    upstream_error: Optional[str] = None
+    db_rows_raw: Any = None
+    schema_rows_raw: Any = None
+    r2_rows_raw: Any = None
+    db_error: Optional[str] = None
+    schema_error: Optional[str] = None
+    r2_error: Optional[str] = None
     if isinstance(payload, dict):
-        rows = payload.get("db_size_metrics")
-        raw_error = payload.get("db_size_metrics_error")
-        if isinstance(raw_error, str) and raw_error.strip():
-            upstream_error = raw_error.strip()
+        db_rows_raw = payload.get("db_size_metrics")
+        schema_rows_raw = payload.get("schema_size_metrics")
+        r2_rows_raw = payload.get("r2_domain_size_metrics")
+        raw_db_error = payload.get("db_size_metrics_error")
+        raw_schema_error = payload.get("schema_size_metrics_error")
+        raw_r2_error = payload.get("r2_domain_size_metrics_error")
+        if isinstance(raw_db_error, str) and raw_db_error.strip():
+            db_error = raw_db_error.strip()
+        if isinstance(raw_schema_error, str) and raw_schema_error.strip():
+            schema_error = raw_schema_error.strip()
+        if isinstance(raw_r2_error, str) and raw_r2_error.strip():
+            r2_error = raw_r2_error.strip()
     elif isinstance(payload, list):
-        rows = payload
+        db_rows_raw = payload
 
-    if not isinstance(rows, list):
-        return None, "External DB size API payload missing db_size_metrics list"
+    if not isinstance(db_rows_raw, list):
+        return None, None, None, None, None, None, "External DB size API payload missing db_size_metrics list"
+    if schema_rows_raw is None:
+        schema_rows_raw = []
+    if r2_rows_raw is None:
+        r2_rows_raw = []
+    if not isinstance(schema_rows_raw, list):
+        return None, None, None, None, None, None, "External DB size API payload missing schema_size_metrics list"
+    if not isinstance(r2_rows_raw, list):
+        return None, None, None, None, None, None, "External DB size API payload missing r2_domain_size_metrics list"
 
-    normalized = _normalize_db_size_metrics_rows(rows)
+    db_rows = _normalize_db_size_metrics_rows(db_rows_raw)
+    schema_rows = _normalize_schema_size_metrics_rows(schema_rows_raw)
+    r2_rows = _normalize_r2_domain_size_metrics_rows(r2_rows_raw)
 
-    # External API supports the same lookback contract; if response is stale, treat as error.
     latest_bucket = None
-    if normalized:
-        latest_bucket = _parse_timestamp(normalized[-1].get("bucket_hour"))
+    if db_rows:
+        latest_bucket = _parse_timestamp(db_rows[-1].get("bucket_hour"))
     if latest_bucket and latest_bucket < now - timedelta(days=DB_SIZE_LOOKBACK_DAYS + 1):
-        return None, "External DB size API returned stale metrics window"
+        return None, None, None, None, None, None, "External DB size API returned stale metrics window"
 
-    return normalized, upstream_error
+    return db_rows, schema_rows, r2_rows, db_error, schema_error, r2_error, None
 
 
-def _fetch_db_size_metrics(
+def _join_error_messages(*parts: Optional[str]) -> Optional[str]:
+    values = [str(part).strip() for part in parts if isinstance(part, str) and str(part).strip()]
+    if not values:
+        return None
+    return "; ".join(values)
+
+
+def _fetch_size_metrics(
     base_url: str,
     headers: Dict[str, str],
     now: datetime,
-) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+) -> Tuple[
+    List[Dict[str, Any]],
+    List[Dict[str, Any]],
+    List[Dict[str, Any]],
+    Optional[str],
+    Optional[str],
+    Optional[str],
+]:
     since = now - timedelta(days=DB_SIZE_LOOKBACK_DAYS)
 
-    external_rows, external_error = _fetch_db_size_metrics_from_external_api(now)
-    if external_rows is not None:
-        return external_rows, external_error
+    (
+        external_db_rows,
+        external_schema_rows,
+        external_r2_rows,
+        external_db_error,
+        external_schema_error,
+        external_r2_error,
+        external_fetch_error,
+    ) = _fetch_size_metrics_from_external_api(now)
 
-    source_errors: List[str] = []
-    all_rows: List[Dict[str, Any]] = []
+    if external_db_rows is not None and external_schema_rows is not None and external_r2_rows is not None:
+        return (
+            external_db_rows,
+            external_schema_rows,
+            external_r2_rows,
+            external_db_error,
+            external_schema_error,
+            external_r2_error,
+        )
+
+    fallback_note = (
+        f"{external_fetch_error}; using direct Supabase fallback."
+        if external_fetch_error
+        else None
+    )
+
+    db_source_errors: List[str] = []
+    db_rows: List[Dict[str, Any]] = []
 
     ingest_key = str(headers.get("apikey") or "").strip()
     if base_url and ingest_key:
-        ingest_rows, ingest_error = _fetch_db_size_metrics_from_supabase_source(
+        ingest_rows, ingest_error = _fetch_metric_rows_from_supabase_view(
             base_url=base_url,
             service_role_key=ingest_key,
+            view_name="uk_aq_db_size_metrics_hourly",
+            select="bucket_hour,database_label,database_name,size_bytes,oldest_observed_at,recorded_at",
             since=since,
-            expected_label="ingestdb",
+            normalizer=_normalize_db_size_metrics_rows,
         )
+        ingest_rows = [
+            row
+            for row in ingest_rows
+            if str(row.get("database_label") or "").strip().lower() == "ingestdb"
+        ]
         if ingest_error:
-            source_errors.append(f"ingestdb: {ingest_error}")
-        all_rows.extend(ingest_rows)
+            db_source_errors.append(f"ingestdb: {ingest_error}")
+        db_rows.extend(ingest_rows)
     else:
-        source_errors.append("ingestdb: missing base URL or service key")
+        db_source_errors.append("ingestdb: missing base URL or service key")
 
-    if HISTORY_SUPABASE_URL and HISTORY_SECRET_KEY:
-        history_base_url = f"{HISTORY_SUPABASE_URL.rstrip('/')}/rest/v1"
-        history_rows, history_error = _fetch_db_size_metrics_from_supabase_source(
-            base_url=history_base_url,
-            service_role_key=HISTORY_SECRET_KEY,
+    if OBS_AQIDB_SUPABASE_URL and OBS_AQIDB_SECRET_KEY:
+        obs_aqidb_base_url = f"{OBS_AQIDB_SUPABASE_URL.rstrip('/')}/rest/v1"
+        obs_aqidb_rows, obs_aqidb_error = _fetch_metric_rows_from_supabase_view(
+            base_url=obs_aqidb_base_url,
+            service_role_key=OBS_AQIDB_SECRET_KEY,
+            view_name="uk_aq_db_size_metrics_hourly",
+            select="bucket_hour,database_label,database_name,size_bytes,oldest_observed_at,recorded_at",
             since=since,
-            expected_label="historydb",
+            normalizer=_normalize_db_size_metrics_rows,
         )
-        if history_error:
-            source_errors.append(f"historydb: {history_error}")
-        all_rows.extend(history_rows)
+        obs_aqidb_rows = [
+            row
+            for row in obs_aqidb_rows
+            if str(row.get("database_label") or "").strip().lower() == "obs_aqidb"
+        ]
+        if obs_aqidb_error:
+            db_source_errors.append(f"obs_aqidb: {obs_aqidb_error}")
+        db_rows.extend(obs_aqidb_rows)
+    else:
+        db_source_errors.append("obs_aqidb: missing OBS_AQIDB_SUPABASE_URL or OBS_AQIDB_SECRET_KEY")
 
-    if AGGDAILY_SUPABASE_URL and AGGDAILY_SECRET_KEY:
-        aggdaily_base_url = f"{AGGDAILY_SUPABASE_URL.rstrip('/')}/rest/v1"
-        aggdaily_rows, aggdaily_error = _fetch_db_size_metrics_from_supabase_source(
-            base_url=aggdaily_base_url,
-            service_role_key=AGGDAILY_SECRET_KEY,
-            since=since,
-            expected_label="aggdailydb",
-        )
-        if aggdaily_error:
-            source_errors.append(f"aggdailydb: {aggdaily_error}")
-        all_rows.extend(aggdaily_rows)
+    schema_rows, schema_fetch_error = _fetch_metric_rows_from_supabase_view(
+        base_url=base_url,
+        service_role_key=ingest_key,
+        view_name="uk_aq_schema_size_metrics_hourly",
+        select="bucket_hour,database_label,schema_name,size_bytes,oldest_observed_at,recorded_at",
+        since=since,
+        normalizer=_normalize_schema_size_metrics_rows,
+    ) if base_url and ingest_key else ([], "ingestdb: missing base URL or service key")
 
-    all_rows.sort(key=lambda item: _parse_timestamp(item.get("bucket_hour")) or UTC_DATETIME_MIN)
+    r2_rows, r2_fetch_error = _fetch_metric_rows_from_supabase_view(
+        base_url=base_url,
+        service_role_key=ingest_key,
+        view_name="uk_aq_r2_domain_size_metrics_hourly",
+        select="bucket_hour,domain_name,size_bytes,recorded_at",
+        since=since,
+        normalizer=_normalize_r2_domain_size_metrics_rows,
+    ) if base_url and ingest_key else ([], "ingestdb: missing base URL or service key")
 
-    warnings: List[str] = []
-    if external_error:
-        warnings.append(f"{external_error}; using direct Supabase fallback.")
-    if source_errors:
-        warnings.append("; ".join(source_errors))
+    db_rows.sort(key=lambda item: _parse_timestamp(item.get("bucket_hour")) or UTC_DATETIME_MIN)
+    schema_rows.sort(key=lambda item: _parse_timestamp(item.get("bucket_hour")) or UTC_DATETIME_MIN)
+    r2_rows.sort(key=lambda item: _parse_timestamp(item.get("bucket_hour")) or UTC_DATETIME_MIN)
 
-    warning_text = "; ".join(warnings) if warnings else None
-    return all_rows, warning_text
+    db_warning = _join_error_messages(
+        fallback_note,
+        "; ".join(db_source_errors) if db_source_errors else None,
+        external_db_error,
+    )
+    schema_warning = _join_error_messages(
+        fallback_note,
+        schema_fetch_error,
+        external_schema_error,
+    )
+    r2_warning = _join_error_messages(
+        fallback_note,
+        r2_fetch_error,
+        external_r2_error,
+    )
+    return db_rows, schema_rows, r2_rows, db_warning, schema_warning, r2_warning
 
 
 def _normalize_iso_date(value: Any) -> Optional[str]:
@@ -844,7 +1012,7 @@ def _latest_oldest_day_by_label(
     latest_rows: Dict[str, Tuple[datetime, Optional[date]]] = {}
     for row in db_size_metrics or []:
         label = str((row or {}).get("database_label") or "").strip().lower()
-        if label not in {"ingestdb", "historydb", "aggdailydb"}:
+        if label not in {"ingestdb", "obs_aqidb"}:
             continue
         bucket_hour = _parse_timestamp((row or {}).get("bucket_hour"))
         recorded_at = _parse_timestamp((row or {}).get("recorded_at"))
@@ -858,7 +1026,8 @@ def _latest_oldest_day_by_label(
 
     return {
         "ingestdb": latest_rows.get("ingestdb", (UTC_DATETIME_MIN, None))[1],
-        "historydb": latest_rows.get("historydb", (UTC_DATETIME_MIN, None))[1],
+        "obs_aqidb": latest_rows.get("obs_aqidb", (UTC_DATETIME_MIN, None))[1],
+        "historydb": latest_rows.get("obs_aqidb", (UTC_DATETIME_MIN, None))[1],
         "aggdailydb": latest_rows.get("aggdailydb", (UTC_DATETIME_MIN, None))[1],
     }
 
@@ -1497,7 +1666,14 @@ def _build_dashboard(
             active_station_keys[(connector_id, station_id)] = True
 
     now = datetime.now(timezone.utc)
-    db_size_metrics, db_size_metrics_error = _fetch_db_size_metrics(
+    (
+        db_size_metrics,
+        schema_size_metrics,
+        r2_domain_size_metrics,
+        db_size_metrics_error,
+        schema_size_metrics_error,
+        r2_domain_size_metrics_error,
+    ) = _fetch_size_metrics(
         base_url,
         headers,
         now,
@@ -1711,7 +1887,11 @@ def _build_dashboard(
         "dispatch_cursor": next_dispatch_cursor,
         "buckets": list(BUCKETS),
         "db_size_metrics": db_size_metrics,
+        "schema_size_metrics": schema_size_metrics,
+        "r2_domain_size_metrics": r2_domain_size_metrics,
         "db_size_metrics_error": db_size_metrics_error,
+        "schema_size_metrics_error": schema_size_metrics_error,
+        "r2_domain_size_metrics_error": r2_domain_size_metrics_error,
         "r2_usage": r2_usage,
         "r2_usage_error": r2_usage_error,
         "r2_backup_window": r2_backup_window,

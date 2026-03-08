@@ -18,7 +18,7 @@ const METRIC_RPC_PATHS = new Set([
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ??
   Deno.env.get("SB_SUPABASE_URL") ??
   "";
-const HISTORY_SUPABASE_URL = Deno.env.get("HISTORY_SUPABASE_URL") ?? "";
+const OBS_AQIDB_SUPABASE_URL = Deno.env.get("OBS_AQIDB_SUPABASE_URL") ?? "";
 
 function parseBoolean(
   raw: string | undefined | null,
@@ -120,7 +120,7 @@ function buildTrackedOrigins(): Set<string> {
   const origins = new Set<string>();
   for (const origin of [
     parseOrigin(SUPABASE_URL),
-    parseOrigin(HISTORY_SUPABASE_URL),
+    parseOrigin(OBS_AQIDB_SUPABASE_URL),
   ]) {
     if (origin) {
       origins.add(origin);

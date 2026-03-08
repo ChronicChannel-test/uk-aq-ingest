@@ -262,6 +262,13 @@
         color: #6b6255;
       }
 
+      .db-size-oldest-row {
+        margin: 2px 0 12px;
+        font-family: "IBM Plex Mono", ui-monospace, monospace;
+        font-size: 12px;
+        color: var(--ink-soft);
+      }
+
       .db-size-swatch {
         width: 12px;
         height: 12px;
@@ -325,6 +332,29 @@
         color: var(--ink-soft);
         font-family: "IBM Plex Mono", ui-monospace, monospace;
         font-size: 12px;
+      }
+
+      .db-size-subchart {
+        margin-top: 12px;
+      }
+
+      .db-size-subchart h3 {
+        margin: 0 0 8px;
+        font-size: 13px;
+        font-family: "IBM Plex Mono", ui-monospace, monospace;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: var(--ink-soft);
+      }
+
+      .db-size-sublegend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-top: 8px;
+        font-family: "IBM Plex Mono", ui-monospace, monospace;
+        font-size: 12px;
+        color: var(--ink-soft);
       }
 
       .r2-usage-wrap {
@@ -870,7 +900,7 @@
         { value: 672, label: "28 days" },
       ];
       const DB_SIZE_PERIOD_STORAGE_KEY = "uk_aq_db_size_period_hours";
-      const DB_SIZE_Y_MAX_MB = 500;
+      const DB_LINE_CHART_Y_MAX_MB = 500;
       const STORAGE_COVERAGE_MONTH_STORAGE_KEY = "uk_aq_storage_coverage_month";
       const DAY_MS = 24 * 60 * 60 * 1000;
       const COVERAGE_WEEKDAY_NAMES = [
@@ -1582,6 +1612,101 @@
         return valid.length === 1 ? valid[0] : null;
       }
 
+      function computeAxisMax(value) {
+        const numeric = Number(value);
+        if (!Number.isFinite(numeric) || numeric <= 0) {
+          return 1;
+        }
+        const magnitude = 10 ** Math.floor(Math.log10(numeric));
+        const normalized = numeric / magnitude;
+        let step = 1;
+        if (normalized > 8) {
+          step = 10;
+        } else if (normalized > 4) {
+          step = 5;
+        } else if (normalized > 2) {
+          step = 2.5;
+        } else if (normalized > 1.2) {
+          step = 2;
+        }
+        return Math.max(1, step * magnitude);
+      }
+
+      function buildYAxisTicks(axisMax, tickCount = 5) {
+        const ticks = [];
+        const maxValue = Math.max(1, Number(axisMax) || 1);
+        for (let idx = 0; idx <= tickCount; idx += 1) {
+          ticks.push((maxValue / tickCount) * idx);
+        }
+        return ticks;
+      }
+
+      function buildStackedAreaPath(points, key, priorKeys, xFor, yFor) {
+        if (!Array.isArray(points) || points.length === 0) {
+          return "";
+        }
+        const topPoints = points.map((point) => {
+          const priorSum = priorKeys.reduce((sum, priorKey) => sum + Number(point[priorKey] || 0), 0);
+          const value = Number(point[key] || 0);
+          return {
+            x: xFor(point.ms),
+            top: yFor(priorSum + value),
+            bottom: yFor(priorSum),
+          };
+        });
+        const hasVisible = topPoints.some((point) => Math.abs(point.top - point.bottom) > 0.1);
+        if (!hasVisible) {
+          return "";
+        }
+        const upper = topPoints
+          .map((point, index) => `${index === 0 ? "M" : "L"}${point.x.toFixed(2)},${point.top.toFixed(2)}`)
+          .join(" ");
+        const lower = [...topPoints]
+          .reverse()
+          .map((point) => `L${point.x.toFixed(2)},${point.bottom.toFixed(2)}`)
+          .join(" ");
+        return `${upper} ${lower} Z`;
+      }
+
+      function buildStackedMetricPoints(rows, dimensionKey, allowedKeys, cutoffMs) {
+        const allowed = new Set(allowedKeys);
+        const pointMap = new Map();
+        (Array.isArray(rows) ? rows : []).forEach((row) => {
+          const key = String((row && row[dimensionKey]) || "").toLowerCase().trim();
+          if (!allowed.has(key)) {
+            return;
+          }
+          const timestamp = (row && (row.bucket_hour || row.recorded_at)) || null;
+          const ms = new Date(timestamp || "").getTime();
+          if (Number.isNaN(ms) || ms < cutoffMs) {
+            return;
+          }
+          const sizeBytes = asNumber(row && row.size_bytes);
+          if (sizeBytes === null || sizeBytes < 0) {
+            return;
+          }
+          const bucketKey = String(ms);
+          const point = pointMap.get(bucketKey) || { ms };
+          allowedKeys.forEach((seriesKey) => {
+            if (point[seriesKey] === undefined) {
+              point[seriesKey] = 0;
+            }
+          });
+          point[key] = sizeBytes / (1024 * 1024);
+          pointMap.set(bucketKey, point);
+        });
+        return Array.from(pointMap.values())
+          .sort((a, b) => a.ms - b.ms)
+          .map((point) => {
+            const normalized = { ms: point.ms };
+            allowedKeys.forEach((seriesKey) => {
+              const value = asNumber(point[seriesKey]);
+              normalized[seriesKey] = value === null ? 0 : Math.max(0, value);
+            });
+            return normalized;
+          });
+      }
+
       function buildDbTooltipTargets(points, key, label, color, xFor, yFor) {
         return points
           .map((point) => {
@@ -1699,6 +1824,10 @@
           const nextPanel = renderDbSizePanel(
             latestDashboardData.db_size_metrics,
             latestDashboardData.db_size_metrics_error,
+            latestDashboardData.schema_size_metrics,
+            latestDashboardData.schema_size_metrics_error,
+            latestDashboardData.r2_domain_size_metrics,
+            latestDashboardData.r2_domain_size_metrics_error,
             latestDashboardData.r2_usage,
             latestDashboardData.r2_usage_error,
             latestDashboardData.r2_backup_window,
@@ -1718,7 +1847,18 @@
         }
       }
 
-      function renderDbSizePanel(rows, sourceError, r2Usage, r2Error, r2BackupWindow, r2BackupWindowError) {
+      function renderDbSizePanel(
+        dbRows,
+        dbSourceError,
+        schemaRows,
+        schemaSourceError,
+        r2DomainRows,
+        r2DomainSourceError,
+        r2Usage,
+        r2Error,
+        r2BackupWindow,
+        r2BackupWindowError,
+      ) {
         const panel = document.createElement("section");
         panel.className = "panel";
         panel.dataset.panel = "db-size";
@@ -1726,9 +1866,12 @@
         const cutoffMs = Date.now() - dbSizePeriodHours * 60 * 60 * 1000;
         const pointMap = new Map();
         const oldestByLabel = new Map();
-        (Array.isArray(rows) ? rows : []).forEach((row) => {
-          const label = String((row && row.database_label) || "").toLowerCase();
-          if (label !== "ingestdb" && label !== "historydb" && label !== "aggdailydb") {
+        (Array.isArray(dbRows) ? dbRows : []).forEach((row) => {
+          let label = String((row && row.database_label) || "").toLowerCase().trim();
+          if (label === "obs_aqidb") {
+            label = "obs_aqidb";
+          }
+          if (label !== "ingestdb" && label !== "obs_aqidb") {
             return;
           }
           const sampleTimestamp = row.recorded_at || row.bucket_hour;
@@ -1754,28 +1897,50 @@
             return;
           }
           const key = String(ms);
-          const point = pointMap.get(key) || { ms, ingestdb: null, historydb: null, aggdailydb: null };
+          const point = pointMap.get(key) || { ms, ingestdb: null, obs_aqidb: null };
           point[label] = sizeBytes / (1024 * 1024);
           point[`${label}_oldest_observed_at`] = oldestObservedAt || null;
           pointMap.set(key, point);
         });
+
+        const schemaOldestByName = new Map();
+        (Array.isArray(schemaRows) ? schemaRows : []).forEach((row) => {
+          const schemaName = String((row && row.schema_name) || "").toLowerCase();
+          if (schemaName !== "uk_aq_observs" && schemaName !== "uk_aq_aqilevels") {
+            return;
+          }
+          const sampleTimestamp = (row && (row.recorded_at || row.bucket_hour)) || null;
+          const sampleMs = new Date(sampleTimestamp || "").getTime();
+          const oldestObservedAt = row && row.oldest_observed_at;
+          const oldestMs = new Date(oldestObservedAt || "").getTime();
+          if (Number.isNaN(sampleMs) || Number.isNaN(oldestMs)) {
+            return;
+          }
+          const current = schemaOldestByName.get(schemaName);
+          if (!current || sampleMs >= current.sampleMs) {
+            schemaOldestByName.set(schemaName, {
+              sampleMs,
+              oldestObservedAt,
+            });
+          }
+        });
+        const observsOldestDayLabel = formatDbOldestDayLabel(
+          (schemaOldestByName.get("uk_aq_observs") || {}).oldestObservedAt,
+        );
+        const aqilevelsOldestDayLabel = formatDbOldestDayLabel(
+          (schemaOldestByName.get("uk_aq_aqilevels") || {}).oldestObservedAt,
+        );
         const ingestOldestDayLabel = formatDbOldestDayLabel(
           (oldestByLabel.get("ingestdb") || {}).oldestObservedAt,
-        );
-        const historyOldestDayLabel = formatDbOldestDayLabel(
-          (oldestByLabel.get("historydb") || {}).oldestObservedAt,
-        );
-        const aggdailyOldestDayLabel = formatDbOldestDayLabel(
-          (oldestByLabel.get("aggdailydb") || {}).oldestObservedAt,
         );
 
         const points = Array.from(pointMap.values()).sort((a, b) => a.ms - b.ms);
         const maxObservedMb = points.reduce((max, point) => {
           const ingest = point.ingestdb === null ? 0 : Number(point.ingestdb);
-          const history = point.historydb === null ? 0 : Number(point.historydb);
-          const aggdaily = point.aggdailydb === null ? 0 : Number(point.aggdailydb);
-          return Math.max(max, ingest, history, aggdaily);
+          const obsAqi = point.obs_aqidb === null ? 0 : Number(point.obs_aqidb);
+          return Math.max(max, ingest, obsAqi);
         }, 0);
+        const yAxisMaxMb = DB_LINE_CHART_Y_MAX_MB;
 
         let chartMarkup = `<div class="db-size-empty">No DB cluster size samples in the selected period.</div>`;
         if (points.length > 0) {
@@ -1790,19 +1955,17 @@
           const spanX = Math.max(1, maxX - minX);
           const xFor = (ms) => margin.left + ((ms - minX) / spanX) * innerWidth;
           const yFor = (valueMb) => {
-            const capped = Math.max(0, Math.min(DB_SIZE_Y_MAX_MB, Number(valueMb)));
-            return margin.top + (1 - capped / DB_SIZE_Y_MAX_MB) * innerHeight;
+            const capped = Math.max(0, Math.min(yAxisMaxMb, Number(valueMb)));
+            return margin.top + (1 - capped / yAxisMaxMb) * innerHeight;
           };
 
-          const yTicks = [0, 100, 200, 300, 400, 500];
+          const yTicks = buildYAxisTicks(yAxisMaxMb, 5);
           const xTicks = [minX, minX + spanX / 2, maxX];
 
           const ingestPath = buildDbPath(points, "ingestdb", xFor, yFor);
-          const historyPath = buildDbPath(points, "historydb", xFor, yFor);
-          const aggdailyPath = buildDbPath(points, "aggdailydb", xFor, yFor);
+          const obsAqiPath = buildDbPath(points, "obs_aqidb", xFor, yFor);
           const ingestSinglePoint = getSingleSeriesPoint(points, "ingestdb");
-          const historySinglePoint = getSingleSeriesPoint(points, "historydb");
-          const aggdailySinglePoint = getSingleSeriesPoint(points, "aggdailydb");
+          const obsAqiSinglePoint = getSingleSeriesPoint(points, "obs_aqidb");
           const ingestTooltipTargets = buildDbTooltipTargets(
             points,
             "ingestdb",
@@ -1811,31 +1974,23 @@
             xFor,
             yFor,
           );
-          const historyTooltipTargets = buildDbTooltipTargets(
+          const obsAqiTooltipTargets = buildDbTooltipTargets(
             points,
-            "historydb",
-            "History DB cluster",
+            "obs_aqidb",
+            "Observs & AQI DB Cluster",
             "#3b82f6",
-            xFor,
-            yFor,
-          );
-          const aggdailyTooltipTargets = buildDbTooltipTargets(
-            points,
-            "aggdailydb",
-            "Agg Daily DB cluster",
-            "#2f9e44",
             xFor,
             yFor,
           );
 
           chartMarkup = `
-            <svg class="db-size-chart" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" role="img" aria-label="Ingest, history, and Agg Daily DB cluster size trend">
+            <svg class="db-size-chart" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" role="img" aria-label="Ingest and Observs/AQI DB cluster size trend">
               ${yTicks
                 .map((tick) => {
                   const y = yFor(tick);
                   return `
                     <line x1="${margin.left}" y1="${y}" x2="${width - margin.right}" y2="${y}" stroke="#e7dbc7" stroke-width="1" />
-                    <text x="${margin.left - 8}" y="${y + 4}" text-anchor="end" fill="#6b6255" font-size="11" font-family="IBM Plex Mono, ui-monospace, monospace">${tick}</text>
+                    <text x="${margin.left - 8}" y="${y + 4}" text-anchor="end" fill="#6b6255" font-size="11" font-family="IBM Plex Mono, ui-monospace, monospace">${formatMegabytes(tick)}</text>
                   `;
                 })
                 .join("")}
@@ -1851,21 +2006,134 @@
                 })
                 .join("")}
               ${ingestPath ? `<path d="${ingestPath}" fill="none" stroke="#ff2d2d" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round" />` : ""}
-              ${historyPath ? `<path d="${historyPath}" fill="none" stroke="#3b82f6" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round" />` : ""}
-              ${aggdailyPath ? `<path d="${aggdailyPath}" fill="none" stroke="#2f9e44" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round" />` : ""}
+              ${obsAqiPath ? `<path d="${obsAqiPath}" fill="none" stroke="#3b82f6" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round" />` : ""}
               ${ingestTooltipTargets}
-              ${historyTooltipTargets}
-              ${aggdailyTooltipTargets}
+              ${obsAqiTooltipTargets}
               ${ingestSinglePoint ? `<circle cx="${xFor(ingestSinglePoint.ms).toFixed(2)}" cy="${yFor(Number(ingestSinglePoint.ingestdb)).toFixed(2)}" r="3.5" fill="#ff2d2d" />` : ""}
-              ${historySinglePoint ? `<circle cx="${xFor(historySinglePoint.ms).toFixed(2)}" cy="${yFor(Number(historySinglePoint.historydb)).toFixed(2)}" r="3.5" fill="#3b82f6" />` : ""}
-              ${aggdailySinglePoint ? `<circle cx="${xFor(aggdailySinglePoint.ms).toFixed(2)}" cy="${yFor(Number(aggdailySinglePoint.aggdailydb)).toFixed(2)}" r="3.5" fill="#2f9e44" />` : ""}
+              ${obsAqiSinglePoint ? `<circle cx="${xFor(obsAqiSinglePoint.ms).toFixed(2)}" cy="${yFor(Number(obsAqiSinglePoint.obs_aqidb)).toFixed(2)}" r="3.5" fill="#3b82f6" />` : ""}
             </svg>
           `;
         }
 
-        const maxNote = maxObservedMb > DB_SIZE_Y_MAX_MB
-          ? `Max observed ${formatMegabytes(maxObservedMb)} MB (chart capped at ${DB_SIZE_Y_MAX_MB} MB).`
-          : `Y-axis fixed at ${DB_SIZE_Y_MAX_MB} MB.`;
+        const maxNote = maxObservedMb > yAxisMaxMb
+          ? `Line chart fixed at ${formatMegabytes(yAxisMaxMb)} MB (max observed ${formatMegabytes(maxObservedMb)} MB).`
+          : `Line chart fixed at ${formatMegabytes(yAxisMaxMb)} MB.`;
+
+        const renderStackedChart = ({ title, points, seriesDefs, ariaLabel, emptyLabel }) => {
+          if (!Array.isArray(points) || points.length === 0) {
+            return `
+              <div class="db-size-subchart">
+                <h3>${escapeHtml(title)}</h3>
+                <div class="db-size-chart-wrap">
+                  <div class="db-size-empty">${escapeHtml(emptyLabel)}</div>
+                </div>
+              </div>
+            `;
+          }
+
+          const width = 960;
+          const height = 260;
+          const margin = { top: 16, right: 18, bottom: 36, left: 56 };
+          const innerWidth = width - margin.left - margin.right;
+          const innerHeight = height - margin.top - margin.bottom;
+          const minX = points[0].ms;
+          const maxX = points[points.length - 1].ms;
+          const spanX = Math.max(1, maxX - minX);
+          const xFor = (ms) => margin.left + ((ms - minX) / spanX) * innerWidth;
+          const maxStack = points.reduce((max, point) => {
+            const total = seriesDefs.reduce((sum, series) => sum + Number(point[series.key] || 0), 0);
+            return Math.max(max, total);
+          }, 0);
+          const yMax = computeAxisMax(maxStack);
+          const yFor = (valueMb) => {
+            const capped = Math.max(0, Math.min(yMax, Number(valueMb)));
+            return margin.top + (1 - capped / yMax) * innerHeight;
+          };
+          const yTicks = buildYAxisTicks(yMax, 5);
+          const xTicks = [minX, minX + spanX / 2, maxX];
+
+          const paths = seriesDefs
+            .map((series, index) => {
+              const priorKeys = seriesDefs.slice(0, index).map((entry) => entry.key);
+              const path = buildStackedAreaPath(points, series.key, priorKeys, xFor, yFor);
+              if (!path) {
+                return "";
+              }
+              return `<path d="${path}" fill="${series.color}" fill-opacity="0.68" stroke="${series.color}" stroke-width="1.1" />`;
+            })
+            .join("");
+
+          return `
+            <div class="db-size-subchart">
+              <h3>${escapeHtml(title)}</h3>
+              <div class="db-size-chart-wrap">
+                <svg class="db-size-chart" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" role="img" aria-label="${escapeHtml(ariaLabel)}">
+                  ${yTicks
+                    .map((tick) => {
+                      const y = yFor(tick);
+                      return `
+                        <line x1="${margin.left}" y1="${y}" x2="${width - margin.right}" y2="${y}" stroke="#e7dbc7" stroke-width="1" />
+                        <text x="${margin.left - 8}" y="${y + 4}" text-anchor="end" fill="#6b6255" font-size="11" font-family="IBM Plex Mono, ui-monospace, monospace">${formatMegabytes(tick)}</text>
+                      `;
+                    })
+                    .join("")}
+                  <line x1="${margin.left}" y1="${height - margin.bottom}" x2="${width - margin.right}" y2="${height - margin.bottom}" stroke="#bfae91" stroke-width="1.3" />
+                  ${xTicks
+                    .map((tick, idx) => {
+                      const x = xFor(tick);
+                      const anchor = idx === 0 ? "start" : idx === xTicks.length - 1 ? "end" : "middle";
+                      return `
+                        <line x1="${x}" y1="${height - margin.bottom}" x2="${x}" y2="${height - margin.bottom + 5}" stroke="#bfae91" stroke-width="1" />
+                        <text x="${x}" y="${height - margin.bottom + 20}" text-anchor="${anchor}" fill="#6b6255" font-size="11" font-family="IBM Plex Mono, ui-monospace, monospace">${new Date(tick).toLocaleString()}</text>
+                      `;
+                    })
+                    .join("")}
+                  ${paths}
+                </svg>
+              </div>
+              <div class="db-size-sublegend">
+                ${seriesDefs
+                  .map((series) => `<span class="db-size-item-title"><span class="db-size-swatch" style="background:${series.color}"></span>${escapeHtml(series.label)}</span>`)
+                  .join("")}
+              </div>
+            </div>
+          `;
+        };
+
+        const schemaPoints = buildStackedMetricPoints(
+          schemaRows,
+          "schema_name",
+          ["uk_aq_observs", "uk_aq_aqilevels"],
+          cutoffMs,
+        );
+        const schemaChartMarkup = renderStackedChart({
+          title: "obs_aqidb schema sizes (MB)",
+          points: schemaPoints,
+          ariaLabel: "obs_aqidb schema size stacked area chart",
+          emptyLabel: "No schema size samples in the selected period.",
+          seriesDefs: [
+            { key: "uk_aq_observs", label: "uk_aq_observs", color: "#ff7f50" },
+            { key: "uk_aq_aqilevels", label: "uk_aq_aqilevels", color: "#3b82f6" },
+          ],
+        });
+
+        const r2DomainPoints = buildStackedMetricPoints(
+          r2DomainRows,
+          "domain_name",
+          ["observations", "aqilevels"],
+          cutoffMs,
+        );
+        const r2DomainChartMarkup = renderStackedChart({
+          title: "R2 History domain sizes (MB)",
+          points: r2DomainPoints,
+          ariaLabel: "R2 history domain size stacked area chart",
+          emptyLabel: "No R2 domain size samples in the selected period.",
+          seriesDefs: [
+            { key: "observations", label: "observations", color: "#f59e0b" },
+            { key: "aqilevels", label: "aqilevels", color: "#16a34a" },
+          ],
+        });
+
         const r2UsageObject = asObject(r2Usage);
         const r2BackupWindowObject = asObject(r2BackupWindow);
         const backupWindowMin = formatDateDdMmYyyy(
@@ -2005,9 +2273,19 @@
             </div>
           </div>
         `;
-        const sourceWarning = sourceError
-          ? `<div class="footnote">Metric source warning: ${escapeHtml(sourceError)}</div>`
-          : "";
+        const sourceWarnings = [];
+        if (dbSourceError) {
+          sourceWarnings.push(`DB metrics source warning: ${dbSourceError}`);
+        }
+        if (schemaSourceError) {
+          sourceWarnings.push(`Schema metrics source warning: ${schemaSourceError}`);
+        }
+        if (r2DomainSourceError) {
+          sourceWarnings.push(`R2 domain metrics source warning: ${r2DomainSourceError}`);
+        }
+        const sourceWarningMarkup = sourceWarnings
+          .map((message) => `<div class="footnote">${escapeHtml(message)}</div>`)
+          .join("");
 
         panel.innerHTML = `
           <h2 class="panel-heading">
@@ -2025,22 +2303,20 @@
           </h2>
           <div class="db-size-legend">
             <span class="db-size-item">
-              <span class="db-size-item-title"><span class="db-size-swatch" style="background:#ff2d2d"></span>Ingest DB cluster</span>
+              <span class="db-size-item-title"><span class="db-size-swatch" style="background:#ff2d2d"></span>Ingest DB Cluster</span>
               <span class="db-size-item-min">${escapeHtml(ingestOldestDayLabel)}</span>
             </span>
             <span class="db-size-item">
-              <span class="db-size-item-title"><span class="db-size-swatch" style="background:#3b82f6"></span>History DB cluster</span>
-              <span class="db-size-item-min">${escapeHtml(historyOldestDayLabel)}</span>
-            </span>
-            <span class="db-size-item">
-              <span class="db-size-item-title"><span class="db-size-swatch" style="background:#2f9e44"></span>Agg Daily DB cluster</span>
-              <span class="db-size-item-min">${escapeHtml(aggdailyOldestDayLabel)}</span>
+              <span class="db-size-item-title"><span class="db-size-swatch" style="background:#3b82f6"></span>Observs &amp; AQI DB Cluster</span>
+              <span class="db-size-item-min">uk_aq_observs ${escapeHtml(observsOldestDayLabel)}&nbsp;&nbsp;&nbsp;uk_aq_aqilevels ${escapeHtml(aqilevelsOldestDayLabel)}</span>
             </span>
           </div>
           <div class="db-size-chart-wrap">${chartMarkup}<div class="db-size-hover-tooltip" aria-hidden="true"></div></div>
+          ${schemaChartMarkup}
+          ${r2DomainChartMarkup}
           ${r2UsageMarkup}
-          <div class="footnote">Ingest DB cluster = bright red, History DB cluster = medium blue, Agg Daily DB cluster = medium green. ${maxNote}</div>
-          ${sourceWarning}
+          <div class="footnote">Ingest DB Cluster = bright red, Observs &amp; AQI DB Cluster = medium blue. ${maxNote}</div>
+          ${sourceWarningMarkup}
         `;
 
         bindDbSizeTooltips(panel);
@@ -2529,6 +2805,10 @@
             renderDbSizePanel(
               data.db_size_metrics,
               data.db_size_metrics_error,
+              data.schema_size_metrics,
+              data.schema_size_metrics_error,
+              data.r2_domain_size_metrics,
+              data.r2_domain_size_metrics_error,
               data.r2_usage,
               data.r2_usage_error,
               data.r2_backup_window,

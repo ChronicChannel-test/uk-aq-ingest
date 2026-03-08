@@ -9,14 +9,14 @@ Usage:
 Options:
   --env-file PATH         Env file to source first (default: .env in ingest repo)
   --main-db-url URL       MAIN DB Postgres URL (overrides SUPABASE_DB_URL)
-  --history-db-url URL    HISTORY DB Postgres URL (overrides HISTORY_SUPABASE_DB_URL/SBASE_HISTORY_DB_URL)
+  --history-db-url URL    HISTORY DB Postgres URL (overrides OBS_AQIDB_SUPABASE_DB_URL/SBASE_HISTORY_DB_URL)
   --main-only             Run MAIN DB checks only
   --history-only          Run HISTORY DB checks only
   -h, --help              Show this help
 
 Environment fallback:
   MAIN DB:    SUPABASE_DB_URL
-  HISTORY DB: HISTORY_SUPABASE_DB_URL or SBASE_HISTORY_DB_URL
+  HISTORY DB: OBS_AQIDB_SUPABASE_DB_URL or SBASE_HISTORY_DB_URL
 EOF
 }
 
@@ -25,7 +25,7 @@ INGEST_REPO="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
 
 ENV_FILE="${INGEST_REPO}/.env"
 MAIN_DB_URL="${MAIN_DB_URL:-${SUPABASE_DB_URL:-}}"
-HISTORY_DB_URL="${HISTORY_DB_URL:-${HISTORY_SUPABASE_DB_URL:-${SBASE_HISTORY_DB_URL:-}}}"
+HISTORY_DB_URL="${HISTORY_DB_URL:-${OBS_AQIDB_SUPABASE_DB_URL:-${SBASE_HISTORY_DB_URL:-}}}"
 RUN_MAIN=1
 RUN_HISTORY=1
 
@@ -72,7 +72,7 @@ if [[ -n "${ENV_FILE}" && -f "${ENV_FILE}" ]]; then
   set +a
   # Re-resolve in case env file populated them.
   [[ -z "${MAIN_DB_URL}" ]] && MAIN_DB_URL="${SUPABASE_DB_URL:-}"
-  [[ -z "${HISTORY_DB_URL}" ]] && HISTORY_DB_URL="${HISTORY_SUPABASE_DB_URL:-${SBASE_HISTORY_DB_URL:-}}"
+  [[ -z "${HISTORY_DB_URL}" ]] && HISTORY_DB_URL="${OBS_AQIDB_SUPABASE_DB_URL:-${SBASE_HISTORY_DB_URL:-}}"
 fi
 
 if ! command -v psql >/dev/null 2>&1; then
@@ -86,7 +86,7 @@ if [[ "${RUN_MAIN}" -eq 1 && -z "${MAIN_DB_URL}" ]]; then
 fi
 
 if [[ "${RUN_HISTORY}" -eq 1 && -z "${HISTORY_DB_URL}" ]]; then
-  echo "HISTORY DB URL missing. Set HISTORY_SUPABASE_DB_URL/SBASE_HISTORY_DB_URL or pass --history-db-url." >&2
+  echo "HISTORY DB URL missing. Set OBS_AQIDB_SUPABASE_DB_URL/SBASE_HISTORY_DB_URL or pass --history-db-url." >&2
   exit 1
 fi
 

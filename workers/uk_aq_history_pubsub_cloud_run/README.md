@@ -13,15 +13,15 @@ Scheduler triggers the service with an authenticated POST request.
 
 - `SUPABASE_URL`
 - `SB_SECRET_KEY`
-- `HISTORY_SUPABASE_URL`
-- `HISTORY_SECRET_KEY`
+- `OBS_AQIDB_SUPABASE_URL`
+- `OBS_AQIDB_SECRET_KEY`
 - `GCP_PROJECT_ID` (or `GOOGLE_CLOUD_PROJECT`)
 - `HISTORY_PUBSUB_SUBSCRIPTION`
 
 ## Optional env vars
 
 - `UK_AQ_PUBLIC_SCHEMA` (default `uk_aq_public`)
-- `HISTORY_RPC_SCHEMA` (default `uk_aq_public`)
+- `OBS_AQIDB_RPC_SCHEMA` (default `uk_aq_public`)
 - `HISTORY_UPSERT_RPC` (default `uk_aq_rpc_history_observations_upsert`)
 - `HISTORY_UPSERT_CHUNK_SIZE` (default `5000`)
 - `HISTORY_UPSERT_RPC_RETRIES` (default `3`; retries per history upsert RPC call for retryable failures)

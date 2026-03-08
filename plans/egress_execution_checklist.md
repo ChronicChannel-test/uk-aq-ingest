@@ -61,7 +61,7 @@ order by mb desc;
 ```bash
 # Management API request-count snapshots (history vs main)
 curl -sS -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
-  "https://api.supabase.com/v1/projects/$HISTORY_SUPABASE_PROJECT_REF/analytics/endpoints/usage.api-requests-count"
+  "https://api.supabase.com/v1/projects/$OBS_AQIDB_SUPABASE_PROJECT_REF/analytics/endpoints/usage.api-requests-count"
 
 curl -sS -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
   "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF/analytics/endpoints/usage.api-requests-count"

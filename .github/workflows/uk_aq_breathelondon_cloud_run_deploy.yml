@@ -41,10 +41,10 @@ jobs:
       SCHEDULER_MAX_RETRY_ATTEMPTS: ${{ vars.GCP_BREATHELONDON_SCHEDULER_MAX_RETRY_ATTEMPTS || '0' }}
       SCHEDULER_SERVICE_ACCOUNT: ${{ vars.GCP_BREATHELONDON_SCHEDULER_SERVICE_ACCOUNT || '' }}
       SUPABASE_URL: ${{ vars.SUPABASE_URL }}
-      HISTORY_SUPABASE_URL: ${{ vars.HISTORY_SUPABASE_URL }}
+      OBS_AQIDB_SUPABASE_URL: ${{ vars.OBS_AQIDB_SUPABASE_URL }}
       UK_AQ_CORE_SCHEMA: ${{ vars.UK_AQ_CORE_SCHEMA || 'uk_aq_core' }}
       UK_AQ_RAW_SCHEMA: ${{ vars.UK_AQ_RAW_SCHEMA || 'uk_aq_raw' }}
-      HISTORY_RPC_SCHEMA: ${{ vars.HISTORY_RPC_SCHEMA || 'uk_aq_public' }}
+      OBS_AQIDB_RPC_SCHEMA: ${{ vars.OBS_AQIDB_RPC_SCHEMA || 'uk_aq_public' }}
       HISTORY_WRITE_MODE: ${{ vars.BREATHELONDON_HISTORY_WRITE_MODE || vars.HISTORY_WRITE_MODE || 'pubsub_only' }}
       GCP_HISTORY_PUBSUB_TOPIC: ${{ vars.GCP_HISTORY_PUBSUB_TOPIC || 'uk-aq-history-observations' }}
       HISTORY_PUBSUB_PUBLISH_BATCH_SIZE: ${{ vars.HISTORY_PUBSUB_PUBLISH_BATCH_SIZE || '500' }}
@@ -63,14 +63,14 @@ jobs:
       BREATHELONDON_ERROR_DROPBOX_FOLDER: ${{ vars.BREATHELONDON_ERROR_DROPBOX_FOLDER || 'error_log' }}
       UK_AIR_ERROR_DROPBOX_FOLDER: ${{ vars.UK_AIR_ERROR_DROPBOX_FOLDER || 'error_log' }}
       SB_SECRET_KEY: ${{ secrets.SB_SECRET_KEY }}
-      HISTORY_SECRET_KEY: ${{ secrets.HISTORY_SECRET_KEY }}
+      OBS_AQIDB_SECRET_KEY: ${{ secrets.OBS_AQIDB_SECRET_KEY }}
       BREATHELONDON_API_KEY: ${{ secrets.BREATHELONDON_API_KEY }}
       SB_UK_AQ_CRON_SECRET: ${{ secrets.SB_UK_AQ_CRON_SECRET }}
       DROPBOX_APP_KEY: ${{ secrets.DROPBOX_APP_KEY }}
       DROPBOX_APP_SECRET: ${{ secrets.DROPBOX_APP_SECRET }}
       DROPBOX_REFRESH_TOKEN: ${{ secrets.DROPBOX_REFRESH_TOKEN }}
       SB_SECRET_KEY_SECRET_NAME: ${{ vars.SB_SECRET_KEY_SECRET_NAME || 'SB_SECRET_KEY' }}
-      HISTORY_SECRET_KEY_SECRET_NAME: ${{ vars.HISTORY_SECRET_KEY_SECRET_NAME || 'HISTORY_SECRET_KEY' }}
+      OBS_AQIDB_SECRET_KEY_SECRET_NAME: ${{ vars.OBS_AQIDB_SECRET_KEY_SECRET_NAME || 'OBS_AQIDB_SECRET_KEY' }}
       BREATHELONDON_API_KEY_SECRET_NAME: ${{ vars.BREATHELONDON_API_KEY_SECRET_NAME || 'BREATHELONDON_API_KEY' }}
       SB_UK_AQ_CRON_SECRET_SECRET_NAME: ${{ vars.SB_UK_AQ_CRON_SECRET_SECRET_NAME || 'SB_UK_AQ_CRON_SECRET' }}
       DROPBOX_APP_KEY_SECRET_NAME: ${{ vars.DROPBOX_APP_KEY_SECRET_NAME || 'DROPBOX_APP_KEY' }}
@@ -108,12 +108,12 @@ jobs:
             exit 1
           fi
           if [ "${history_mode}" = "direct" ]; then
-            if [ -z "${HISTORY_SUPABASE_URL:-}" ]; then
-              echo "HISTORY_WRITE_MODE=direct requires HISTORY_SUPABASE_URL."
+            if [ -z "${OBS_AQIDB_SUPABASE_URL:-}" ]; then
+              echo "HISTORY_WRITE_MODE=direct requires OBS_AQIDB_SUPABASE_URL."
               exit 1
             fi
-            if [ -z "${HISTORY_SECRET_KEY:-}" ]; then
-              echo "HISTORY_WRITE_MODE=direct requires HISTORY_SECRET_KEY."
+            if [ -z "${OBS_AQIDB_SECRET_KEY:-}" ]; then
+              echo "HISTORY_WRITE_MODE=direct requires OBS_AQIDB_SECRET_KEY."
               exit 1
             fi
           fi
@@ -227,9 +227,9 @@ jobs:
           upsert_secret "${SB_UK_AQ_CRON_SECRET_SECRET_NAME}" "${SB_UK_AQ_CRON_SECRET}" 0
           history_mode="$(printf '%s' "${HISTORY_WRITE_MODE:-}" | tr '[:upper:]' '[:lower:]')"
           if [ "${history_mode}" = "direct" ]; then
-            upsert_secret "${HISTORY_SECRET_KEY_SECRET_NAME}" "${HISTORY_SECRET_KEY}" 1
+            upsert_secret "${OBS_AQIDB_SECRET_KEY_SECRET_NAME}" "${OBS_AQIDB_SECRET_KEY}" 1
           else
-            echo "Skipping HISTORY_SECRET_KEY secret sync (HISTORY_WRITE_MODE=${HISTORY_WRITE_MODE})."
+            echo "Skipping OBS_AQIDB_SECRET_KEY secret sync (HISTORY_WRITE_MODE=${HISTORY_WRITE_MODE})."
           fi
           upsert_secret "${DROPBOX_APP_KEY_SECRET_NAME}" "${DROPBOX_APP_KEY}" 0
           upsert_secret "${DROPBOX_APP_SECRET_SECRET_NAME}" "${DROPBOX_APP_SECRET}" 0
@@ -304,9 +304,9 @@ jobs:
           add_env UK_AIR_ERROR_DROPBOX_FOLDER
           env_updates+=("BREATHELONDON_LOCAL_PORT=8000")
           env_updates+=("GCP_PROJECT_ID=${PROJECT_ID}")
-          if [ -n "${HISTORY_SUPABASE_URL:-}" ]; then
-            add_env HISTORY_SUPABASE_URL
-            add_env HISTORY_RPC_SCHEMA
+          if [ -n "${OBS_AQIDB_SUPABASE_URL:-}" ]; then
+            add_env OBS_AQIDB_SUPABASE_URL
+            add_env OBS_AQIDB_RPC_SCHEMA
           fi
 
           history_mode="$(printf '%s' "${HISTORY_WRITE_MODE:-}" | tr '[:upper:]' '[:lower:]')"
@@ -315,9 +315,9 @@ jobs:
           add_secret_binding "BREATHELONDON_API_KEY" "${BREATHELONDON_API_KEY_SECRET_NAME}" 1
           add_secret_binding "SB_UK_AQ_CRON_SECRET" "${SB_UK_AQ_CRON_SECRET_SECRET_NAME}" 0
           if [ "${history_mode}" = "direct" ]; then
-            add_secret_binding "HISTORY_SECRET_KEY" "${HISTORY_SECRET_KEY_SECRET_NAME}" 1
+            add_secret_binding "OBS_AQIDB_SECRET_KEY" "${OBS_AQIDB_SECRET_KEY_SECRET_NAME}" 1
           else
-            echo "Skipping HISTORY_SECRET_KEY secret binding (HISTORY_WRITE_MODE=${HISTORY_WRITE_MODE})."
+            echo "Skipping OBS_AQIDB_SECRET_KEY secret binding (HISTORY_WRITE_MODE=${HISTORY_WRITE_MODE})."
           fi
           add_secret_binding "DROPBOX_APP_KEY" "${DROPBOX_APP_KEY_SECRET_NAME}" 0
           add_secret_binding "DROPBOX_APP_SECRET" "${DROPBOX_APP_SECRET_SECRET_NAME}" 0
