@@ -14,8 +14,8 @@ Scope: cross-repo (`CIC-test-uk-aq-ingest`, `CIC-test-uk-aq-ops`, `CIC-test-uk-a
 | --- | --- | --- | --- |
 | 0 | Repo archive / rollback safety | Complete | 2026-03-08 |
 | 1 | Cross-repo inventory + naming contract freeze | Complete | 2026-03-08 |
-| 2 | Hard-cut rename prep (runtime/config/workflow map) | In progress | - |
-| 3 | DB/schema rename + consolidation to `obs_aqidb` | Not started | - |
+| 2 | Hard-cut rename prep (runtime/config/workflow map) | Complete | 2026-03-08 |
+| 3 | DB/schema rename + consolidation to `obs_aqidb` | In progress | - |
 | 4 | R2 History contract + manifest-complete rule unification | Not started | - |
 | 5 | Retention policy refactor (configurable, default 14 days) | Not started | - |
 | 6 | Website/API read-path + dashboard size charts | Not started | - |
@@ -52,7 +52,7 @@ Output artifacts:
 - `system_docs/refactor_obs_aqidb/2026-03-08_phase1_hard_cut_inventory/phase1_migration_risks.md`
 
 ### Phase 2: Hard-cut rename prep (runtime/config/workflow map)
-Status: In progress
+Status: Complete
 
 Details:
 - Convert Phase 1 inventory into an execution checklist by repo and deployment unit.
@@ -69,8 +69,14 @@ Exit criteria:
 - Zero runtime references to legacy env names.
 - Deployment runbook approved for atomic hard cut.
 
+Delivered in Phase 2:
+- Runtime/env/workflow hard-cut changes applied across ingest + ops repos.
+- Dashboard contract hard-cut to `ingestdb` + `obs_aqidb` DB line chart labels.
+- Dashboard schema and R2 stacked area chart support implemented.
+- Env target CSVs updated for ingest + ops GitHub secrets/variables sync scripts.
+
 ### Phase 3: DB/schema rename + consolidation to `obs_aqidb`
-Status: Not started
+Status: In progress
 
 Details:
 - Create/migrate target DB state to `obs_aqidb`.
@@ -79,7 +85,7 @@ Details:
   - `uk_aq_aggdaily` -> `uk_aq_aqilevels`
 - Update SQL DDL/RPCs and schema-qualified references in schema repo first, then ingest/ops code.
 - Remove any DB-label constraints that still require `obs_aqidb`/`aggdailydb`.
-- Add schema-size hourly metrics storage in ingest DB for dashboarding:
+- Add schema-size hourly metrics storage in obs_aqidb for dashboarding:
   - new table for hourly schema totals for `uk_aq_observs` and `uk_aq_aqilevels` (in `obs_aqidb`),
   - include oldest day field per schema for legend rendering.
 
@@ -87,6 +93,12 @@ Exit criteria:
 - Runtime SQL references only `uk_aq_observs` and `uk_aq_aqilevels`.
 - Runtime DB label set reduced to `ingestdb` and `obs_aqidb`.
 - Schema-size hourly table + read view are available for dashboard consumption.
+
+Current implementation artifacts:
+- `/CIC-Test-UK-AQ-Schema/CIC-test-uk-aq-schema/schemas/migrations/2026-03-08_phase3_obs_aqidb_schema_hard_cut.sql`
+- `/CIC-Test-UK-AQ-Schema/CIC-test-uk-aq-schema/schemas/migrations/2026-03-08_ingest_size_metrics_schema_r2.sql`
+- `/CIC-Test-UK-AQ-Schema/CIC-test-uk-aq-schema/schemas/migrations/2026-03-08_obs_aqidb_db_size_label_cutover.sql`
+- `plans/obs_aqidb_refactor_phase3_runbook.md` (apply order + verification queries)
 
 ### Phase 4: R2 History contract + manifest-complete rule unification
 Status: Not started
@@ -197,7 +209,7 @@ Exit criteria:
 - No residual legacy naming or legacy-mode behavior in active backfill runtime paths.
 
 ## Next Phase To Execute
-Recommended immediate next phase: Phase 3 (DB/schema rename + consolidation to `obs_aqidb`).
+Recommended immediate next phase: continue Phase 3 execution using `plans/obs_aqidb_refactor_phase3_runbook.md`.
 
 ## Locked Dashboard Scope (2026-03-08)
 - Keep DB line chart, but only for full DB cluster sizes: `ingestdb` and `obs_aqidb`.

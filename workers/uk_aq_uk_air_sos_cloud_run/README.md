@@ -56,6 +56,7 @@ gcloud run deploy uk-aq-sos-ingest \
   --concurrency 1 \
   --max-instances 1 \
   --min-instances 0 \
+  --no-cpu-boost \
   --no-allow-unauthenticated
 ```
 

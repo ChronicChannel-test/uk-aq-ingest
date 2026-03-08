@@ -3,7 +3,7 @@
 Last updated: 2026-03-08
 Owner repo for checklist: `CIC-test-uk-aq-ingest` (execution spans ingest + ops + schema repos)
 Policy: hard cut only (no legacy fallback names)
-Execution status: in progress
+Execution status: code complete, deployment verification in progress
 
 ## Scope
 Phase 2 prepares and executes the hard-cut runtime/config rename and introduces the new dashboard size-metric contracts needed for:
@@ -22,11 +22,11 @@ Phase 2 prepares and executes the hard-cut runtime/config rename and introduces 
 ## Workstream A: Schema SQL (repo: `CIC-test-uk-aq-schema`)
 
 ### A1. Rename-safe DB label contract
-- [ ] Update DB size metric label checks from (`ingestdb`, `obs_aqidb`, `aggdailydb`) to (`ingestdb`, `obs_aqidb`) in canonical SQL.
-- [ ] Update all related RPC argument validation and checks.
+- [x] Update DB size metric label checks from (`ingestdb`, `obs_aqidb`, `aggdailydb`) to (`ingestdb`, `obs_aqidb`) in canonical SQL.
+- [x] Update all related RPC argument validation and checks.
 
 Acceptance:
-- [ ] No runtime SQL in canonical schema files accepts legacy DB labels.
+- [x] No runtime SQL in canonical schema files accepts legacy DB labels.
 
 ### A2. Add schema size hourly table + view + RPCs
 - [x] Create `uk_aq_ops.schema_size_metrics_hourly` in ingest DB schema files.
@@ -35,8 +35,8 @@ Acceptance:
 - [x] Store `schema_name`, `size_bytes`, `oldest_observed_at`, `bucket_hour`, `recorded_at`, `source`.
 
 Acceptance:
-- [ ] Hourly rows can be written for `uk_aq_observs` + `uk_aq_aqilevels`.
-- [ ] View is readable by worker/dashboard paths.
+- [x] Hourly rows can be written for `uk_aq_observs` + `uk_aq_aqilevels`.
+- [x] View is readable by worker/dashboard paths.
 
 ### A3. Add R2 domain size hourly table + view + RPCs
 - [x] Create `uk_aq_ops.r2_domain_size_metrics_hourly` in ingest DB schema files.
@@ -45,7 +45,7 @@ Acceptance:
 - [x] Domain names fixed to `observations`, `aqilevels`.
 
 Acceptance:
-- [ ] Hourly rows can be written/read for both domains.
+- [x] Hourly rows can be written/read for both domains.
 
 ### A4. Keep canonical placement and docs alignment
 - [x] Ensure all new/changed DDL exists in canonical schema repo files (not only worker-local SQL).
@@ -78,7 +78,7 @@ Acceptance:
 ### B3. Add R2 domain-size sampling in scheduler path
 - [x] Add hourly R2 size sampling for `history/v1/observations/` and `history/v1/aqilevels/`.
 - [x] Upsert into new R2-size hourly table.
-- [ ] Use a method that avoids full-bucket rescans where possible (manifest/index-driven preferred).
+- [ ] Use a method that avoids full-bucket rescans where possible (manifest/index-driven preferred). (deferred to Phase 4/7 hardening)
 
 Acceptance:
 - [ ] Hourly R2 size rows persist for both domains.
@@ -137,19 +137,20 @@ Acceptance:
 ## Workstream E: CI/Config/Workflow Hard Cut (ingest + ops)
 
 ### E1. Env/secret hard-cut rename
-- [ ] Replace old DB env names with target names in runtime workflows/config:
+- [x] Replace old DB env names with target names in runtime workflows/config:
   - remove `HISTORY_*`, `AGGDAILY_*`, old DB label vars
   - use `OBS_AQIDB_*` names.
 
 Acceptance:
-- [ ] No runtime workflow depends on legacy names.
+- [x] No runtime workflow depends on legacy names.
 
 ### E2. Deploy order runbook
-- [ ] Document and execute deployment order:
+- [x] Document and execute deployment order:
   1. Schema DDL/RPC changes
   2. Worker changes
   3. Dashboard aggregator/UI changes
   4. Final cleanup of obsolete references
+  - Runbook: `plans/obs_aqidb_refactor_phase3_runbook.md`
 
 Acceptance:
 - [ ] Roll-forward/rollback procedure documented and tested in staging.
@@ -160,7 +161,7 @@ Acceptance:
 - [ ] R2 stacked area chart displays both domain MB series.
 - [ ] Oldest-day legend line format is exact day-only output.
 - [ ] All charts handle missing series points as `0`.
-- [ ] No active runtime references to legacy history/aggdaily DB names.
+- [x] No active runtime references to legacy history/aggdaily DB names.
 
 ## Open Technical Tasks To Resolve During Implementation
 - [ ] Final SQL expression for schema size bytes (table/index/toast totals) and consistency with MB conversion.
