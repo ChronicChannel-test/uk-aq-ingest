@@ -54,6 +54,15 @@ DB_SIZE_LOOKBACK_DAYS = max(
 )
 DB_SIZE_API_URL = str(os.getenv("UK_AQ_DB_SIZE_API_URL") or "").strip()
 DB_SIZE_API_TOKEN = str(os.getenv("UK_AQ_DB_SIZE_API_TOKEN") or "").strip()
+R2_HISTORY_DAYS_API_URL = str(os.getenv("UK_AQ_R2_HISTORY_DAYS_API_URL") or "").strip()
+R2_HISTORY_DAYS_API_TOKEN = str(
+    os.getenv("UK_AQ_R2_HISTORY_DAYS_API_TOKEN") or DB_SIZE_API_TOKEN
+).strip()
+try:
+    _raw_r2_history_days_max = int(str(os.getenv("UK_AQ_R2_HISTORY_DAYS_API_MAX_DAYS", "3660")).strip())
+except ValueError:
+    _raw_r2_history_days_max = 3660
+R2_HISTORY_DAYS_API_MAX_DAYS = max(1, min(3660, _raw_r2_history_days_max))
 OBS_AQIDB_SUPABASE_URL = str(os.getenv("OBS_AQIDB_SUPABASE_URL") or "").strip()
 OBS_AQIDB_SECRET_KEY = str(os.getenv("OBS_AQIDB_SECRET_KEY") or "").strip()
 PUBLIC_SCHEMA = os.getenv("UK_AQ_PUBLIC_SCHEMA", "uk_aq_public")
@@ -252,6 +261,19 @@ def _project_ref_from_base_url(base_url: str) -> Optional[str]:
 def _request_path(url: str) -> str:
     parsed = urlparse(url)
     return parsed.path or url
+
+
+def _resolve_r2_history_days_api_url() -> str:
+    if R2_HISTORY_DAYS_API_URL:
+        return R2_HISTORY_DAYS_API_URL
+    if not DB_SIZE_API_URL:
+        return ""
+
+    parsed = urlparse(DB_SIZE_API_URL)
+    if not parsed.scheme or not parsed.netloc:
+        return ""
+    origin = f"{parsed.scheme}://{parsed.netloc}"
+    return f"{origin}/v1/r2-history-days"
 
 
 def _ensure_allowed_base_url(base_url: str) -> str:
@@ -1195,6 +1217,7 @@ def _build_live_storage_coverage_days(
     r2_domain_size_metrics: Optional[List[Dict[str, Any]]],
     dropbox_backup_days: Optional[Dict[str, Set[date]]],
     r2_backup_window: Optional[Dict[str, Optional[str]]],
+    r2_history_days: Optional[Dict[str, Set[date]]],
     day_sets: Dict[str, Set[date]],
 ) -> List[Dict[str, Any]]:
     now_utc = now.astimezone(timezone.utc)
@@ -1215,22 +1238,30 @@ def _build_live_storage_coverage_days(
         )
     )
     aqilevels_start = oldest_by_schema.get("uk_aq_aqilevels")
-    r2_start = _parse_iso_day((r2_backup_window or {}).get("min_day_utc"))
-    r2_end = _parse_iso_day((r2_backup_window or {}).get("max_day_utc"))
-    if r2_start and r2_end and r2_end < r2_start:
+    has_explicit_r2_days = isinstance(r2_history_days, dict)
+    r2_observs_days = set((r2_history_days or {}).get("observations") or set())
+    r2_aqilevels_days = set((r2_history_days or {}).get("aqilevels") or set())
+
+    if has_explicit_r2_days and r2_observs_days:
+        r2_start = min(r2_observs_days)
+        r2_end = max(r2_observs_days)
+    else:
+        # Per-day R2 presence is only valid from explicit history-days API results.
+        # Do not infer day presence from broad min/max windows.
         r2_start = None
         r2_end = None
-    latest_r2_sizes = _latest_r2_domain_size_bytes(r2_domain_size_metrics)
-    r2_aqilevels_enabled = latest_r2_sizes.get("aqilevels", 0) > 0
     dropbox_observs_days = set((dropbox_backup_days or {}).get("observations") or set())
     dropbox_aqilevels_days = set((dropbox_backup_days or {}).get("aqilevels") or set())
+    dropbox_all_days = dropbox_observs_days | dropbox_aqilevels_days
+    dropbox_start = min(dropbox_all_days) if dropbox_all_days else None
+    dropbox_end = max(dropbox_all_days) if dropbox_all_days else None
 
-    lower_bounds = [day for day in [ingest_start, observs_start, aqilevels_start, r2_start] if day]
+    lower_bounds = [day for day in [ingest_start, observs_start, aqilevels_start, r2_start, dropbox_start] if day]
     if not lower_bounds:
         return []
     start_day = min(lower_bounds)
     end_day = max(
-        day for day in [today_utc, r2_end] if day is not None
+        day for day in [today_utc, r2_end, dropbox_end] if day is not None
     )
 
     rows: List[Dict[str, Any]] = []
@@ -1257,13 +1288,8 @@ def _build_live_storage_coverage_days(
             and aqilevels_start
             and aqilevels_start <= cursor <= today_utc
         )
-        r2_observs = bool(r2_start and r2_end and r2_start <= cursor <= r2_end)
-        r2_aqilevels = bool(
-            r2_aqilevels_enabled
-            and r2_start
-            and r2_end
-            and r2_start <= cursor <= r2_end
-        )
+        r2_observs = bool(has_explicit_r2_days and cursor in r2_observs_days)
+        r2_aqilevels = bool(has_explicit_r2_days and cursor in r2_aqilevels_days)
         if r2_observs:
             # Top row is mutually exclusive: if archived in R2, do not show ingest red.
             ingest = False
@@ -1314,6 +1340,7 @@ def _get_storage_coverage_days_cached(
     r2_domain_size_metrics: Optional[List[Dict[str, Any]]],
     dropbox_backup_days: Optional[Dict[str, Set[date]]],
     r2_backup_window: Optional[Dict[str, Optional[str]]],
+    r2_history_days: Optional[Dict[str, Set[date]]],
 ) -> List[Dict[str, Any]]:
     now_utc = now.astimezone(timezone.utc)
     with CACHE_LOCK:
@@ -1334,6 +1361,7 @@ def _get_storage_coverage_days_cached(
         r2_domain_size_metrics=r2_domain_size_metrics,
         dropbox_backup_days=dropbox_backup_days,
         r2_backup_window=r2_backup_window,
+        r2_history_days=r2_history_days,
         day_sets=day_sets,
     )
     next_refresh_at = _next_storage_coverage_refresh(now_utc)
@@ -1353,6 +1381,87 @@ def _fetch_storage_day_sets() -> Dict[str, Set[date]]:
     # Keep observs on oldest_observed_at range logic to avoid false positives from pre-created partitions.
     day_sets["obs_aqidb"] = set()
     return day_sets
+
+
+def _fetch_r2_history_days_from_external_api(
+) -> Tuple[
+    Optional[Dict[str, Set[date]]],
+    Optional[Dict[str, Optional[str]]],
+    Optional[str],
+    Optional[str],
+]:
+    api_url = _resolve_r2_history_days_api_url()
+    if not api_url:
+        return None, None, None, "R2 history-days API not configured"
+
+    params: Dict[str, str] = {
+        "max_days": str(R2_HISTORY_DAYS_API_MAX_DAYS),
+    }
+
+    headers: Dict[str, str] = {
+        "Accept": "application/json",
+    }
+    if R2_HISTORY_DAYS_API_TOKEN:
+        headers["Authorization"] = f"Bearer {R2_HISTORY_DAYS_API_TOKEN}"
+
+    try:
+        resp = requests.get(api_url, headers=headers, params=params, timeout=60)
+    except requests.RequestException as exc:
+        return None, None, None, f"R2 history-days API request failed ({exc.__class__.__name__})"
+
+    if not resp.ok:
+        return None, None, None, (
+            f"R2 history-days API HTTP {resp.status_code}: {_safe_response_text(resp)}"
+        )
+
+    try:
+        payload = resp.json()
+    except ValueError:
+        return None, None, None, "R2 history-days API returned non-JSON payload"
+
+    if not isinstance(payload, dict):
+        return None, None, None, "R2 history-days API payload is not an object"
+
+    raw_error = payload.get("error")
+    if isinstance(raw_error, str) and raw_error.strip():
+        return None, None, None, raw_error.strip()
+
+    raw_domains = payload.get("domains")
+    if not isinstance(raw_domains, dict):
+        return None, None, None, "R2 history-days API payload missing domains object"
+
+    day_sets: Dict[str, Set[date]] = {
+        "observations": set(),
+        "aqilevels": set(),
+    }
+    for domain_name in ("observations", "aqilevels"):
+        raw_domain = raw_domains.get(domain_name)
+        if not isinstance(raw_domain, dict):
+            continue
+        raw_days = raw_domain.get("days")
+        if not isinstance(raw_days, list):
+            continue
+        for day_text in raw_days:
+            parsed_day = _parse_iso_day(day_text)
+            if parsed_day is not None:
+                day_sets[domain_name].add(parsed_day)
+
+    observations_days = day_sets["observations"]
+    if observations_days:
+        r2_window = {
+            "min_day_utc": min(observations_days).isoformat(),
+            "max_day_utc": max(observations_days).isoformat(),
+        }
+    else:
+        observations_payload = raw_domains.get("observations")
+        observations_dict = observations_payload if isinstance(observations_payload, dict) else {}
+        r2_window = {
+            "min_day_utc": _normalize_iso_date(observations_dict.get("min_day_utc")),
+            "max_day_utc": _normalize_iso_date(observations_dict.get("max_day_utc")),
+        }
+
+    bucket_value = str(payload.get("bucket") or "").strip() or None
+    return day_sets, r2_window, bucket_value, None
 
 
 def _fetch_r2_backup_window(
@@ -1829,9 +1938,24 @@ def _build_dashboard(
         now,
     )
     r2_usage, r2_usage_error = _get_r2_usage_cached(force_refresh=False)
-    r2_backup_window, r2_backup_window_error = _fetch_r2_backup_window(
+    (
+        r2_history_days,
+        r2_backup_window_from_history_days,
+        r2_history_days_bucket,
+        r2_history_days_error,
+    ) = _fetch_r2_history_days_from_external_api()
+    r2_backup_window_rpc, r2_backup_window_rpc_error = _fetch_r2_backup_window(
         base_url,
         headers,
+    )
+    r2_backup_window = (
+        r2_backup_window_from_history_days
+        if r2_backup_window_from_history_days is not None
+        else r2_backup_window_rpc
+    )
+    r2_backup_window_error = _join_error_messages(
+        r2_history_days_error,
+        r2_backup_window_rpc_error if r2_backup_window_from_history_days is None else None,
     )
     dropbox_backup_days, dropbox_state_path, dropbox_state_error = _load_dropbox_backup_days()
     ingest_runs = _get_ingest_runs_cached(
@@ -2033,6 +2157,7 @@ def _build_dashboard(
         r2_domain_size_metrics=r2_domain_size_metrics,
         dropbox_backup_days=dropbox_backup_days,
         r2_backup_window=r2_backup_window,
+        r2_history_days=r2_history_days,
     )
 
     return {
@@ -2050,6 +2175,8 @@ def _build_dashboard(
         "r2_usage_error": r2_usage_error,
         "r2_backup_window": r2_backup_window,
         "r2_backup_window_error": r2_backup_window_error,
+        "r2_history_days_bucket": r2_history_days_bucket,
+        "r2_history_days_error": r2_history_days_error,
         "dropbox_backup_state_path": dropbox_state_path,
         "dropbox_backup_state_error": dropbox_state_error,
         "storage_coverage_source": "live_per_day_presence",
@@ -2229,9 +2356,24 @@ class DashboardHandler(BaseHTTPRequestHandler):
         try:
             r2_usage, r2_usage_error = _get_r2_usage_cached(force_refresh=force_refresh)
             headers = _postgrest_headers(self.server.service_role_key)
-            r2_backup_window, r2_backup_window_error = _fetch_r2_backup_window(
+            (
+                _r2_history_days,
+                r2_backup_window_from_history_days,
+                r2_history_days_bucket,
+                r2_history_days_error,
+            ) = _fetch_r2_history_days_from_external_api()
+            r2_backup_window_rpc, r2_backup_window_rpc_error = _fetch_r2_backup_window(
                 self.server.base_url,
                 headers,
+            )
+            r2_backup_window = (
+                r2_backup_window_from_history_days
+                if r2_backup_window_from_history_days is not None
+                else r2_backup_window_rpc
+            )
+            r2_backup_window_error = _join_error_messages(
+                r2_history_days_error,
+                r2_backup_window_rpc_error if r2_backup_window_from_history_days is None else None,
             )
         except Exception as exc:
             payload = json.dumps({"error": str(exc)}, indent=2)
@@ -2253,6 +2395,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 "r2_usage_error": r2_usage_error,
                 "r2_backup_window": r2_backup_window,
                 "r2_backup_window_error": r2_backup_window_error,
+                "r2_history_days_bucket": r2_history_days_bucket,
+                "r2_history_days_error": r2_history_days_error,
                 "generated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             },
             indent=2,

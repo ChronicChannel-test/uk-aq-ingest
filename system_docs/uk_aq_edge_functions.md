@@ -469,7 +469,7 @@ curl "https://YOUR_PROJECT.supabase.co/functions/v1/uk_aq_latest?region=London&p
   - no direct `obs_aqidb` table read fallback remains in this endpoint.
   - rows are merged on `observed_at` with ingest rows overriding overlaps.
 - Request flow (exact):
-  1. Website calls Cloudflare cache proxy route `/api/aq/timeseries`.
+  1. Website calls Cloudflare cache proxy route `/api/aq/timeseries` (cache worker code/deploy is owned by `uk-aq-ops`).
   2. Cache proxy maps that route to one upstream edge function: `uk_aq_timeseries`.
   3. `uk_aq_timeseries` calls ingest PostgREST (`SUPABASE_URL/rest/v1`).
   4. Edge function calls `uk_aq_timeseries_rpc` for ingest overlap and calls Observs History R2 API worker for older overlap.

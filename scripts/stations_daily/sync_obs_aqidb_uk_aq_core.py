@@ -407,35 +407,10 @@ def static_source_metadata(table_names: Sequence[str]) -> Tuple[Dict[str, List[C
 
 def load_source_metadata(
     *,
-    src_client: "PostgrestClient",
     schema_sql_path: Path,
     tables: Sequence[str],
 ) -> Tuple[Dict[str, List[ColumnMeta]], Dict[str, List[str]], str]:
-    # Preferred: query source information_schema via RPC when available.
-    try:
-        src_column_rows = src_client.rpc(
-            COLUMNS_RPC,
-            profile=PUBLIC_SCHEMA,
-            args={"p_schema": CORE_SCHEMA, "p_table_names": list(tables)},
-        )
-        src_pk_rows = src_client.rpc(
-            PK_RPC,
-            profile=PUBLIC_SCHEMA,
-            args={"p_schema": CORE_SCHEMA, "p_table_names": list(tables)},
-        )
-        if isinstance(src_column_rows, list) and isinstance(src_pk_rows, list):
-            src_cols, src_pk = build_meta_maps(src_column_rows, src_pk_rows)
-            missing = [t for t in tables if not src_cols.get(t) or not src_pk.get(t)]
-            if not missing:
-                return src_cols, src_pk, "source_rpc"
-            print(
-                f"WARN: source metadata RPC missing required tables {missing}; falling back.",
-                file=sys.stderr,
-            )
-    except SyncError as exc:
-        print(f"WARN: source metadata RPC unavailable: {exc}; falling back.", file=sys.stderr)
-
-    # Fallback: parse source DDL from local schema checkout when available.
+    # Preferred: parse source DDL from local schema checkout when available.
     if schema_sql_path.exists():
         try:
             src_cols, src_pk = parse_source_table_metadata(schema_sql_path, tables)
@@ -831,7 +806,6 @@ def main() -> int:
     )
 
     source_columns, source_pk, source_meta_mode = load_source_metadata(
-        src_client=src_client,
         schema_sql_path=schema_sql_path,
         tables=PRIMARY_TABLES,
     )

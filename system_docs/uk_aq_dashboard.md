@@ -17,10 +17,11 @@ This dashboard is a local service (typically run from `dev_dashboards.sh`), not 
 Browser -> local Python server -> data sources:
 
 1. Supabase PostgREST (ingestdb and obs_aqidb).
-2. Supabase RPC (`uk_aq_rpc_r2_history_window` by default).
-3. External DB size API (optional, if configured).
-4. Cloudflare APIs for R2 account usage.
-5. Local Dropbox checkpoint JSON file (for Dropbox backup status badges).
+2. External DB size API (optional, if configured).
+3. External R2 history-days API (optional, if configured).
+4. Supabase RPC fallback for R2 history window (`uk_aq_rpc_r2_history_window` by default).
+5. Cloudflare APIs for R2 account usage.
+6. Local Dropbox checkpoint JSON file (for Dropbox backup status badges).
 
 ## HTTP Endpoints
 
@@ -114,22 +115,32 @@ How:
 Inputs:
 
 - Latest `oldest_observed_at` from DB/schema metrics.
-- R2 window RPC:
+- R2 committed-day API (preferred):
+  - endpoint: `UK_AQ_R2_HISTORY_DAYS_API_URL` (or derived from `UK_AQ_DB_SIZE_API_URL` as `/v1/r2-history-days`)
+  - bucket is fixed by the Worker environment (`CFLARE_R2_BUCKET`)
+  - only days with `history/v1/(observations|aqilevels)/day_utc=YYYY-MM-DD/manifest.json` are considered present
+- R2 window RPC fallback (when R2 committed-day API is unavailable):
   - default RPC name: `uk_aq_rpc_r2_history_window`
   - env override: `UK_AQ_R2_HISTORY_WINDOW_RPC`
-- Latest R2 domain size samples (`observations`, `aqilevels`).
 - Dropbox checkpoint day maps (local JSON file; details below).
 
 Rules:
 
-- `r2_aqilevels` is only shown if latest `aqilevels` R2 domain size is non-zero.
+- Calendar `r2_observs` / `r2_aqilevels` day presence is only taken from committed-day API per-day lists.
+- If committed-day API is unavailable, calendar does not infer per-day R2 presence from RPC min/max windows.
+- RPC window is still used for the separate R2 history window panel text, not for per-day coverage coloring.
 - Today rendering differs by view:
   - Monthly: today shown as half-width bars.
   - Yearly: today excluded (complete-day model).
 
 ## Dropbox Status in Monthly Calendar
 
-Monthly bars can show a second line (`Dropbox` + icon) when that day/domain exists in backup checkpoint state.
+Monthly bars can show backup state from checkpoint data:
+
+- If R2 history exists and backup exists for that same day/domain:
+  - bar keeps normal R2 color and adds second line (`Backup` + icon).
+- If backup exists but R2 history does not for that day/domain:
+  - bar is white with orange/yellow border and primary label is Dropbox icon + `Backup - Obs` / `Backup - AQI`.
 
 Checkpoint schema used:
 
@@ -207,6 +218,12 @@ DB size / metrics:
 - `OBS_AQIDB_SUPABASE_URL` (optional fallback)
 - `OBS_AQIDB_SECRET_KEY` (optional fallback)
 - `UK_AQ_PUBLIC_SCHEMA` (default `uk_aq_public`)
+
+R2 committed-day API (exact day presence):
+
+- `UK_AQ_R2_HISTORY_DAYS_API_URL` (optional; if unset and `UK_AQ_DB_SIZE_API_URL` is set, dashboard derives `<origin>/v1/r2-history-days`)
+- `UK_AQ_R2_HISTORY_DAYS_API_TOKEN` (optional; defaults to `UK_AQ_DB_SIZE_API_TOKEN`)
+- `UK_AQ_R2_HISTORY_DAYS_API_MAX_DAYS` (default `3660`)
 
 R2 window / usage:
 

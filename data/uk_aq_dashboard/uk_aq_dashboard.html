@@ -600,6 +600,7 @@
         width: 100%;
         height: 100%;
         min-height: 12px;
+        box-sizing: border-box;
         border-radius: 8px;
         overflow: hidden;
       }
@@ -631,6 +632,26 @@
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
+      }
+
+      .coverage-bar-label-primary.with-icon {
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+      }
+
+      .coverage-bar-label-primary-icon {
+        width: 12px;
+        height: 12px;
+        display: inline-block;
+        flex: 0 0 auto;
+      }
+
+      .coverage-bar-label-primary-text {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
 
       .coverage-bar-label.has-secondary .coverage-bar-label-primary {
@@ -673,6 +694,22 @@
 
       .coverage-bar-obsaqi-aqilevels {
         background: var(--color-obsaqi-aqilevels);
+      }
+
+      .coverage-bar-dropbox-only-observs {
+        background: #ffffff;
+        border: 1px solid var(--color-r2-observs);
+      }
+
+      .coverage-bar-dropbox-only-aqilevels {
+        background: #ffffff;
+        border: 1px solid var(--color-r2-aqilevels);
+      }
+
+      .coverage-bar-dropbox-only-observs .coverage-bar-label,
+      .coverage-bar-dropbox-only-aqilevels .coverage-bar-label {
+        color: #000000;
+        text-shadow: none;
       }
 
       .coverage-bar-aqilevels-striped {
@@ -752,6 +789,20 @@
       .coverage-square {
         border-radius: 3px;
         min-height: 0;
+      }
+
+      .coverage-square-dropbox-only-observs,
+      .coverage-square-dropbox-only-aqilevels {
+        background-color: #ffffff;
+        box-sizing: border-box;
+      }
+
+      .coverage-square-dropbox-only-observs {
+        border: 1px solid var(--color-r2-observs);
+      }
+
+      .coverage-square-dropbox-only-aqilevels {
+        border: 1px solid var(--color-r2-aqilevels);
       }
 
       .coverage-square.has-backup-icon {
@@ -2522,7 +2573,7 @@
           ) + 1;
           backupWindowYears = backupWindowDays / 365.25;
         }
-        const backupWindowLabel = `CLOUDFLARE R2 BACKUP WINDOW - ${backupWindowMin} -> ${backupWindowMax} - ${backupWindowDays !== null ? backupWindowDays : "n/a"} Days - ${backupWindowYears !== null ? backupWindowYears.toFixed(1) : "n/a"} Years`;
+        const backupWindowLabel = `CLOUDFLARE R2 HISTORY WINDOW - ${backupWindowMin} -> ${backupWindowMax} - ${backupWindowDays !== null ? backupWindowDays : "n/a"} Days - ${backupWindowYears !== null ? backupWindowYears.toFixed(1) : "n/a"} Years`;
         const getNextR2LimitsResetDate = () => {
           const now = new Date();
           let target = new Date(now.getFullYear(), now.getMonth(), 24);
@@ -2856,6 +2907,15 @@
       function resolveCoverageBarLayers(coverage) {
         let topLayer = coverage.r2Observs
           ? { key: "r2-observs", label: "R2 History - Obs", className: "coverage-bar-r2-observs", dropboxDomain: "observations" }
+          : coverage.dropboxObservs
+            ? {
+                key: "dropbox-observs",
+                label: "Backup - Obs",
+                className: "coverage-bar-dropbox-only-observs",
+                dropboxDomain: "observations",
+                dropboxOnly: true,
+                primaryDropboxIcon: true,
+              }
           : coverage.ingest
             ? { key: "ingest", label: "Ingest DB", className: "coverage-bar-ingest" }
             : null;
@@ -2878,6 +2938,15 @@
             className: "coverage-bar-r2-aqilevels",
             dropboxDomain: "aqilevels",
           };
+        } else if (coverage.dropboxAqilevels) {
+          bottomLayer = {
+            key: "dropbox-aqilevels",
+            label: "Backup - AQI",
+            className: "coverage-bar-dropbox-only-aqilevels",
+            dropboxDomain: "aqilevels",
+            dropboxOnly: true,
+            primaryDropboxIcon: true,
+          };
         } else if (coverage.obsAqiAqilevels) {
           bottomLayer = {
             key: "obsaqi-aqilevels",
@@ -2888,9 +2957,9 @@
         if (
           !middleLayer &&
           topLayer &&
-          topLayer.key === "r2-observs" &&
+          (topLayer.key === "r2-observs" || topLayer.key === "dropbox-observs") &&
           bottomLayer &&
-          bottomLayer.key === "r2-aqilevels"
+          (bottomLayer.key === "r2-aqilevels" || bottomLayer.key === "dropbox-aqilevels")
         ) {
           middleLayer = bottomLayer;
           bottomLayer = null;
@@ -2942,6 +3011,14 @@
             className: "coverage-bar-r2-observs",
             dropboxDomain: "observations",
           };
+        } else if (coverage.dropboxObservs) {
+          slots[2] = {
+            key: "dropbox-observs-bottom",
+            label: "Backup - Obs",
+            className: "coverage-square-dropbox-only-observs",
+            dropboxDomain: "observations",
+            forceBackupIcon: true,
+          };
         }
         if (coverage.r2Aqilevels) {
           slots[3] = {
@@ -2949,6 +3026,14 @@
             label: "R2 History - AQI",
             className: "coverage-bar-r2-aqilevels",
             dropboxDomain: "aqilevels",
+          };
+        } else if (coverage.dropboxAqilevels) {
+          slots[3] = {
+            key: "dropbox-aqilevels-bottom",
+            label: "Backup - AQI",
+            className: "coverage-square-dropbox-only-aqilevels",
+            dropboxDomain: "aqilevels",
+            forceBackupIcon: true,
           };
         }
         return slots;
@@ -2984,7 +3069,7 @@
                   if (!layer) {
                     return '<span class="coverage-square is-empty"></span>';
                   }
-                  const hasBackupIcon = (
+                  const hasBackupIcon = layer.forceBackupIcon || (
                     (layer.dropboxDomain === "observations" && cell.coverage.dropboxObservs) ||
                     (layer.dropboxDomain === "aqilevels" && cell.coverage.dropboxAqilevels)
                   );
@@ -3030,7 +3115,7 @@
         if (isYearMode) {
           const yearStartUtc = new Date(Date.UTC(monthStartUtc.getUTCFullYear(), 0, 1, 0, 0, 0, 0));
           bodyMarkup = renderCoverageYearGrid(yearStartUtc, resolved.rows);
-          footnoteText = "Squares only and complete days only (today excluded). With ingest: red top-left and blue/green on the bottom row. Without ingest: blue/green on top row and R2 orange/yellow on bottom row.";
+          footnoteText = "Squares only and complete days only (today excluded). With ingest: red top-left and blue/green on the bottom row. Without ingest: blue/green on top row and R2 orange/yellow on bottom row. Dropbox-only backup days render as white squares with orange/yellow borders and a blue Dropbox icon.";
         } else {
           const calendarCells = buildCoverageCalendarCells(monthStartUtc, resolved.rows, true);
           const cellsMarkup = calendarCells
@@ -3043,12 +3128,15 @@
               const renderBar = (layer) => {
                 if (!layer) return "";
                 const halfClass = cell.coverage.isToday ? " is-half" : "";
-                const hasDropboxBackup = !cell.coverage.isToday && (
+                const hasDropboxBackup = !cell.coverage.isToday && !layer.dropboxOnly && (
                   (layer.dropboxDomain === "observations" && cell.coverage.dropboxObservs) ||
                   (layer.dropboxDomain === "aqilevels" && cell.coverage.dropboxAqilevels)
                 );
+                const primaryLabelMarkup = layer.primaryDropboxIcon
+                  ? `<span class="coverage-bar-label-primary with-icon"><img class="coverage-bar-label-primary-icon" src="${DASHBOARD_DROPBOX_ICON_PATH}" alt="" aria-hidden="true"><span class="coverage-bar-label-primary-text">${escapeHtml(layer.label)}</span></span>`
+                  : `<span class="coverage-bar-label-primary">${escapeHtml(layer.label)}</span>`;
                 const labelMarkup = !cell.coverage.isToday && !layer.hideLabel && layer.label
-                  ? `<span class="coverage-bar-label${hasDropboxBackup ? " has-secondary" : ""}"><span class="coverage-bar-label-primary">${escapeHtml(layer.label)}</span>${hasDropboxBackup ? `<span class="coverage-bar-label-secondary"><img class="coverage-bar-label-secondary-icon" src="${DASHBOARD_DROPBOX_ICON_PATH}" alt="" aria-hidden="true">Backup</span>` : ""}</span>`
+                  ? `<span class="coverage-bar-label${hasDropboxBackup ? " has-secondary" : ""}">${primaryLabelMarkup}${hasDropboxBackup ? `<span class="coverage-bar-label-secondary"><img class="coverage-bar-label-secondary-icon" src="${DASHBOARD_DROPBOX_ICON_PATH}" alt="" aria-hidden="true">Backup</span>` : ""}</span>`
                   : "";
                 return `<span class="coverage-bar ${layer.className}${halfClass}" title="${escapeHtml(layer.label)}">${labelMarkup}</span>`;
               };
@@ -3069,7 +3157,7 @@
             })
             .join("");
           bodyMarkup = `<div class="coverage-calendar-grid">${cellsMarkup}</div>`;
-          footnoteText = "Top: Ingest DB (red) or R2 History - Obs (orange). Middle: ObsAQI DB - Obs (blue). Bottom: AQI (yellow/green, striped when both R2 + ObsAQI are present). Second line (blue Dropbox icon + Backup) appears only on R2 History bars when that day/domain is copied to Dropbox backup. Today shows half-width bars.";
+          footnoteText = "Top: Ingest DB (red), R2 History - Obs (orange), or Dropbox-only Backup - Obs (white with orange border). Middle: ObsAQI DB - Obs (blue). Bottom: AQI (yellow/green, striped when both R2 + ObsAQI are present) or Dropbox-only Backup - AQI (white with yellow border). R2 bars with Dropbox copy show a second line (blue Dropbox icon + Backup). Today shows half-width bars.";
         }
 
         panel.innerHTML = `

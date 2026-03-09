@@ -262,8 +262,10 @@ Notes:
 
 Data sources used by storage coverage:
 - Ingest/ObsAQI oldest-day bounds: `uk_aq_db_size_metrics_hourly` + `uk_aq_schema_size_metrics_hourly`.
-- R2 History bounds: RPC `uk_aq_public.uk_aq_rpc_r2_history_window` (configurable via `UK_AQ_R2_HISTORY_WINDOW_RPC`).
-- R2 domain presence guard: `uk_aq_r2_domain_size_metrics_hourly` latest non-zero domain series.
+- R2 History exact day presence (preferred): external API `/v1/r2-history-days` (configurable via `UK_AQ_R2_HISTORY_DAYS_API_URL`).
+  - bucket selection is fixed in the Worker env (`CFLARE_R2_BUCKET`).
+- R2 History bounds fallback: RPC `uk_aq_public.uk_aq_rpc_r2_history_window` (configurable via `UK_AQ_R2_HISTORY_WINDOW_RPC`).
+- R2 domain presence guard fallback: `uk_aq_r2_domain_size_metrics_hourly` latest non-zero domain series (used only when exact day presence API is unavailable).
 - Dropbox backup presence (per day/domain): checkpoint JSON `r2_history_backup_state_v1.json` (`domains.<domain>.days.<YYYY-MM-DD>` keys).
 
 Environment:
@@ -274,6 +276,9 @@ Environment:
 - `UK_AQ_DB_SIZE_API_URL` (optional; Cloudflare/API endpoint for DB size metrics fan-in)
 - `UK_AQ_DB_SIZE_API_TOKEN` (optional; bearer token for `UK_AQ_DB_SIZE_API_URL`)
 - `OBS_AQIDB_SUPABASE_URL` / `OBS_AQIDB_SECRET_KEY` (optional direct fallback for `obs_aqidb` DB-size series when `UK_AQ_DB_SIZE_API_URL` is not set/unavailable)
+- `UK_AQ_R2_HISTORY_DAYS_API_URL` (optional; if unset and `UK_AQ_DB_SIZE_API_URL` is set, dashboard derives `<origin>/v1/r2-history-days`)
+- `UK_AQ_R2_HISTORY_DAYS_API_TOKEN` (optional; defaults to `UK_AQ_DB_SIZE_API_TOKEN`)
+- `UK_AQ_R2_HISTORY_DAYS_API_MAX_DAYS` (optional; default `3660`)
 - `UK_AQ_R2_HISTORY_WINDOW_RPC` (optional; default `uk_aq_rpc_r2_history_window`)
 - `UK_AQ_R2_HISTORY_DROPBOX_STATE_FILE` (optional explicit local path to checkpoint JSON; highest priority)
 - `UK_AQ_DROPBOX_LOCAL_ROOT` (optional local Dropbox sync root; default auto-detect: `~/Library/CloudStorage/Dropbox`)
@@ -308,6 +313,7 @@ Behavior:
 - Upserts destination rows by table primary key and hard-deletes destination rows whose PKs no longer exist in ingest.
 - Also syncs FK dependency tables (`observed_properties`, `categories`, `offerings`, `features`, `procedures`) in dependency-safe order so mirrored rows can insert/delete cleanly.
 - Validates destination schema against source metadata (column order/name/type/nullability/default + PK) before any write.
+  Source metadata resolution order: local schema SQL path first, then embedded static metadata fallback.
 - Fails fast (non-zero exit) on schema mismatch or sync errors.
 
 Environment:
@@ -315,7 +321,7 @@ Environment:
 - `SRC_SECRET_KEY`
 - `DST_SUPABASE_URL`
 - `DST_SECRET_KEY`
-- `UK_AQ_INGEST_CORE_SCHEMA_SQL_PATH` (optional local fallback path for source DDL parsing)
+- `UK_AQ_INGEST_CORE_SCHEMA_SQL_PATH` (optional local preferred path for source DDL parsing)
 
 Notes:
 - Destination metadata is read via `uk_aq_public.uk_aq_rpc_info_schema_columns` and `uk_aq_public.uk_aq_rpc_info_schema_primary_keys`.
