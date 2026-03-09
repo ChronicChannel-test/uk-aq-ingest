@@ -280,8 +280,11 @@ Purpose:
 
 Behavior:
 - Reads source rows from ingest via PostgREST (`Accept-Profile`/`Content-Profile: uk_aq_core`).
-- Upserts destination rows by table primary key (`resolution=merge-duplicates` + `on_conflict=<pk>`).
-- Hard-deletes destination rows whose PKs no longer exist in ingest.
+- Uses destination mirror RPCs in `uk_aq_public` (not direct `uk_aq_core` table endpoints):
+  - `uk_aq_rpc_core_table_select`
+  - `uk_aq_rpc_core_table_upsert`
+  - `uk_aq_rpc_core_table_delete_keys`
+- Upserts destination rows by table primary key and hard-deletes destination rows whose PKs no longer exist in ingest.
 - Also syncs FK dependency tables (`observed_properties`, `categories`, `offerings`, `features`, `procedures`) in dependency-safe order so mirrored rows can insert/delete cleanly.
 - Validates destination schema against source metadata (column order/name/type/nullability/default + PK) before any write.
 - Fails fast (non-zero exit) on schema mismatch or sync errors.
@@ -295,8 +298,10 @@ Environment:
 
 Notes:
 - Destination metadata is read via `uk_aq_public.uk_aq_rpc_info_schema_columns` and `uk_aq_public.uk_aq_rpc_info_schema_primary_keys`.
+- Destination `uk_aq_core` does not need to be API-exposed for this script, as long as the mirror RPCs above exist in `uk_aq_public`.
 - Apply agg_daily schema SQL first on Obs AQI DB:
   - `CIC-test-uk-aq-schema/schemas/aqilevels_db/uk_aq_aqilevels_schema.sql`
+  - Focused apply option for mirror RPC updates: `CIC-test-uk-aq-schema/schemas/aqilevels_db/uk_aq_core_mirror_rpcs.sql`
 
 ### `scripts/uk_aq_station_snapshot_local.py`
 Purpose:

@@ -18,8 +18,8 @@ Scope: cross-repo (`CIC-test-uk-aq-ingest`, `CIC-test-uk-aq-ops`, `CIC-test-uk-a
 | 3 | DB/schema rename + consolidation to `obs_aqidb` | Complete | 2026-03-09 |
 | 4 | R2 History contract + manifest-complete rule unification | Complete | 2026-03-08 |
 | 5 | Retention policy refactor (configurable, default 14 days) | In progress | - |
-| 6 | Website/API read-path + dashboard size charts | Complete | 2026-03-09 |
-| 7 | Dropbox incremental backup (manifest-aware daily copy) | Not started | - |
+| 6 | Website/API read-path + dashboard size charts | In progress | - |
+| 7 | Dropbox incremental backup (manifest-aware daily copy) | In progress | - |
 | 8 | Cutover, verification, decommission (`aggdailydb` removal) | Not started | - |
 | 9 | Backfill re-engineering (post hard-cut) | Not started | - |
 
@@ -173,7 +173,7 @@ Delivered in Phase 5 (partial):
   - plus migration file for existing installs.
 
 ### Phase 6: Website/API read-path + dashboard size charts
-Status: Complete
+Status: In progress
 
 Details:
 - Introduce date-based read routing policy (recent from DB, older from R2 History).
@@ -216,13 +216,25 @@ Delivered in Phase 6:
   - removed obsolete edge var usage for timeseries history direct-read schema/page settings.
 
 ### Phase 7: Dropbox incremental backup (manifest-aware daily copy)
-Status: Not started
+Status: In progress
 
 Details:
 - Implement daily R2 History -> Dropbox backup using `rclone`.
 - Copy only newly completed days since last successful backup.
 - Preserve mirrored R2 History layout in Dropbox.
 - Add validation/report script driven by committed manifests and backup checkpoint state.
+
+Delivered in Phase 7 (partial):
+- Added manifest-aware incremental copy script in ops:
+  - `scripts/backup_r2/sync_history_to_dropbox.mjs`
+- Added scheduled GitHub workflow in ops:
+  - `.github/workflows/uk_aq_r2_history_dropbox_backup.yml`
+- Added checkpointed copy contract:
+  - checkpoint default `_ops/checkpoints/r2_history_backup_state_v1.json` under Dropbox backup root
+  - per-domain day copy state for `observations` and `aqilevels`
+- Locked Dropbox layout to exact R2 mirror (no year/month reshaping):
+  - `history/v1/observations/day_utc=YYYY-MM-DD/...`
+  - `history/v1/aqilevels/day_utc=YYYY-MM-DD/...`
 
 Exit criteria:
 - Daily incremental copy works without re-copying full history.
@@ -260,7 +272,7 @@ Exit criteria:
 - No residual legacy naming or legacy-mode behavior in active backfill runtime paths.
 
 ## Next Phase To Execute
-Recommended immediate next phase: execute Phase 5 retention policy refactor (configurable 14-day defaults for `uk_aq_observs` and `uk_aq_aqilevels`).
+Recommended immediate next phase: complete Phase 7 rollout and verification (first successful scheduled Dropbox incremental backup + checkpoint/state validation), then return to Phase 6 soak checks and Phase 8 cutover/decommission gates.
 
 ## Locked Dashboard Scope (2026-03-08)
 - Keep DB line chart, but only for full DB cluster sizes: `ingestdb` and `obs_aqidb`.

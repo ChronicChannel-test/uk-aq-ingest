@@ -3,8 +3,10 @@
 
 Sync semantics:
 - Source of truth rows are read from ingest via PostgREST.
-- Destination rows are upserted by primary key.
-- Destination rows missing from source are hard-deleted by primary key.
+- Destination rows are mirrored via `uk_aq_public` RPCs that operate on
+  `uk_aq_core` internally.
+- Destination rows are upserted by primary key and hard-deleted when missing
+  from source.
 
 Tables synced (dependency order):
 1) connectors
@@ -61,10 +63,12 @@ PUBLIC_SCHEMA = "uk_aq_public"
 
 PAGE_SIZE = 1000
 UPSERT_BATCH_SIZE = 500
-DELETE_BATCH_SIZE = 250
 
 COLUMNS_RPC = "uk_aq_rpc_info_schema_columns"
 PK_RPC = "uk_aq_rpc_info_schema_primary_keys"
+CORE_SELECT_RPC = "uk_aq_rpc_core_table_select"
+CORE_UPSERT_RPC = "uk_aq_rpc_core_table_upsert"
+CORE_DELETE_KEYS_RPC = "uk_aq_rpc_core_table_delete_keys"
 
 # Static source metadata fallback copied from ingest uk_aq_core DDL
 # (`schemas/ingest_db/uk_aq_core_schema.sql`) for the four mirrored tables.
@@ -214,17 +218,6 @@ def normalize_default(value: Optional[str]) -> Optional[str]:
     text = re.sub(r"::[a-zA-Z_][a-zA-Z0-9_\.\[\]]*", "", text)
     text = re.sub(r"\s+", " ", text).strip()
     return text.lower()
-
-
-def format_filter_literal(value: Any) -> str:
-    if value is None:
-        return "null"
-    if isinstance(value, bool):
-        return "true" if value else "false"
-    if isinstance(value, (int, float)) and not isinstance(value, bool):
-        return str(value)
-    text = str(value).replace("\\", "\\\\").replace('"', '\\"')
-    return f'"{text}"'
 
 
 def parse_udt_from_column_def(column_def: str) -> str:
@@ -455,6 +448,10 @@ def load_source_metadata(
     return src_cols, src_pk, "embedded_static"
 
 
+def is_missing_rpc_error(message: str) -> bool:
+    return "PGRST202" in message or "Could not find the function" in message
+
+
 class PostgrestClient:
     def __init__(
         self,
@@ -509,10 +506,9 @@ class PostgrestClient:
             # Supabase/PostgREST returns 406 PGRST106 when schema is not exposed.
             if response.status_code == 406 and "PGRST106" in body and f"Invalid schema: {CORE_SCHEMA}" in body:
                 raise SyncError(
-                    "Destination project API does not expose schema "
-                    f"'{CORE_SCHEMA}'. Add '{CORE_SCHEMA}' to Supabase API "
-                    f"Exposed schemas for the destination ({self.project_label}) project, "
-                    "then re-run this workflow."
+                    f"Project API does not expose schema '{CORE_SCHEMA}' for "
+                    f"{self.project_label}. Add '{CORE_SCHEMA}' to Supabase API "
+                    "Exposed schemas for that project, or use uk_aq_public mirror RPCs."
                 )
             raise SyncError(
                 f"PostgREST {method} {path} failed ({response.status_code}): {body or response.reason}"
@@ -554,42 +550,6 @@ class PostgrestClient:
 
         return rows
 
-    def upsert_rows(
-        self,
-        table: str,
-        *,
-        profile: str,
-        rows: Sequence[Dict[str, Any]],
-        on_conflict: str,
-    ) -> None:
-        if not rows:
-            return
-        self.request_json(
-            "POST",
-            f"/rest/v1/{table}",
-            profile=profile,
-            params={"on_conflict": on_conflict},
-            payload=list(rows),
-            extra_headers={"Prefer": "resolution=merge-duplicates,return=minimal"},
-            timeout=120,
-        )
-
-    def delete_where(
-        self,
-        table: str,
-        *,
-        profile: str,
-        params: Dict[str, str],
-    ) -> None:
-        self.request_json(
-            "DELETE",
-            f"/rest/v1/{table}",
-            profile=profile,
-            params=params,
-            extra_headers={"Prefer": "return=minimal"},
-            timeout=120,
-        )
-
     def rpc(self, name: str, *, profile: str, args: Dict[str, Any]) -> Any:
         return self.request_json(
             "POST",
@@ -598,6 +558,141 @@ class PostgrestClient:
             payload=args,
             timeout=60,
         )
+
+    def fetch_core_rows_via_rpc(
+        self,
+        table: str,
+        *,
+        select_columns: Optional[Sequence[str]] = None,
+        order_columns: Optional[Sequence[str]] = None,
+        page_size: int = PAGE_SIZE,
+    ) -> List[Dict[str, Any]]:
+        rows: List[Dict[str, Any]] = []
+        offset = 0
+        while True:
+            try:
+                payload = self.rpc(
+                    CORE_SELECT_RPC,
+                    profile=PUBLIC_SCHEMA,
+                    args={
+                        "p_table_name": table,
+                        "p_select_columns": list(select_columns) if select_columns else None,
+                        "p_order_columns": list(order_columns) if order_columns else None,
+                        "p_limit": page_size,
+                        "p_offset": offset,
+                    },
+                )
+            except SyncError as exc:
+                message = str(exc)
+                if is_missing_rpc_error(message):
+                    raise SyncError(
+                        "Destination core mirror RPCs are missing. Ensure destination DB exposes "
+                        "uk_aq_public.uk_aq_rpc_core_table_select(text, text[], text[], integer, integer), "
+                        "uk_aq_public.uk_aq_rpc_core_table_upsert(text, jsonb, text[]), and "
+                        "uk_aq_public.uk_aq_rpc_core_table_delete_keys(text, text[], jsonb)."
+                    ) from exc
+                raise
+
+            if not isinstance(payload, list):
+                raise SyncError(
+                    f"Expected list payload from {CORE_SELECT_RPC} for {table}, got {type(payload).__name__}"
+                )
+
+            batch: List[Dict[str, Any]] = []
+            for item in payload:
+                if not isinstance(item, dict):
+                    raise SyncError(
+                        f"{CORE_SELECT_RPC} returned non-object row for {table}: {type(item).__name__}"
+                    )
+                row = item.get("row_data")
+                if not isinstance(row, dict):
+                    raise SyncError(
+                        f"{CORE_SELECT_RPC} returned invalid row_data for {table}: {json.dumps(item, sort_keys=True)}"
+                    )
+                batch.append(row)
+
+            rows.extend(batch)
+            if len(batch) < page_size:
+                break
+            offset += len(batch)
+
+        return rows
+
+    def upsert_core_rows_via_rpc(
+        self,
+        table: str,
+        *,
+        rows: Sequence[Dict[str, Any]],
+        on_conflict_columns: Sequence[str],
+    ) -> int:
+        if not rows:
+            return 0
+        try:
+            payload = self.rpc(
+                CORE_UPSERT_RPC,
+                profile=PUBLIC_SCHEMA,
+                args={
+                    "p_table_name": table,
+                    "p_rows": list(rows),
+                    "p_on_conflict_columns": list(on_conflict_columns),
+                },
+            )
+        except SyncError as exc:
+            message = str(exc)
+            if is_missing_rpc_error(message):
+                raise SyncError(
+                    "Destination core mirror RPCs are missing. Ensure destination DB exposes "
+                    "uk_aq_public.uk_aq_rpc_core_table_select(text, text[], text[], integer, integer), "
+                    "uk_aq_public.uk_aq_rpc_core_table_upsert(text, jsonb, text[]), and "
+                    "uk_aq_public.uk_aq_rpc_core_table_delete_keys(text, text[], jsonb)."
+                ) from exc
+            raise
+        return extract_single_count(payload, "rows_upserted", CORE_UPSERT_RPC, table)
+
+    def delete_core_keys_via_rpc(
+        self,
+        table: str,
+        *,
+        pk_columns: Sequence[str],
+        keys: Sequence[Dict[str, Any]],
+    ) -> int:
+        if not keys:
+            return 0
+        try:
+            payload = self.rpc(
+                CORE_DELETE_KEYS_RPC,
+                profile=PUBLIC_SCHEMA,
+                args={
+                    "p_table_name": table,
+                    "p_pk_columns": list(pk_columns),
+                    "p_keys": list(keys),
+                },
+            )
+        except SyncError as exc:
+            message = str(exc)
+            if is_missing_rpc_error(message):
+                raise SyncError(
+                    "Destination core mirror RPCs are missing. Ensure destination DB exposes "
+                    "uk_aq_public.uk_aq_rpc_core_table_select(text, text[], text[], integer, integer), "
+                    "uk_aq_public.uk_aq_rpc_core_table_upsert(text, jsonb, text[]), and "
+                    "uk_aq_public.uk_aq_rpc_core_table_delete_keys(text, text[], jsonb)."
+                ) from exc
+            raise
+        return extract_single_count(payload, "rows_deleted", CORE_DELETE_KEYS_RPC, table)
+
+
+def extract_single_count(payload: Any, key: str, rpc_name: str, table: str) -> int:
+    if not isinstance(payload, list) or len(payload) != 1 or not isinstance(payload[0], dict):
+        raise SyncError(
+            f"{rpc_name} returned unexpected payload for {table}: {json.dumps(payload, sort_keys=True)}"
+        )
+    value = payload[0].get(key)
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError) as exc:
+        raise SyncError(
+            f"{rpc_name} returned non-integer {key} for {table}: {json.dumps(payload[0], sort_keys=True)}"
+        ) from exc
 
 
 def build_meta_maps(
@@ -706,43 +801,6 @@ def pk_tuple(row: Dict[str, Any], pk_columns: Sequence[str]) -> Tuple[Any, ...]:
     return tuple(row.get(col) for col in pk_columns)
 
 
-def delete_missing_rows(
-    *,
-    client: PostgrestClient,
-    table: str,
-    profile: str,
-    pk_columns: Sequence[str],
-    missing_keys: Sequence[Tuple[Any, ...]],
-) -> int:
-    if not missing_keys:
-        return 0
-
-    deleted = 0
-
-    if len(pk_columns) == 1:
-        pk_col = pk_columns[0]
-        values = [key[0] for key in missing_keys]
-        for batch in chunks(values, DELETE_BATCH_SIZE):
-            in_values = ",".join(format_filter_literal(v) for v in batch)
-            client.delete_where(
-                table,
-                profile=profile,
-                params={pk_col: f"in.({in_values})"},
-            )
-            deleted += len(batch)
-        return deleted
-
-    # Composite PK fallback: per-row delete with AND filters.
-    for key in missing_keys:
-        params: Dict[str, str] = {}
-        for col, value in zip(pk_columns, key):
-            params[col] = f"eq.{format_filter_literal(value)}"
-        client.delete_where(table, profile=profile, params=params)
-        deleted += 1
-
-    return deleted
-
-
 def main() -> int:
     src_url = required_env("SRC_SUPABASE_URL")
     src_key = required_env("SRC_SECRET_KEY")
@@ -792,7 +850,7 @@ def main() -> int:
         )
     except SyncError as exc:
         message = str(exc)
-        if "PGRST202" in message or "Could not find the function" in message:
+        if is_missing_rpc_error(message):
             raise SyncError(
                 "Destination metadata RPCs are missing. Ensure destination DB exposes "
                 "uk_aq_public.uk_aq_rpc_info_schema_columns(text, text[]) and "
@@ -835,19 +893,17 @@ def main() -> int:
 
         source_count = len(source_rows)
         for batch in chunks(source_rows, UPSERT_BATCH_SIZE):
-            dst_client.upsert_rows(
+            dst_client.upsert_core_rows_via_rpc(
                 table,
-                profile=CORE_SCHEMA,
                 rows=batch,
-                on_conflict=",".join(pk_columns),
+                on_conflict_columns=pk_columns,
             )
 
         source_pk_set = {pk_tuple(row, pk_columns) for row in source_rows}
-        dst_pk_rows_before_delete = dst_client.fetch_all_rows(
+        dst_pk_rows_before_delete = dst_client.fetch_core_rows_via_rpc(
             table,
-            profile=CORE_SCHEMA,
-            select=",".join(pk_columns),
-            order=order_expr,
+            select_columns=pk_columns,
+            order_columns=pk_columns,
         )
         dest_pk_set = {pk_tuple(row, pk_columns) for row in dst_pk_rows_before_delete}
         missing_by_table[table] = sorted(dest_pk_set - source_pk_set)
@@ -865,21 +921,22 @@ def main() -> int:
         pk_columns = dest_pk.get(table, [])
         if not pk_columns:
             raise SyncError(f"{table}: no destination PK columns found for delete phase")
-        order_expr = ",".join(f"{col}.asc" for col in pk_columns)
+        missing_keys = missing_by_table.get(table, [])
+        missing_key_rows = [
+            {col: value for col, value in zip(pk_columns, key)}
+            for key in missing_keys
+        ]
 
-        deleted = delete_missing_rows(
-            client=dst_client,
+        deleted = dst_client.delete_core_keys_via_rpc(
             table=table,
-            profile=CORE_SCHEMA,
             pk_columns=pk_columns,
-            missing_keys=missing_by_table.get(table, []),
+            keys=missing_key_rows,
         )
 
-        dst_pk_rows_after_delete = dst_client.fetch_all_rows(
+        dst_pk_rows_after_delete = dst_client.fetch_core_rows_via_rpc(
             table,
-            profile=CORE_SCHEMA,
-            select=",".join(pk_columns),
-            order=order_expr,
+            select_columns=pk_columns,
+            order_columns=pk_columns,
         )
         table_stats[table]["deleted"] = deleted
         table_stats[table]["destination_row_count_after_sync"] = len(dst_pk_rows_after_delete)
