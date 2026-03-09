@@ -600,7 +600,7 @@
         width: 100%;
         height: 100%;
         min-height: 12px;
-        border-radius: 999px;
+        border-radius: 8px;
         overflow: hidden;
       }
 
@@ -609,17 +609,50 @@
       }
 
       .coverage-bar-label {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: flex-start;
+        width: 100%;
+        height: 100%;
+        padding: 2px 8px;
+        color: #ffffff;
+        font-size: 12px;
+        font-weight: 700;
+        line-height: 1.1;
+        overflow: hidden;
+        text-shadow: 0 1px 1px rgba(0, 0, 0, 0.45);
+        pointer-events: none;
+      }
+
+      .coverage-bar-label-primary {
         display: block;
         width: 100%;
-        padding: 0 8px;
-        color: #ffffff;
-        font-size: 10px;
-        font-weight: 700;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
-        text-shadow: 0 1px 1px rgba(0, 0, 0, 0.45);
-        pointer-events: none;
+      }
+
+      .coverage-bar-label.has-secondary .coverage-bar-label-primary {
+        font-size: 12px;
+      }
+
+      .coverage-bar-label-secondary {
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+        margin-top: 1px;
+        font-size: 12px;
+        font-weight: 700;
+        line-height: 1;
+        white-space: nowrap;
+        opacity: 0.95;
+      }
+
+      .coverage-bar-label-secondary-icon {
+        width: 12px;
+        height: 12px;
+        display: inline-block;
       }
 
       .coverage-bar-ingest {
@@ -719,6 +752,13 @@
       .coverage-square {
         border-radius: 3px;
         min-height: 0;
+      }
+
+      .coverage-square.has-backup-icon {
+        background-image: url("/assets/dropbox-icon.svg");
+        background-repeat: no-repeat;
+        background-position: center;
+        background-size: 88% 88%;
       }
 
       .coverage-square.is-empty {
@@ -1057,6 +1097,7 @@
       const COLOR_R2_AQILEVELS = "#F4C04B";
       const COLOR_OBSAQI_OBSERVS = "#3C82F5";
       const COLOR_OBSAQI_AQILEVELS = "#61D836";
+      const DASHBOARD_DROPBOX_ICON_PATH = "/assets/dropbox-icon.svg";
       const STORAGE_COVERAGE_MONTH_STORAGE_KEY = "uk_aq_storage_coverage_month";
       const STORAGE_COVERAGE_MODE_STORAGE_KEY = "uk_aq_storage_coverage_mode";
       const STORAGE_COVERAGE_MODE_VALUES = new Set(["month", "year"]);
@@ -2698,13 +2739,19 @@
               : Boolean(row && row.observs);
             const obsAqiAqilevels = row && row.obs_aqi_aqilevels !== undefined
               ? Boolean(row.obs_aqi_aqilevels)
-              : obsAqiObservs;
+              : Boolean(row && row.aqilevels);
             const r2Observs = row && row.r2_observs !== undefined
               ? Boolean(row.r2_observs)
               : Boolean(row && row.r2);
             const r2Aqilevels = row && row.r2_aqilevels !== undefined
               ? Boolean(row.r2_aqilevels)
-              : r2Observs;
+              : false;
+            const dropboxObservs = row && row.dropbox_observs !== undefined
+              ? Boolean(row.dropbox_observs)
+              : false;
+            const dropboxAqilevels = row && row.dropbox_aqilevels !== undefined
+              ? Boolean(row.dropbox_aqilevels)
+              : false;
             const ingest = Boolean(row && row.ingest) && !r2Observs;
             return {
               date: toUtcDateKey(dateObj),
@@ -2713,6 +2760,8 @@
               obsAqiAqilevels,
               r2Observs,
               r2Aqilevels,
+              dropboxObservs,
+              dropboxAqilevels,
               isToday: Boolean(row && row.isToday),
             };
           })
@@ -2750,6 +2799,8 @@
             obsAqiAqilevels: false,
             r2Observs: false,
             r2Aqilevels: false,
+            dropboxObservs: false,
+            dropboxAqilevels: false,
             isToday: dateKey === todayKey,
           };
           const isToday = Boolean(row.isToday) || dateKey === todayKey;
@@ -2767,6 +2818,8 @@
               obsAqiAqilevels: showCoverage && Boolean(row.obsAqiAqilevels),
               r2Observs: showCoverage && Boolean(row.r2Observs),
               r2Aqilevels: showCoverage && Boolean(row.r2Aqilevels),
+              dropboxObservs: showCoverage && Boolean(row.dropboxObservs),
+              dropboxAqilevels: showCoverage && Boolean(row.dropboxAqilevels),
               isToday,
             },
           });
@@ -2780,47 +2833,55 @@
           sources.push("Ingest DB");
         }
         if (coverage.r2Observs) {
-          sources.push("R2 History - Observs");
+          sources.push("R2 History - Obs");
         }
         if (coverage.r2Aqilevels) {
-          sources.push("R2 History - AQI Levels");
+          sources.push("R2 History - AQI");
         }
         if (coverage.obsAqiObservs) {
-          sources.push("ObsAQI DB - Observs");
+          sources.push("ObsAQI DB - Obs");
         }
         if (coverage.obsAqiAqilevels) {
-          sources.push("ObsAQI DB - AQI Levels");
+          sources.push("ObsAQI DB - AQI");
+        }
+        if (coverage.dropboxObservs) {
+          sources.push("Backup - Obs");
+        }
+        if (coverage.dropboxAqilevels) {
+          sources.push("Backup - AQI");
         }
         return sources;
       }
 
       function resolveCoverageBarLayers(coverage) {
         let topLayer = coverage.r2Observs
-          ? { key: "r2-observs", label: "R2 History - Observs", className: "coverage-bar-r2-observs" }
+          ? { key: "r2-observs", label: "R2 History - Obs", className: "coverage-bar-r2-observs", dropboxDomain: "observations" }
           : coverage.ingest
             ? { key: "ingest", label: "Ingest DB", className: "coverage-bar-ingest" }
             : null;
         let middleLayer = coverage.obsAqiObservs
-          ? { key: "obsaqi-observs", label: "ObsAQI DB - Observs", className: "coverage-bar-obsaqi-observs" }
+          ? { key: "obsaqi-observs", label: "ObsAQI DB - Obs", className: "coverage-bar-obsaqi-observs" }
           : null;
         let bottomLayer = null;
         if (coverage.r2Aqilevels && coverage.obsAqiAqilevels) {
           bottomLayer = {
             key: "aqilevels-striped",
-            label: "AQI Levels (R2 History + ObsAQI DB)",
+            label: "R2 History - AQI + ObsAQI DB - AQI",
             className: "coverage-bar-aqilevels-striped",
+            dropboxDomain: "aqilevels",
             hideLabel: true,
           };
         } else if (coverage.r2Aqilevels) {
           bottomLayer = {
             key: "r2-aqilevels",
-            label: "R2 History - AQI Levels",
+            label: "R2 History - AQI",
             className: "coverage-bar-r2-aqilevels",
+            dropboxDomain: "aqilevels",
           };
         } else if (coverage.obsAqiAqilevels) {
           bottomLayer = {
             key: "obsaqi-aqilevels",
-            label: "ObsAQI DB - AQI Levels",
+            label: "ObsAQI DB - AQI",
             className: "coverage-bar-obsaqi-aqilevels",
           };
         }
@@ -2847,14 +2908,14 @@
           if (coverage.obsAqiObservs) {
             slots[2] = {
               key: "obsaqi-observs-bottom",
-              label: "ObsAQI DB - Observs",
+              label: "ObsAQI DB - Obs",
               className: "coverage-bar-obsaqi-observs",
             };
           }
           if (coverage.obsAqiAqilevels) {
             slots[3] = {
               key: "obsaqi-aqilevels-bottom",
-              label: "ObsAQI DB - AQI Levels",
+              label: "ObsAQI DB - AQI",
               className: "coverage-bar-obsaqi-aqilevels",
             };
           }
@@ -2863,29 +2924,31 @@
         if (coverage.obsAqiObservs) {
           slots[0] = {
             key: "obsaqi-observs-top",
-            label: "ObsAQI DB - Observs",
+            label: "ObsAQI DB - Obs",
             className: "coverage-bar-obsaqi-observs",
           };
         }
         if (coverage.obsAqiAqilevels) {
           slots[1] = {
             key: "obsaqi-aqilevels-top",
-            label: "ObsAQI DB - AQI Levels",
+            label: "ObsAQI DB - AQI",
             className: "coverage-bar-obsaqi-aqilevels",
           };
         }
         if (coverage.r2Observs) {
           slots[2] = {
             key: "r2-observs-bottom",
-            label: "R2 History - Observs",
+            label: "R2 History - Obs",
             className: "coverage-bar-r2-observs",
+            dropboxDomain: "observations",
           };
         }
         if (coverage.r2Aqilevels) {
           slots[3] = {
             key: "r2-aqilevels-bottom",
-            label: "R2 History - AQI Levels",
+            label: "R2 History - AQI",
             className: "coverage-bar-r2-aqilevels",
+            dropboxDomain: "aqilevels",
           };
         }
         return slots;
@@ -2921,7 +2984,13 @@
                   if (!layer) {
                     return '<span class="coverage-square is-empty"></span>';
                   }
-                  return `<span class="coverage-square ${layer.className}" title="${escapeHtml(layer.label)}"></span>`;
+                  const hasBackupIcon = (
+                    (layer.dropboxDomain === "observations" && cell.coverage.dropboxObservs) ||
+                    (layer.dropboxDomain === "aqilevels" && cell.coverage.dropboxAqilevels)
+                  );
+                  const backupClass = hasBackupIcon ? " has-backup-icon" : "";
+                  const squareTitle = hasBackupIcon ? `${layer.label} • Backup` : layer.label;
+                  return `<span class="coverage-square ${layer.className}${backupClass}" title="${escapeHtml(squareTitle)}"></span>`;
                 })
                 .join("");
               return `
@@ -2974,8 +3043,12 @@
               const renderBar = (layer) => {
                 if (!layer) return "";
                 const halfClass = cell.coverage.isToday ? " is-half" : "";
+                const hasDropboxBackup = !cell.coverage.isToday && (
+                  (layer.dropboxDomain === "observations" && cell.coverage.dropboxObservs) ||
+                  (layer.dropboxDomain === "aqilevels" && cell.coverage.dropboxAqilevels)
+                );
                 const labelMarkup = !cell.coverage.isToday && !layer.hideLabel && layer.label
-                  ? `<span class="coverage-bar-label">${escapeHtml(layer.label)}</span>`
+                  ? `<span class="coverage-bar-label${hasDropboxBackup ? " has-secondary" : ""}"><span class="coverage-bar-label-primary">${escapeHtml(layer.label)}</span>${hasDropboxBackup ? `<span class="coverage-bar-label-secondary"><img class="coverage-bar-label-secondary-icon" src="${DASHBOARD_DROPBOX_ICON_PATH}" alt="" aria-hidden="true">Backup</span>` : ""}</span>`
                   : "";
                 return `<span class="coverage-bar ${layer.className}${halfClass}" title="${escapeHtml(layer.label)}">${labelMarkup}</span>`;
               };
@@ -2996,7 +3069,7 @@
             })
             .join("");
           bodyMarkup = `<div class="coverage-calendar-grid">${cellsMarkup}</div>`;
-          footnoteText = "Top: Ingest DB (red) or R2 History - Observs (orange). Middle: ObsAQI DB - Observs (blue). Bottom: AQI Levels (yellow/green, striped when both R2 + ObsAQI are present). Today shows half-width bars.";
+          footnoteText = "Top: Ingest DB (red) or R2 History - Obs (orange). Middle: ObsAQI DB - Obs (blue). Bottom: AQI (yellow/green, striped when both R2 + ObsAQI are present). Second line (blue Dropbox icon + Backup) appears only on R2 History bars when that day/domain is copied to Dropbox backup. Today shows half-width bars.";
         }
 
         panel.innerHTML = `

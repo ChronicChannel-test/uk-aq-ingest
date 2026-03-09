@@ -240,6 +240,7 @@ Environment:
 ### `scripts/uk_aq_dashboard_local.py`
 Purpose:
 - Run a local dashboard server that exposes PM2.5, PM10, and NO2 freshness buckets (timeseries last_value_at).
+- Full system documentation: `system_docs/uk_aq_dashboard.md`.
 
 Common commands:
 ```
@@ -249,13 +250,21 @@ python3 scripts/uk_aq_dashboard_local.py --port 8045
 Notes:
 - Serves the UI at `http://127.0.0.1:8045` and JSON at `/api/dashboard`.
 - The HTML lives at `data/uk_aq_dashboard/uk_aq_dashboard.html`.
+- Local dashboard assets under `data/uk_aq_dashboard/` are served via `/assets/...` (for example `/assets/dropbox-icon.svg`).
 - Storage coverage calendar includes a `Force Refresh` button (left of `Previous`) that calls `/api/dashboard?force=1` to bypass server cache and rebuild calendar rows immediately.
 - Storage coverage calendar includes a `Today` button (between the `Monthly/Yearly` selector and `Force Refresh`) that jumps to the current UTC month in monthly mode and current UTC year in yearly mode.
 - Storage coverage calendar has a `Monthly`/`Yearly` view selector. Monthly view keeps the 3-row labeled bars (top `Ingest DB` or `R2 History - Observs`, middle `ObsAQI DB - Observs` with the R2 2-box middle-shift rule, and AQI levels on bottom with yellow/green striping only when both AQI sources are present), and today is rendered with half-width bars (no labels). Yearly view shows per-day 2x2 colored squares without labels/day numbers and weekday letters `M T W T F S S` above each month.
+- Monthly bars are left-aligned with reduced corner radius; when a day/domain exists in the Dropbox checkpoint state, that bar shows a second line (`Dropbox` + icon). If no Dropbox day record exists, the bar remains single-line.
 - Yearly mode excludes today (`complete days only`), so no colored squares are rendered for the current UTC day.
 - Dispatcher feed shows gap-station context for OpenAQ runs as `(<n> GAP)` under Stations when `gap_stations_polled > 0`.
 - Includes a DB cluster size panel with period selector (`6h`, `12h`, `24h`, `48h`, `7d`, `14d`, `28d`): line chart for `ingestdb` + `obs_aqidb` cluster MB (dynamic Y max), schema stacked area chart for `uk_aq_observs` + `uk_aq_aqilevels` MB, and R2 History domain stacked area chart for `observations` + `aqilevels` MB; missing series values render as `0`, stacked charts expose full-height bucket hover tooltips showing both series plus their total at the hovered datetime, the schema oldest-day legend row is `uk_aq_observs >= DD/MM/YYYY   uk_aq_aqilevels >= DD/MM/YYYY`, and calendar/chart colors are fixed to: ingest red `#FE2E2E`, R2 observations orange `#F48021`, R2 AQI levels yellow `#F4C04B`, ObsAQI observations blue `#3C82F5`, ObsAQI AQI levels green `#61D836`.
 - Requires a service role key (anon/authenticated JWTs will be rejected).
+
+Data sources used by storage coverage:
+- Ingest/ObsAQI oldest-day bounds: `uk_aq_db_size_metrics_hourly` + `uk_aq_schema_size_metrics_hourly`.
+- R2 History bounds: RPC `uk_aq_public.uk_aq_rpc_r2_history_window` (configurable via `UK_AQ_R2_HISTORY_WINDOW_RPC`).
+- R2 domain presence guard: `uk_aq_r2_domain_size_metrics_hourly` latest non-zero domain series.
+- Dropbox backup presence (per day/domain): checkpoint JSON `r2_history_backup_state_v1.json` (`domains.<domain>.days.<YYYY-MM-DD>` keys).
 
 Environment:
 - `SUPABASE_URL`
@@ -266,8 +275,20 @@ Environment:
 - `UK_AQ_DB_SIZE_API_TOKEN` (optional; bearer token for `UK_AQ_DB_SIZE_API_URL`)
 - `OBS_AQIDB_SUPABASE_URL` / `OBS_AQIDB_SECRET_KEY` (optional direct fallback for `obs_aqidb` DB-size series when `UK_AQ_DB_SIZE_API_URL` is not set/unavailable)
 - `UK_AQ_R2_HISTORY_WINDOW_RPC` (optional; default `uk_aq_rpc_r2_history_window`)
+- `UK_AQ_R2_HISTORY_DROPBOX_STATE_FILE` (optional explicit local path to checkpoint JSON; highest priority)
+- `UK_AQ_DROPBOX_LOCAL_ROOT` (optional local Dropbox sync root; default auto-detect: `~/Library/CloudStorage/Dropbox`)
+- `UK_AQ_DROPBOX_APP_FOLDER` (optional app-folder name under `.../Dropbox/Apps/`; if unset dashboard scans app folders)
+- `UK_AQ_DROPBOX_ROOT` (optional; default `CIC-Test`; used to build checkpoint path under local Dropbox root)
+- `UK_AQ_R2_HISTORY_DROPBOX_DIR` (optional; default `R2_history_backup`)
+- `UK_AQ_R2_HISTORY_BACKUP_STATE_REL_PATH` (optional; default `_ops/checkpoints/r2_history_backup_state_v1.json`)
 - `UK_AQ_COVERAGE_DAY_FETCH_LIMIT` (optional; default `1000`, page size for per-day coverage fetches)
 - `UK_AQ_AQILEVELS_COVERAGE_DAYS_VIEW` (optional; default `uk_aq_station_aqi_daily`)
+
+Dropbox checkpoint local path resolution (for monthly bar second-line status):
+- First: `UK_AQ_R2_HISTORY_DROPBOX_STATE_FILE` if set.
+- Otherwise: `<UK_AQ_DROPBOX_LOCAL_ROOT>/<UK_AQ_DROPBOX_ROOT>/<UK_AQ_R2_HISTORY_DROPBOX_DIR>/<UK_AQ_R2_HISTORY_BACKUP_STATE_REL_PATH>`.
+- Also checks app-folder layouts: `<UK_AQ_DROPBOX_LOCAL_ROOT>/Apps/<app>/<UK_AQ_DROPBOX_ROOT>/<UK_AQ_R2_HISTORY_DROPBOX_DIR>/<UK_AQ_R2_HISTORY_BACKUP_STATE_REL_PATH>` (prefers `github-uk-air-quality-networks`).
+- If no checkpoint file is found/readable, the dashboard omits Dropbox second-line labels.
 
 ### `scripts/stations_daily/sync_obs_aqidb_uk_aq_core.py`
 Purpose:

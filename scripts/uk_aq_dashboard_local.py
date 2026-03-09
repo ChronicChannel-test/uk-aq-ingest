@@ -58,6 +58,19 @@ OBS_AQIDB_SUPABASE_URL = str(os.getenv("OBS_AQIDB_SUPABASE_URL") or "").strip()
 OBS_AQIDB_SECRET_KEY = str(os.getenv("OBS_AQIDB_SECRET_KEY") or "").strip()
 PUBLIC_SCHEMA = os.getenv("UK_AQ_PUBLIC_SCHEMA", "uk_aq_public")
 R2_BACKUP_WINDOW_RPC = os.getenv("UK_AQ_R2_HISTORY_WINDOW_RPC", "uk_aq_rpc_r2_history_window")
+UK_AQ_DROPBOX_ROOT = str(os.getenv("UK_AQ_DROPBOX_ROOT") or "CIC-Test").strip()
+UK_AQ_DROPBOX_LOCAL_ROOT = str(os.getenv("UK_AQ_DROPBOX_LOCAL_ROOT") or "").strip()
+UK_AQ_DROPBOX_APP_FOLDER = str(os.getenv("UK_AQ_DROPBOX_APP_FOLDER") or "").strip()
+UK_AQ_R2_HISTORY_DROPBOX_DIR = str(
+    os.getenv("UK_AQ_R2_HISTORY_DROPBOX_DIR") or "R2_history_backup"
+).strip()
+UK_AQ_R2_HISTORY_BACKUP_STATE_REL_PATH = str(
+    os.getenv("UK_AQ_R2_HISTORY_BACKUP_STATE_REL_PATH")
+    or "_ops/checkpoints/r2_history_backup_state_v1.json"
+).strip()
+UK_AQ_R2_HISTORY_DROPBOX_STATE_FILE = str(
+    os.getenv("UK_AQ_R2_HISTORY_DROPBOX_STATE_FILE") or ""
+).strip()
 IN_FLIGHT_WARN_MINUTES = 5
 IN_FLIGHT_MAX_AGE_MINUTES = 180
 SCHEDULER_BACKEND_SUPABASE_FUNCTION = "supabase_function"
@@ -1004,6 +1017,103 @@ def _parse_iso_day(value: Any) -> Optional[date]:
         return None
 
 
+def _candidate_dropbox_state_paths() -> List[Path]:
+    candidates: List[Path] = []
+    seen: Set[str] = set()
+
+    def add_candidate(raw_path: Optional[Path]) -> None:
+        if raw_path is None:
+            return
+        expanded = raw_path.expanduser()
+        key = str(expanded)
+        if key in seen:
+            return
+        seen.add(key)
+        candidates.append(expanded)
+
+    if UK_AQ_R2_HISTORY_DROPBOX_STATE_FILE:
+        add_candidate(Path(UK_AQ_R2_HISTORY_DROPBOX_STATE_FILE))
+
+    local_roots: List[Path] = []
+    if UK_AQ_DROPBOX_LOCAL_ROOT:
+        local_roots.append(Path(UK_AQ_DROPBOX_LOCAL_ROOT))
+    default_local_root = Path.home() / "Library" / "CloudStorage" / "Dropbox"
+    if default_local_root.exists():
+        local_roots.append(default_local_root)
+
+    remote_root = UK_AQ_DROPBOX_ROOT.strip().strip("/")
+    history_dir = UK_AQ_R2_HISTORY_DROPBOX_DIR.strip().strip("/")
+    state_rel_path = UK_AQ_R2_HISTORY_BACKUP_STATE_REL_PATH.strip().strip("/")
+
+    def add_from_base(base_root: Path) -> None:
+        path_parts: List[str] = [str(base_root)]
+        if remote_root:
+            path_parts.append(remote_root)
+        if history_dir:
+            path_parts.append(history_dir)
+        if state_rel_path:
+            path_parts.append(state_rel_path)
+        add_candidate(Path(*path_parts))
+
+    for local_root in local_roots:
+        # Full-access Dropbox paths (for example ~/Library/CloudStorage/Dropbox/CIC-Test/...).
+        add_from_base(local_root)
+
+        # App-folder Dropbox paths (for example ~/Library/CloudStorage/Dropbox/Apps/github-uk-air-quality-networks/CIC-Test/...).
+        apps_root = local_root / "Apps"
+        if UK_AQ_DROPBOX_APP_FOLDER:
+            add_from_base(apps_root / UK_AQ_DROPBOX_APP_FOLDER)
+            continue
+        if not apps_root.is_dir():
+            continue
+
+        preferred_app_path = apps_root / "github-uk-air-quality-networks"
+        if preferred_app_path.is_dir():
+            add_from_base(preferred_app_path)
+        try:
+            app_dirs = sorted(
+                child
+                for child in apps_root.iterdir()
+                if child.is_dir() and child != preferred_app_path
+            )
+        except OSError:
+            app_dirs = []
+        for app_dir in app_dirs:
+            add_from_base(app_dir)
+
+    return candidates
+
+
+def _load_dropbox_backup_days() -> Tuple[Dict[str, Set[date]], Optional[str], Optional[str]]:
+    domain_days: Dict[str, Set[date]] = {
+        "observations": set(),
+        "aqilevels": set(),
+    }
+    for candidate in _candidate_dropbox_state_paths():
+        if not candidate.is_file():
+            continue
+        try:
+            raw_state = json.loads(candidate.read_text(encoding="utf-8"))
+        except Exception as exc:  # noqa: BLE001
+            return domain_days, str(candidate), f"Dropbox checkpoint parse failed ({exc.__class__.__name__})"
+        if not isinstance(raw_state, dict):
+            return domain_days, str(candidate), "Dropbox checkpoint is not a JSON object"
+        raw_domains = raw_state.get("domains")
+        domains = raw_domains if isinstance(raw_domains, dict) else {}
+        for domain_name in ("observations", "aqilevels"):
+            raw_domain = domains.get(domain_name)
+            if not isinstance(raw_domain, dict):
+                continue
+            raw_day_map = raw_domain.get("days")
+            day_map = raw_day_map if isinstance(raw_day_map, dict) else {}
+            for day_text in day_map.keys():
+                parsed_day = _parse_iso_day(day_text)
+                if parsed_day is not None:
+                    domain_days[domain_name].add(parsed_day)
+        return domain_days, str(candidate), None
+    return domain_days, None, None
+
+
 def _latest_oldest_day_by_label(
     db_size_metrics: Optional[List[Dict[str, Any]]],
 ) -> Dict[str, Optional[date]]:
@@ -1052,10 +1162,38 @@ def _latest_oldest_day_by_schema(
     }
 
 
+def _latest_r2_domain_size_bytes(
+    r2_domain_size_metrics: Optional[List[Dict[str, Any]]],
+) -> Dict[str, int]:
+    latest_sizes: Dict[str, Tuple[datetime, int]] = {}
+    for row in r2_domain_size_metrics or []:
+        domain_name = str((row or {}).get("domain_name") or "").strip().lower()
+        if domain_name not in {"observations", "aqilevels"}:
+            continue
+        bucket_hour = _parse_timestamp((row or {}).get("bucket_hour"))
+        if bucket_hour is None:
+            continue
+        try:
+            size_bytes = int((row or {}).get("size_bytes"))
+        except (TypeError, ValueError):
+            continue
+        size_bytes = max(0, size_bytes)
+        current = latest_sizes.get(domain_name)
+        if current is None or bucket_hour >= current[0]:
+            latest_sizes[domain_name] = (bucket_hour, size_bytes)
+
+    return {
+        "observations": latest_sizes.get("observations", (UTC_DATETIME_MIN, 0))[1],
+        "aqilevels": latest_sizes.get("aqilevels", (UTC_DATETIME_MIN, 0))[1],
+    }
+
+
 def _build_live_storage_coverage_days(
     now: datetime,
     db_size_metrics: Optional[List[Dict[str, Any]]],
     schema_size_metrics: Optional[List[Dict[str, Any]]],
+    r2_domain_size_metrics: Optional[List[Dict[str, Any]]],
+    dropbox_backup_days: Optional[Dict[str, Set[date]]],
     r2_backup_window: Optional[Dict[str, Optional[str]]],
     day_sets: Dict[str, Set[date]],
 ) -> List[Dict[str, Any]]:
@@ -1082,6 +1220,10 @@ def _build_live_storage_coverage_days(
     if r2_start and r2_end and r2_end < r2_start:
         r2_start = None
         r2_end = None
+    latest_r2_sizes = _latest_r2_domain_size_bytes(r2_domain_size_metrics)
+    r2_aqilevels_enabled = latest_r2_sizes.get("aqilevels", 0) > 0
+    dropbox_observs_days = set((dropbox_backup_days or {}).get("observations") or set())
+    dropbox_aqilevels_days = set((dropbox_backup_days or {}).get("aqilevels") or set())
 
     lower_bounds = [day for day in [ingest_start, observs_start, aqilevels_start, r2_start] if day]
     if not lower_bounds:
@@ -1116,19 +1258,17 @@ def _build_live_storage_coverage_days(
             and aqilevels_start <= cursor <= today_utc
         )
         r2_observs = bool(r2_start and r2_end and r2_start <= cursor <= r2_end)
-        r2_aqilevels_start = (
-            max(r2_start, aqilevels_start)
-            if r2_start and aqilevels_start
-            else None
-        )
         r2_aqilevels = bool(
-            r2_aqilevels_start
+            r2_aqilevels_enabled
+            and r2_start
             and r2_end
-            and r2_aqilevels_start <= cursor <= r2_end
+            and r2_start <= cursor <= r2_end
         )
         if r2_observs:
             # Top row is mutually exclusive: if archived in R2, do not show ingest red.
             ingest = False
+        dropbox_observs = cursor in dropbox_observs_days
+        dropbox_aqilevels = cursor in dropbox_aqilevels_days
 
         rows.append(
             {
@@ -1140,6 +1280,8 @@ def _build_live_storage_coverage_days(
                 "obs_aqi_aqilevels": obs_aqi_aqilevels,
                 "r2_observs": r2_observs,
                 "r2_aqilevels": r2_aqilevels,
+                "dropbox_observs": dropbox_observs,
+                "dropbox_aqilevels": dropbox_aqilevels,
                 "isToday": cursor == today_utc,
             }
         )
@@ -1169,6 +1311,8 @@ def _get_storage_coverage_days_cached(
     service_role_key: str,
     db_size_metrics: Optional[List[Dict[str, Any]]],
     schema_size_metrics: Optional[List[Dict[str, Any]]],
+    r2_domain_size_metrics: Optional[List[Dict[str, Any]]],
+    dropbox_backup_days: Optional[Dict[str, Set[date]]],
     r2_backup_window: Optional[Dict[str, Optional[str]]],
 ) -> List[Dict[str, Any]]:
     now_utc = now.astimezone(timezone.utc)
@@ -1187,6 +1331,8 @@ def _get_storage_coverage_days_cached(
         now=now_utc,
         db_size_metrics=db_size_metrics,
         schema_size_metrics=schema_size_metrics,
+        r2_domain_size_metrics=r2_domain_size_metrics,
+        dropbox_backup_days=dropbox_backup_days,
         r2_backup_window=r2_backup_window,
         day_sets=day_sets,
     )
@@ -1687,6 +1833,7 @@ def _build_dashboard(
         base_url,
         headers,
     )
+    dropbox_backup_days, dropbox_state_path, dropbox_state_error = _load_dropbox_backup_days()
     ingest_runs = _get_ingest_runs_cached(
         base_url,
         headers,
@@ -1883,6 +2030,8 @@ def _build_dashboard(
         service_role_key=service_role_key,
         db_size_metrics=db_size_metrics,
         schema_size_metrics=schema_size_metrics,
+        r2_domain_size_metrics=r2_domain_size_metrics,
+        dropbox_backup_days=dropbox_backup_days,
         r2_backup_window=r2_backup_window,
     )
 
@@ -1901,6 +2050,8 @@ def _build_dashboard(
         "r2_usage_error": r2_usage_error,
         "r2_backup_window": r2_backup_window,
         "r2_backup_window_error": r2_backup_window_error,
+        "dropbox_backup_state_path": dropbox_state_path,
+        "dropbox_backup_state_error": dropbox_state_error,
         "storage_coverage_source": "live_per_day_presence",
         "storage_coverage_days": storage_coverage_days,
         "pollutants": pollutants_payload,
@@ -1964,6 +2115,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
         if parsed.path in ("/", "/index.html"):
             self._serve_html()
             return
+        if parsed.path.startswith("/assets/"):
+            self._serve_asset(parsed.path[len("/assets/"):])
+            return
         if parsed.path == "/api/r2_metrics":
             self._serve_r2_metrics(parsed)
             return
@@ -1997,6 +2151,34 @@ class DashboardHandler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(content.encode("utf-8"))
+
+    def _serve_asset(self, relative_path: str) -> None:
+        safe_relative = relative_path.strip().lstrip("/")
+        if not safe_relative:
+            self.send_error(HTTPStatus.NOT_FOUND)
+            return
+        root_dir = self.server.html_path.parent.resolve()
+        asset_path = (root_dir / safe_relative).resolve()
+        try:
+            asset_path.relative_to(root_dir)
+        except ValueError:
+            self.send_error(HTTPStatus.NOT_FOUND)
+            return
+        if not asset_path.is_file():
+            self.send_error(HTTPStatus.NOT_FOUND)
+            return
+
+        if asset_path.suffix.lower() == ".svg":
+            content_type = "image/svg+xml"
+        elif asset_path.suffix.lower() == ".png":
+            content_type = "image/png"
+        else:
+            content_type = "application/octet-stream"
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(asset_path.read_bytes())
 
     def _serve_dashboard(self, parsed) -> None:
         dispatch_cursor: Optional[datetime] = None
