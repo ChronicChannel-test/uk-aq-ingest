@@ -250,9 +250,9 @@ Notes:
 - Serves the UI at `http://127.0.0.1:8045` and JSON at `/api/dashboard`.
 - The HTML lives at `data/uk_aq_dashboard/uk_aq_dashboard.html`.
 - Storage coverage calendar includes a `Force Refresh` button (left of `Previous`) that calls `/api/dashboard?force=1` to bypass server cache and rebuild calendar rows immediately.
-- Storage coverage uses per-day presence for aggdaily (`uk_aq_public.uk_aq_station_aqi_daily`), keeps ingest/history on `oldest_observed_at` range logic, makes top-row ingest/R2 mutually exclusive (R2 takes precedence), and refreshes automatically at 05:00 UTC daily (or immediately via `Force Refresh`).
+- Storage coverage calendar renders three rows with labeled bars (except today's half-width bars): top `Ingest DB` or `R2 History - Observs`, middle `ObsAQI DB - Observs` (or `R2 History - AQI Levels` when only the two R2 boxes are present), and bottom AQI-levels layer (`R2 History - AQI Levels`, `ObsAQI DB - AQI Levels`, or yellow/green striped when both are present).
 - Dispatcher feed shows gap-station context for OpenAQ runs as `(<n> GAP)` under Stations when `gap_stations_polled > 0`.
-- Includes a DB cluster size panel with period selector (`6h`, `12h`, `24h`, `48h`, `7d`, `14d`, `28d`): line chart for `ingestdb` + `obs_aqidb` cluster MB (dynamic Y max), schema stacked area chart for `uk_aq_observs` + `uk_aq_aqilevels` MB, and R2 History domain stacked area chart for `observations` + `aqilevels` MB; missing series values render as `0`, and the schema oldest-day legend row is `uk_aq_observs >= DD/MM/YYYY   uk_aq_aqilevels >= DD/MM/YYYY`.
+- Includes a DB cluster size panel with period selector (`6h`, `12h`, `24h`, `48h`, `7d`, `14d`, `28d`): line chart for `ingestdb` + `obs_aqidb` cluster MB (dynamic Y max), schema stacked area chart for `uk_aq_observs` + `uk_aq_aqilevels` MB, and R2 History domain stacked area chart for `observations` + `aqilevels` MB; missing series values render as `0`, the schema oldest-day legend row is `uk_aq_observs >= DD/MM/YYYY   uk_aq_aqilevels >= DD/MM/YYYY`, and calendar/chart colors are fixed to: ingest red `#FE2E2E`, R2 observations orange `#F48021`, R2 AQI levels yellow `#F4C04B`, ObsAQI observations blue `#3C82F5`, ObsAQI AQI levels green `#61D836`.
 - Requires a service role key (anon/authenticated JWTs will be rejected).
 
 Environment:

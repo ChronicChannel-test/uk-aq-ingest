@@ -1028,28 +1028,62 @@ def _latest_oldest_day_by_label(
     }
 
 
+def _latest_oldest_day_by_schema(
+    schema_size_metrics: Optional[List[Dict[str, Any]]],
+) -> Dict[str, Optional[date]]:
+    latest_rows: Dict[str, Tuple[datetime, Optional[date]]] = {}
+    for row in schema_size_metrics or []:
+        schema_name = str((row or {}).get("schema_name") or "").strip().lower()
+        if schema_name not in {"uk_aq_observs", "uk_aq_aqilevels"}:
+            continue
+        bucket_hour = _parse_timestamp((row or {}).get("bucket_hour"))
+        recorded_at = _parse_timestamp((row or {}).get("recorded_at"))
+        sample_ts = bucket_hour or recorded_at
+        if sample_ts is None:
+            continue
+        oldest_day = _parse_iso_day((row or {}).get("oldest_observed_at"))
+        current = latest_rows.get(schema_name)
+        if current is None or sample_ts >= current[0]:
+            latest_rows[schema_name] = (sample_ts, oldest_day)
+
+    return {
+        "uk_aq_observs": latest_rows.get("uk_aq_observs", (UTC_DATETIME_MIN, None))[1],
+        "uk_aq_aqilevels": latest_rows.get("uk_aq_aqilevels", (UTC_DATETIME_MIN, None))[1],
+    }
+
+
 def _build_live_storage_coverage_days(
     now: datetime,
     db_size_metrics: Optional[List[Dict[str, Any]]],
+    schema_size_metrics: Optional[List[Dict[str, Any]]],
     r2_backup_window: Optional[Dict[str, Optional[str]]],
     day_sets: Dict[str, Set[date]],
 ) -> List[Dict[str, Any]]:
     now_utc = now.astimezone(timezone.utc)
     today_utc = now_utc.date()
     oldest_by_label = _latest_oldest_day_by_label(db_size_metrics)
+    oldest_by_schema = _latest_oldest_day_by_schema(schema_size_metrics)
 
     ingest_days = set(day_sets.get("ingestdb") or set())
     observs_days = set(day_sets.get("obs_aqidb") or set())
 
     ingest_start = min(ingest_days) if ingest_days else oldest_by_label.get("ingestdb")
-    observs_start = min(observs_days) if observs_days else oldest_by_label.get("obs_aqidb")
+    observs_start = (
+        min(observs_days)
+        if observs_days
+        else (
+            oldest_by_schema.get("uk_aq_observs")
+            or oldest_by_label.get("obs_aqidb")
+        )
+    )
+    aqilevels_start = oldest_by_schema.get("uk_aq_aqilevels")
     r2_start = _parse_iso_day((r2_backup_window or {}).get("min_day_utc"))
     r2_end = _parse_iso_day((r2_backup_window or {}).get("max_day_utc"))
     if r2_start and r2_end and r2_end < r2_start:
         r2_start = None
         r2_end = None
 
-    lower_bounds = [day for day in [ingest_start, observs_start, r2_start] if day]
+    lower_bounds = [day for day in [ingest_start, observs_start, aqilevels_start, r2_start] if day]
     if not lower_bounds:
         return []
     start_day = min(lower_bounds)
@@ -1076,8 +1110,23 @@ def _build_live_storage_coverage_days(
                 else (observs_start and observs_start <= cursor <= today_utc)
             )
         )
-        r2 = bool(r2_start and r2_end and r2_start <= cursor <= r2_end)
-        if r2:
+        obs_aqi_aqilevels = bool(
+            cursor <= today_utc
+            and aqilevels_start
+            and aqilevels_start <= cursor <= today_utc
+        )
+        r2_observs = bool(r2_start and r2_end and r2_start <= cursor <= r2_end)
+        r2_aqilevels_start = (
+            max(r2_start, aqilevels_start)
+            if r2_start and aqilevels_start
+            else None
+        )
+        r2_aqilevels = bool(
+            r2_aqilevels_start
+            and r2_end
+            and r2_aqilevels_start <= cursor <= r2_end
+        )
+        if r2_observs:
             # Top row is mutually exclusive: if archived in R2, do not show ingest red.
             ingest = False
 
@@ -1086,7 +1135,11 @@ def _build_live_storage_coverage_days(
                 "date": cursor.isoformat(),
                 "ingest": ingest,
                 "observs": observs,
-                "r2": r2,
+                "r2": r2_observs,
+                "obs_aqi_observs": observs,
+                "obs_aqi_aqilevels": obs_aqi_aqilevels,
+                "r2_observs": r2_observs,
+                "r2_aqilevels": r2_aqilevels,
                 "isToday": cursor == today_utc,
             }
         )
@@ -1115,6 +1168,7 @@ def _get_storage_coverage_days_cached(
     base_url: str,
     service_role_key: str,
     db_size_metrics: Optional[List[Dict[str, Any]]],
+    schema_size_metrics: Optional[List[Dict[str, Any]]],
     r2_backup_window: Optional[Dict[str, Optional[str]]],
 ) -> List[Dict[str, Any]]:
     now_utc = now.astimezone(timezone.utc)
@@ -1132,6 +1186,7 @@ def _get_storage_coverage_days_cached(
     rows = _build_live_storage_coverage_days(
         now=now_utc,
         db_size_metrics=db_size_metrics,
+        schema_size_metrics=schema_size_metrics,
         r2_backup_window=r2_backup_window,
         day_sets=day_sets,
     )
@@ -1827,6 +1882,7 @@ def _build_dashboard(
         base_url=base_url,
         service_role_key=service_role_key,
         db_size_metrics=db_size_metrics,
+        schema_size_metrics=schema_size_metrics,
         r2_backup_window=r2_backup_window,
     )
 

@@ -1,6 +1,6 @@
 # obs_aqidb Refactor Phase Plan
 
-Last updated: 2026-03-08
+Last updated: 2026-03-09
 Scope: cross-repo (`CIC-test-uk-aq-ingest`, `CIC-test-uk-aq-ops`, `CIC-test-uk-aq-schema`)
 
 ## Refactor Policy
@@ -15,9 +15,9 @@ Scope: cross-repo (`CIC-test-uk-aq-ingest`, `CIC-test-uk-aq-ops`, `CIC-test-uk-a
 | 0 | Repo archive / rollback safety | Complete | 2026-03-08 |
 | 1 | Cross-repo inventory + naming contract freeze | Complete | 2026-03-08 |
 | 2 | Hard-cut rename prep (runtime/config/workflow map) | Complete | 2026-03-08 |
-| 3 | DB/schema rename + consolidation to `obs_aqidb` | In progress | - |
+| 3 | DB/schema rename + consolidation to `obs_aqidb` | Complete | 2026-03-09 |
 | 4 | R2 History contract + manifest-complete rule unification | Complete | 2026-03-08 |
-| 5 | Retention policy refactor (configurable, default 14 days) | Not started | - |
+| 5 | Retention policy refactor (configurable, default 14 days) | In progress | - |
 | 6 | Website/API read-path + dashboard size charts | Not started | - |
 | 7 | Dropbox incremental backup (manifest-aware daily copy) | Not started | - |
 | 8 | Cutover, verification, decommission (`aggdailydb` removal) | Not started | - |
@@ -76,7 +76,7 @@ Delivered in Phase 2:
 - Env target CSVs updated for ingest + ops GitHub secrets/variables sync scripts.
 
 ### Phase 3: DB/schema rename + consolidation to `obs_aqidb`
-Status: In progress
+Status: Complete
 
 Details:
 - Create/migrate target DB state to `obs_aqidb`.
@@ -146,7 +146,7 @@ Delivered in Phase 4:
 - Kept existing R2 hourly domain-size metrics path for both domains (`observations`, `aqilevels`) aligned to `history/v1/*`.
 
 ### Phase 5: Retention policy refactor (configurable, default 14 days)
-Status: Not started
+Status: In progress
 
 Details:
 - Add separate configurable retention controls for:
@@ -158,6 +158,19 @@ Details:
 Exit criteria:
 - Retention values configurable without code edits.
 - Retention deletions gated by committed-day safety logic.
+
+Delivered in Phase 5 (partial):
+- Hard-cut observs retention env/runtime naming in ops:
+  - removed legacy observs retention env/runtime names from active code/config/docs.
+  - new observs retention control: `OBS_AQIDB_OBSERVS_RETENTION_DAYS` (code default `14`).
+- Added new AQI levels retention service in ops:
+  - worker: `workers/uk_aq_aqilevels_retention_service/server.mjs`
+  - deploy workflow: `.github/workflows/uk_aq_aqilevels_retention_cloud_run_deploy.yml`
+  - scheduler default: `15 3 * * *` UTC (`03:15`).
+- Added AQI levels retention RPCs in schema:
+  - `uk_aq_rpc_aqilevels_drop_candidates(date)`
+  - `uk_aq_rpc_aqilevels_drop_day(date)`
+  - plus migration file for existing installs.
 
 ### Phase 6: Website/API read-path + dashboard size charts
 Status: Not started
