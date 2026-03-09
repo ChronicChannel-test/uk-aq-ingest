@@ -464,22 +464,20 @@ curl "https://YOUR_PROJECT.supabase.co/functions/v1/uk_aq_latest?region=London&p
 - Read path:
   - request interval is split at `now - 7 days` (ingest is source of truth for recent overlap).
   - recent overlap is read from ingest RPC `uk_aq_timeseries_rpc`.
-  - older overlap is read directly from history project PostgREST (`OBS_AQIDB_SUPABASE_URL/rest/v1/observations`, schema `uk_aq_history`).
-  - history read schema resolution order is:
-    `OBS_AQIDB_READ_SCHEMA` -> `uk_aq_history`.
-  - if resolved schema is `uk_aq_public` or `public`, the function auto-switches to `uk_aq_history` for direct table reads.
-  - if direct history read is unavailable, older overlap is skipped and the response remains ingest-only.
+  - older overlap is read from the Observs History R2 API worker (`UK_AQ_OBSERVS_HISTORY_R2_API_URL`) using committed manifests only.
+  - edge resolves `connector_id` from ingest `uk_aq_core.timeseries` and sends `timeseries_id + connector_id + start_utc/end_utc` to the worker.
+  - no direct `obs_aqidb` table read fallback remains in this endpoint.
   - rows are merged on `observed_at` with ingest rows overriding overlaps.
 - Request flow (exact):
   1. Website calls Cloudflare cache proxy route `/api/aq/timeseries`.
   2. Cache proxy maps that route to one upstream edge function: `uk_aq_timeseries`.
   3. `uk_aq_timeseries` calls ingest PostgREST (`SUPABASE_URL/rest/v1`).
-  4. Edge function calls `uk_aq_timeseries_rpc` for ingest overlap and reads history rows from history project PostgREST for any older overlap.
+  4. Edge function calls `uk_aq_timeseries_rpc` for ingest overlap and calls Observs History R2 API worker for older overlap.
   5. Edge function merges rows, returns one payload to Cloudflare, Cloudflare returns one payload to website.
 - Important architecture note:
-  - Cloudflare worker does not directly call both DB projects.
-  - Cloudflare calls one edge function (`uk_aq_timeseries`), and that edge function performs the DB reads.
-  - If history direct-read config is unavailable, endpoint falls back to ingest-only output (no hard failure).
+  - Cloudflare worker does not directly call DB or R2 history workers.
+  - Cloudflare calls one edge function (`uk_aq_timeseries`), then edge performs ingest RPC read + R2 history API read.
+  - Missing `UK_AQ_OBSERVS_HISTORY_R2_API_URL` is treated as runtime error when an older overlap read is required.
 - Conditional requests: supports `If-None-Match`; returns `304 Not Modified` with `ETag` when payload is unchanged.
 - Cache-Control: success responses use `public, max-age=60, s-maxage=300, stale-while-revalidate=300, stale-if-error=86400`; errors use `no-store`.
 - Egress observability: sampled success responses plus all `304`/`4xx`/`5xx`
@@ -551,8 +549,8 @@ Optional:
 - `UK_AQ_CORE_SCHEMA` (defaults to `uk_aq_core`; used for PostgREST profile headers)
 - `UK_AQ_RAW_SCHEMA` (defaults to `uk_aq_raw`; used for raw tables like `error_logs` and checkpoint tables)
 - `OBS_AQIDB_RPC_SCHEMA` (optional; default `uk_aq_public`; schema used by history RPC/write paths)
-- `OBS_AQIDB_READ_SCHEMA` (optional; default `uk_aq_history`; schema used by `uk_aq_timeseries` direct history reads)
-- `UK_AQ_TIMESERIES_HISTORY_PAGE_SIZE` (optional; default `1000`; per-page row fetch size for `uk_aq_timeseries` direct history reads, capped at `5000`)
+- `UK_AQ_OBSERVS_HISTORY_R2_API_URL` (required for older-window `uk_aq_timeseries` reads; Observs History R2 worker URL)
+- `UK_AQ_OBSERVS_HISTORY_R2_API_TIMEOUT_MS` (optional; default `10000`; timeout for edge-to-R2-history API requests)
 - `OBSERVS_OUTBOX_CLOUD_RUN_MAX_BATCHES` (optional; defaults to `30`; Cloud Run outbox batches per run)
 - `OBSERVS_OUTBOX_CLOUD_RUN_CLAIM_BATCH_LIMIT` (optional; defaults to `20`; outbox claim size per batch in Cloud Run)
 - `OBSERVS_OUTBOX_CLOUD_RUN_BUDGET_SECONDS` (optional; defaults to `540`; Cloud Run runtime budget)

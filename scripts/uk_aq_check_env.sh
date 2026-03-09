@@ -68,7 +68,11 @@ obs_aqi_vars=(
   OBS_AQIDB_SUPABASE_URL
   OBS_AQIDB_SUPABASE_PROJECT_REF
   OBS_AQIDB_RPC_SCHEMA
-  OBS_AQIDB_READ_SCHEMA
+)
+
+edge_api_vars=(
+  UK_AQ_EDGE_UPSTREAM_SECRET
+  UK_AQ_OBSERVS_HISTORY_R2_API_URL
 )
 
 failures=0
@@ -149,6 +153,7 @@ echo "Env file: $ENV_FILE"
 
 check_presence_group "Main" "${main_vars[@]}"
 check_presence_group "Obs AQI DB" "${obs_aqi_vars[@]}"
+check_presence_group "Edge API routing" "${edge_api_vars[@]}"
 if [[ -z "${SB_SECRET_KEY:-}" ]]; then
   fail "Main key check: set SB_SECRET_KEY"
 fi

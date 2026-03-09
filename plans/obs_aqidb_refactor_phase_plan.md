@@ -18,7 +18,7 @@ Scope: cross-repo (`CIC-test-uk-aq-ingest`, `CIC-test-uk-aq-ops`, `CIC-test-uk-a
 | 3 | DB/schema rename + consolidation to `obs_aqidb` | Complete | 2026-03-09 |
 | 4 | R2 History contract + manifest-complete rule unification | Complete | 2026-03-08 |
 | 5 | Retention policy refactor (configurable, default 14 days) | In progress | - |
-| 6 | Website/API read-path + dashboard size charts | Not started | - |
+| 6 | Website/API read-path + dashboard size charts | Complete | 2026-03-09 |
 | 7 | Dropbox incremental backup (manifest-aware daily copy) | Not started | - |
 | 8 | Cutover, verification, decommission (`aggdailydb` removal) | Not started | - |
 | 9 | Backfill re-engineering (post hard-cut) | Not started | - |
@@ -173,7 +173,7 @@ Delivered in Phase 5 (partial):
   - plus migration file for existing installs.
 
 ### Phase 6: Website/API read-path + dashboard size charts
-Status: Not started
+Status: Complete
 
 Details:
 - Introduce date-based read routing policy (recent from DB, older from R2 History).
@@ -200,6 +200,20 @@ Exit criteria:
 - Historical reads no longer depend on removed legacy names/schemas.
 - Verified serving correctness for boundary dates and overlap window.
 - Dashboard renders all three size charts with new contracts and no legacy labels.
+
+Delivered in Phase 6:
+- Hard-cut `uk_aq_timeseries` old-window read routing:
+  - removed direct `obs_aqidb` observations table reads from edge runtime.
+  - old-window reads now call Observs History R2 API (`UK_AQ_OBSERVS_HISTORY_R2_API_URL`).
+  - ingest still serves recent overlap via `uk_aq_timeseries_rpc`; merged rows remain ingest-preferred on overlap.
+- Added connector-aware R2 history read worker in ops:
+  - worker: `workers/uk_aq_observs_history_r2_api_worker/worker.mjs`
+  - route contract: `GET /v1/observations` (`timeseries_id`, `connector_id`, `start_utc`, `end_utc`, optional `since_utc`, `limit`)
+  - completion contract: serves only manifest-committed days (`history/v1/observations/day_utc=.../manifest.json`).
+  - deployment workflow: `.github/workflows/uk_aq_observs_history_r2_api_worker_deploy.yml`
+- Updated runtime/env contract:
+  - ingest new env vars: `UK_AQ_OBSERVS_HISTORY_R2_API_URL` (+ optional timeout `UK_AQ_OBSERVS_HISTORY_R2_API_TIMEOUT_MS`).
+  - removed obsolete edge var usage for timeseries history direct-read schema/page settings.
 
 ### Phase 7: Dropbox incremental backup (manifest-aware daily copy)
 Status: Not started

@@ -32,25 +32,22 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ??
   "";
 const SB_SECRET_KEY = Deno.env.get("SB_SECRET_KEY") ?? "";
 const SUPABASE_PRIVILEGED_KEY = SB_SECRET_KEY;
-const OBS_AQIDB_SUPABASE_URL = Deno.env.get("OBS_AQIDB_SUPABASE_URL") ??
-  "";
-const OBS_AQIDB_SECRET_KEY = Deno.env.get("OBS_AQIDB_SECRET_KEY") ?? "";
+const EDGE_UPSTREAM_SECRET = Deno.env.get("UK_AQ_EDGE_UPSTREAM_SECRET") ?? "";
+const OBSERVS_HISTORY_R2_API_URL = String(
+  Deno.env.get("UK_AQ_OBSERVS_HISTORY_R2_API_URL") ?? "",
+).trim();
+const OBSERVS_HISTORY_R2_API_TIMEOUT_MS = Math.max(
+  2000,
+  Math.min(
+    30000,
+    parsePositiveInteger(Deno.env.get("UK_AQ_OBSERVS_HISTORY_R2_API_TIMEOUT_MS")) ??
+      10000,
+  ),
+);
 const UK_AQ_CORE_SCHEMA = Deno.env.get("UK_AQ_CORE_SCHEMA") ??
   "uk_aq_core";
 const UK_AQ_PUBLIC_SCHEMA = Deno.env.get("UK_AQ_PUBLIC_SCHEMA") ??
   "uk_aq_public";
-const OBS_AQIDB_READ_SCHEMA = resolveObservsReadSchema(
-  Deno.env.get("OBS_AQIDB_READ_SCHEMA") ??
-    "uk_aq_observs",
-);
-const OBSERVS_PAGE_SIZE = Math.min(
-  5000,
-  Math.max(
-    100,
-    parsePositiveInteger(Deno.env.get("UK_AQ_TIMESERIES_OBSERVS_PAGE_SIZE")) ??
-      1000,
-  ),
-);
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -63,20 +60,6 @@ const CORS_HEADERS = {
 const REST_BASE_URL = SUPABASE_URL
   ? `${SUPABASE_URL.replace(/\/$/, "")}/rest/v1`
   : "";
-const OBSERVS_REST_BASE_URL = OBS_AQIDB_SUPABASE_URL
-  ? `${OBS_AQIDB_SUPABASE_URL.replace(/\/$/, "")}/rest/v1`
-  : "";
-
-function resolveObservsReadSchema(raw: string): string {
-  const trimmed = (raw || "").trim();
-  const normalized = trimmed.toLowerCase();
-  // For direct table reads we always need uk_aq_observs-style table schema.
-  // If configured with an RPC/public schema by mistake, force table schema.
-  if (!normalized || normalized === "uk_aq_public" || normalized === "public") {
-    return "uk_aq_observs";
-  }
-  return trimmed;
-}
 
 type PostgrestQueryParams = Record<string, string | string[]>;
 
@@ -355,7 +338,26 @@ type StitchedFetchOptions = {
 type StitchedFetchResult = {
   guideline: unknown;
   rows: TimeseriesRow[];
-  source: "ingest_only" | "observs_only" | "ingest_observs_stitched";
+  source: "ingest_only" | "history_only" | "ingest_history_stitched";
+};
+
+type TimeseriesConnectorRow = {
+  connector_id: unknown;
+};
+
+type ObservsHistoryWindowCallOptions = {
+  timeseriesId: number;
+  connectorId: number;
+  startUtc: string;
+  endUtc: string;
+  since: string | null;
+  limit: number | null;
+};
+
+type ObservsHistoryApiPayload = {
+  ok?: boolean;
+  rows?: unknown[];
+  error?: string;
 };
 
 async function callTimeseriesRpc(
@@ -407,20 +409,20 @@ async function fetchTimeseriesRowsStitched(
   const splitBoundary = new Date(
     now.getTime() - INGEST_SOURCE_OF_TRUTH_HOURS * HOUR_MS,
   );
-  const observsStart = requestStart;
-  const observsEnd = requestEnd.getTime() < splitBoundary.getTime()
+  const historyStart = requestStart;
+  const historyEnd = requestEnd.getTime() < splitBoundary.getTime()
     ? requestEnd
     : splitBoundary;
   const ingestStart = requestStart.getTime() > splitBoundary.getTime()
     ? requestStart
     : splitBoundary;
   const ingestEnd = requestEnd.getTime() < now.getTime() ? requestEnd : now;
-  const hasObservsWindow = observsEnd.getTime() > observsStart.getTime();
+  const hasHistoryWindow = historyEnd.getTime() > historyStart.getTime();
   const hasIngestWindow = ingestEnd.getTime() > ingestStart.getTime();
   const sinceMs = since ? Date.parse(since) : Number.NaN;
   const hasSince = Number.isFinite(sinceMs);
-  const shouldFetchObservs = hasObservsWindow &&
-    (!hasSince || sinceMs < observsEnd.getTime());
+  const shouldFetchHistory = hasHistoryWindow &&
+    (!hasSince || sinceMs < historyEnd.getTime());
   const shouldFetchIngestRows = hasIngestWindow &&
     (!hasSince || sinceMs < ingestEnd.getTime());
 
@@ -428,7 +430,7 @@ async function fetchTimeseriesRowsStitched(
     ? selectIngestWindowLabel(ingestStart, now)
     : "12h";
   const ingestLimit = shouldFetchIngestRows
-    ? (hasObservsWindow ? null : limit)
+    ? (hasHistoryWindow ? null : limit)
     : 1;
   const ingestSince = shouldFetchIngestRows ? since : null;
   const { data, error } = await callTimeseriesRpc({
@@ -449,28 +451,33 @@ async function fetchTimeseriesRowsStitched(
     )
     : [];
 
-  let observsRows: TimeseriesRow[] = [];
-  if (shouldFetchObservs) {
-    const observsWindow = await callObservsObservationsWindow({
-      timeseriesId,
-      startUtc: observsStart.toISOString(),
-      endUtc: observsEnd.toISOString(),
-      limit,
-    });
-    observsRows = observsWindow.rows;
+  let historyRows: TimeseriesRow[] = [];
+  if (shouldFetchHistory) {
+    const connectorId = await resolveTimeseriesConnectorId(timeseriesId);
+    if (connectorId !== null) {
+      const historyWindow = await callObservsHistoryWindow({
+        timeseriesId,
+        connectorId,
+        startUtc: historyStart.toISOString(),
+        endUtc: historyEnd.toISOString(),
+        since,
+        limit,
+      });
+      historyRows = historyWindow.rows;
+    }
   }
 
   const source: StitchedFetchResult["source"] =
-    shouldFetchObservs && shouldFetchIngestRows
-      ? "ingest_observs_stitched"
-      : shouldFetchObservs
-      ? "observs_only"
+    shouldFetchHistory && shouldFetchIngestRows
+      ? "ingest_history_stitched"
+      : shouldFetchHistory
+      ? "history_only"
       : "ingest_only";
 
   return {
     guideline,
     rows: finalizeStitchedRows(
-      observsRows,
+      historyRows,
       ingestRows,
       since,
       limit,
@@ -492,103 +499,120 @@ function selectIngestWindowLabel(start: Date, now: Date): NamedWindowLabel {
   return "7d";
 }
 
-type ObservsWindowCallOptions = {
-  timeseriesId: number;
-  startUtc: string;
-  endUtc: string;
-  limit: number | null;
-};
-
-async function callObservsObservationsWindow(
-  { timeseriesId, startUtc, endUtc, limit }: ObservsWindowCallOptions,
-): Promise<{ rows: TimeseriesRow[] }> {
-  if (OBSERVS_REST_BASE_URL && OBS_AQIDB_SECRET_KEY) {
-    const observsRows = await fetchObservsRowsDirect({
-      timeseriesId,
-      startUtc,
-      endUtc,
-      limit,
-    });
-    if (observsRows === null) {
-      return { rows: [] };
-    }
-    return { rows: observsRows };
+async function resolveTimeseriesConnectorId(
+  timeseriesId: number,
+): Promise<number | null> {
+  const response = await postgrestRequest<TimeseriesConnectorRow[]>(
+    "GET",
+    "timeseries",
+    {
+      select: "connector_id",
+      id: `eq.${timeseriesId}`,
+      limit: "1",
+    },
+    UK_AQ_CORE_SCHEMA,
+    undefined,
+    {
+      caller: "uk_aq_timeseries_connector_lookup",
+    },
+  );
+  if (response.error) {
+    throw new Error(`timeseries connector lookup failed: ${response.error.message}`);
   }
-  return { rows: [] };
+  const row = Array.isArray(response.data) && response.data.length > 0
+    ? response.data[0]
+    : null;
+  const connectorId = Number(row?.connector_id);
+  if (!Number.isFinite(connectorId) || connectorId <= 0) {
+    return null;
+  }
+  return Math.trunc(connectorId);
 }
 
-async function fetchObservsRowsDirect(
-  { timeseriesId, startUtc, endUtc, limit }: ObservsWindowCallOptions,
-): Promise<TimeseriesRow[] | null> {
-  const select = "observed_at,value";
-  const cappedLimit = limit === null ? null : Math.max(1, limit);
-  const rows: unknown[] = [];
-  let offset = 0;
-
-  while (true) {
-    const remaining = cappedLimit === null ? null : (cappedLimit - rows.length);
-    if (remaining !== null && remaining <= 0) {
-      break;
-    }
-    const pageLimit = remaining === null
-      ? OBSERVS_PAGE_SIZE
-      : Math.min(OBSERVS_PAGE_SIZE, remaining);
-    if (pageLimit <= 0) {
-      break;
-    }
-
-    const observsResp = await postgrestRequest<any[]>(
-      "GET",
-      "observations",
-      {
-        select,
-        timeseries_id: `eq.${timeseriesId}`,
-        observed_at: [
-          `gte.${startUtc}`,
-          `lt.${endUtc}`,
-        ],
-        order: "observed_at.asc",
-        limit: String(pageLimit),
-        offset: String(offset),
-      },
-      OBS_AQIDB_READ_SCHEMA,
-      undefined,
-      {
-        baseUrl: OBSERVS_REST_BASE_URL,
-        apiKey: OBS_AQIDB_SECRET_KEY,
-        caller: "uk_aq_timeseries_observs",
-      },
-    );
-    if (observsResp.error) {
-      if (looksLikeObservsDirectQueryUnavailable(observsResp.error.message)) {
-        return null;
-      }
-      throw new Error(
-        `observs direct fetch failed: ${observsResp.error.message}`,
-      );
-    }
-
-    const chunk = Array.isArray(observsResp.data) ? observsResp.data : [];
-    rows.push(...chunk);
-
-    if (chunk.length < pageLimit) {
-      break;
-    }
-    offset += chunk.length;
+async function callObservsHistoryWindow(
+  {
+    timeseriesId,
+    connectorId,
+    startUtc,
+    endUtc,
+    since,
+    limit,
+  }: ObservsHistoryWindowCallOptions,
+): Promise<{ rows: TimeseriesRow[] }> {
+  if (!OBSERVS_HISTORY_R2_API_URL) {
+    throw new Error("Missing UK_AQ_OBSERVS_HISTORY_R2_API_URL.");
+  }
+  if (!EDGE_UPSTREAM_SECRET) {
+    throw new Error("Missing UK_AQ_EDGE_UPSTREAM_SECRET.");
   }
 
-  return normalizeTimeseriesRows(rows);
+  const endpoint = new URL(OBSERVS_HISTORY_R2_API_URL);
+  if (!endpoint.pathname || endpoint.pathname === "/") {
+    endpoint.pathname = "/v1/observations";
+  }
+  endpoint.searchParams.set("timeseries_id", String(timeseriesId));
+  endpoint.searchParams.set("connector_id", String(connectorId));
+  endpoint.searchParams.set("start_utc", startUtc);
+  endpoint.searchParams.set("end_utc", endUtc);
+  if (since) {
+    endpoint.searchParams.set("since_utc", since);
+  }
+  if (limit !== null) {
+    endpoint.searchParams.set("limit", String(Math.max(1, limit)));
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), OBSERVS_HISTORY_R2_API_TIMEOUT_MS);
+  let response: Response;
+  try {
+    response = await fetch(endpoint.toString(), {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+        "x-uk-aq-upstream-auth": EDGE_UPSTREAM_SECRET,
+        "x-ukaq-egress-caller": "uk_aq_timeseries_history_r2",
+      },
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error("observs history R2 request timed out");
+    }
+    throw new Error(`observs history R2 request failed: ${String(error)}`);
+  } finally {
+    clearTimeout(timeoutId);
+  }
+
+  const payloadText = await response.text();
+  let payload: ObservsHistoryApiPayload | null = null;
+  try {
+    payload = payloadText ? JSON.parse(payloadText) : null;
+  } catch (_error) {
+    payload = null;
+  }
+  if (!response.ok) {
+    const message = payload?.error || payloadText || `HTTP ${response.status}`;
+    throw new Error(`observs history R2 response failed (${response.status}): ${String(message)}`);
+  }
+  if (payload && payload.ok === false) {
+    throw new Error(`observs history R2 returned error: ${String(payload.error || "unknown")}`);
+  }
+  return {
+    rows: normalizeTimeseriesRows(
+      Array.isArray(payload?.rows) ? payload.rows : [],
+    ),
+  };
 }
 
 function finalizeStitchedRows(
-  observsRows: TimeseriesRow[],
+  historyRows: TimeseriesRow[],
   ingestRows: TimeseriesRow[],
   since: string | null,
   limit: number | null,
   requestStart: Date,
   requestEnd: Date,
 ): TimeseriesRow[] {
-  let rows = mergeRowsPreferIngest(observsRows, ingestRows);
+  let rows = mergeRowsPreferIngest(historyRows, ingestRows);
   const startMs = requestStart.getTime();
   const endMs = requestEnd.getTime();
 
@@ -613,11 +637,11 @@ function finalizeStitchedRows(
 }
 
 function mergeRowsPreferIngest(
-  observsRows: TimeseriesRow[],
+  historyRows: TimeseriesRow[],
   ingestRows: TimeseriesRow[],
 ): TimeseriesRow[] {
   const byObservedAt = new Map<string, TimeseriesRow>();
-  for (const row of observsRows) {
+  for (const row of historyRows) {
     byObservedAt.set(row.observed_at, row);
   }
   // Ingest is source of truth and overwrites overlapping timestamps.
@@ -633,13 +657,6 @@ function looksLikeTimeseriesSignatureMismatch(message: string): boolean {
   const normalized = String(message || "").toLowerCase();
   return normalized.includes("could not find the function") &&
     normalized.includes("uk_aq_timeseries_rpc");
-}
-
-function looksLikeObservsDirectQueryUnavailable(message: string): boolean {
-  const normalized = String(message || "").toLowerCase();
-  return normalized.includes("could not find the table") ||
-    normalized.includes("schema must be one of the following") ||
-    normalized.includes("permission denied");
 }
 
 type WindowMode = "window" | "days" | "datetime";
