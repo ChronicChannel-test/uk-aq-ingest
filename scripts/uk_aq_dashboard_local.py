@@ -297,6 +297,38 @@ def _safe_response_text(resp: requests.Response, max_chars: int = 500) -> str:
     return text[:max_chars] + "...(truncated)"
 
 
+def _cloudflare_graphql_error_summary(payload: Any) -> Optional[str]:
+    if not isinstance(payload, dict):
+        return None
+    raw_errors = payload.get("errors")
+    if not isinstance(raw_errors, list) or not raw_errors:
+        return None
+
+    messages: List[str] = []
+    seen: Set[str] = set()
+    for item in raw_errors:
+        if isinstance(item, dict):
+            message = str(item.get("message") or "").strip()
+            if not message:
+                continue
+            path = item.get("path")
+            if isinstance(path, list) and path:
+                path_text = ".".join(str(part) for part in path)
+                message = f"{message} ({path_text})"
+        else:
+            message = str(item or "").strip()
+        if not message or message in seen:
+            continue
+        seen.add(message)
+        messages.append(message)
+        if len(messages) >= 3:
+            break
+
+    if not messages:
+        return None
+    return "; ".join(messages)
+
+
 def _safe_number(value: Any) -> Optional[float]:
     if isinstance(value, bool):
         return None
@@ -379,6 +411,9 @@ def _fetch_r2_operations_metrics(
     if not isinstance(payload, dict):
         return None, "R2 ops payload is not an object"
     if payload.get("errors"):
+        details = _cloudflare_graphql_error_summary(payload)
+        if details:
+            return None, f"R2 ops GraphQL returned errors: {details}"
         return None, "R2 ops GraphQL returned errors"
 
     data = payload.get("data")
@@ -476,6 +511,9 @@ def _fetch_r2_storage_fallback_metrics(
     if not isinstance(payload, dict):
         return None, "R2 storage fallback payload is not an object"
     if payload.get("errors"):
+        details = _cloudflare_graphql_error_summary(payload)
+        if details:
+            return None, f"R2 storage fallback GraphQL returned errors: {details}"
         return None, "R2 storage fallback GraphQL returned errors"
 
     data = payload.get("data")
@@ -753,6 +791,46 @@ def _normalize_r2_domain_size_metrics_rows(rows: List[Dict[str, Any]]) -> List[D
 
     normalized.sort(key=lambda item: _parse_timestamp(item.get("bucket_hour")) or UTC_DATETIME_MIN)
     return normalized
+
+
+def _filter_r2_domain_metrics_to_committed_days(
+    rows: List[Dict[str, Any]],
+    r2_history_days: Optional[Dict[str, Set[date]]],
+) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+    if not isinstance(r2_history_days, dict):
+        return rows, None
+
+    committed_by_domain: Dict[str, Set[date]] = {
+        "observations": set(r2_history_days.get("observations") or set()),
+        "aqilevels": set(r2_history_days.get("aqilevels") or set()),
+    }
+
+    if not committed_by_domain["observations"] and not committed_by_domain["aqilevels"]:
+        if rows:
+            return [], (
+                "No committed R2 history days found in current bucket; "
+                "suppressed domain-size rows from metrics table"
+            )
+        return [], None
+
+    filtered: List[Dict[str, Any]] = []
+    dropped = 0
+    for row in rows:
+        domain_name = str(row.get("domain_name") or "").strip().lower()
+        committed_days = committed_by_domain.get(domain_name)
+        if committed_days is None:
+            continue
+        bucket_hour = _parse_timestamp(row.get("bucket_hour"))
+        if bucket_hour is None or bucket_hour.date() not in committed_days:
+            dropped += 1
+            continue
+        filtered.append(row)
+
+    if dropped > 0:
+        return filtered, (
+            f"Suppressed {dropped} r2-domain metric row(s) outside committed history-day set"
+        )
+    return filtered, None
 
 
 def _fetch_metric_rows_from_supabase_view(
@@ -1957,6 +2035,18 @@ def _build_dashboard(
         r2_history_days_error,
         r2_backup_window_rpc_error if r2_backup_window_from_history_days is None else None,
     )
+    if r2_history_days_error is None:
+        (
+            r2_domain_size_metrics,
+            r2_domain_filter_error,
+        ) = _filter_r2_domain_metrics_to_committed_days(
+            r2_domain_size_metrics,
+            r2_history_days,
+        )
+        r2_domain_size_metrics_error = _join_error_messages(
+            r2_domain_size_metrics_error,
+            r2_domain_filter_error,
+        )
     dropbox_backup_days, dropbox_state_path, dropbox_state_error = _load_dropbox_backup_days()
     ingest_runs = _get_ingest_runs_cached(
         base_url,

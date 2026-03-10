@@ -97,6 +97,11 @@ Fallback source (direct Supabase reads):
 
 If primary source fails or is stale, backend reports warning fields and uses fallback.
 
+R2 domain chart consistency rule:
+
+- `r2_domain_size_metrics` rows are filtered against committed day sets from the R2 history-days API.
+- If no committed days exist in the configured history bucket, the chart is intentionally suppressed (with a source warning) instead of showing stale/mismatched rows.
+
 ### 4) R2 account usage panel
 
 Source:
@@ -107,8 +112,9 @@ Source:
 
 How:
 
-- Gets storage and operation usage from Cloudflare GraphQL.
-- If storage analytics are empty/zero, falls back to Cloudflare R2 metrics REST endpoint.
+- Gets operation usage (Class A/B) from Cloudflare GraphQL.
+- Gets storage usage from GraphQL first, then falls back to Cloudflare R2 metrics REST endpoint if storage analytics are empty/zero.
+- If GraphQL is not authorized for the token/account, dashboard surfaces the Cloudflare error detail in the warning text.
 
 ### 5) Storage coverage calendar (monthly/yearly)
 
