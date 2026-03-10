@@ -121,6 +121,9 @@ How:
 Inputs:
 
 - Latest `oldest_observed_at` from DB/schema metrics.
+- Obs AQI DB RPCs:
+  - `uk_aq_rpc_observs_drop_candidates` (called with tomorrow 00:00 UTC cutoff) provides candidate partition days.
+  - `uk_aq_rpc_observations_hourly_fingerprint` is then queried per candidate day and `obs_aqidb` day is present only when at least one hourly row exists (`observation_count > 0`).
 - Obs AQI DB RPC `uk_aq_rpc_aqilevels_drop_candidates` (called with tomorrow as cutoff):
   - `obs_aqi_aqilevels` day is present only when `hourly_rows > 0` for that UTC day.
 - R2 committed-day API (preferred):
@@ -134,11 +137,16 @@ Inputs:
 
 Rules:
 
+- Calendar `obs_aqidb` day presence is based on explicit per-day row presence (`observation_count > 0`) from Obs AQI DB RPC output.
+- If Observs day RPC checks are unavailable, calendar falls back to existing oldest-day range logic for `obs_aqidb`.
 - Calendar `obs_aqi_aqilevels` day presence is based on explicit per-day hourly row presence from Obs AQI DB RPC output.
 - If the AQI-levels day RPC is unavailable, calendar falls back to existing oldest-day range logic for `obs_aqi_aqilevels`.
 - Calendar `r2_observs` / `r2_aqilevels` day presence is only taken from committed-day API per-day lists.
 - If committed-day API is unavailable, calendar does not infer per-day R2 presence from RPC min/max windows.
-- RPC window is still used for the separate R2 history window panel text, not for per-day coverage coloring.
+- R2 history window day count uses explicit committed-day overlap:
+  - `day_count = |observations_days ∩ aqilevels_days|`
+  - only days with both domain manifests are counted.
+- If committed-day API is unavailable, R2 window falls back to RPC min/max and day count is not explicit.
 - Today rendering differs by view:
   - Monthly: today shown as half-width bars.
   - Yearly: today excluded (complete-day model).
@@ -149,6 +157,8 @@ Monthly bars can show backup state from checkpoint data:
 
 - If R2 history exists and backup exists for that same day/domain:
   - bar keeps normal R2 color and adds second line (`Backup` + icon).
+- For striped AQI bars (`R2 AQI + ObsAQI AQI`), the Dropbox badge is shown only when both backup domains are present on that day:
+  - `dropbox_observs = true` and `dropbox_aqilevels = true`.
 - If backup exists but R2 history does not for that day/domain:
   - bar is white with orange/yellow border and primary label is Dropbox icon + `Backup - Obs` / `Backup - AQI`.
 

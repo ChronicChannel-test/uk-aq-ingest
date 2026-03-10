@@ -670,10 +670,19 @@
         opacity: 0.95;
       }
 
+      .coverage-bar-label-secondary.is-dropbox-badge {
+        color: #ffffff;
+      }
+
       .coverage-bar-label-secondary-icon {
         width: 12px;
         height: 12px;
         display: inline-block;
+      }
+
+      .coverage-bar-label-secondary-icon.is-dropbox-blue {
+        filter: none !important;
+        opacity: 1;
       }
 
       .coverage-bar-ingest {
@@ -2561,16 +2570,25 @@
         const backupWindowMaxDayMs = parseUtcDayMs(
           r2BackupWindowObject ? r2BackupWindowObject.max_day_utc : null,
         );
-        let backupWindowDays = null;
+        const backupWindowDayCountRaw = r2BackupWindowObject
+          ? Number(r2BackupWindowObject.day_count)
+          : NaN;
+        let backupWindowDays = Number.isFinite(backupWindowDayCountRaw)
+          ? Math.max(0, Math.trunc(backupWindowDayCountRaw))
+          : null;
         let backupWindowYears = null;
-        if (
-          backupWindowMinDayMs !== null &&
-          backupWindowMaxDayMs !== null &&
-          backupWindowMaxDayMs >= backupWindowMinDayMs
-        ) {
-          backupWindowDays = Math.floor(
-            (backupWindowMaxDayMs - backupWindowMinDayMs) / (24 * 60 * 60 * 1000),
-          ) + 1;
+        if (backupWindowDays === null) {
+          if (
+            backupWindowMinDayMs !== null &&
+            backupWindowMaxDayMs !== null &&
+            backupWindowMaxDayMs >= backupWindowMinDayMs
+          ) {
+            backupWindowDays = Math.floor(
+              (backupWindowMaxDayMs - backupWindowMinDayMs) / (24 * 60 * 60 * 1000),
+            ) + 1;
+          }
+        }
+        if (backupWindowDays !== null) {
           backupWindowYears = backupWindowDays / 365.25;
         }
         const backupWindowLabel = `CLOUDFLARE R2 HISTORY WINDOW - ${backupWindowMin} -> ${backupWindowMax} - ${backupWindowDays !== null ? backupWindowDays : "n/a"} Days - ${backupWindowYears !== null ? backupWindowYears.toFixed(1) : "n/a"} Years`;
@@ -2928,7 +2946,7 @@
             key: "aqilevels-striped",
             label: "R2 History - AQI + ObsAQI DB - AQI",
             className: "coverage-bar-aqilevels-striped",
-            dropboxDomain: "aqilevels",
+            dropboxDomain: "both",
             hideLabel: true,
           };
         } else if (coverage.r2Aqilevels) {
@@ -2965,6 +2983,22 @@
           bottomLayer = null;
         }
         return { topLayer, middleLayer, bottomLayer };
+      }
+
+      function coverageLayerHasDropboxBackup(layer, coverage) {
+        if (!layer || !coverage || layer.dropboxOnly) {
+          return false;
+        }
+        if (layer.dropboxDomain === "observations") {
+          return Boolean(coverage.dropboxObservs);
+        }
+        if (layer.dropboxDomain === "aqilevels") {
+          return Boolean(coverage.dropboxAqilevels);
+        }
+        if (layer.dropboxDomain === "both") {
+          return Boolean(coverage.dropboxObservs) && Boolean(coverage.dropboxAqilevels);
+        }
+        return false;
       }
 
       function resolveCoverageSquareLayers(coverage) {
@@ -3069,10 +3103,7 @@
                   if (!layer) {
                     return '<span class="coverage-square is-empty"></span>';
                   }
-                  const hasBackupIcon = layer.forceBackupIcon || (
-                    (layer.dropboxDomain === "observations" && cell.coverage.dropboxObservs) ||
-                    (layer.dropboxDomain === "aqilevels" && cell.coverage.dropboxAqilevels)
-                  );
+                  const hasBackupIcon = layer.forceBackupIcon || coverageLayerHasDropboxBackup(layer, cell.coverage);
                   const backupClass = hasBackupIcon ? " has-backup-icon" : "";
                   const squareTitle = hasBackupIcon ? `${layer.label} • Backup` : layer.label;
                   return `<span class="coverage-square ${layer.className}${backupClass}" title="${escapeHtml(squareTitle)}"></span>`;
@@ -3127,17 +3158,21 @@
 
               const renderBar = (layer) => {
                 if (!layer) return "";
-                const halfClass = cell.coverage.isToday ? " is-half" : "";
-                const hasDropboxBackup = !cell.coverage.isToday && !layer.dropboxOnly && (
-                  (layer.dropboxDomain === "observations" && cell.coverage.dropboxObservs) ||
-                  (layer.dropboxDomain === "aqilevels" && cell.coverage.dropboxAqilevels)
-                );
+                const isToday = cell.coverage.isToday;
+                const halfClass = isToday ? " is-half" : "";
+                const hasDropboxBackup = !isToday && coverageLayerHasDropboxBackup(layer, cell.coverage);
+                const backupBadgeMarkup = hasDropboxBackup
+                  ? `<span class="coverage-bar-label-secondary is-dropbox-badge"><img class="coverage-bar-label-secondary-icon is-dropbox-blue" src="${DASHBOARD_DROPBOX_ICON_PATH}" alt="" aria-hidden="true">Backup</span>`
+                  : "";
                 const primaryLabelMarkup = layer.primaryDropboxIcon
                   ? `<span class="coverage-bar-label-primary with-icon"><img class="coverage-bar-label-primary-icon" src="${DASHBOARD_DROPBOX_ICON_PATH}" alt="" aria-hidden="true"><span class="coverage-bar-label-primary-text">${escapeHtml(layer.label)}</span></span>`
                   : `<span class="coverage-bar-label-primary">${escapeHtml(layer.label)}</span>`;
-                const labelMarkup = !cell.coverage.isToday && !layer.hideLabel && layer.label
-                  ? `<span class="coverage-bar-label${hasDropboxBackup ? " has-secondary" : ""}">${primaryLabelMarkup}${hasDropboxBackup ? `<span class="coverage-bar-label-secondary"><img class="coverage-bar-label-secondary-icon" src="${DASHBOARD_DROPBOX_ICON_PATH}" alt="" aria-hidden="true">Backup</span>` : ""}</span>`
-                  : "";
+                let labelMarkup = "";
+                if (!isToday && layer.hideLabel && backupBadgeMarkup) {
+                  labelMarkup = `<span class="coverage-bar-label">${backupBadgeMarkup}</span>`;
+                } else if (!isToday && !layer.hideLabel && layer.label) {
+                  labelMarkup = `<span class="coverage-bar-label${hasDropboxBackup ? " has-secondary" : ""}">${primaryLabelMarkup}${backupBadgeMarkup}</span>`;
+                }
                 return `<span class="coverage-bar ${layer.className}${halfClass}" title="${escapeHtml(layer.label)}">${labelMarkup}</span>`;
               };
 

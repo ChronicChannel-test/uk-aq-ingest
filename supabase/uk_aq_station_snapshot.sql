@@ -52,7 +52,7 @@ declare
   v_window_start timestamptz;
   v_default_timeseries_rule text := 'lowest_timeseries_id_for_station';
 begin
-  if v_window not in ('6h', '24h', '7d') then
+  if v_window not in ('6h', '24h', '7d', '21d', '31d') then
     v_window := '6h';
   end if;
 
@@ -60,6 +60,10 @@ begin
     v_window_start := v_now - interval '24 hours';
   elsif v_window = '7d' then
     v_window_start := v_now - interval '7 days';
+  elsif v_window = '21d' then
+    v_window_start := v_now - interval '21 days';
+  elsif v_window = '31d' then
+    v_window_start := v_now - interval '31 days';
   else
     v_window_start := v_now - interval '6 hours';
   end if;

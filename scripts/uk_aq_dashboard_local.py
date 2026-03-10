@@ -12,6 +12,7 @@ import math
 import os
 import re
 import threading
+import warnings
 from datetime import date, datetime, timedelta, timezone
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -19,6 +20,11 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 from urllib.parse import parse_qs, urlparse
 
+# Local macOS Python builds can emit this on every import; it's noisy for local logs.
+warnings.filterwarnings(
+    "ignore",
+    message=r"urllib3 v2 only supports OpenSSL 1\.1\.1\+.*",
+)
 import requests
 
 NON_ALNUM_RE = re.compile(r"[^a-z0-9]+")
@@ -1314,7 +1320,7 @@ def _build_live_storage_coverage_days(
     schema_size_metrics: Optional[List[Dict[str, Any]]],
     r2_domain_size_metrics: Optional[List[Dict[str, Any]]],
     dropbox_backup_days: Optional[Dict[str, Set[date]]],
-    r2_backup_window: Optional[Dict[str, Optional[str]]],
+    r2_backup_window: Optional[Dict[str, Any]],
     r2_history_days: Optional[Dict[str, Set[date]]],
     day_sets: Dict[str, Set[date]],
 ) -> List[Dict[str, Any]]:
@@ -1324,7 +1330,9 @@ def _build_live_storage_coverage_days(
     oldest_by_schema = _latest_oldest_day_by_schema(schema_size_metrics)
 
     ingest_days = set(day_sets.get("ingestdb") or set())
-    observs_days = set(day_sets.get("obs_aqidb") or set())
+    observs_days_raw = day_sets.get("obs_aqidb")
+    has_explicit_observs_days = isinstance(observs_days_raw, set)
+    observs_days = set(observs_days_raw or set()) if has_explicit_observs_days else set()
     aqilevels_days_raw = day_sets.get("obs_aqi_aqilevels")
     has_explicit_aqilevels_days = isinstance(aqilevels_days_raw, set)
     aqilevels_days = set(aqilevels_days_raw or set()) if has_explicit_aqilevels_days else set()
@@ -1332,10 +1340,14 @@ def _build_live_storage_coverage_days(
     ingest_start = min(ingest_days) if ingest_days else oldest_by_label.get("ingestdb")
     observs_start = (
         min(observs_days)
-        if observs_days
+        if has_explicit_observs_days and observs_days
         else (
-            oldest_by_schema.get("uk_aq_observs")
-            or oldest_by_label.get("obs_aqidb")
+            None
+            if has_explicit_observs_days
+            else (
+                oldest_by_schema.get("uk_aq_observs")
+                or oldest_by_label.get("obs_aqidb")
+            )
         )
     )
     aqilevels_start = (
@@ -1388,8 +1400,11 @@ def _build_live_storage_coverage_days(
             cursor <= today_utc
             and (
                 (cursor in observs_days)
-                if observs_days
-                else (observs_start and observs_start <= cursor <= today_utc)
+                if has_explicit_observs_days
+                else (
+                    observs_start
+                    and observs_start <= cursor <= today_utc
+                )
             )
         )
         obs_aqi_aqilevels = bool(
@@ -1454,7 +1469,7 @@ def _get_storage_coverage_days_cached(
     schema_size_metrics: Optional[List[Dict[str, Any]]],
     r2_domain_size_metrics: Optional[List[Dict[str, Any]]],
     dropbox_backup_days: Optional[Dict[str, Set[date]]],
-    r2_backup_window: Optional[Dict[str, Optional[str]]],
+    r2_backup_window: Optional[Dict[str, Any]],
     r2_history_days: Optional[Dict[str, Set[date]]],
 ) -> List[Dict[str, Any]]:
     now_utc = now.astimezone(timezone.utc)
@@ -1487,18 +1502,117 @@ def _get_storage_coverage_days_cached(
 
 
 def _fetch_storage_day_sets() -> Dict[str, Set[date]]:
-    day_sets: Dict[str, Set[date]] = {
-        "ingestdb": set(),
-        "obs_aqidb": set(),
-    }
-    # Keep ingest/observs on oldest_observed_at range logic.
+    day_sets: Dict[str, Set[date]] = {"ingestdb": set()}
+    # Keep ingest on oldest_observed_at range logic.
     day_sets["ingestdb"] = set()
-    # Keep observs on oldest_observed_at range logic to avoid false positives from pre-created partitions.
-    day_sets["obs_aqidb"] = set()
+    observs_days = _fetch_obs_aqi_observs_row_days()
+    if observs_days is not None:
+        day_sets["obs_aqidb"] = observs_days
     aqilevels_days = _fetch_obs_aqi_aqilevels_hourly_days()
     if aqilevels_days is not None:
         day_sets["obs_aqi_aqilevels"] = aqilevels_days
     return day_sets
+
+
+def _fetch_obs_aqi_observs_partition_days() -> Optional[Set[date]]:
+    if not OBS_AQIDB_SUPABASE_URL or not OBS_AQIDB_SECRET_KEY:
+        return None
+
+    try:
+        obs_aqidb_base_url = _ensure_allowed_base_url(
+            f"{OBS_AQIDB_SUPABASE_URL.rstrip('/')}/rest/v1"
+        )
+    except Exception:
+        return None
+    url = f"{obs_aqidb_base_url}/rpc/uk_aq_rpc_observs_drop_candidates"
+    headers = _postgrest_headers(OBS_AQIDB_SECRET_KEY, schema=PUBLIC_SCHEMA)
+    cutoff_utc = f"{(datetime.now(timezone.utc).date() + timedelta(days=1)).isoformat()}T00:00:00Z"
+
+    days: Set[date] = set()
+    limit = 1000
+    offset = 0
+    max_pages = 20
+    for _ in range(max_pages):
+        try:
+            batch = _fetch_json(
+                url,
+                headers,
+                {
+                    "cutoff_utc": cutoff_utc,
+                    "select": "partition_day_utc",
+                    "order": "partition_day_utc.asc",
+                    "limit": str(limit),
+                    "offset": str(offset),
+                },
+            )
+        except Exception:
+            return None
+
+        for row in batch:
+            if not isinstance(row, dict):
+                continue
+            parsed_day = _parse_iso_day(row.get("partition_day_utc"))
+            if parsed_day is not None:
+                days.add(parsed_day)
+
+        if len(batch) < limit:
+            break
+        offset += limit
+
+    return days
+
+
+def _fetch_obs_aqi_observs_row_days() -> Optional[Set[date]]:
+    if not OBS_AQIDB_SUPABASE_URL or not OBS_AQIDB_SECRET_KEY:
+        return None
+
+    partition_days = _fetch_obs_aqi_observs_partition_days()
+    if partition_days is None:
+        return None
+    if not partition_days:
+        return set()
+
+    try:
+        obs_aqidb_base_url = _ensure_allowed_base_url(
+            f"{OBS_AQIDB_SUPABASE_URL.rstrip('/')}/rest/v1"
+        )
+    except Exception:
+        return None
+    url = f"{obs_aqidb_base_url}/rpc/uk_aq_rpc_observations_hourly_fingerprint"
+    headers = _postgrest_headers(OBS_AQIDB_SECRET_KEY, schema=PUBLIC_SCHEMA)
+
+    days_with_rows: Set[date] = set()
+    for day_utc in sorted(partition_days):
+        next_day_utc = day_utc + timedelta(days=1)
+        try:
+            batch = _fetch_json(
+                url,
+                headers,
+                {
+                    "window_start": f"{day_utc.isoformat()}T00:00:00Z",
+                    "window_end": f"{next_day_utc.isoformat()}T00:00:00Z",
+                    "select": "hour_start,observation_count",
+                    "order": "hour_start.asc",
+                    "limit": "1",
+                    "offset": "0",
+                },
+            )
+        except Exception:
+            return None
+
+        if not batch:
+            continue
+        first_row = batch[0] if isinstance(batch[0], dict) else None
+        if not first_row:
+            continue
+        try:
+            observation_count = int(first_row.get("observation_count") or 0)
+        except (TypeError, ValueError):
+            observation_count = 0
+        if observation_count > 0:
+            days_with_rows.add(day_utc)
+
+    return days_with_rows
 
 
 def _fetch_obs_aqi_aqilevels_hourly_days() -> Optional[Set[date]]:
@@ -1558,7 +1672,7 @@ def _fetch_obs_aqi_aqilevels_hourly_days() -> Optional[Set[date]]:
 def _fetch_r2_history_days_from_external_api(
 ) -> Tuple[
     Optional[Dict[str, Set[date]]],
-    Optional[Dict[str, Optional[str]]],
+    Optional[Dict[str, Any]],
     Optional[str],
     Optional[str],
 ]:
@@ -1619,18 +1733,28 @@ def _fetch_r2_history_days_from_external_api(
                 day_sets[domain_name].add(parsed_day)
 
     observations_days = day_sets["observations"]
-    if observations_days:
-        r2_window = {
-            "min_day_utc": min(observations_days).isoformat(),
-            "max_day_utc": max(observations_days).isoformat(),
+    aqilevels_days = day_sets["aqilevels"]
+    overlap_days = observations_days & aqilevels_days
+
+    if overlap_days:
+        r2_window: Dict[str, Any] = {
+            "min_day_utc": min(overlap_days).isoformat(),
+            "max_day_utc": max(overlap_days).isoformat(),
+            "day_count": len(overlap_days),
         }
     else:
-        observations_payload = raw_domains.get("observations")
-        observations_dict = observations_payload if isinstance(observations_payload, dict) else {}
+        # Explicit day sets are available but there is no committed overlap across
+        # observations + aqilevels yet.
         r2_window = {
-            "min_day_utc": _normalize_iso_date(observations_dict.get("min_day_utc")),
-            "max_day_utc": _normalize_iso_date(observations_dict.get("max_day_utc")),
+            "min_day_utc": None,
+            "max_day_utc": None,
+            "day_count": 0,
         }
+
+    # Include domain counts for debugging/inspection in dashboard payloads.
+    r2_window["observations_day_count"] = len(observations_days)
+    r2_window["aqilevels_day_count"] = len(aqilevels_days)
+    r2_window["count_basis"] = "explicit_overlap_both_domains"
 
     bucket_value = str(payload.get("bucket") or "").strip() or None
     return day_sets, r2_window, bucket_value, None
@@ -1639,7 +1763,7 @@ def _fetch_r2_history_days_from_external_api(
 def _fetch_r2_backup_window(
     base_url: str,
     headers: Dict[str, str],
-) -> Tuple[Optional[Dict[str, Optional[str]]], Optional[str]]:
+) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
     public_headers = dict(headers)
     public_headers["Accept-Profile"] = PUBLIC_SCHEMA
     try:
@@ -1652,11 +1776,18 @@ def _fetch_r2_backup_window(
         return None, str(exc)
 
     if not rows:
-        return {"min_day_utc": None, "max_day_utc": None}, None
+        return {
+            "min_day_utc": None,
+            "max_day_utc": None,
+            "day_count": None,
+            "count_basis": "range_rpc_fallback",
+        }, None
     row = rows[0] if isinstance(rows[0], dict) else {}
     return {
         "min_day_utc": _normalize_iso_date(row.get("min_day_utc")),
         "max_day_utc": _normalize_iso_date(row.get("max_day_utc")),
+        "day_count": None,
+        "count_basis": "range_rpc_fallback",
     }, None
 
 
@@ -2421,31 +2552,51 @@ def _get_dashboard(
 class DashboardHandler(BaseHTTPRequestHandler):
     server_version = "uk-aq-dashboard/1.0"
 
+    @staticmethod
+    def _is_client_disconnect_error(exc: Exception) -> bool:
+        if isinstance(exc, (BrokenPipeError, ConnectionResetError, ConnectionAbortedError)):
+            return True
+        if isinstance(exc, OSError):
+            # Common client disconnect errnos:
+            # 32=EPIPE, 53=ECONNABORTED, 54=ECONNRESET, 104=ECONNRESET (Linux).
+            return exc.errno in {32, 53, 54, 104}
+        return False
+
     def do_GET(self) -> None:
-        parsed = urlparse(self.path)
-        if parsed.path in ("/", "/index.html"):
-            self._serve_html()
-            return
-        if parsed.path.startswith("/assets/"):
-            self._serve_asset(parsed.path[len("/assets/"):])
-            return
-        if parsed.path == "/api/r2_metrics":
-            self._serve_r2_metrics(parsed)
-            return
-        if parsed.path == "/api/dashboard":
-            self._serve_dashboard(parsed)
-            return
-        self.send_error(HTTPStatus.NOT_FOUND, "Not found")
+        try:
+            parsed = urlparse(self.path)
+            if parsed.path in ("/", "/index.html"):
+                self._serve_html()
+                return
+            if parsed.path.startswith("/assets/"):
+                self._serve_asset(parsed.path[len("/assets/"):])
+                return
+            if parsed.path == "/api/r2_metrics":
+                self._serve_r2_metrics(parsed)
+                return
+            if parsed.path == "/api/dashboard":
+                self._serve_dashboard(parsed)
+                return
+            self.send_error(HTTPStatus.NOT_FOUND, "Not found")
+        except Exception as exc:
+            if self._is_client_disconnect_error(exc):
+                return
+            raise
 
     def do_POST(self) -> None:
-        parsed = urlparse(self.path)
-        if parsed.path == "/api/connectors":
-            self._update_connectors()
-            return
-        if parsed.path == "/api/dispatcher_settings":
-            self._update_dispatcher_settings()
-            return
-        self.send_error(HTTPStatus.NOT_FOUND, "Not found")
+        try:
+            parsed = urlparse(self.path)
+            if parsed.path == "/api/connectors":
+                self._update_connectors()
+                return
+            if parsed.path == "/api/dispatcher_settings":
+                self._update_dispatcher_settings()
+                return
+            self.send_error(HTTPStatus.NOT_FOUND, "Not found")
+        except Exception as exc:
+            if self._is_client_disconnect_error(exc):
+                return
+            raise
 
     def log_message(self, format: str, *args: Any) -> None:
         return
