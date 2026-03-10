@@ -18,8 +18,8 @@ I reviewed the ingest repo for how history observations are written and queried.
 2. History tables live in schema `uk_aq_history`, while callable RPCs live in `uk_aq_public`.
 3. Current history key shape in docs is ID-based `(connector_id, timeseries_id, observed_at)`.
 4. Existing operational docs reference a separate schema repo path for history DDL:
-   - `.../schemas/observs_db/uk_aq_observs_schema.sql`
-   - `.../schemas/observs_db/observs_db_dualwrite_bootstrap.sql`
+   - `.../schemas/obs_aqi_db/uk_aq_obs_aqi_db_schema.sql`
+   - `.../schemas/obs_aqi_db/uk_aq_obs_aqi_db_dualwrite_bootstrap.sql`
 
 ### External schema repo access note
 

@@ -49,8 +49,8 @@ Then set MAIN project runtime secrets:
 
 Run SQL in this order.
 
-1. `../CIC-Test-UK-AQ-Schema/uk-aq-schema/schemas/observs_db/uk_aq_observs_schema.sql`
-2. `../CIC-Test-UK-AQ-Schema/uk-aq-schema/schemas/observs_db/observs_db_dualwrite_bootstrap.sql`
+1. `../CIC-Test-UK-AQ-Schema/uk-aq-schema/schemas/obs_aqi_db/uk_aq_obs_aqi_db_schema.sql`
+2. `../CIC-Test-UK-AQ-Schema/uk-aq-schema/schemas/obs_aqi_db/uk_aq_obs_aqi_db_dualwrite_bootstrap.sql`
 
 Notes:
 

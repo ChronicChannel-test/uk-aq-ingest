@@ -813,23 +813,43 @@ def _filter_r2_domain_metrics_to_committed_days(
             )
         return [], None
 
+    min_committed_by_domain: Dict[str, Optional[date]] = {
+        "observations": min(committed_by_domain["observations"])
+        if committed_by_domain["observations"]
+        else None,
+        "aqilevels": min(committed_by_domain["aqilevels"])
+        if committed_by_domain["aqilevels"]
+        else None,
+    }
+
     filtered: List[Dict[str, Any]] = []
-    dropped = 0
+    dropped_without_committed_days = 0
+    dropped_before_committed_start = 0
     for row in rows:
         domain_name = str(row.get("domain_name") or "").strip().lower()
-        committed_days = committed_by_domain.get(domain_name)
-        if committed_days is None:
+        if domain_name not in min_committed_by_domain:
             continue
+        min_committed_day = min_committed_by_domain[domain_name]
         bucket_hour = _parse_timestamp(row.get("bucket_hour"))
-        if bucket_hour is None or bucket_hour.date() not in committed_days:
-            dropped += 1
+        if min_committed_day is None:
+            dropped_without_committed_days += 1
+            continue
+        if bucket_hour is None or bucket_hour.date() < min_committed_day:
+            dropped_before_committed_start += 1
             continue
         filtered.append(row)
 
-    if dropped > 0:
-        return filtered, (
-            f"Suppressed {dropped} r2-domain metric row(s) outside committed history-day set"
+    warnings: List[str] = []
+    if dropped_without_committed_days > 0:
+        warnings.append(
+            f"Suppressed {dropped_without_committed_days} r2-domain metric row(s) for domain(s) without committed history days"
         )
+    if dropped_before_committed_start > 0:
+        warnings.append(
+            f"Suppressed {dropped_before_committed_start} r2-domain metric row(s) before first committed history day"
+        )
+    if warnings:
+        return filtered, "; ".join(warnings)
     return filtered, None
 
 
@@ -1305,6 +1325,9 @@ def _build_live_storage_coverage_days(
 
     ingest_days = set(day_sets.get("ingestdb") or set())
     observs_days = set(day_sets.get("obs_aqidb") or set())
+    aqilevels_days_raw = day_sets.get("obs_aqi_aqilevels")
+    has_explicit_aqilevels_days = isinstance(aqilevels_days_raw, set)
+    aqilevels_days = set(aqilevels_days_raw or set()) if has_explicit_aqilevels_days else set()
 
     ingest_start = min(ingest_days) if ingest_days else oldest_by_label.get("ingestdb")
     observs_start = (
@@ -1315,7 +1338,15 @@ def _build_live_storage_coverage_days(
             or oldest_by_label.get("obs_aqidb")
         )
     )
-    aqilevels_start = oldest_by_schema.get("uk_aq_aqilevels")
+    aqilevels_start = (
+        min(aqilevels_days)
+        if has_explicit_aqilevels_days and aqilevels_days
+        else (
+            None
+            if has_explicit_aqilevels_days
+            else oldest_by_schema.get("uk_aq_aqilevels")
+        )
+    )
     has_explicit_r2_days = isinstance(r2_history_days, dict)
     r2_observs_days = set((r2_history_days or {}).get("observations") or set())
     r2_aqilevels_days = set((r2_history_days or {}).get("aqilevels") or set())
@@ -1363,8 +1394,14 @@ def _build_live_storage_coverage_days(
         )
         obs_aqi_aqilevels = bool(
             cursor <= today_utc
-            and aqilevels_start
-            and aqilevels_start <= cursor <= today_utc
+            and (
+                (cursor in aqilevels_days)
+                if has_explicit_aqilevels_days
+                else (
+                    aqilevels_start
+                    and aqilevels_start <= cursor <= today_utc
+                )
+            )
         )
         r2_observs = bool(has_explicit_r2_days and cursor in r2_observs_days)
         r2_aqilevels = bool(has_explicit_r2_days and cursor in r2_aqilevels_days)
@@ -1458,7 +1495,64 @@ def _fetch_storage_day_sets() -> Dict[str, Set[date]]:
     day_sets["ingestdb"] = set()
     # Keep observs on oldest_observed_at range logic to avoid false positives from pre-created partitions.
     day_sets["obs_aqidb"] = set()
+    aqilevels_days = _fetch_obs_aqi_aqilevels_hourly_days()
+    if aqilevels_days is not None:
+        day_sets["obs_aqi_aqilevels"] = aqilevels_days
     return day_sets
+
+
+def _fetch_obs_aqi_aqilevels_hourly_days() -> Optional[Set[date]]:
+    if not OBS_AQIDB_SUPABASE_URL or not OBS_AQIDB_SECRET_KEY:
+        return None
+
+    try:
+        obs_aqidb_base_url = _ensure_allowed_base_url(
+            f"{OBS_AQIDB_SUPABASE_URL.rstrip('/')}/rest/v1"
+        )
+    except Exception:
+        return None
+    url = f"{obs_aqidb_base_url}/rpc/uk_aq_rpc_aqilevels_drop_candidates"
+    headers = _postgrest_headers(OBS_AQIDB_SECRET_KEY, schema=PUBLIC_SCHEMA)
+    cutoff_day_utc = (datetime.now(timezone.utc).date() + timedelta(days=1)).isoformat()
+
+    days: Set[date] = set()
+    limit = 1000
+    offset = 0
+    max_pages = 20
+    for _ in range(max_pages):
+        try:
+            batch = _fetch_json(
+                url,
+                headers,
+                {
+                    "p_cutoff_day_utc": cutoff_day_utc,
+                    "select": "day_utc,hourly_rows",
+                    "order": "day_utc.asc",
+                    "limit": str(limit),
+                    "offset": str(offset),
+                },
+            )
+        except Exception:
+            return None
+
+        for row in batch:
+            if not isinstance(row, dict):
+                continue
+            try:
+                hourly_rows = int(row.get("hourly_rows") or row.get("row_count") or 0)
+            except (TypeError, ValueError):
+                continue
+            if hourly_rows <= 0:
+                continue
+            parsed_day = _parse_iso_day(row.get("day_utc"))
+            if parsed_day is not None:
+                days.add(parsed_day)
+
+        if len(batch) < limit:
+            break
+        offset += limit
+
+    return days
 
 
 def _fetch_r2_history_days_from_external_api(

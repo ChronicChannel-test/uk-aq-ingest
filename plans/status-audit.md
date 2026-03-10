@@ -17,8 +17,8 @@ Cross-cutting finding on `status_id`
   - `workers/uk_aq_sensorcommunity_cloud_run/index.mjs:345`
   - `workers/uk_aq_sensorcommunity_cloud_run/index.mjs:1322`
 - History RPC expects `status_id` (smallint) in input rows, not `status`:
-  - `/Users/mikehinford/Library/CloudStorage/Dropbox/Projects/CIC Website/CIC Air Quality Networks/CIC-Test-UK-AQ-Schema/CIC-test-uk-aq-schema/schemas/observs_db/observs_db_dualwrite_bootstrap.sql:159`
-  - `/Users/mikehinford/Library/CloudStorage/Dropbox/Projects/CIC Website/CIC Air Quality Networks/CIC-Test-UK-AQ-Schema/CIC-test-uk-aq-schema/schemas/observs_db/observs_db_dualwrite_bootstrap.sql:165`
+  - `/Users/mikehinford/Library/CloudStorage/Dropbox/Projects/CIC Website/CIC Air Quality Networks/CIC-Test-UK-AQ-Schema/CIC-test-uk-aq-schema/schemas/obs_aqi_db/uk_aq_obs_aqi_db_dualwrite_bootstrap.sql:159`
+  - `/Users/mikehinford/Library/CloudStorage/Dropbox/Projects/CIC Website/CIC Air Quality Networks/CIC-Test-UK-AQ-Schema/CIC-test-uk-aq-schema/schemas/obs_aqi_db/uk_aq_obs_aqi_db_dualwrite_bootstrap.sql:165`
 - So `uk_aq_history.observations.status_id` is effectively unpopulated by current cloud-run ingesters, unless some upstream caller already supplies `status_id` (not found in active ingest code).
 
 ## 1) Gov.UK SOS AURN (UK-AIR SOS)
@@ -44,7 +44,7 @@ Currently persisted?
   - Target column exists as `status text` (`/Users/mikehinford/Library/CloudStorage/Dropbox/Projects/CIC Website/CIC Air Quality Networks/CIC-Test-UK-AQ-Schema/CIC-test-uk-aq-schema/schemas/main_db/uk_aq_core_schema.sql:640`)
 - History DB: not meaningfully persisted to `status_id`.
   - History rows are built with `status` string (`supabase/functions/ingest_uk_air_sos/index.ts:547`)
-  - History RPC input uses `status_id` only (`/Users/mikehinford/Library/CloudStorage/Dropbox/Projects/CIC Website/CIC Air Quality Networks/CIC-Test-UK-AQ-Schema/CIC-test-uk-aq-schema/schemas/observs_db/observs_db_dualwrite_bootstrap.sql:165`)
+  - History RPC input uses `status_id` only (`/Users/mikehinford/Library/CloudStorage/Dropbox/Projects/CIC Website/CIC Air Quality Networks/CIC-Test-UK-AQ-Schema/CIC-test-uk-aq-schema/schemas/obs_aqi_db/uk_aq_obs_aqi_db_dualwrite_bootstrap.sql:165`)
   - Result: `uk_aq_history.observations.status_id` receives null from current UK-AIR writer path.
 - Conditional ingest raw outbox: if outbox path is used, status string is retained inside JSON payload (`supabase/functions/_shared/history_client.ts:530`) and inserted into `uk_aq_raw.history_observation_outbox.payload` (`/Users/mikehinford/Library/CloudStorage/Dropbox/Projects/CIC Website/CIC Air Quality Networks/CIC-Test-UK-AQ-Schema/CIC-test-uk-aq-schema/schemas/main_db/main_db_dualwrite_bootstrap.sql:112`).
 
@@ -68,7 +68,7 @@ Currently persisted?
   - Upsert `observations` table (`workers/uk_aq_sensorcommunity_cloud_run/index.mjs:1100`)
 - History DB: `status_id` remains null (same global mismatch).
   - History row carries `status` string/null (`workers/uk_aq_sensorcommunity_cloud_run/index.mjs:1195`)
-  - History upsert RPC call (`workers/uk_aq_sensorcommunity_cloud_run/index.mjs:1322`) expects `status_id` in SQL (`/Users/mikehinford/Library/CloudStorage/Dropbox/Projects/CIC Website/CIC Air Quality Networks/CIC-Test-UK-AQ-Schema/CIC-test-uk-aq-schema/schemas/observs_db/observs_db_dualwrite_bootstrap.sql:165`).
+  - History upsert RPC call (`workers/uk_aq_sensorcommunity_cloud_run/index.mjs:1322`) expects `status_id` in SQL (`/Users/mikehinford/Library/CloudStorage/Dropbox/Projects/CIC Website/CIC Air Quality Networks/CIC-Test-UK-AQ-Schema/CIC-test-uk-aq-schema/schemas/obs_aqi_db/uk_aq_obs_aqi_db_dualwrite_bootstrap.sql:165`).
 
 `status_id` mapping logic?
 - No active mapping.
@@ -95,7 +95,7 @@ Currently persisted?
   - A non-quality flag is persisted: `location.isMobile -> stations.station_type` (`supabase/functions/ingest_openaq/index.ts:1835`, `supabase/functions/ingest_openaq/index.ts:1879`)
 - History DB:
   - History rows carry null status (`supabase/functions/ingest_openaq/index.ts:3406`)
-  - `uk_aq_history.observations.status_id` not mapped/populated (SQL expects `status_id`, `/Users/mikehinford/Library/CloudStorage/Dropbox/Projects/CIC Website/CIC Air Quality Networks/CIC-Test-UK-AQ-Schema/CIC-test-uk-aq-schema/schemas/observs_db/observs_db_dualwrite_bootstrap.sql:165`).
+  - `uk_aq_history.observations.status_id` not mapped/populated (SQL expects `status_id`, `/Users/mikehinford/Library/CloudStorage/Dropbox/Projects/CIC Website/CIC Air Quality Networks/CIC-Test-UK-AQ-Schema/CIC-test-uk-aq-schema/schemas/obs_aqi_db/uk_aq_obs_aqi_db_dualwrite_bootstrap.sql:165`).
 
 `status_id` mapping logic?
 - No active mapping from OpenAQ flags to `status_id`.
@@ -128,7 +128,7 @@ Currently persisted?
     - observations upsert (`supabase/functions/ingest_breathelondon/index.ts:996`)
 - History DB:
   - History rows copy `row.status` if present, but it is null in current path (`supabase/functions/ingest_breathelondon/index.ts:1062`)
-  - `status_id` not mapped/populated (SQL expects `status_id`, `/Users/mikehinford/Library/CloudStorage/Dropbox/Projects/CIC Website/CIC Air Quality Networks/CIC-Test-UK-AQ-Schema/CIC-test-uk-aq-schema/schemas/observs_db/observs_db_dualwrite_bootstrap.sql:165`).
+  - `status_id` not mapped/populated (SQL expects `status_id`, `/Users/mikehinford/Library/CloudStorage/Dropbox/Projects/CIC Website/CIC Air Quality Networks/CIC-Test-UK-AQ-Schema/CIC-test-uk-aq-schema/schemas/obs_aqi_db/uk_aq_obs_aqi_db_dualwrite_bootstrap.sql:165`).
 
 `status_id` mapping logic?
 - No active mapping.

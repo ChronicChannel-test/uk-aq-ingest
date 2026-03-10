@@ -9,8 +9,8 @@
 - Schema edits in the allowed paths do not require extra confirmation (except under `archive/`).
 - Canonical SQL DDL must live in the schema repo (`.../CIC-test-uk-aq-schema/schemas/...`), not only in ingest/ops worker folders.
 - When adding/changing Obs AQI tables, update both:
-  - `schemas/aqilevels_db/uk_aq_aqilevels_schema.sql` (main schema file), and
-  - a focused schema-repo SQL file in `schemas/aqilevels_db/` if one is used for targeted apply.
+  - `schemas/obs_aqi_db/uk_aq_obs_aqi_db_schema.sql` (main schema file), and
+  - a focused schema-repo SQL file in `schemas/obs_aqi_db/` if one is used for targeted apply.
 
 ## Naming
 - Prefer `uk_aq` in filenames, scripts, and docs (avoid `ukair`).

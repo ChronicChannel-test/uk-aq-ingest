@@ -19,8 +19,8 @@ Scope: cross-repo (`CIC-test-uk-aq-ingest`, `CIC-test-uk-aq-ops`, `CIC-test-uk-a
 | 4 | R2 History contract + manifest-complete rule unification | Complete | 2026-03-08 |
 | 5 | Retention policy refactor (configurable, default 14 days) | In progress | - |
 | 6 | Website/API read-path + dashboard size charts | In progress | - |
-| 7 | Dropbox incremental backup (manifest-aware daily copy) | In progress | - |
-| 8 | Cutover, verification, decommission (`aggdailydb` removal) | Not started | - |
+| 7 | Dropbox incremental backup (manifest-aware daily copy) | Complete | 2026-03-10 |
+| 8 | Cutover, verification, decommission (`aggdailydb` removal) | In progress | - |
 | 9 | Backfill re-engineering (post hard-cut) | Not started | - |
 
 ## Phase Details
@@ -216,7 +216,7 @@ Delivered in Phase 6:
   - removed obsolete edge var usage for timeseries history direct-read schema/page settings.
 
 ### Phase 7: Dropbox incremental backup (manifest-aware daily copy)
-Status: In progress
+Status: Complete
 
 Details:
 - Implement daily R2 History -> Dropbox backup using `rclone`.
@@ -224,7 +224,7 @@ Details:
 - Preserve mirrored R2 History layout in Dropbox.
 - Add validation/report script driven by committed manifests and backup checkpoint state.
 
-Delivered in Phase 7 (partial):
+Delivered in Phase 7:
 - Added manifest-aware incremental copy script in ops:
   - `scripts/backup_r2/sync_history_to_dropbox.mjs`
 - Added scheduled GitHub workflow in ops:
@@ -241,7 +241,7 @@ Exit criteria:
 - Failed runs are retry-safe and idempotent.
 
 ### Phase 8: Cutover, verification, decommission (`aggdailydb` removal)
-Status: Not started
+Status: In progress
 
 Details:
 - Execute cutover runbook in controlled deployment order.
@@ -253,6 +253,17 @@ Exit criteria:
 - All production paths run on target naming and architecture.
 - Legacy DB/schema/env/R2 naming removed from active code/workflows.
 - Decommission checklist signed off.
+
+Delivered in Phase 8 (partial):
+- Executed live verification sweep against `obs_aqidb` and `ingestdb`:
+  - `obs_aqidb` now exposes only `uk_aq_observs` + `uk_aq_aqilevels` (no `uk_aq_history`/`uk_aq_aggdaily` schemas).
+  - no active function bodies in either DB reference `uk_aq_history`/`uk_aq_aggdaily` after Phase 8 patch.
+- Removed final legacy GitHub Actions variable in ops:
+  - deleted `UK_AQ_AGGDAILY_DB_LABEL` from `ChronicChannel-test/uk-aq-ops`.
+- Added and applied ingest cleanup migration in schema repo:
+  - `schemas/migrations/2026-03-10_ingest_phase8_legacy_aggdaily_cleanup.sql`
+  - drops stale `uk_aq_public.uk_aq_rpc_history_observations_upsert(jsonb)` from `ingestdb`.
+  - re-creates `uk_aq_aqilevels.uk_aq_aqi_index_lookup(...)` with hard-cut `uk_aq_aqilevels` references.
 
 ### Phase 9: Backfill re-engineering (post hard-cut)
 Status: Not started
@@ -272,7 +283,7 @@ Exit criteria:
 - No residual legacy naming or legacy-mode behavior in active backfill runtime paths.
 
 ## Next Phase To Execute
-Recommended immediate next phase: complete Phase 7 rollout and verification (first successful scheduled Dropbox incremental backup + checkpoint/state validation), then return to Phase 6 soak checks and Phase 8 cutover/decommission gates.
+Recommended immediate next phase: finish Phase 8 decommission sign-off (runbook evidence + cleanup gate closure), then proceed to Phase 9 backfill re-engineering.
 
 ## Locked Dashboard Scope (2026-03-08)
 - Keep DB line chart, but only for full DB cluster sizes: `ingestdb` and `obs_aqidb`.

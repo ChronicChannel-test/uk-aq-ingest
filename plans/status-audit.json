@@ -29,14 +29,14 @@
         "db": "history",
         "table": "uk_aq_history.observations",
         "column": "status_id (currently null from cloud-run ingest path)",
-        "code_ref": "/Users/mikehinford/Library/CloudStorage/Dropbox/Projects/CIC Website/CIC Air Quality Networks/CIC-Test-UK-AQ-Schema/CIC-test-uk-aq-schema/schemas/observs_db/observs_db_dualwrite_bootstrap.sql:165"
+        "code_ref": "/Users/mikehinford/Library/CloudStorage/Dropbox/Projects/CIC Website/CIC Air Quality Networks/CIC-Test-UK-AQ-Schema/CIC-test-uk-aq-schema/schemas/obs_aqi_db/uk_aq_obs_aqi_db_dualwrite_bootstrap.sql:165"
       }
     ],
     "mapping_code_refs": [
       "supabase/functions/ingest_uk_air_sos/index.ts:1700",
       "supabase/functions/_shared/history_client.ts:278",
       "supabase/functions/_shared/history_client.ts:454",
-      "/Users/mikehinford/Library/CloudStorage/Dropbox/Projects/CIC Website/CIC Air Quality Networks/CIC-Test-UK-AQ-Schema/CIC-test-uk-aq-schema/schemas/observs_db/observs_db_dualwrite_bootstrap.sql:159"
+      "/Users/mikehinford/Library/CloudStorage/Dropbox/Projects/CIC Website/CIC Air Quality Networks/CIC-Test-UK-AQ-Schema/CIC-test-uk-aq-schema/schemas/obs_aqi_db/uk_aq_obs_aqi_db_dualwrite_bootstrap.sql:159"
     ]
   },
   {
@@ -57,13 +57,13 @@
         "db": "history",
         "table": "uk_aq_history.observations",
         "column": "status_id (currently null from cloud-run ingest path)",
-        "code_ref": "/Users/mikehinford/Library/CloudStorage/Dropbox/Projects/CIC Website/CIC Air Quality Networks/CIC-Test-UK-AQ-Schema/CIC-test-uk-aq-schema/schemas/observs_db/observs_db_dualwrite_bootstrap.sql:165"
+        "code_ref": "/Users/mikehinford/Library/CloudStorage/Dropbox/Projects/CIC Website/CIC Air Quality Networks/CIC-Test-UK-AQ-Schema/CIC-test-uk-aq-schema/schemas/obs_aqi_db/uk_aq_obs_aqi_db_dualwrite_bootstrap.sql:165"
       }
     ],
     "mapping_code_refs": [
       "workers/uk_aq_sensorcommunity_cloud_run/index.mjs:1195",
       "workers/uk_aq_sensorcommunity_cloud_run/index.mjs:1322",
-      "/Users/mikehinford/Library/CloudStorage/Dropbox/Projects/CIC Website/CIC Air Quality Networks/CIC-Test-UK-AQ-Schema/CIC-test-uk-aq-schema/schemas/observs_db/observs_db_dualwrite_bootstrap.sql:159"
+      "/Users/mikehinford/Library/CloudStorage/Dropbox/Projects/CIC Website/CIC Air Quality Networks/CIC-Test-UK-AQ-Schema/CIC-test-uk-aq-schema/schemas/obs_aqi_db/uk_aq_obs_aqi_db_dualwrite_bootstrap.sql:159"
     ]
   },
   {
@@ -100,7 +100,7 @@
         "db": "history",
         "table": "uk_aq_history.observations",
         "column": "status_id (currently null from cloud-run ingest path)",
-        "code_ref": "/Users/mikehinford/Library/CloudStorage/Dropbox/Projects/CIC Website/CIC Air Quality Networks/CIC-Test-UK-AQ-Schema/CIC-test-uk-aq-schema/schemas/observs_db/observs_db_dualwrite_bootstrap.sql:165"
+        "code_ref": "/Users/mikehinford/Library/CloudStorage/Dropbox/Projects/CIC Website/CIC Air Quality Networks/CIC-Test-UK-AQ-Schema/CIC-test-uk-aq-schema/schemas/obs_aqi_db/uk_aq_obs_aqi_db_dualwrite_bootstrap.sql:165"
       }
     ],
     "mapping_code_refs": [
@@ -108,7 +108,7 @@
       "supabase/functions/ingest_openaq/index.ts:3391",
       "supabase/functions/ingest_openaq/index.ts:3406",
       "supabase/functions/_shared/history_client.ts:454",
-      "/Users/mikehinford/Library/CloudStorage/Dropbox/Projects/CIC Website/CIC Air Quality Networks/CIC-Test-UK-AQ-Schema/CIC-test-uk-aq-schema/schemas/observs_db/observs_db_dualwrite_bootstrap.sql:159"
+      "/Users/mikehinford/Library/CloudStorage/Dropbox/Projects/CIC Website/CIC Air Quality Networks/CIC-Test-UK-AQ-Schema/CIC-test-uk-aq-schema/schemas/obs_aqi_db/uk_aq_obs_aqi_db_dualwrite_bootstrap.sql:159"
     ]
   },
   {
@@ -142,7 +142,7 @@
         "db": "history",
         "table": "uk_aq_history.observations",
         "column": "status_id (currently null from cloud-run ingest path)",
-        "code_ref": "/Users/mikehinford/Library/CloudStorage/Dropbox/Projects/CIC Website/CIC Air Quality Networks/CIC-Test-UK-AQ-Schema/CIC-test-uk-aq-schema/schemas/observs_db/observs_db_dualwrite_bootstrap.sql:165"
+        "code_ref": "/Users/mikehinford/Library/CloudStorage/Dropbox/Projects/CIC Website/CIC Air Quality Networks/CIC-Test-UK-AQ-Schema/CIC-test-uk-aq-schema/schemas/obs_aqi_db/uk_aq_obs_aqi_db_dualwrite_bootstrap.sql:165"
       }
     ],
     "mapping_code_refs": [
@@ -150,7 +150,7 @@
       "supabase/functions/ingest_breathelondon/index.ts:1110",
       "supabase/functions/ingest_breathelondon/index.ts:1062",
       "supabase/functions/_shared/history_client.ts:454",
-      "/Users/mikehinford/Library/CloudStorage/Dropbox/Projects/CIC Website/CIC Air Quality Networks/CIC-Test-UK-AQ-Schema/CIC-test-uk-aq-schema/schemas/observs_db/observs_db_dualwrite_bootstrap.sql:159"
+      "/Users/mikehinford/Library/CloudStorage/Dropbox/Projects/CIC Website/CIC Air Quality Networks/CIC-Test-UK-AQ-Schema/CIC-test-uk-aq-schema/schemas/obs_aqi_db/uk_aq_obs_aqi_db_dualwrite_bootstrap.sql:159"
     ]
   }
 ]

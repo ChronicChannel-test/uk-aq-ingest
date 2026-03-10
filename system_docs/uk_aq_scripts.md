@@ -327,8 +327,8 @@ Notes:
 - Destination metadata is read via `uk_aq_public.uk_aq_rpc_info_schema_columns` and `uk_aq_public.uk_aq_rpc_info_schema_primary_keys`.
 - Destination `uk_aq_core` does not need to be API-exposed for this script, as long as the mirror RPCs above exist in `uk_aq_public`.
 - Apply agg_daily schema SQL first on Obs AQI DB:
-  - `CIC-test-uk-aq-schema/schemas/aqilevels_db/uk_aq_aqilevels_schema.sql`
-  - Focused apply option for mirror RPC updates: `CIC-test-uk-aq-schema/schemas/aqilevels_db/uk_aq_core_mirror_rpcs.sql`
+  - `CIC-test-uk-aq-schema/schemas/obs_aqi_db/uk_aq_obs_aqi_db_schema.sql`
+  - Focused apply option for mirror RPC updates: `CIC-test-uk-aq-schema/schemas/obs_aqi_db/uk_aq_core_mirror_rpcs.sql`
 
 ### `scripts/uk_aq_station_snapshot_local.py`
 Purpose:

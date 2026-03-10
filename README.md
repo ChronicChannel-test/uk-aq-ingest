@@ -110,9 +110,9 @@ Use this flow when creating fresh MAIN + HISTORY projects.
    - In this repo, run/paste:
      - `supabase/uk_aq_polling_helpers.sql`
 2. HISTORY DB project:
-   - In the schema repo (`../CIC-Test-UK-AQ-Schema/uk-aq-schema/schemas/observs_db`), run/paste:
-     - `uk_aq_observs_schema.sql`
-     - `observs_db_dualwrite_bootstrap.sql`
+   - In the schema repo (`../CIC-Test-UK-AQ-Schema/uk-aq-schema/schemas/obs_aqi_db`), run/paste:
+     - `uk_aq_obs_aqi_db_schema.sql`
+     - `uk_aq_obs_aqi_db_dualwrite_bootstrap.sql`
    - History observations are keyed by `(connector_id, timeseries_id, observed_at)`.
 3. Set MAIN runtime secrets:
    - `OBS_AQIDB_SUPABASE_URL`

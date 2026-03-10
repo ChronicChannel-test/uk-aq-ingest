@@ -121,6 +121,8 @@ How:
 Inputs:
 
 - Latest `oldest_observed_at` from DB/schema metrics.
+- Obs AQI DB RPC `uk_aq_rpc_aqilevels_drop_candidates` (called with tomorrow as cutoff):
+  - `obs_aqi_aqilevels` day is present only when `hourly_rows > 0` for that UTC day.
 - R2 committed-day API (preferred):
   - endpoint: `UK_AQ_R2_HISTORY_DAYS_API_URL` (or derived from `UK_AQ_DB_SIZE_API_URL` as `/v1/r2-history-days`)
   - bucket is fixed by the Worker environment (`CFLARE_R2_BUCKET`)
@@ -132,6 +134,8 @@ Inputs:
 
 Rules:
 
+- Calendar `obs_aqi_aqilevels` day presence is based on explicit per-day hourly row presence from Obs AQI DB RPC output.
+- If the AQI-levels day RPC is unavailable, calendar falls back to existing oldest-day range logic for `obs_aqi_aqilevels`.
 - Calendar `r2_observs` / `r2_aqilevels` day presence is only taken from committed-day API per-day lists.
 - If committed-day API is unavailable, calendar does not infer per-day R2 presence from RPC min/max windows.
 - RPC window is still used for the separate R2 history window panel text, not for per-day coverage coloring.

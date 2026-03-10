@@ -131,7 +131,7 @@ UK_AQ_EDGE_UPSTREAM_SECRET=...
 - Vars: `OBS_AQIDB_SUPABASE_URL`.
 - Vars: `PCON_VERSION`, `LA_VERSION` (optional; defaults to latest in Aiven).
 - Agg Daily bootstrap SQL (run once on empty Obs AQI DB before enabling mirror step):
-  - `CIC-test-uk-aq-schema/schemas/aqilevels_db/uk_aq_aqilevels_schema.sql`
+  - `CIC-test-uk-aq-schema/schemas/obs_aqi_db/uk_aq_obs_aqi_db_schema.sql`
   - This file creates `uk_aq_core` mirrored table structures plus required metadata/mirror RPCs in `uk_aq_public`.
   - Destination `uk_aq_core` does not need to be API-exposed when mirror RPCs are present.
 

@@ -48,7 +48,7 @@ psql "$OBS_AQIDB_SUPABASE_DB_URL" -v ON_ERROR_STOP=1 \
   -f "$SCHEMA_REPO/schemas/migrations/2026-03-08_phase3_obs_aqidb_schema_hard_cut.sql"
 
 psql "$OBS_AQIDB_SUPABASE_DB_URL" -v ON_ERROR_STOP=1 \
-  -f "$SCHEMA_REPO/schemas/aqilevels_db/uk_aq_aqilevels_schema.sql"
+  -f "$SCHEMA_REPO/schemas/obs_aqi_db/uk_aq_obs_aqi_db_schema.sql"
 
 psql "$OBS_AQIDB_SUPABASE_DB_URL" -v ON_ERROR_STOP=1 \
   -f "$SCHEMA_REPO/schemas/migrations/2026-03-08_obs_aqidb_schema_size_metrics_store.sql"
