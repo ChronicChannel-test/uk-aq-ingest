@@ -37,6 +37,11 @@ Served by `scripts/uk_aq_dashboard_local.py`:
   - Query params:
     - `force=1|true|yes|on`: clear dashboard + storage coverage cache before rebuilding.
     - `dispatch_cursor=<timestamp>`: incremental dispatch feed fetch.
+    - `include_storage_coverage=0|false|no|off`: skip `storage_coverage_days` in this response (used for faster initial UI render).
+- `GET /api/storage_coverage`
+  - Returns storage coverage calendar rows only.
+  - Query params:
+    - `force=1|true|yes|on`: clear storage coverage cache before rebuilding rows.
 - `GET /api/r2_metrics`
   - Returns R2 usage + R2 history window.
   - Query params:
@@ -151,6 +156,11 @@ Rules:
   - Monthly: today shown as half-width bars.
   - Yearly: today excluded (complete-day model).
 
+UI loading behavior:
+
+- Frontend first requests `/api/dashboard?include_storage_coverage=0` so non-calendar panels render without waiting for storage-coverage recompute.
+- After initial render, frontend requests `/api/storage_coverage` and swaps in the calendar panel when rows are ready.
+
 ## Dropbox Status in Monthly Calendar
 
 Monthly bars can show backup state from checkpoint data:
@@ -206,6 +216,7 @@ Defaults:
 
 - Dashboard payload cache (`/api/dashboard`):
   - `CACHE_TTL_SECONDS=20`.
+  - Separate cache entries are maintained for `include_storage_coverage=true` and `include_storage_coverage=false`.
 - R2 usage cache:
   - `R2_CACHE_TTL_SECONDS=3600` (1 hour).
 - Storage coverage cache:

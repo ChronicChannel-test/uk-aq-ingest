@@ -1161,6 +1161,7 @@
       const STORAGE_COVERAGE_MONTH_STORAGE_KEY = "uk_aq_storage_coverage_month";
       const STORAGE_COVERAGE_MODE_STORAGE_KEY = "uk_aq_storage_coverage_mode";
       const STORAGE_COVERAGE_MODE_VALUES = new Set(["month", "year"]);
+      const STORAGE_COVERAGE_ERROR_PREFIX = "Storage coverage calendar failed to load:";
       const DAY_MS = 24 * 60 * 60 * 1000;
       const COVERAGE_WEEKDAY_NAMES = [
         "Monday",
@@ -1179,6 +1180,8 @@
       let storageCoverageMonthCursor = null;
       let storageCoverageMode = "month";
       let latestDashboardData = null;
+      let dashboardLoadSequence = 0;
+      let storageCoverageLoadSequence = 0;
 
       try {
         const storedConnector = localStorage.getItem(DISPATCH_CONNECTOR_STORAGE_KEY);
@@ -3483,13 +3486,118 @@
         return !allGoogleCloudRun;
       }
 
+      function upsertStorageCoveragePanel(nextPanel) {
+        const currentPanel = dashboardEl.querySelector('[data-panel="storage-coverage"]');
+        if (currentPanel) {
+          currentPanel.replaceWith(nextPanel);
+          return;
+        }
+        dashboardEl.appendChild(nextPanel);
+      }
+
+      function renderStorageCoverageLoadingPanel(message = "Refreshing calendar...") {
+        const panel = document.createElement("section");
+        panel.className = "panel coverage-calendar-panel";
+        panel.dataset.panel = "storage-coverage";
+        panel.innerHTML = `
+          <h2>Storage coverage calendar</h2>
+          <div class="footnote">${escapeHtml(message)}</div>
+        `;
+        return panel;
+      }
+
+      function renderStorageCoverageErrorPanel(message, options = {}) {
+        const forceRefresh = Boolean(options.forceRefresh);
+        const parentLoadId = Number(options.parentLoadId) || dashboardLoadSequence;
+        const panel = document.createElement("section");
+        panel.className = "panel coverage-calendar-panel";
+        panel.dataset.panel = "storage-coverage";
+        panel.innerHTML = `
+          <h2>Storage coverage calendar</h2>
+          <div class="footnote">Failed to load calendar data: ${escapeHtml(message || "unknown error")}</div>
+          <div class="settings-actions">
+            <button class="settings-button" data-action="retry-storage-coverage">Retry calendar load</button>
+          </div>
+        `;
+        const retryButton = panel.querySelector('[data-action="retry-storage-coverage"]');
+        if (retryButton) {
+          retryButton.addEventListener("click", () => {
+            loadStorageCoverage({ forceRefresh, parentLoadId });
+          });
+        }
+        return panel;
+      }
+
+      async function loadStorageCoverage(options = {}) {
+        const forceRefresh = Boolean(options.forceRefresh);
+        const parentLoadId = Number(options.parentLoadId) || 0;
+        const requestId = ++storageCoverageLoadSequence;
+        const loadingLabel = forceRefresh ? "Force refreshing calendar..." : "Refreshing calendar...";
+        upsertStorageCoveragePanel(renderStorageCoverageLoadingPanel(loadingLabel));
+        try {
+          const params = new URLSearchParams();
+          params.set("t", String(Date.now()));
+          if (forceRefresh) {
+            params.set("force", "1");
+          }
+          const resp = await fetch(`/api/storage_coverage?${params.toString()}`);
+          const text = await resp.text();
+          let payload = null;
+          try {
+            payload = JSON.parse(text);
+          } catch (_err) {
+            payload = null;
+          }
+          if (!resp.ok) {
+            const message =
+              (payload && (payload.error || payload.message)) ||
+              text ||
+              `Request failed (${resp.status})`;
+            throw new Error(message);
+          }
+          if (requestId !== storageCoverageLoadSequence) {
+            return;
+          }
+          if (parentLoadId && parentLoadId !== dashboardLoadSequence) {
+            return;
+          }
+          const data = payload || {};
+          const coverageRows = Array.isArray(data.storage_coverage_days)
+            ? data.storage_coverage_days
+            : [];
+          if (latestDashboardData && typeof latestDashboardData === "object") {
+            latestDashboardData.storage_coverage_days = coverageRows;
+            latestDashboardData.storage_coverage_source =
+              data.storage_coverage_source || "live_per_day_presence";
+          }
+          upsertStorageCoveragePanel(renderStorageCoverageCalendarPanel(coverageRows));
+          if (String(errorEl.textContent || "").startsWith(STORAGE_COVERAGE_ERROR_PREFIX)) {
+            setError("");
+          }
+        } catch (err) {
+          if (requestId !== storageCoverageLoadSequence) {
+            return;
+          }
+          if (parentLoadId && parentLoadId !== dashboardLoadSequence) {
+            return;
+          }
+          const message = err.message || String(err);
+          upsertStorageCoveragePanel(
+            renderStorageCoverageErrorPanel(message, { forceRefresh, parentLoadId }),
+          );
+          setError(`${STORAGE_COVERAGE_ERROR_PREFIX} ${message}`);
+        }
+      }
+
       async function loadDashboard(options = {}) {
         const forceRefresh = Boolean(options.forceRefresh);
+        const loadId = ++dashboardLoadSequence;
         setError("");
         setStatus(forceRefresh ? "Force refreshing..." : "Loading...");
         try {
           const params = new URLSearchParams();
           params.set("t", String(Date.now()));
+          params.set("include_storage_coverage", "0");
           if (forceRefresh) {
             params.set("force", "1");
           }
@@ -3510,6 +3618,9 @@
               text ||
               `Request failed (${resp.status})`;
             throw new Error(message);
+          }
+          if (loadId !== dashboardLoadSequence) {
+            return;
           }
           const data = payload || {};
           latestDashboardData = data;
@@ -3534,7 +3645,7 @@
           if (Array.isArray(data.dispatch_runs)) {
             dashboardEl.appendChild(renderDispatchPanel(data.dispatch_runs));
           }
-          data.pollutants.forEach((pollutant) => {
+          (Array.isArray(data.pollutants) ? data.pollutants : []).forEach((pollutant) => {
             dashboardEl.appendChild(renderPanel(pollutant));
           });
           dashboardEl.appendChild(
@@ -3551,16 +3662,18 @@
               data.r2_backup_window_error,
             ),
           );
-          dashboardEl.appendChild(
-            renderStorageCoverageCalendarPanel(data.storage_coverage_days),
-          );
+          upsertStorageCoveragePanel(renderStorageCoverageLoadingPanel("Refreshing calendar..."));
           if (forceRefresh) {
             setStatus(`Force refreshed ${formatTime(data.generated_at)} (local time)`);
           } else {
             setStatus(`Updated ${formatTime(data.generated_at)} (local time)`);
           }
           setDataMeta(data);
+          void loadStorageCoverage({ forceRefresh, parentLoadId: loadId });
         } catch (err) {
+          if (loadId !== dashboardLoadSequence) {
+            return;
+          }
           setError(err.message || String(err));
           setStatus("Error");
         }

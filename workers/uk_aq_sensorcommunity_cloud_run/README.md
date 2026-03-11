@@ -19,6 +19,11 @@ This worker runs Sensor.Community ingest directly in Cloud Run Service
 - Uploads run log + raw payload snapshot to Dropbox when Dropbox env/secrets are configured and allowed for the active Supabase URL.
   - Log artifact: `uk_aq_log_cloud_run_scomm_<timestamp>.json`
   - Raw artifact: `uk_aq_raw_cloud_run_scomm_<timestamp>.zip`
+- Evaluates failure monitor rules from recent `uk_aq_ingest_runs` history:
+  - consecutive server-error streak threshold (`SCOMM_ALERT_CONSECUTIVE_500_THRESHOLD`, default `3`)
+  - lookback failure-rate threshold (`SCOMM_ALERT_FAILURE_RATE_THRESHOLD`, default `0.5`) over `SCOMM_ALERT_FAILURE_RATE_LOOKBACK_MINUTES` (default `60`)
+- On rule threshold crossing, inserts a warning row in `uk_aq_raw.error_logs` and (when Dropbox error logging is enabled) uploads alert JSON to:
+  - `{UK_AQ_DROPBOX_ROOT}/error_log/YYYY-MM-DD/`
 - Writes run status back to `connectors` and inserts `uk_aq_ingest_runs` row.
 - Inserts `error_logs` row on ingest failure.
 
@@ -63,6 +68,15 @@ The previous proxy worker (Cloud Run -> Supabase Edge function) is archived at:
 - `SCOMM_DROPBOX_ROOT` or `UK_AQ_DROPBOX_ROOT` (default `/CIC-Test`)
 - `SCOMM_RAW_DROPBOX_FOLDER` or `UK_AIR_RAW_DROPBOX_FOLDER`
   (default `/connectors/sensorcommunity/raw_data`)
+- `SCOMM_ERROR_DROPBOX_ALLOWED_SUPABASE_URL` or `UK_AIR_ERROR_DROPBOX_ALLOWED_SUPABASE_URL`
+  (optional; defaults to raw allowlist env value)
+- `SCOMM_ERROR_DROPBOX_FOLDER` or `UK_AIR_ERROR_DROPBOX_FOLDER`
+  (default `/error_log`)
+- `SCOMM_ALERT_CONSECUTIVE_500_THRESHOLD` (default `3`)
+- `SCOMM_ALERT_FAILURE_RATE_LOOKBACK_MINUTES` (default `60`)
+- `SCOMM_ALERT_FAILURE_RATE_THRESHOLD` (default `0.5`; must be between `0` and `1`)
+- `SCOMM_ALERT_FAILURE_RATE_MIN_RUNS` (default `3`)
+- `SCOMM_ALERT_RUN_SAMPLE_LIMIT` (default `240`)
 
 ## Build image
 

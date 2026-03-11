@@ -249,8 +249,10 @@ python3 scripts/uk_aq_dashboard_local.py --port 8045
 
 Notes:
 - Serves the UI at `http://127.0.0.1:8045` and JSON at `/api/dashboard`.
+- Also exposes `/api/storage_coverage` for calendar-only payloads.
 - The HTML lives at `data/uk_aq_dashboard/uk_aq_dashboard.html`.
 - Local dashboard assets under `data/uk_aq_dashboard/` are served via `/assets/...` (for example `/assets/dropbox-icon.svg`).
+- Frontend now loads non-calendar panels first via `/api/dashboard?include_storage_coverage=0`, then refreshes the calendar asynchronously from `/api/storage_coverage`.
 - Storage coverage calendar includes a `Force Refresh` button (left of `Previous`) that calls `/api/dashboard?force=1` to bypass server cache and rebuild calendar rows immediately.
 - Storage coverage calendar includes a `Today` button (between the `Monthly/Yearly` selector and `Force Refresh`) that jumps to the current UTC month in monthly mode and current UTC year in yearly mode.
 - Storage coverage calendar has a `Monthly`/`Yearly` view selector. Monthly view keeps the 3-row labeled bars (top `Ingest DB` or `R2 History - Observs`, middle `ObsAQI DB - Observs` with the R2 2-box middle-shift rule, and AQI levels on bottom with yellow/green striping only when both AQI sources are present), and today is rendered with half-width bars (no labels). Yearly view shows per-day 2x2 colored squares without labels/day numbers and weekday letters `M T W T F S S` above each month.
@@ -335,7 +337,7 @@ Notes:
 
 ### `scripts/uk_aq_station_snapshot_local.py`
 Purpose:
-- Run a separate local dashboard for station-level raw snapshot inspection via the protected edge function `uk_aq_station_snapshot`.
+- Run a local station snapshot dashboard that prioritizes direct service-role reads from ingestdb and ObsAQIDB, with edge fallback support.
 
 Common commands:
 ```
@@ -344,21 +346,39 @@ python3 scripts/uk_aq_station_snapshot_local.py --edge-url https://<project>.sup
 ```
 
 Notes:
-- Serves the UI at `http://127.0.0.1:8046` and config at `/api/config`.
+- Serves the UI at `http://127.0.0.1:8046` plus local APIs:
+  - `/api/config` for startup defaults/mode
+  - `/api/snapshot` for aggregated station payloads
+  - `/api/token` for edge-fallback token refresh
 - The HTML lives at `data/uk_aq_station_snapshot/uk_aq_station_snapshot.html`.
-- Access token comes from `UK_AQ_DEV_JWT` (or `--dev-jwt`) and is injected via `/api/config` (no JWT input field in UI).
-- If `UK_AQ_DEV_REFRESH_TOKEN` is set, the local server can auto-refresh expired access tokens via `/api/token`.
-- Rotated refresh tokens are written back to the env file (default: `.env.supabase`) so restarts keep working.
-- The page renders raw rows for `stations`, `timeseries`, `openaq_station_checkpoints`, `openaq_timeseries_checkpoints`, and `observations`.
+- In service-role mode (preferred), `/api/snapshot` reads directly from:
+  - ingestdb: `uk_aq_core.stations`, `uk_aq_core.timeseries`, `uk_aq_raw.openaq_station_checkpoints`, `uk_aq_raw.openaq_timeseries_checkpoints`, `uk_aq_core.observations`
+  - ObsAQIDB: `uk_aq_observs.observations`, `uk_aq_aqilevels.station_aqi_hourly`, `uk_aq_aqilevels.station_aqi_daily` (via direct SQL when DB URL is available)
+- The page renders ingestdb selected-timeseries observations, ingestdb all-timeseries observations, ObsAQIDB observs, and ObsAQIDB AQI hourly/daily rows.
+- `obs_limit` supports `all` or positive integer values in the UI.
+- If service-role ingest access is not configured, script falls back to edge mode and uses `uk_aq_station_snapshot` with JWT auth.
+- Edge fallback token behavior:
+  - Access token comes from `UK_AQ_DEV_JWT` (or `--dev-jwt`) and is exposed by `/api/config`.
+  - If `UK_AQ_DEV_REFRESH_TOKEN` is set, local server can auto-refresh expired access tokens via `/api/token`.
+  - Rotated refresh tokens are written back to the env file (default `.env.supabase`) so restarts keep working.
 - Snapshot `window` selector supports: `6h`, `24h`, `7d`, `21d`, `31d`.
 
 Environment:
-- `SUPABASE_URL` or `SB_SUPABASE_URL` (used to derive edge URL if not passed)
-- `UK_AQ_STATION_SNAPSHOT_EDGE_URL` (optional explicit edge URL)
-- `UK_AQ_DEV_JWT` (required unless `UK_AQ_DEV_REFRESH_TOKEN` is provided)
-- `UK_AQ_DEV_REFRESH_TOKEN` (optional; enables auto-refresh)
-- `UK_AQ_DEV_ENV_FILE` (optional; env file to persist rotated refresh tokens, default `.env.supabase`)
-- `SB_PUBLISHABLE_DEFAULT_KEY` required when using auto-refresh
+- Service-role ingest mode (preferred):
+  - `SUPABASE_URL` or `SB_SUPABASE_URL`
+  - `SB_SECRET_KEY` (or `SUPABASE_SERVICE_ROLE_KEY`)
+- ObsAQIDB enrichment:
+  - `OBS_AQIDB_SUPABASE_DB_URL` (preferred for direct SQL reads)
+  - optional fallback path: `OBS_AQIDB_SUPABASE_URL` + `OBS_AQIDB_SECRET_KEY`
+- Optional edge fallback:
+  - `UK_AQ_STATION_SNAPSHOT_EDGE_URL` (optional explicit edge URL)
+  - `UK_AQ_DEV_JWT` (or `UK_AQ_DEV_REFRESH_TOKEN`)
+  - `UK_AQ_DEV_REFRESH_TOKEN` (optional; enables auto-refresh)
+  - `UK_AQ_DEV_ENV_FILE` (optional; env file to persist rotated refresh tokens, default `.env.supabase`)
+  - `SB_PUBLISHABLE_DEFAULT_KEY` required when using auto-refresh
+- Optional tuning:
+  - `UK_AQ_STATION_SNAPSHOT_PAGE_SIZE` (default `1000`)
+  - `UK_AQ_STATION_SNAPSHOT_MAX_ROWS` (default `200000`)
 
 ### `scripts/uk_aq_issue_dev_auth_tokens.py`
 Purpose:

@@ -40,11 +40,15 @@ Per run, worker updates:
 - `uk_aq_core.connectors` (`last_run_*`, and `last_polled_at` on success)
 - `uk_aq_core.uk_aq_ingest_runs` (dashboard run feed)
 - `uk_aq_raw.error_logs` on ingest failure
+- `uk_aq_raw.error_logs` warning alerts when failure-monitor thresholds are crossed:
+  - consecutive server-error streak threshold (default `3`)
+  - 1-hour failure-rate threshold (default `> 0.5`, with minimum-run guard)
 - History dual-write rows are normalized and deduplicated by `(connector_id, timeseries_id, observed_at)` before history upsert/outbox enqueue.
 - `OBSERVS_WRITE_MODE=pubsub_only` publishes history rows to GCP Pub/Sub (`GCP_OBSERVS_PUBSUB_TOPIC`) for hourly mixed-row history writer processing.
 - Dropbox artifacts (when configured):
   - log JSON under `/connectors/sensorcommunity/log/YYYY-MM-DD/` with `uk_aq_log_cloud_run_*`
   - raw ZIP under `/connectors/sensorcommunity/raw_data/YYYY-MM-DD/` with `uk_aq_raw_cloud_run_*`
+  - failure-monitor alert JSON under `/error_log/YYYY-MM-DD/` with `uk_aq_error_cloud_run_*`
 
 ## Deployment
 

@@ -102,7 +102,10 @@ SCHEDULER_BACKEND_CONNECTOR_ALLOWLIST = {
 }
 
 CACHE_LOCK = threading.Lock()
-CACHE_STATE: Dict[str, Any] = {"data": None, "generated_at": None}
+CACHE_STATE: Dict[str, Dict[str, Any]] = {
+    "with_coverage": {"data": None, "generated_at": None},
+    "without_coverage": {"data": None, "generated_at": None},
+}
 R2_CACHE_STATE: Dict[str, Any] = {"usage": None, "error": None, "generated_at": None}
 STORAGE_COVERAGE_CACHE_STATE: Dict[str, Any] = {"rows": None, "next_refresh_at": None}
 DISPATCH_RUNS_STATE: Dict[str, Any] = {
@@ -194,6 +197,22 @@ query R2StorageNow($accountTag: string!, $startDate: Time!, $endDate: Time!) {
   }
 }
 """
+
+
+def _dashboard_cache_bucket(include_storage_coverage: bool) -> str:
+    return "with_coverage" if include_storage_coverage else "without_coverage"
+
+
+def _invalidate_dashboard_cache(clear_storage_coverage: bool = False) -> None:
+    with CACHE_LOCK:
+        for cache_bucket in ("with_coverage", "without_coverage"):
+            bucket_state = CACHE_STATE.get(cache_bucket)
+            if isinstance(bucket_state, dict):
+                bucket_state["data"] = None
+                bucket_state["generated_at"] = None
+        if clear_storage_coverage:
+            STORAGE_COVERAGE_CACHE_STATE["rows"] = None
+            STORAGE_COVERAGE_CACHE_STATE["next_refresh_at"] = None
 
 
 def _normalize_token(value: str) -> str:
@@ -1461,6 +1480,20 @@ def _next_storage_coverage_refresh(now_utc: datetime) -> datetime:
     return refresh_today + timedelta(days=1)
 
 
+def _get_cached_storage_coverage_days(now: datetime) -> Optional[List[Dict[str, Any]]]:
+    now_utc = now.astimezone(timezone.utc)
+    with CACHE_LOCK:
+        cached_rows = STORAGE_COVERAGE_CACHE_STATE.get("rows")
+        next_refresh_at = STORAGE_COVERAGE_CACHE_STATE.get("next_refresh_at")
+        if (
+            isinstance(cached_rows, list)
+            and isinstance(next_refresh_at, datetime)
+            and now_utc < next_refresh_at
+        ):
+            return list(cached_rows)
+    return None
+
+
 def _get_storage_coverage_days_cached(
     now: datetime,
     base_url: str,
@@ -1472,17 +1505,11 @@ def _get_storage_coverage_days_cached(
     r2_backup_window: Optional[Dict[str, Any]],
     r2_history_days: Optional[Dict[str, Set[date]]],
 ) -> List[Dict[str, Any]]:
-    now_utc = now.astimezone(timezone.utc)
-    with CACHE_LOCK:
-        cached_rows = STORAGE_COVERAGE_CACHE_STATE.get("rows")
-        next_refresh_at = STORAGE_COVERAGE_CACHE_STATE.get("next_refresh_at")
-        if (
-            isinstance(cached_rows, list)
-            and isinstance(next_refresh_at, datetime)
-            and now_utc < next_refresh_at
-        ):
-            return cached_rows
+    cached_rows = _get_cached_storage_coverage_days(now)
+    if isinstance(cached_rows, list):
+        return cached_rows
 
+    now_utc = now.astimezone(timezone.utc)
     day_sets = _fetch_storage_day_sets()
     rows = _build_live_storage_coverage_days(
         now=now_utc,
@@ -2160,10 +2187,78 @@ def _bucket_for(latest_at: datetime, now: datetime) -> str:
     return "Older than 7 Days"
 
 
+def _fetch_storage_coverage_context(
+    base_url: str,
+    headers: Dict[str, str],
+    now: datetime,
+) -> Dict[str, Any]:
+    (
+        db_size_metrics,
+        schema_size_metrics,
+        r2_domain_size_metrics,
+        db_size_metrics_error,
+        schema_size_metrics_error,
+        r2_domain_size_metrics_error,
+    ) = _fetch_size_metrics(
+        base_url,
+        headers,
+        now,
+    )
+    (
+        r2_history_days,
+        r2_backup_window_from_history_days,
+        r2_history_days_bucket,
+        r2_history_days_error,
+    ) = _fetch_r2_history_days_from_external_api()
+    r2_backup_window_rpc, r2_backup_window_rpc_error = _fetch_r2_backup_window(
+        base_url,
+        headers,
+    )
+    r2_backup_window = (
+        r2_backup_window_from_history_days
+        if r2_backup_window_from_history_days is not None
+        else r2_backup_window_rpc
+    )
+    r2_backup_window_error = _join_error_messages(
+        r2_history_days_error,
+        r2_backup_window_rpc_error if r2_backup_window_from_history_days is None else None,
+    )
+    if r2_history_days_error is None:
+        (
+            r2_domain_size_metrics,
+            r2_domain_filter_error,
+        ) = _filter_r2_domain_metrics_to_committed_days(
+            r2_domain_size_metrics,
+            r2_history_days,
+        )
+        r2_domain_size_metrics_error = _join_error_messages(
+            r2_domain_size_metrics_error,
+            r2_domain_filter_error,
+        )
+    dropbox_backup_days, dropbox_state_path, dropbox_state_error = _load_dropbox_backup_days()
+    return {
+        "db_size_metrics": db_size_metrics,
+        "schema_size_metrics": schema_size_metrics,
+        "r2_domain_size_metrics": r2_domain_size_metrics,
+        "db_size_metrics_error": db_size_metrics_error,
+        "schema_size_metrics_error": schema_size_metrics_error,
+        "r2_domain_size_metrics_error": r2_domain_size_metrics_error,
+        "r2_history_days": r2_history_days,
+        "r2_backup_window": r2_backup_window,
+        "r2_backup_window_error": r2_backup_window_error,
+        "r2_history_days_bucket": r2_history_days_bucket,
+        "r2_history_days_error": r2_history_days_error,
+        "dropbox_backup_days": dropbox_backup_days,
+        "dropbox_state_path": dropbox_state_path,
+        "dropbox_state_error": dropbox_state_error,
+    }
+
+
 def _build_dashboard(
     base_url: str,
     service_role_key: str,
     dispatch_cursor: Optional[datetime] = None,
+    include_storage_coverage: bool = True,
 ) -> Dict[str, Any]:
     headers = _postgrest_headers(service_role_key)
     project_ref = _project_ref_from_base_url(base_url)
@@ -2228,51 +2323,26 @@ def _build_dashboard(
             active_station_keys[(connector_id, station_id)] = True
 
     now = datetime.now(timezone.utc)
-    (
-        db_size_metrics,
-        schema_size_metrics,
-        r2_domain_size_metrics,
-        db_size_metrics_error,
-        schema_size_metrics_error,
-        r2_domain_size_metrics_error,
-    ) = _fetch_size_metrics(
+    coverage_context = _fetch_storage_coverage_context(
         base_url,
         headers,
         now,
     )
+    db_size_metrics = coverage_context["db_size_metrics"]
+    schema_size_metrics = coverage_context["schema_size_metrics"]
+    r2_domain_size_metrics = coverage_context["r2_domain_size_metrics"]
+    db_size_metrics_error = coverage_context["db_size_metrics_error"]
+    schema_size_metrics_error = coverage_context["schema_size_metrics_error"]
+    r2_domain_size_metrics_error = coverage_context["r2_domain_size_metrics_error"]
+    r2_history_days = coverage_context["r2_history_days"]
+    r2_backup_window = coverage_context["r2_backup_window"]
+    r2_backup_window_error = coverage_context["r2_backup_window_error"]
+    r2_history_days_bucket = coverage_context["r2_history_days_bucket"]
+    r2_history_days_error = coverage_context["r2_history_days_error"]
+    dropbox_backup_days = coverage_context["dropbox_backup_days"]
+    dropbox_state_path = coverage_context["dropbox_state_path"]
+    dropbox_state_error = coverage_context["dropbox_state_error"]
     r2_usage, r2_usage_error = _get_r2_usage_cached(force_refresh=False)
-    (
-        r2_history_days,
-        r2_backup_window_from_history_days,
-        r2_history_days_bucket,
-        r2_history_days_error,
-    ) = _fetch_r2_history_days_from_external_api()
-    r2_backup_window_rpc, r2_backup_window_rpc_error = _fetch_r2_backup_window(
-        base_url,
-        headers,
-    )
-    r2_backup_window = (
-        r2_backup_window_from_history_days
-        if r2_backup_window_from_history_days is not None
-        else r2_backup_window_rpc
-    )
-    r2_backup_window_error = _join_error_messages(
-        r2_history_days_error,
-        r2_backup_window_rpc_error if r2_backup_window_from_history_days is None else None,
-    )
-    if r2_history_days_error is None:
-        (
-            r2_domain_size_metrics,
-            r2_domain_filter_error,
-        ) = _filter_r2_domain_metrics_to_committed_days(
-            r2_domain_size_metrics,
-            r2_history_days,
-        )
-        r2_domain_size_metrics_error = _join_error_messages(
-            r2_domain_size_metrics_error,
-            r2_domain_filter_error,
-        )
-    dropbox_backup_days, dropbox_state_path, dropbox_state_error = _load_dropbox_backup_days()
     ingest_runs = _get_ingest_runs_cached(
         base_url,
         headers,
@@ -2463,17 +2533,19 @@ def _build_dashboard(
         if isinstance(latest_created_at, datetime):
             next_dispatch_cursor = _to_postgrest_ts(latest_created_at)
 
-    storage_coverage_days = _get_storage_coverage_days_cached(
-        now=now,
-        base_url=base_url,
-        service_role_key=service_role_key,
-        db_size_metrics=db_size_metrics,
-        schema_size_metrics=schema_size_metrics,
-        r2_domain_size_metrics=r2_domain_size_metrics,
-        dropbox_backup_days=dropbox_backup_days,
-        r2_backup_window=r2_backup_window,
-        r2_history_days=r2_history_days,
-    )
+    storage_coverage_days: List[Dict[str, Any]] = []
+    if include_storage_coverage:
+        storage_coverage_days = _get_storage_coverage_days_cached(
+            now=now,
+            base_url=base_url,
+            service_role_key=service_role_key,
+            db_size_metrics=db_size_metrics,
+            schema_size_metrics=schema_size_metrics,
+            r2_domain_size_metrics=r2_domain_size_metrics,
+            dropbox_backup_days=dropbox_backup_days,
+            r2_backup_window=r2_backup_window,
+            r2_history_days=r2_history_days,
+        )
 
     return {
         "project_ref": project_ref,
@@ -2522,6 +2594,7 @@ def _get_dashboard(
     base_url: str,
     service_role_key: str,
     dispatch_cursor: Optional[datetime] = None,
+    include_storage_coverage: bool = True,
 ) -> Dict[str, Any]:
     # Cursor-based requests are incremental and should not be served from the shared cache.
     if dispatch_cursor is not None:
@@ -2529,12 +2602,15 @@ def _get_dashboard(
             base_url,
             service_role_key,
             dispatch_cursor=dispatch_cursor,
+            include_storage_coverage=include_storage_coverage,
         )
 
+    cache_bucket = _dashboard_cache_bucket(include_storage_coverage)
     with CACHE_LOCK:
-        cached = CACHE_STATE.get("data")
-        generated_at = CACHE_STATE.get("generated_at")
-        if cached and generated_at:
+        bucket_state = CACHE_STATE.get(cache_bucket) or {}
+        cached = bucket_state.get("data")
+        generated_at = bucket_state.get("generated_at")
+        if cached and isinstance(generated_at, datetime):
             age = (datetime.now(timezone.utc) - generated_at).total_seconds()
             if age < CACHE_TTL_SECONDS:
                 return cached
@@ -2542,11 +2618,45 @@ def _get_dashboard(
         base_url,
         service_role_key,
         dispatch_cursor=dispatch_cursor,
+        include_storage_coverage=include_storage_coverage,
     )
     with CACHE_LOCK:
-        CACHE_STATE["data"] = data
-        CACHE_STATE["generated_at"] = datetime.now(timezone.utc)
+        bucket_state = CACHE_STATE.setdefault(cache_bucket, {})
+        bucket_state["data"] = data
+        bucket_state["generated_at"] = datetime.now(timezone.utc)
     return data
+
+
+def _build_storage_coverage_payload(
+    base_url: str,
+    service_role_key: str,
+) -> Dict[str, Any]:
+    now = datetime.now(timezone.utc)
+    storage_coverage_days = _get_cached_storage_coverage_days(now)
+    if storage_coverage_days is None:
+        headers = _postgrest_headers(service_role_key)
+        coverage_context = _fetch_storage_coverage_context(
+            base_url,
+            headers,
+            now,
+        )
+        storage_coverage_days = _get_storage_coverage_days_cached(
+            now=now,
+            base_url=base_url,
+            service_role_key=service_role_key,
+            db_size_metrics=coverage_context["db_size_metrics"],
+            schema_size_metrics=coverage_context["schema_size_metrics"],
+            r2_domain_size_metrics=coverage_context["r2_domain_size_metrics"],
+            dropbox_backup_days=coverage_context["dropbox_backup_days"],
+            r2_backup_window=coverage_context["r2_backup_window"],
+            r2_history_days=coverage_context["r2_history_days"],
+        )
+
+    return {
+        "generated_at": now.isoformat().replace("+00:00", "Z"),
+        "storage_coverage_source": "live_per_day_presence",
+        "storage_coverage_days": storage_coverage_days,
+    }
 
 
 class DashboardHandler(BaseHTTPRequestHandler):
@@ -2576,6 +2686,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 return
             if parsed.path == "/api/dashboard":
                 self._serve_dashboard(parsed)
+                return
+            if parsed.path == "/api/storage_coverage":
+                self._serve_storage_coverage(parsed)
                 return
             self.send_error(HTTPStatus.NOT_FOUND, "Not found")
         except Exception as exc:
@@ -2647,6 +2760,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
         query = parse_qs(parsed.query, keep_blank_values=False)
         force_refresh_raw = ((query.get("force") or [""])[0] or "").strip().lower()
         force_refresh = force_refresh_raw in {"1", "true", "yes", "y", "on"}
+        include_storage_coverage_raw = ((query.get("include_storage_coverage") or ["1"])[0] or "").strip().lower()
+        include_storage_coverage = include_storage_coverage_raw not in {"0", "false", "no", "n", "off"}
         cursor_values = query.get("dispatch_cursor") or []
         if cursor_values:
             parsed_cursor = _parse_timestamp(cursor_values[0])
@@ -2656,16 +2771,43 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 if parsed_cursor <= now + timedelta(minutes=5):
                     dispatch_cursor = parsed_cursor
         if force_refresh:
-            with CACHE_LOCK:
-                CACHE_STATE["data"] = None
-                CACHE_STATE["generated_at"] = None
-                STORAGE_COVERAGE_CACHE_STATE["rows"] = None
-                STORAGE_COVERAGE_CACHE_STATE["next_refresh_at"] = None
+            _invalidate_dashboard_cache(clear_storage_coverage=True)
         try:
             data = _get_dashboard(
                 self.server.base_url,
                 self.server.service_role_key,
                 dispatch_cursor=dispatch_cursor,
+                include_storage_coverage=include_storage_coverage,
+            )
+        except Exception as exc:
+            payload = json.dumps({"error": str(exc)}, indent=2)
+            self.send_response(HTTPStatus.INTERNAL_SERVER_ERROR)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(payload.encode("utf-8"))
+            return
+
+        payload = json.dumps(data, indent=2)
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.end_headers()
+        self.wfile.write(payload.encode("utf-8"))
+
+    def _serve_storage_coverage(self, parsed) -> None:
+        query = parse_qs(parsed.query, keep_blank_values=False)
+        force_refresh_raw = ((query.get("force") or [""])[0] or "").strip().lower()
+        force_refresh = force_refresh_raw in {"1", "true", "yes", "y", "on"}
+        if force_refresh:
+            with CACHE_LOCK:
+                STORAGE_COVERAGE_CACHE_STATE["rows"] = None
+                STORAGE_COVERAGE_CACHE_STATE["next_refresh_at"] = None
+        try:
+            data = _build_storage_coverage_payload(
+                self.server.base_url,
+                self.server.service_role_key,
             )
         except Exception as exc:
             payload = json.dumps({"error": str(exc)}, indent=2)
@@ -2720,9 +2862,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             return
 
         if force_refresh:
-            with CACHE_LOCK:
-                CACHE_STATE["data"] = None
-                CACHE_STATE["generated_at"] = None
+            _invalidate_dashboard_cache(clear_storage_coverage=False)
 
         payload = json.dumps(
             {
@@ -2813,9 +2953,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.wfile.write(payload.encode("utf-8"))
             return
 
-        with CACHE_LOCK:
-            CACHE_STATE["data"] = None
-            CACHE_STATE["generated_at"] = None
+        _invalidate_dashboard_cache(clear_storage_coverage=False)
 
         payload = json.dumps({"status": "ok"}, indent=2)
         self.send_response(HTTPStatus.OK)
@@ -2876,9 +3014,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.wfile.write(payload.encode("utf-8"))
             return
 
-        with CACHE_LOCK:
-            CACHE_STATE["data"] = None
-            CACHE_STATE["generated_at"] = None
+        _invalidate_dashboard_cache(clear_storage_coverage=False)
 
         payload = json.dumps({"status": "ok"}, indent=2)
         self.send_response(HTTPStatus.OK)

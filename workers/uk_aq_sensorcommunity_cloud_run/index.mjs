@@ -88,6 +88,11 @@ const DROPBOX_ALLOWED_SUPABASE_URL = (
   process.env.UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL ||
   ""
 ).trim();
+const DROPBOX_ERROR_ALLOWED_SUPABASE_URL = (
+  process.env.SCOMM_ERROR_DROPBOX_ALLOWED_SUPABASE_URL ||
+  process.env.UK_AIR_ERROR_DROPBOX_ALLOWED_SUPABASE_URL ||
+  DROPBOX_ALLOWED_SUPABASE_URL
+).trim();
 const DROPBOX_ROOT_FOLDER = (() => {
   const raw = process.env.SCOMM_DROPBOX_ROOT ||
     process.env.UK_AQ_DROPBOX_ROOT ||
@@ -104,8 +109,33 @@ const DROPBOX_RAW_FOLDER = dropboxWithRoot(
   process.env.UK_AIR_RAW_DROPBOX_FOLDER ||
   "/connectors/sensorcommunity/raw_data",
 );
+const DROPBOX_ERROR_FOLDER = dropboxWithRoot(
+  process.env.SCOMM_ERROR_DROPBOX_FOLDER ||
+  process.env.UK_AIR_ERROR_DROPBOX_FOLDER ||
+  "/error_log",
+);
 const DROPBOX_TOKEN_URL = "https://api.dropbox.com/oauth2/token";
 const DROPBOX_UPLOAD_URL = "https://content.dropboxapi.com/2/files/upload";
+const SCOMM_ALERT_CONSECUTIVE_500_THRESHOLD = parsePositiveInt(
+  process.env.SCOMM_ALERT_CONSECUTIVE_500_THRESHOLD,
+  3,
+);
+const SCOMM_ALERT_FAILURE_RATE_LOOKBACK_MINUTES = parsePositiveInt(
+  process.env.SCOMM_ALERT_FAILURE_RATE_LOOKBACK_MINUTES,
+  60,
+);
+const SCOMM_ALERT_FAILURE_RATE_THRESHOLD = parseProbability(
+  process.env.SCOMM_ALERT_FAILURE_RATE_THRESHOLD,
+  0.5,
+);
+const SCOMM_ALERT_FAILURE_RATE_MIN_RUNS = parsePositiveInt(
+  process.env.SCOMM_ALERT_FAILURE_RATE_MIN_RUNS,
+  3,
+);
+const SCOMM_ALERT_RUN_SAMPLE_LIMIT = parsePositiveInt(
+  process.env.SCOMM_ALERT_RUN_SAMPLE_LIMIT,
+  240,
+);
 
 const UK_BBOX = {
   west: -11.0,
@@ -211,6 +241,14 @@ function parsePositiveInt(raw, fallback) {
     return fallback;
   }
   return Math.trunc(value);
+}
+
+function parseProbability(raw, fallback) {
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value <= 0 || value >= 1) {
+    return fallback;
+  }
+  return value;
 }
 
 function parseBool(raw, fallback = false) {
@@ -1490,14 +1528,19 @@ function buildDropboxRawPath(connectorCode, timestamp) {
   return `${DROPBOX_RAW_FOLDER}/${dateFolder}/uk_aq_raw_cloud_run_${prefix}_${stamp}.zip`;
 }
 
-function loadDropboxConfig() {
+function buildDropboxErrorPath(errorId, createdAtIso, connectorCode) {
+  const createdAt = parseTimestamp(createdAtIso) || new Date();
+  const stamp = formatCompactTimestamp(createdAt);
+  const dateFolder = createdAtIso.slice(0, 10);
+  const prefix = normalizeConnectorPrefix(connectorCode);
+  return `${DROPBOX_ERROR_FOLDER}/${dateFolder}/uk_aq_error_cloud_run_${prefix}_${stamp}_${errorId}.json`;
+}
+
+function loadDropboxConfigWithAllowlist(allowedSupabaseUrl) {
   if (!DROPBOX_APP_KEY || !DROPBOX_APP_SECRET || !DROPBOX_REFRESH_TOKEN) {
     return null;
   }
-  if (
-    !DROPBOX_ALLOWED_SUPABASE_URL ||
-    DROPBOX_ALLOWED_SUPABASE_URL !== SUPABASE_URL
-  ) {
+  if (!allowedSupabaseUrl || allowedSupabaseUrl !== SUPABASE_URL) {
     return null;
   }
   return {
@@ -1505,6 +1548,14 @@ function loadDropboxConfig() {
     appSecret: DROPBOX_APP_SECRET,
     refreshToken: DROPBOX_REFRESH_TOKEN,
   };
+}
+
+function loadDropboxConfig() {
+  return loadDropboxConfigWithAllowlist(DROPBOX_ALLOWED_SUPABASE_URL);
+}
+
+function loadDropboxErrorConfig() {
+  return loadDropboxConfigWithAllowlist(DROPBOX_ERROR_ALLOWED_SUPABASE_URL);
 }
 
 async function dropboxRefreshAccessToken(config) {
@@ -1990,6 +2041,261 @@ async function insertErrorLog(connectorId, ingestResponse) {
   }
 }
 
+async function patchErrorLogDropboxPath(errorId, dropboxPath) {
+  const response = await postgrestRequest("PATCH", "error_logs", {
+    schema: UK_AQ_RAW_SCHEMA,
+    query: { id: `eq.${errorId}` },
+    body: { dropbox_path: dropboxPath },
+    prefer: "return=minimal",
+  });
+  if (!response.ok) {
+    throw new Error(
+      `Failed to patch error_logs.dropbox_path (${response.status}): ${response.text}`,
+    );
+  }
+}
+
+async function insertFailureMonitorAlert(connectorId, alertType, details) {
+  const errorId = crypto.randomUUID();
+  const createdAtIso = new Date().toISOString();
+  const row = {
+    id: errorId,
+    created_at: createdAtIso,
+    source: "cloud_run",
+    severity: "warning",
+    message: "sensorcommunity_failure_monitor_alert",
+    stack: null,
+    context: {
+      connector_code: CONNECTOR_CODE,
+      alert_type: alertType,
+      ...details,
+    },
+    connector_id: connectorId,
+    station_id: null,
+    timeseries_id: null,
+    dropbox_path: null,
+  };
+  const response = await postgrestRequest("POST", "error_logs", {
+    schema: UK_AQ_RAW_SCHEMA,
+    body: row,
+    prefer: "return=minimal",
+  });
+  if (!response.ok) {
+    throw new Error(
+      `Failed to insert failure monitor alert (${response.status}): ${response.text}`,
+    );
+  }
+  return { errorId, createdAtIso, row };
+}
+
+async function uploadFailureMonitorAlertToDropbox(errorId, createdAtIso, row) {
+  const dropboxConfig = loadDropboxErrorConfig();
+  if (!dropboxConfig) {
+    return null;
+  }
+  let accessToken = await dropboxRefreshAccessToken(dropboxConfig);
+  const refreshToken = () => dropboxRefreshAccessToken(dropboxConfig);
+  const dropboxPath = buildDropboxErrorPath(errorId, createdAtIso, CONNECTOR_CODE);
+  const payload = {
+    ...row,
+    connector_code: CONNECTOR_CODE,
+    created_at: createdAtIso,
+    dropbox_path: dropboxPath,
+  };
+  const bytes = new TextEncoder().encode(`${JSON.stringify(payload, null, 2)}\n`);
+  accessToken = await dropboxUploadFileWithRetry(
+    accessToken,
+    dropboxPath,
+    bytes,
+    refreshToken,
+  );
+  await patchErrorLogDropboxPath(errorId, dropboxPath);
+  return dropboxPath;
+}
+
+function isServerErrorRun(row) {
+  const responseStatus = toIntegerOrNull(row?.response_status);
+  if (responseStatus !== null) {
+    return responseStatus >= 500;
+  }
+  const runStatus = String(row?.run_status || "").trim().toLowerCase();
+  return runStatus === "failed" || runStatus === "error";
+}
+
+function countLeadingServerErrors(rows) {
+  let streak = 0;
+  for (const row of rows) {
+    if (!isServerErrorRun(row)) {
+      break;
+    }
+    streak += 1;
+  }
+  return streak;
+}
+
+function rowEndedAtMs(row) {
+  const runEndedAt = parseTimestamp(row?.run_ended_at);
+  if (runEndedAt) {
+    return runEndedAt.getTime();
+  }
+  const createdAt = parseTimestamp(row?.created_at);
+  if (createdAt) {
+    return createdAt.getTime();
+  }
+  return null;
+}
+
+function evaluateFailureRate(rows, now) {
+  const lookbackMs = SCOMM_ALERT_FAILURE_RATE_LOOKBACK_MINUTES * 60 * 1000;
+  const cutoffMs = now.getTime() - lookbackMs;
+  const windowRows = rows.filter((row) => {
+    const endedAtMs = rowEndedAtMs(row);
+    return endedAtMs !== null && endedAtMs >= cutoffMs;
+  });
+  if (windowRows.length < SCOMM_ALERT_FAILURE_RATE_MIN_RUNS) {
+    return {
+      triggered: false,
+      failures: 0,
+      runs: windowRows.length,
+      failureRate: 0,
+      previousFailureRate: null,
+      previousRuns: 0,
+    };
+  }
+  const failures = windowRows.filter((row) => isServerErrorRun(row)).length;
+  const failureRate = failures / windowRows.length;
+
+  const previousWindowRows = windowRows.slice(1);
+  let previousFailureRate = null;
+  if (previousWindowRows.length >= SCOMM_ALERT_FAILURE_RATE_MIN_RUNS) {
+    const previousFailures = previousWindowRows.filter((row) =>
+      isServerErrorRun(row)
+    ).length;
+    previousFailureRate = previousFailures / previousWindowRows.length;
+  }
+  const crossedThreshold =
+    failureRate > SCOMM_ALERT_FAILURE_RATE_THRESHOLD &&
+    (
+      previousFailureRate === null ||
+      previousFailureRate <= SCOMM_ALERT_FAILURE_RATE_THRESHOLD
+    );
+  return {
+    triggered: crossedThreshold,
+    failures,
+    runs: windowRows.length,
+    failureRate,
+    previousFailureRate,
+    previousRuns: previousWindowRows.length,
+  };
+}
+
+async function loadRecentIngestRunsForAlerts() {
+  const response = await postgrestRequest("GET", "uk_aq_ingest_runs", {
+    query: {
+      select: "id,run_ended_at,run_status,response_status,created_at",
+      connector_code: `eq.${CONNECTOR_CODE}`,
+      order: "run_ended_at.desc,id.desc",
+      limit: String(SCOMM_ALERT_RUN_SAMPLE_LIMIT),
+    },
+  });
+  if (!response.ok) {
+    throw new Error(
+      `Failed to load recent ingest runs for alerts (${response.status}): ${response.text}`,
+    );
+  }
+  return Array.isArray(response.data) ? response.data : [];
+}
+
+async function evaluateAndWriteFailureAlerts(connectorId) {
+  const rows = await loadRecentIngestRunsForAlerts();
+  if (!rows.length) {
+    return;
+  }
+  const now = new Date();
+
+  const consecutiveFailures = countLeadingServerErrors(rows);
+  const previousConsecutiveFailures = countLeadingServerErrors(rows.slice(1));
+  const consecutiveTriggered =
+    consecutiveFailures >= SCOMM_ALERT_CONSECUTIVE_500_THRESHOLD &&
+    previousConsecutiveFailures < SCOMM_ALERT_CONSECUTIVE_500_THRESHOLD;
+  if (consecutiveTriggered) {
+    const details = {
+      rule: "consecutive_500",
+      threshold: SCOMM_ALERT_CONSECUTIVE_500_THRESHOLD,
+      consecutive_failures: consecutiveFailures,
+      evaluated_runs: rows.length,
+    };
+    const inserted = await insertFailureMonitorAlert(
+      connectorId,
+      "consecutive_500",
+      details,
+    );
+    let dropboxPath = null;
+    try {
+      dropboxPath = await uploadFailureMonitorAlertToDropbox(
+        inserted.errorId,
+        inserted.createdAtIso,
+        inserted.row,
+      );
+    } catch (error) {
+      logSummary("dropbox_error_upload_warning", {
+        alert_type: "consecutive_500",
+        message: shortError(error),
+      });
+    }
+    logSummary("failure_monitor_alert", {
+      alert_type: "consecutive_500",
+      threshold: SCOMM_ALERT_CONSECUTIVE_500_THRESHOLD,
+      consecutive_failures: consecutiveFailures,
+      dropbox_path: dropboxPath,
+    });
+  }
+
+  const failureRateSummary = evaluateFailureRate(rows, now);
+  if (failureRateSummary.triggered) {
+    const details = {
+      rule: "failure_rate_1h",
+      lookback_minutes: SCOMM_ALERT_FAILURE_RATE_LOOKBACK_MINUTES,
+      threshold: SCOMM_ALERT_FAILURE_RATE_THRESHOLD,
+      min_runs: SCOMM_ALERT_FAILURE_RATE_MIN_RUNS,
+      failures: failureRateSummary.failures,
+      runs: failureRateSummary.runs,
+      failure_rate: Number(failureRateSummary.failureRate.toFixed(6)),
+      previous_failure_rate: failureRateSummary.previousFailureRate === null
+        ? null
+        : Number(failureRateSummary.previousFailureRate.toFixed(6)),
+      previous_runs: failureRateSummary.previousRuns,
+    };
+    const inserted = await insertFailureMonitorAlert(
+      connectorId,
+      "failure_rate_1h",
+      details,
+    );
+    let dropboxPath = null;
+    try {
+      dropboxPath = await uploadFailureMonitorAlertToDropbox(
+        inserted.errorId,
+        inserted.createdAtIso,
+        inserted.row,
+      );
+    } catch (error) {
+      logSummary("dropbox_error_upload_warning", {
+        alert_type: "failure_rate_1h",
+        message: shortError(error),
+      });
+    }
+    logSummary("failure_monitor_alert", {
+      alert_type: "failure_rate_1h",
+      lookback_minutes: SCOMM_ALERT_FAILURE_RATE_LOOKBACK_MINUTES,
+      failures: failureRateSummary.failures,
+      runs: failureRateSummary.runs,
+      failure_rate: Number(failureRateSummary.failureRate.toFixed(6)),
+      threshold: SCOMM_ALERT_FAILURE_RATE_THRESHOLD,
+      dropbox_path: dropboxPath,
+    });
+  }
+}
+
 function logSummary(message, details) {
   console.log(
     JSON.stringify({
@@ -2114,6 +2420,14 @@ async function main() {
     },
     dropboxCapture.raw || null,
   );
+
+  try {
+    await evaluateAndWriteFailureAlerts(connectorId);
+  } catch (error) {
+    logSummary("failure_monitor_warning", {
+      message: shortError(error),
+    });
+  }
 
   if (runFailed) {
     await insertErrorLog(connectorId, ingestResponse);
