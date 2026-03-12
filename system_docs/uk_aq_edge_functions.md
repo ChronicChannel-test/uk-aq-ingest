@@ -448,7 +448,7 @@ curl "https://YOUR_PROJECT.supabase.co/functions/v1/uk_aq_latest?region=London&p
 - Params:
   - required: `timeseries_id`
   - optional range selector (use one only):
-    - `window` (`12h|24h|7d|31d`; default `24h` when no selector is provided)
+    - `window` (`12h|24h|7d|31d|90d`; default `24h` when no selector is provided)
     - `days` (positive integer, max controlled by `UK_AQ_TIMESERIES_MAX_WINDOW_DAYS`, default `366`)
     - `start` + `end` (ISO-8601 datetimes), or `start_utc` + `end_utc`
   - optional response controls: `limit` (positive integer), `since` (ISO-8601), `format` (`objects|compact`, default `objects`)

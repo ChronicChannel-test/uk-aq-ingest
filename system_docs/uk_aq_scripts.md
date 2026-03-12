@@ -361,7 +361,7 @@ Notes:
   - Access token comes from `UK_AQ_DEV_JWT` (or `--dev-jwt`) and is exposed by `/api/config`.
   - If `UK_AQ_DEV_REFRESH_TOKEN` is set, local server can auto-refresh expired access tokens via `/api/token`.
   - Rotated refresh tokens are written back to the env file (default `.env.supabase`) so restarts keep working.
-- Snapshot `window` selector supports: `6h`, `24h`, `7d`, `21d`, `31d`.
+- Snapshot `window` selector supports: `6h`, `24h`, `7d`, `21d`, `31d`, `90d`.
 
 Environment:
 - Service-role ingest mode (preferred):

@@ -14,13 +14,14 @@ const DEFAULT_FORMAT = "objects";
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
 
-type NamedWindowLabel = "12h" | "24h" | "7d" | "31d";
+type NamedWindowLabel = "12h" | "24h" | "7d" | "31d" | "90d";
 
 const WINDOW_HOURS: Record<NamedWindowLabel, number> = {
   "12h": 12,
   "24h": 24,
   "7d": 24 * 7,
   "31d": 24 * 31,
+  "90d": 24 * 90,
 };
 const MAX_WINDOW_DAYS = parsePositiveInteger(
   Deno.env.get("UK_AQ_TIMESERIES_MAX_WINDOW_DAYS"),
@@ -711,7 +712,7 @@ function resolveRequestedRange(
   if (hasWindow) {
     const parsedWindow = parseNamedWindowLabel(windowToken);
     if (!parsedWindow) {
-      return { ok: false, error: "Invalid window. Use 12h, 24h, 7d, or 31d." };
+      return { ok: false, error: "Invalid window. Use 12h, 24h, 7d, 31d, or 90d." };
     }
     const hours = WINDOW_HOURS[parsedWindow];
     return {
