@@ -1331,3 +1331,33 @@ python3 scripts/codeql_make_task_specs.py --batches-dir .codeql/batches/<YYYY-MM
 Notes:
 - Output defaults to `.codeql/task-specs/<YYYY-MM-DD>/batch-XX.md`.
 - Specs include scope, strict change rules, verification steps, and PR instructions.
+
+### `scripts/backup_r2/uk_aq_core_snapshot_to_r2.mjs` (ops repo)
+Purpose:
+- Export a deterministic daily snapshot of selected `uk_aq_core` tables from ingest DB to R2 History.
+- Write per-day `manifest.json` + `checksums.sha256` + table `rows.ndjson.gz` files.
+- Skip object writes when the existing day manifest hash already matches.
+
+Repo / workflow:
+- Script path: `CIC-test-uk-aq-ops/scripts/backup_r2/uk_aq_core_snapshot_to_r2.mjs`
+- Workflow: `CIC-test-uk-aq-ops/.github/workflows/uk_aq_r2_core_snapshot.yml`
+
+Common commands:
+```bash
+node scripts/backup_r2/uk_aq_core_snapshot_to_r2.mjs \
+  --day-utc 2026-03-11 \
+  --report-out ./tmp/uk_aq_core_snapshot_to_r2_report.json
+
+node scripts/backup_r2/uk_aq_core_snapshot_to_r2.mjs \
+  --dry-run \
+  --tables connectors,stations,timeseries
+```
+
+Environment:
+- `UK_AQ_INGEST_DATABASE_URL` (or `SUPABASE_DB_URL`)
+- `CFLARE_R2_ENDPOINT`
+- `CFLARE_R2_BUCKET`
+- `CFLARE_R2_REGION` (optional; default `auto`)
+- `CFLARE_R2_ACCESS_KEY_ID`
+- `CFLARE_R2_SECRET_ACCESS_KEY`
+- `UK_AQ_R2_HISTORY_CORE_PREFIX` (optional; default `history/v1/core`)

@@ -26,6 +26,7 @@ WINDOW_TO_DELTA = {
     "7d": timedelta(days=7),
     "21d": timedelta(days=21),
     "31d": timedelta(days=31),
+    "90d": timedelta(days=90),
 }
 DEFAULT_WINDOW = "24h"
 DEFAULT_PAGE_SIZE = 1000
@@ -251,7 +252,7 @@ def _parse_window(value: Optional[str]) -> str:
     if not normalized:
         return DEFAULT_WINDOW
     if normalized not in WINDOW_TO_DELTA:
-        raise ValueError("window must be one of: 6h, 24h, 7d, 21d, 31d")
+        raise ValueError("window must be one of: 6h, 24h, 7d, 21d, 31d, 90d")
     return normalized
 
 

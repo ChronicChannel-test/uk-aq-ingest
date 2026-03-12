@@ -500,7 +500,7 @@ Note:
 - Params:
   - `station_id` or `station_ref` (one required)
   - `timeseries_id` (optional, int4 / integer id)
-  - `window` (`6h|24h|7d|21d|31d`, default `6h`)
+  - `window` (`6h|24h|7d|21d|31d|90d`, default `6h`)
   - `obs_limit` (`100|1000`, default `100`)
 - ID typing:
   - `station_id` remains bigint.

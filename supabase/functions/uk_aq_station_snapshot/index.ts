@@ -20,7 +20,7 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Methods": "GET, OPTIONS",
 };
 
-type SnapshotWindow = "6h" | "24h" | "7d" | "21d" | "31d";
+type SnapshotWindow = "6h" | "24h" | "7d" | "21d" | "31d" | "90d";
 
 function jsonResponse(payload: unknown, status = 200): Response {
   return new Response(JSON.stringify(payload), {
@@ -73,7 +73,7 @@ function parseWindow(value: string | null): SnapshotWindow | null {
   const normalized = value.trim().toLowerCase();
   if (
     normalized === "6h" || normalized === "24h" || normalized === "7d"
-    || normalized === "21d" || normalized === "31d"
+    || normalized === "21d" || normalized === "31d" || normalized === "90d"
   ) {
     return normalized;
   }
@@ -166,7 +166,7 @@ serve(async (req) => {
     return jsonResponse({ error: "station_id or station_ref is required." }, 400);
   }
   if (windowValue === null) {
-    return jsonResponse({ error: "window must be one of: 6h, 24h, 7d, 21d, 31d." }, 400);
+    return jsonResponse({ error: "window must be one of: 6h, 24h, 7d, 21d, 31d, 90d." }, 400);
   }
   if (obsLimit === null) {
     return jsonResponse({ error: "obs_limit must be 100 or 1000." }, 400);

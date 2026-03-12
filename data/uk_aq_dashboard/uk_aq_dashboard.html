@@ -490,22 +490,49 @@
         color: #3f3a33;
       }
 
-      .coverage-calendar-view-select {
-        min-width: 110px;
-        border: 1px solid #c9c2b8;
+      .coverage-calendar-view-toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .coverage-calendar-view-btn {
+        min-width: 72px;
+        border: 1px solid #F37F22;
         border-radius: 10px;
         background: #ffffff;
         color: #1f1c16;
         font-family: "IBM Plex Sans", "Inter", ui-sans-serif, system-ui, sans-serif;
         font-size: 12px;
         font-weight: 600;
-        padding: 7px 10px;
+        padding: 7px 12px;
         cursor: pointer;
+        transition: transform 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
       }
 
-      .coverage-calendar-view-select:focus-visible {
+      .coverage-calendar-view-btn:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 0 0 3px rgba(243, 127, 34, 0.22), 0 6px 14px rgba(22, 20, 16, 0.2);
+      }
+
+      .coverage-calendar-view-btn:focus-visible {
         outline: none;
-        box-shadow: 0 0 0 3px rgba(31, 122, 122, 0.24);
+        box-shadow: 0 0 0 3px rgba(243, 127, 34, 0.28), 0 6px 14px rgba(22, 20, 16, 0.2);
+      }
+
+      .coverage-calendar-view-btn.is-active {
+        background: #F37F22;
+        border-color: #F37F22;
+        color: #ffffff;
+        cursor: default;
+        pointer-events: none;
+        box-shadow: none;
+      }
+
+      .coverage-calendar-view-btn.is-active:hover,
+      .coverage-calendar-view-btn.is-active:focus-visible {
+        transform: none;
+        box-shadow: none;
       }
 
       .coverage-calendar-nav-btn {
@@ -3203,11 +3230,23 @@
             <h2 class="coverage-calendar-title">${escapeHtml(titleText)}</h2>
             <div class="coverage-calendar-nav">
               <span class="coverage-calendar-view">
-                <label class="coverage-calendar-view-label" for="coverage-calendar-mode">View</label>
-                <select class="coverage-calendar-view-select" id="coverage-calendar-mode" data-action="coverage-mode">
-                  <option value="month" ${isYearMode ? "" : "selected"}>Monthly</option>
-                  <option value="year" ${isYearMode ? "selected" : ""}>Yearly</option>
-                </select>
+                <span class="coverage-calendar-view-label">View</span>
+                <span class="coverage-calendar-view-toggle" role="group" aria-label="Coverage calendar view">
+                  <button
+                    type="button"
+                    class="coverage-calendar-view-btn${isYearMode ? " is-active" : ""}"
+                    data-action="coverage-mode"
+                    data-mode="year"
+                    ${isYearMode ? "disabled aria-pressed=\"true\"" : "aria-pressed=\"false\""}
+                  >Year</button>
+                  <button
+                    type="button"
+                    class="coverage-calendar-view-btn${isYearMode ? "" : " is-active"}"
+                    data-action="coverage-mode"
+                    data-mode="month"
+                    ${isYearMode ? "aria-pressed=\"false\"" : "disabled aria-pressed=\"true\""}
+                  >Month</button>
+                </span>
               </span>
               <button type="button" class="coverage-calendar-nav-btn" data-action="today-period">Today</button>
               <button type="button" class="settings-button r2-refresh-button" data-action="force-refresh">Force Refresh</button>
@@ -3237,7 +3276,7 @@
         const todayButton = panel.querySelector('[data-action="today-period"]');
         const prevButton = panel.querySelector('[data-action="prev-period"]');
         const nextButton = panel.querySelector('[data-action="next-period"]');
-        const modeSelect = panel.querySelector('[data-action="coverage-mode"]');
+        const modeButtons = Array.from(panel.querySelectorAll('[data-action="coverage-mode"]'));
         if (forceRefreshButton) {
           forceRefreshButton.addEventListener("click", async () => {
             forceRefreshButton.disabled = true;
@@ -3276,20 +3315,25 @@
         if (nextButton) {
           nextButton.addEventListener("click", () => handlePeriodChange(1 * navStepMonths));
         }
-        if (modeSelect) {
-          modeSelect.addEventListener("change", (event) => {
-            const requestedMode = String(event.target.value || "");
-            if (!STORAGE_COVERAGE_MODE_VALUES.has(requestedMode)) {
-              return;
-            }
-            storageCoverageMode = requestedMode;
-            try {
-              localStorage.setItem(STORAGE_COVERAGE_MODE_STORAGE_KEY, storageCoverageMode);
-            } catch (_err) {
-              // Ignore localStorage write failures.
-            }
-            const nextPanel = renderStorageCoverageCalendarPanel(serverCoverageRows);
-            panel.replaceWith(nextPanel);
+        if (modeButtons.length > 0) {
+          modeButtons.forEach((modeButton) => {
+            modeButton.addEventListener("click", () => {
+              const requestedMode = String(modeButton.dataset.mode || "");
+              if (!STORAGE_COVERAGE_MODE_VALUES.has(requestedMode)) {
+                return;
+              }
+              if (requestedMode === storageCoverageMode) {
+                return;
+              }
+              storageCoverageMode = requestedMode;
+              try {
+                localStorage.setItem(STORAGE_COVERAGE_MODE_STORAGE_KEY, storageCoverageMode);
+              } catch (_err) {
+                // Ignore localStorage write failures.
+              }
+              const nextPanel = renderStorageCoverageCalendarPanel(serverCoverageRows);
+              panel.replaceWith(nextPanel);
+            });
           });
         }
 
