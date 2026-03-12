@@ -467,6 +467,7 @@ curl "https://YOUR_PROJECT.supabase.co/functions/v1/uk_aq_latest?region=London&p
   - older overlap is read from the Observs History R2 API worker (`UK_AQ_OBSERVS_HISTORY_R2_API_URL`) using committed manifests only.
   - edge resolves `connector_id` from ingest `uk_aq_core.timeseries` and sends `timeseries_id + connector_id + start_utc/end_utc` to the worker.
   - no direct `obs_aqidb` table read fallback remains in this endpoint.
+  - if connector lookup or history fetch fails, endpoint logs a warning and falls back to ingest-only rows instead of returning `500`.
   - rows are merged on `observed_at` with ingest rows overriding overlaps.
 - Request flow (exact):
   1. Website calls Cloudflare cache proxy route `/api/aq/timeseries` (cache worker code/deploy is owned by `uk-aq-ops`).
@@ -477,7 +478,7 @@ curl "https://YOUR_PROJECT.supabase.co/functions/v1/uk_aq_latest?region=London&p
 - Important architecture note:
   - Cloudflare worker does not directly call DB or R2 history workers.
   - Cloudflare calls one edge function (`uk_aq_timeseries`), then edge performs ingest RPC read + R2 history API read.
-  - Missing `UK_AQ_OBSERVS_HISTORY_R2_API_URL` is treated as runtime error when an older overlap read is required.
+  - Missing/misconfigured history worker URL or connector lookup permission no longer hard-fails the endpoint; older-window responses degrade to ingest-only coverage.
 - Conditional requests: supports `If-None-Match`; returns `304 Not Modified` with `ETag` when payload is unchanged.
 - Cache-Control: success responses use `public, max-age=60, s-maxage=300, stale-while-revalidate=300, stale-if-error=86400`; errors use `no-store`.
 - Egress observability: sampled success responses plus all `304`/`4xx`/`5xx`

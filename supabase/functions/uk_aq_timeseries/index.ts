@@ -1,4 +1,4 @@
-//trigger deploy 2026-02-12 16:58
+//trigger deploy 2026-02-12 17:17
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import "../_shared/fetch_egress_patch.ts";
 import {
@@ -453,25 +453,40 @@ async function fetchTimeseriesRowsStitched(
     : [];
 
   let historyRows: TimeseriesRow[] = [];
+  let didLoadHistoryRows = false;
   if (shouldFetchHistory) {
     const connectorId = await resolveTimeseriesConnectorId(timeseriesId);
     if (connectorId !== null) {
-      const historyWindow = await callObservsHistoryWindow({
-        timeseriesId,
-        connectorId,
-        startUtc: historyStart.toISOString(),
-        endUtc: historyEnd.toISOString(),
-        since,
-        limit,
+      try {
+        const historyWindow = await callObservsHistoryWindow({
+          timeseriesId,
+          connectorId,
+          startUtc: historyStart.toISOString(),
+          endUtc: historyEnd.toISOString(),
+          since,
+          limit,
+        });
+        historyRows = historyWindow.rows;
+        didLoadHistoryRows = true;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.warn("uk_aq_timeseries history fetch fallback", {
+          timeseries_id: timeseriesId,
+          connector_id: connectorId,
+          message,
+        });
+      }
+    } else {
+      console.warn("uk_aq_timeseries history fetch skipped: connector unresolved", {
+        timeseries_id: timeseriesId,
       });
-      historyRows = historyWindow.rows;
     }
   }
 
   const source: StitchedFetchResult["source"] =
-    shouldFetchHistory && shouldFetchIngestRows
+    didLoadHistoryRows && shouldFetchIngestRows
       ? "ingest_history_stitched"
-      : shouldFetchHistory
+      : didLoadHistoryRows
       ? "history_only"
       : "ingest_only";
 
@@ -518,7 +533,11 @@ async function resolveTimeseriesConnectorId(
     },
   );
   if (response.error) {
-    throw new Error(`timeseries connector lookup failed: ${response.error.message}`);
+    console.warn("uk_aq_timeseries connector lookup failed", {
+      timeseries_id: timeseriesId,
+      message: response.error.message,
+    });
+    return null;
   }
   const row = Array.isArray(response.data) && response.data.length > 0
     ? response.data[0]
