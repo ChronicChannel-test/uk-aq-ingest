@@ -294,6 +294,7 @@ Notes:
 - Storage coverage calendar has a `Monthly`/`Yearly` view selector. Monthly view keeps the 3-row labeled bars (top `Ingest DB` or `R2 History - Observs`, middle `ObsAQI DB - Observs` with the R2 2-box middle-shift rule, and AQI levels on bottom with yellow/green striping only when both AQI sources are present), and today is rendered with half-width bars (no labels). Yearly view shows per-day 2x2 colored squares without labels/day numbers and weekday letters `M T W T F S S` above each month.
 - Monthly bars are left-aligned with reduced corner radius; when a day/domain exists in the Dropbox checkpoint state, that bar shows a second line (`Dropbox` + icon). If no Dropbox day record exists, the bar remains single-line.
 - Yearly mode excludes today (`complete days only`), so no colored squares are rendered for the current UTC day.
+- Storage coverage cache now refreshes hourly at `:58` UTC.
 - Dispatcher feed shows gap-station context for OpenAQ runs as `(<n> GAP)` under Stations when `gap_stations_polled > 0`.
 - Local dashboard request handlers suppress client-disconnect socket noise (`BrokenPipeError` / `ConnectionResetError`) so refresh/closed-tab events do not flood local logs.
 - Includes a DB cluster size panel with period selector (`6h`, `12h`, `24h`, `48h`, `7d`, `14d`, `28d`): line chart for `ingestdb` + `obs_aqidb` cluster MB (dynamic Y max), schema stacked area chart for `uk_aq_observs` + `uk_aq_aqilevels` MB, and R2 History domain stacked area chart for `observations` + `aqilevels` MB; missing series values render as `0`, stacked charts expose full-height bucket hover tooltips showing both series plus their total at the hovered datetime, the schema oldest-day legend row is `uk_aq_observs >= DD/MM/YYYY   uk_aq_aqilevels >= DD/MM/YYYY`, and calendar/chart colors are fixed to: ingest red `#FE2E2E`, R2 observations orange `#F48021`, R2 AQI levels yellow `#F4C04B`, ObsAQI observations blue `#3C82F5`, ObsAQI AQI levels green `#61D836`.
@@ -301,8 +302,9 @@ Notes:
 
 Data sources used by storage coverage:
 - Ingest/ObsAQI oldest-day bounds: `uk_aq_db_size_metrics_hourly` + `uk_aq_schema_size_metrics_hourly`.
-- ObsAQI Observs day presence (preferred): row-backed check per UTC day using `uk_aq_public.uk_aq_rpc_observs_drop_candidates` + `uk_aq_public.uk_aq_rpc_observations_hourly_fingerprint` (`observation_count > 0`).
-- ObsAQI AQI day presence (preferred): `uk_aq_public.uk_aq_rpc_aqilevels_drop_candidates` with `hourly_rows > 0`.
+- ObsAQI exact day counts (preferred): `uk_aq_public.uk_aq_obs_aqidb_day_counts_current`.
+- ObsAQI Observs day presence fallback: `uk_aq_public.uk_aq_rpc_observs_drop_candidates` + `uk_aq_public.uk_aq_rpc_observations_hourly_fingerprint` (`observation_count > 0`).
+- ObsAQI AQI day presence fallback: `uk_aq_public.uk_aq_rpc_aqilevels_drop_candidates` with `hourly_rows > 0`.
 - R2 History exact day presence (preferred): external API `/v1/r2-history-days` (configurable via `UK_AQ_R2_HISTORY_DAYS_API_URL`).
   - bucket selection is fixed in the Worker env (`CFLARE_R2_BUCKET`).
 - R2 History bounds fallback: RPC `uk_aq_public.uk_aq_rpc_r2_history_window` (configurable via `UK_AQ_R2_HISTORY_WINDOW_RPC`).

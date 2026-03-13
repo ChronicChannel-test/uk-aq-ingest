@@ -118,7 +118,7 @@ DISPATCH_RUNS_STATE: Dict[str, Any] = {
 }
 CACHE_TTL_SECONDS = 20
 R2_CACHE_TTL_SECONDS = 60 * 60
-COVERAGE_REFRESH_HOUR_UTC = 5
+COVERAGE_REFRESH_MINUTE_UTC = 58
 UTC_DATETIME_MIN = datetime.min.replace(tzinfo=timezone.utc)
 R2_BYTES_PER_GB = 1024 ** 3
 R2_CLASS_A_ACTION_TYPES = {
@@ -1486,18 +1486,18 @@ def _build_live_storage_coverage_days(
 
 
 def _next_storage_coverage_refresh(now_utc: datetime) -> datetime:
-    refresh_today = datetime(
+    refresh_this_hour = datetime(
         now_utc.year,
         now_utc.month,
         now_utc.day,
-        COVERAGE_REFRESH_HOUR_UTC,
-        0,
+        now_utc.hour,
+        COVERAGE_REFRESH_MINUTE_UTC,
         0,
         tzinfo=timezone.utc,
     )
-    if now_utc < refresh_today:
-        return refresh_today
-    return refresh_today + timedelta(days=1)
+    if now_utc < refresh_this_hour:
+        return refresh_this_hour
+    return refresh_this_hour + timedelta(hours=1)
 
 
 def _get_cached_storage_coverage_days(now: datetime) -> Optional[List[Dict[str, Any]]]:
@@ -1561,6 +1561,58 @@ def _fetch_storage_day_sets() -> Dict[str, Set[date]]:
     return day_sets
 
 
+def _fetch_obs_aqidb_day_count_rows(dataset: str) -> Optional[List[Dict[str, Any]]]:
+    if not OBS_AQIDB_SUPABASE_URL or not OBS_AQIDB_SECRET_KEY:
+        return None
+
+    dataset_value = (dataset or "").strip().lower()
+    if dataset_value not in {"observs", "aqilevels"}:
+        return None
+
+    try:
+        obs_aqidb_base_url = _ensure_allowed_base_url(
+            f"{OBS_AQIDB_SUPABASE_URL.rstrip('/')}/rest/v1"
+        )
+    except Exception:
+        return None
+
+    url = f"{obs_aqidb_base_url}/uk_aq_obs_aqidb_day_counts_current"
+    headers = _postgrest_headers(OBS_AQIDB_SECRET_KEY, schema=PUBLIC_SCHEMA)
+
+    rows: List[Dict[str, Any]] = []
+    limit = 200
+    offset = 0
+    max_pages = 10
+    for _ in range(max_pages):
+        try:
+            batch = _fetch_json(
+                url,
+                headers,
+                {
+                    "dataset": f"eq.{dataset_value}",
+                    "select": "day_utc,row_count",
+                    "order": "day_utc.asc",
+                    "limit": str(limit),
+                    "offset": str(offset),
+                },
+            )
+        except Exception:
+            return None
+
+        if not isinstance(batch, list):
+            return None
+
+        for row in batch:
+            if isinstance(row, dict):
+                rows.append(row)
+
+        if len(batch) < limit:
+            break
+        offset += limit
+
+    return rows
+
+
 def _fetch_obs_aqi_observs_partition_days() -> Optional[Set[date]]:
     if not OBS_AQIDB_SUPABASE_URL or not OBS_AQIDB_SECRET_KEY:
         return None
@@ -1610,6 +1662,21 @@ def _fetch_obs_aqi_observs_partition_days() -> Optional[Set[date]]:
 
 
 def _fetch_obs_aqi_observs_row_days() -> Optional[Set[date]]:
+    count_rows = _fetch_obs_aqidb_day_count_rows("observs")
+    if count_rows is not None:
+        days_with_rows: Set[date] = set()
+        for row in count_rows:
+            try:
+                row_count = int(row.get("row_count") or 0)
+            except (TypeError, ValueError):
+                continue
+            if row_count <= 0:
+                continue
+            parsed_day = _parse_iso_day(row.get("day_utc"))
+            if parsed_day is not None:
+                days_with_rows.add(parsed_day)
+        return days_with_rows
+
     if not OBS_AQIDB_SUPABASE_URL or not OBS_AQIDB_SECRET_KEY:
         return None
 
@@ -1663,6 +1730,21 @@ def _fetch_obs_aqi_observs_row_days() -> Optional[Set[date]]:
 
 
 def _fetch_obs_aqi_aqilevels_hourly_days() -> Optional[Set[date]]:
+    count_rows = _fetch_obs_aqidb_day_count_rows("aqilevels")
+    if count_rows is not None:
+        days: Set[date] = set()
+        for row in count_rows:
+            try:
+                row_count = int(row.get("row_count") or 0)
+            except (TypeError, ValueError):
+                continue
+            if row_count <= 0:
+                continue
+            parsed_day = _parse_iso_day(row.get("day_utc"))
+            if parsed_day is not None:
+                days.add(parsed_day)
+        return days
+
     if not OBS_AQIDB_SUPABASE_URL or not OBS_AQIDB_SECRET_KEY:
         return None
 
