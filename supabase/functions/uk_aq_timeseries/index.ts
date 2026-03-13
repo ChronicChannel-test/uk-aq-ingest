@@ -41,8 +41,27 @@ const OBSERVS_HISTORY_R2_API_TIMEOUT_MS = Math.max(
   2000,
   Math.min(
     30000,
-    parsePositiveInteger(Deno.env.get("UK_AQ_OBSERVS_HISTORY_R2_API_TIMEOUT_MS")) ??
+    parsePositiveInteger(
+      Deno.env.get("UK_AQ_OBSERVS_HISTORY_R2_API_TIMEOUT_MS"),
+    ) ??
       10000,
+  ),
+);
+const OBSERVS_HISTORY_R2_CHUNK_DAYS = Math.max(
+  1,
+  Math.min(
+    31,
+    parsePositiveInteger(Deno.env.get("UK_AQ_OBSERVS_HISTORY_R2_CHUNK_DAYS")) ??
+      7,
+  ),
+);
+const OBSERVS_HISTORY_R2_CHUNK_MAX_RETRIES = Math.max(
+  1,
+  Math.min(
+    4,
+    parsePositiveInteger(
+      Deno.env.get("UK_AQ_OBSERVS_HISTORY_R2_CHUNK_MAX_RETRIES"),
+    ) ?? 4,
   ),
 );
 const UK_AQ_CORE_SCHEMA = Deno.env.get("UK_AQ_CORE_SCHEMA") ??
@@ -279,6 +298,7 @@ serve(async (req) => {
       data_format: format,
       columns,
       count: rows.length,
+      source: stitched.source,
       guideline: stitched.guideline,
       data: shapeTimeseriesData(rows, format),
     };
@@ -359,6 +379,13 @@ type ObservsHistoryApiPayload = {
   ok?: boolean;
   rows?: unknown[];
   error?: string;
+};
+
+type ChunkFetchResult = {
+  rows: TimeseriesRow[];
+  chunkCount: number;
+  failedChunkCount: number;
+  lastError: string | null;
 };
 
 async function callTimeseriesRpc(
@@ -457,12 +484,14 @@ async function fetchTimeseriesRowsStitched(
   if (shouldFetchHistory) {
     const connectorId = await resolveTimeseriesConnectorId(timeseriesId);
     if (connectorId !== null) {
+      const historyStartUtc = historyStart.toISOString();
+      const historyEndUtc = historyEnd.toISOString();
       try {
         const historyWindow = await callObservsHistoryWindow({
           timeseriesId,
           connectorId,
-          startUtc: historyStart.toISOString(),
-          endUtc: historyEnd.toISOString(),
+          startUtc: historyStartUtc,
+          endUtc: historyEndUtc,
           since,
           limit,
         });
@@ -470,16 +499,59 @@ async function fetchTimeseriesRowsStitched(
         didLoadHistoryRows = true;
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        console.warn("uk_aq_timeseries history fetch fallback", {
-          timeseries_id: timeseriesId,
-          connector_id: connectorId,
-          message,
-        });
+        if (
+          shouldRetryHistoryChunked(message, historyStartUtc, historyEndUtc)
+        ) {
+          try {
+            const historyWindow = await callObservsHistoryWindowChunked({
+              timeseriesId,
+              connectorId,
+              startUtc: historyStartUtc,
+              endUtc: historyEndUtc,
+              since,
+              limit,
+            });
+            historyRows = historyWindow.rows;
+            didLoadHistoryRows = historyWindow.rows.length > 0 ||
+              historyWindow.failedChunkCount === 0;
+            console.info(
+              "uk_aq_timeseries history fetch recovered via chunked retry",
+              {
+                timeseries_id: timeseriesId,
+                connector_id: connectorId,
+                chunk_days: OBSERVS_HISTORY_R2_CHUNK_DAYS,
+                chunk_count: historyWindow.chunkCount,
+                failed_chunk_count: historyWindow.failedChunkCount,
+                first_error: message,
+              },
+            );
+          } catch (chunkedError) {
+            const chunkedMessage = chunkedError instanceof Error
+              ? chunkedError.message
+              : String(chunkedError);
+            console.warn("uk_aq_timeseries history fetch fallback", {
+              timeseries_id: timeseriesId,
+              connector_id: connectorId,
+              message,
+              chunked_retry_error: chunkedMessage,
+              chunk_days: OBSERVS_HISTORY_R2_CHUNK_DAYS,
+            });
+          }
+        } else {
+          console.warn("uk_aq_timeseries history fetch fallback", {
+            timeseries_id: timeseriesId,
+            connector_id: connectorId,
+            message,
+          });
+        }
       }
     } else {
-      console.warn("uk_aq_timeseries history fetch skipped: connector unresolved", {
-        timeseries_id: timeseriesId,
-      });
+      console.warn(
+        "uk_aq_timeseries history fetch skipped: connector unresolved",
+        {
+          timeseries_id: timeseriesId,
+        },
+      );
     }
   }
 
@@ -582,7 +654,10 @@ async function callObservsHistoryWindow(
   }
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), OBSERVS_HISTORY_R2_API_TIMEOUT_MS);
+  const timeoutId = setTimeout(
+    () => controller.abort(),
+    OBSERVS_HISTORY_R2_API_TIMEOUT_MS,
+  );
   let response: Response;
   try {
     response = await fetch(endpoint.toString(), {
@@ -612,16 +687,188 @@ async function callObservsHistoryWindow(
   }
   if (!response.ok) {
     const message = payload?.error || payloadText || `HTTP ${response.status}`;
-    throw new Error(`observs history R2 response failed (${response.status}): ${String(message)}`);
+    throw new Error(
+      `observs history R2 response failed (${response.status}): ${
+        String(message)
+      }`,
+    );
   }
   if (payload && payload.ok === false) {
-    throw new Error(`observs history R2 returned error: ${String(payload.error || "unknown")}`);
+    throw new Error(
+      `observs history R2 returned error: ${
+        String(payload.error || "unknown")
+      }`,
+    );
   }
   return {
     rows: normalizeTimeseriesRows(
       Array.isArray(payload?.rows) ? payload.rows : [],
     ),
   };
+}
+
+async function callObservsHistoryWindowChunked(
+  {
+    timeseriesId,
+    connectorId,
+    startUtc,
+    endUtc,
+    since,
+    limit,
+  }: ObservsHistoryWindowCallOptions,
+): Promise<
+  { rows: TimeseriesRow[]; chunkCount: number; failedChunkCount: number }
+> {
+  const startMs = Date.parse(startUtc);
+  const endMs = Date.parse(endUtc);
+  if (
+    !Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs
+  ) {
+    return { rows: [], chunkCount: 0, failedChunkCount: 0 };
+  }
+
+  const chunkMs = OBSERVS_HISTORY_R2_CHUNK_DAYS * DAY_MS;
+  const mergedRows: TimeseriesRow[] = [];
+  let cursorMs = startMs;
+  let chunkCount = 0;
+  let failedChunkCount = 0;
+  while (cursorMs < endMs) {
+    const chunkEndMs = Math.min(endMs, cursorMs + chunkMs);
+    const chunkStartUtc = new Date(cursorMs).toISOString();
+    const chunkEndUtc = new Date(chunkEndMs).toISOString();
+    const chunkResult = await fetchHistoryChunkWithBisectRetry({
+      timeseriesId,
+      connectorId,
+      startUtc: chunkStartUtc,
+      endUtc: chunkEndUtc,
+      since,
+      limit: null,
+    });
+    chunkCount += chunkResult.chunkCount;
+    failedChunkCount += chunkResult.failedChunkCount;
+    if (chunkResult.rows.length > 0) {
+      mergedRows.push(...chunkResult.rows);
+    }
+    if (chunkResult.failedChunkCount > 0) {
+      console.warn("uk_aq_timeseries history chunk partially skipped", {
+        timeseries_id: timeseriesId,
+        connector_id: connectorId,
+        chunk_start_utc: chunkStartUtc,
+        chunk_end_utc: chunkEndUtc,
+        failed_chunk_count: chunkResult.failedChunkCount,
+        chunk_error: chunkResult.lastError,
+        chunk_retry_attempts: OBSERVS_HISTORY_R2_CHUNK_MAX_RETRIES,
+      });
+    }
+    if (limit !== null && mergedRows.length >= limit) {
+      return {
+        rows: mergedRows.slice(0, limit),
+        chunkCount,
+        failedChunkCount,
+      };
+    }
+    cursorMs = chunkEndMs;
+  }
+  return { rows: mergedRows, chunkCount, failedChunkCount };
+}
+
+async function fetchHistoryChunkWithBisectRetry(
+  {
+    timeseriesId,
+    connectorId,
+    startUtc,
+    endUtc,
+    since,
+  }: ObservsHistoryWindowCallOptions,
+): Promise<ChunkFetchResult> {
+  let lastError = "";
+  for (
+    let attempt = 1;
+    attempt <= OBSERVS_HISTORY_R2_CHUNK_MAX_RETRIES;
+    attempt += 1
+  ) {
+    try {
+      const historyWindow = await callObservsHistoryWindow({
+        timeseriesId,
+        connectorId,
+        startUtc,
+        endUtc,
+        since,
+        limit: null,
+      });
+      return {
+        rows: historyWindow.rows,
+        chunkCount: 1,
+        failedChunkCount: 0,
+        lastError: null,
+      };
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error);
+    }
+  }
+
+  const startMs = Date.parse(startUtc);
+  const endMs = Date.parse(endUtc);
+  const spanMs = endMs - startMs;
+  if (!Number.isFinite(spanMs) || spanMs <= DAY_MS) {
+    return {
+      rows: [],
+      chunkCount: 1,
+      failedChunkCount: 1,
+      lastError: lastError || "history chunk failed",
+    };
+  }
+
+  const middleMs = startMs + Math.floor(spanMs / 2);
+  if (middleMs <= startMs || middleMs >= endMs) {
+    return {
+      rows: [],
+      chunkCount: 1,
+      failedChunkCount: 1,
+      lastError: lastError || "history chunk failed",
+    };
+  }
+  const left = await fetchHistoryChunkWithBisectRetry({
+    timeseriesId,
+    connectorId,
+    startUtc: new Date(startMs).toISOString(),
+    endUtc: new Date(middleMs).toISOString(),
+    since,
+    limit: null,
+  });
+  const right = await fetchHistoryChunkWithBisectRetry({
+    timeseriesId,
+    connectorId,
+    startUtc: new Date(middleMs).toISOString(),
+    endUtc: new Date(endMs).toISOString(),
+    since,
+    limit: null,
+  });
+  return {
+    rows: [...left.rows, ...right.rows],
+    chunkCount: left.chunkCount + right.chunkCount,
+    failedChunkCount: left.failedChunkCount + right.failedChunkCount,
+    lastError: right.lastError || left.lastError ||
+      (lastError || "history chunk failed"),
+  };
+}
+
+function shouldRetryHistoryChunked(
+  message: string,
+  startUtc: string,
+  endUtc: string,
+): boolean {
+  const spanMs = Date.parse(endUtc) - Date.parse(startUtc);
+  if (
+    !Number.isFinite(spanMs) ||
+    spanMs <= OBSERVS_HISTORY_R2_CHUNK_DAYS * DAY_MS
+  ) {
+    return false;
+  }
+  const normalized = String(message || "").toLowerCase();
+  return normalized.includes("response failed (5") ||
+    normalized.includes("timed out") ||
+    normalized.includes("request failed");
 }
 
 function finalizeStitchedRows(
@@ -731,7 +978,10 @@ function resolveRequestedRange(
   if (hasWindow) {
     const parsedWindow = parseNamedWindowLabel(windowToken);
     if (!parsedWindow) {
-      return { ok: false, error: "Invalid window. Use 12h, 24h, 7d, 31d, or 90d." };
+      return {
+        ok: false,
+        error: "Invalid window. Use 12h, 24h, 7d, 31d, or 90d.",
+      };
     }
     const hours = WINDOW_HOURS[parsedWindow];
     return {

@@ -19,6 +19,10 @@ Browser -> local Python server -> data sources:
 1. Supabase PostgREST (ingestdb and obs_aqidb).
 2. External DB size API (optional, if configured).
 3. External R2 history-days API (optional, if configured).
+  - Preferred implementation now reads derived R2 index manifests first:
+    - `history/_index/observations_latest.json`
+    - `history/_index/aqilevels_latest.json`
+  - Falls back to direct R2 day-prefix scan only when index files are missing or invalid.
 4. Supabase RPC fallback for R2 history window (`uk_aq_rpc_r2_history_window` by default).
 5. Cloudflare APIs for R2 account usage.
 6. Local Dropbox checkpoint JSON file (for Dropbox backup status badges).
@@ -42,6 +46,13 @@ Served by `scripts/uk_aq_dashboard_local.py`:
   - Returns storage coverage calendar rows only.
   - Query params:
     - `force=1|true|yes|on`: clear storage coverage cache before rebuilding rows.
+- `GET /api/r2_connector_counts`
+  - Returns per-connector R2 row counts for the visible calendar period.
+  - Proxy to external R2 history-counts API so browser does not carry the worker token.
+  - Query params:
+    - `from_day=<YYYY-MM-DD>`
+    - `to_day=<YYYY-MM-DD>`
+    - `grain=day|month`
 - `GET /api/r2_metrics`
   - Returns R2 usage + R2 history window.
   - Query params:
@@ -106,6 +117,7 @@ R2 domain chart consistency rule:
 
 - `r2_domain_size_metrics` rows are filtered against committed day sets from the R2 history-days API.
 - If no committed days exist in the configured history bucket, the chart is intentionally suppressed (with a source warning) instead of showing stale/mismatched rows.
+- Size chart units are decimal MB (`1 MB = 1,000,000 bytes`) for DB/schema and R2 domain charts.
 
 ### 4) R2 account usage panel
 
@@ -134,7 +146,11 @@ Inputs:
 - R2 committed-day API (preferred):
   - endpoint: `UK_AQ_R2_HISTORY_DAYS_API_URL` (or derived from `UK_AQ_DB_SIZE_API_URL` as `/v1/r2-history-days`)
   - bucket is fixed by the Worker environment (`CFLARE_R2_BUCKET`)
-  - only days with `history/v1/(observations|aqilevels)/day_utc=YYYY-MM-DD/manifest.json` are considered present
+  - prefers derived index manifests:
+    - `history/_index/observations_latest.json`
+    - `history/_index/aqilevels_latest.json`
+  - index files are built from committed top-level day manifests and carry per-day connector row counts
+  - only days with committed top-level manifests are considered present
 - R2 window RPC fallback (when R2 committed-day API is unavailable):
   - default RPC name: `uk_aq_rpc_r2_history_window`
   - env override: `UK_AQ_R2_HISTORY_WINDOW_RPC`
@@ -160,6 +176,34 @@ UI loading behavior:
 
 - Frontend first requests `/api/dashboard?include_storage_coverage=0` so non-calendar panels render without waiting for storage-coverage recompute.
 - After initial render, frontend requests `/api/storage_coverage` and swaps in the calendar panel when rows are ready.
+- `force=1` still rebuilds the full storage-coverage payload, but the R2 portion is expected to be much faster when the index manifests are present because the Worker can read one JSON file per domain instead of scanning all day prefixes.
+
+### 6) R2 connector row-count charts (under calendar)
+
+Source:
+
+- External R2 history-counts API (preferred):
+  - endpoint: `UK_AQ_R2_HISTORY_COUNTS_API_URL` or derived from the DB-size/History-days worker origin as `/v1/r2-history-counts`
+  - token: `UK_AQ_R2_HISTORY_COUNTS_API_TOKEN` or fallback `UK_AQ_R2_HISTORY_DAYS_API_TOKEN`
+  - reads the same derived R2 index manifests:
+    - `history/_index/observations_latest.json`
+    - `history/_index/aqilevels_latest.json`
+
+Behavior:
+
+- Monthly calendar view:
+  - charts request `grain=day`
+  - bars show daily row totals per connector
+- Year calendar view:
+  - charts request `grain=month`
+  - bars show monthly average rows per day per connector
+  - tooltips still show monthly total rows and calendar day counts
+- Chart mode toggle:
+  - `Stacked`: AQI bottom, Observs top
+  - `Observs`
+  - `AQI`
+- Each connector chart uses its own y-axis scale.
+- Dashboard keeps this separate from storage-coverage booleans; it is purely an R2 history row-count view.
 
 ## Dropbox Status in Monthly Calendar
 

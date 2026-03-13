@@ -142,21 +142,25 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
   - Mixed rows across connectors are processed in the same batch, reducing history RPC call overhead.
 
 ### DB Size Logger (Cloud Run)
-- Purpose: Sample cluster-wide DB size (sum of `pg_database_size(datname)` across `pg_database`) from ingest DB, history DB, and optional Obs AQI DB once per run, then upsert hourly points into ingest DB.
+- Purpose: Sample cluster-wide DB size (sum of `pg_database_size(datname)` across `pg_database`) from ingest DB and Obs AQI DB once per run, then upsert hourly points into ingest DB. It also writes R2 History domain metrics, and can still write Obs AQI schema-size metrics only when explicitly re-enabled as a fallback.
 - Triggered by: Cloud Scheduler -> Cloud Run service (`workers/uk_aq_db_size_logger_cloud_run`).
 - Reads:
   - Ingest DB RPC: `uk_aq_public.uk_aq_rpc_database_size_bytes`
-  - History DB RPC: `uk_aq_public.uk_aq_rpc_database_size_bytes`
-  - Obs AQI DB RPC (optional): `uk_aq_public.uk_aq_rpc_database_size_bytes`
+  - Obs AQI DB RPC: `uk_aq_public.uk_aq_rpc_database_size_bytes`
 - Writes (ingest DB):
   - RPC: `uk_aq_public.uk_aq_rpc_db_size_metric_upsert`
   - RPC: `uk_aq_public.uk_aq_rpc_db_size_metric_cleanup`
-  - Table: `uk_aq_raw.db_size_metrics_hourly`
+  - Table: `uk_aq_ops.db_size_metrics_hourly`
   - View: `uk_aq_public.uk_aq_db_size_metrics_hourly`
 - Notes:
-  - Upsert key is `(bucket_hour, database_label)` with labels `ingestdb`, `obs_aqidb`, and `obs_aqidb`.
-  - Size RPC payload includes `oldest_observed_at` (min `observed_at` in that DB); logger stores it in `uk_aq_raw.db_size_metrics_hourly.oldest_observed_at`.
+  - Upsert key is `(bucket_hour, database_label)` with labels `ingestdb` and `obs_aqidb`.
+  - Size RPC payload includes `oldest_observed_at` (min timestamp in that DB); logger stores it in `uk_aq_ops.db_size_metrics_hourly.oldest_observed_at`.
   - Cleanup RPC trims old rows by retention days (`UK_AQ_DB_SIZE_RETENTION_DAYS`, default `120`).
+  - Obs AQI DB local scheduling is staggered off the hour: DB size at `1 * * * *`, schema size at `2 * * * *`.
+  - Cloud Run feature flags:
+    - `UK_AQ_DB_SIZE_CLOUD_RUN_ENABLED=false` skips DB-size sampling/upserts and leaves DB-size to local `pg_cron`.
+    - `UK_AQ_SCHEMA_SIZE_CLOUD_RUN_ENABLED=false` skips schema-size sampling/upserts and leaves schema-size to local `pg_cron`.
+    - with both disabled, Cloud Run still handles the R2 domain-size metrics path.
   - Cloud Run CPU/memory/concurrency are managed in deploy workflow vars (`GCP_DB_SIZE_LOGGER_*`).
 
 ### uk_aq_egress_monitor
@@ -459,6 +463,7 @@ curl "https://YOUR_PROJECT.supabase.co/functions/v1/uk_aq_latest?region=London&p
 - Returns:
   - `data_format=objects`: row objects (`observed_at`, `value`)
   - `data_format=compact`: positional arrays with `columns` metadata (for lower payload size)
+  - `source`: `ingest_only | history_only | ingest_history_stitched`
   - plus optional `guideline` (AQG_2021 24h) if found
 - Notes: when `limit` is omitted, all rows in the requested window are returned (no default cap).
 - Read path:
@@ -466,6 +471,7 @@ curl "https://YOUR_PROJECT.supabase.co/functions/v1/uk_aq_latest?region=London&p
   - recent overlap is read from ingest RPC `uk_aq_timeseries_rpc`.
   - older overlap is read from the Observs History R2 API worker (`UK_AQ_OBSERVS_HISTORY_R2_API_URL`) using committed manifests only.
   - edge resolves `connector_id` from ingest `uk_aq_core.timeseries` and sends `timeseries_id + connector_id + start_utc/end_utc` to the worker.
+  - when a wide history-window request fails with upstream `5xx`/timeout, edge retries in smaller history chunks (`UK_AQ_OBSERVS_HISTORY_R2_CHUNK_DAYS`, default `7`) with per-chunk retries (`UK_AQ_OBSERVS_HISTORY_R2_CHUNK_MAX_RETRIES`, default `4`) before falling back.
   - no direct `obs_aqidb` table read fallback remains in this endpoint.
   - if connector lookup or history fetch fails, endpoint logs a warning and falls back to ingest-only rows instead of returning `500`.
   - rows are merged on `observed_at` with ingest rows overriding overlaps.
@@ -552,6 +558,8 @@ Optional:
 - `OBS_AQIDB_RPC_SCHEMA` (optional; default `uk_aq_public`; schema used by history RPC/write paths)
 - `UK_AQ_OBSERVS_HISTORY_R2_API_URL` (required for older-window `uk_aq_timeseries` reads; Observs History R2 worker URL)
 - `UK_AQ_OBSERVS_HISTORY_R2_API_TIMEOUT_MS` (optional; default `10000`; timeout for edge-to-R2-history API requests)
+- `UK_AQ_OBSERVS_HISTORY_R2_CHUNK_DAYS` (optional; default `7`; history retry chunk size for `uk_aq_timeseries` when large-window history reads return upstream `5xx`/timeout)
+- `UK_AQ_OBSERVS_HISTORY_R2_CHUNK_MAX_RETRIES` (optional; default `4`; per-chunk retry attempts during history chunk fallback in `uk_aq_timeseries`)
 - `OBSERVS_OUTBOX_CLOUD_RUN_MAX_BATCHES` (optional; defaults to `30`; Cloud Run outbox batches per run)
 - `OBSERVS_OUTBOX_CLOUD_RUN_CLAIM_BATCH_LIMIT` (optional; defaults to `20`; outbox claim size per batch in Cloud Run)
 - `OBSERVS_OUTBOX_CLOUD_RUN_BUDGET_SECONDS` (optional; defaults to `540`; Cloud Run runtime budget)

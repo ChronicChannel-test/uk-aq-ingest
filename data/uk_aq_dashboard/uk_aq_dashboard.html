@@ -762,6 +762,107 @@
         gap: 10px;
       }
 
+      .coverage-connector-counts-section {
+        margin-top: 18px;
+        border-top: 1px solid #e4d7c5;
+        padding-top: 18px;
+      }
+
+      .coverage-connector-counts-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-bottom: 10px;
+      }
+
+      .coverage-connector-counts-title {
+        margin: 0;
+        font-size: 19px;
+        font-weight: 700;
+        letter-spacing: -0.01em;
+      }
+
+      .coverage-connector-counts-note {
+        margin-bottom: 14px;
+        color: #5f574c;
+        font-size: 13px;
+      }
+
+      .coverage-connector-chart-grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 12px;
+      }
+
+      .coverage-connector-chart-card {
+        border: 1px solid #e4d7c5;
+        border-radius: 14px;
+        background: #fffdf8;
+        padding: 12px 12px 10px;
+      }
+
+      .coverage-connector-chart-head {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        margin-bottom: 8px;
+      }
+
+      .coverage-connector-chart-head h3 {
+        margin: 0;
+        font-size: 15px;
+        line-height: 1.2;
+      }
+
+      .coverage-connector-chart-legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px 10px;
+        font-size: 11px;
+        color: #5f574c;
+        font-family: "IBM Plex Mono", ui-monospace, monospace;
+      }
+
+      .coverage-connector-chart-legend span {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+      }
+
+      .coverage-connector-chart-swatch {
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+        display: inline-block;
+        flex: 0 0 auto;
+      }
+
+      .coverage-connector-chart-wrap {
+        min-height: 210px;
+      }
+
+      .coverage-connector-chart-svg {
+        width: 100%;
+        height: 210px;
+        display: block;
+      }
+
+      .coverage-connector-chart-empty {
+        min-height: 210px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        color: #6b6255;
+        font-size: 13px;
+        padding: 10px;
+        border-radius: 12px;
+        background: #fffaf1;
+        border: 1px dashed #d9cbb4;
+      }
+
       .coverage-year-month {
         border: 1px solid #dddddd;
         border-radius: 12px;
@@ -1188,7 +1289,10 @@
       const STORAGE_COVERAGE_MONTH_STORAGE_KEY = "uk_aq_storage_coverage_month";
       const STORAGE_COVERAGE_MODE_STORAGE_KEY = "uk_aq_storage_coverage_mode";
       const STORAGE_COVERAGE_MODE_VALUES = new Set(["month", "year"]);
+      const R2_CONNECTOR_COUNTS_MODE_STORAGE_KEY = "uk_aq_r2_connector_counts_mode";
+      const R2_CONNECTOR_COUNTS_MODE_VALUES = new Set(["stacked", "observs", "aqi"]);
       const STORAGE_COVERAGE_ERROR_PREFIX = "Storage coverage calendar failed to load:";
+      const R2_CONNECTOR_COUNTS_ERROR_PREFIX = "R2 connector counts failed to load:";
       const DAY_MS = 24 * 60 * 60 * 1000;
       const COVERAGE_WEEKDAY_NAMES = [
         "Monday",
@@ -1206,9 +1310,38 @@
       let dbSizePeriodHours = 24;
       let storageCoverageMonthCursor = null;
       let storageCoverageMode = "month";
+      let r2ConnectorCountsMode = "stacked";
       let latestDashboardData = null;
+      let latestR2ConnectorCounts = null;
       let dashboardLoadSequence = 0;
       let storageCoverageLoadSequence = 0;
+      let r2ConnectorCountsLoadSequence = 0;
+      const R2_CONNECTOR_CHARTS = [
+        {
+          connectorId: 1,
+          title: "UK-AIR-SOS",
+          observsColor: "#013566",
+          aqiColor: "#015FA4",
+        },
+        {
+          connectorId: 3,
+          title: "Breathe London",
+          observsColor: "#007A6C",
+          aqiColor: "#279F8D",
+        },
+        {
+          connectorId: 6,
+          title: "Open AQ",
+          observsColor: "#000000",
+          aqiColor: "#1A8BFF",
+        },
+        {
+          connectorId: 7,
+          title: "Sensor.Community",
+          observsColor: "#000000",
+          aqiColor: "#6ECE98",
+        },
+      ];
 
       try {
         const storedConnector = localStorage.getItem(DISPATCH_CONNECTOR_STORAGE_KEY);
@@ -1241,6 +1374,13 @@
         const storedCoverageMode = localStorage.getItem(STORAGE_COVERAGE_MODE_STORAGE_KEY);
         if (storedCoverageMode && STORAGE_COVERAGE_MODE_VALUES.has(storedCoverageMode)) {
           storageCoverageMode = storedCoverageMode;
+        }
+        const storedR2ConnectorCountsMode = localStorage.getItem(R2_CONNECTOR_COUNTS_MODE_STORAGE_KEY);
+        if (
+          storedR2ConnectorCountsMode &&
+          R2_CONNECTOR_COUNTS_MODE_VALUES.has(storedR2ConnectorCountsMode)
+        ) {
+          r2ConnectorCountsMode = storedR2ConnectorCountsMode;
         }
       } catch (_err) {
         // Ignore storage read issues and use defaults.
@@ -1407,6 +1547,55 @@
           return "n/a";
         }
         return Number(value).toLocaleString();
+      }
+
+      function formatCompactCount(value) {
+        if (value === null || value === undefined || Number.isNaN(Number(value))) {
+          return "n/a";
+        }
+        const numeric = Number(value);
+        const abs = Math.abs(numeric);
+        if (abs >= 1_000_000) {
+          return `${(numeric / 1_000_000).toFixed(abs >= 10_000_000 ? 0 : 1)}M`;
+        }
+        if (abs >= 1_000) {
+          return `${(numeric / 1_000).toFixed(abs >= 10_000 ? 0 : 1)}k`;
+        }
+        return Math.round(numeric).toLocaleString();
+      }
+
+      function formatRowRate(value) {
+        if (value === null || value === undefined || Number.isNaN(Number(value))) {
+          return "n/a";
+        }
+        const numeric = Number(value);
+        if (Math.abs(numeric) >= 100) {
+          return Math.round(numeric).toLocaleString();
+        }
+        return numeric.toFixed(1);
+      }
+
+      function formatMonthYearLabel(dayValue) {
+        const date = parseUtcDateKey(dayValue);
+        if (!date) {
+          return String(dayValue || "");
+        }
+        return date.toLocaleString(undefined, {
+          month: "short",
+          year: "numeric",
+          timeZone: "UTC",
+        });
+      }
+
+      function formatMonthShortLabel(dayValue) {
+        const date = parseUtcDateKey(dayValue);
+        if (!date) {
+          return String(dayValue || "");
+        }
+        return date.toLocaleString(undefined, {
+          month: "short",
+          timeZone: "UTC",
+        });
       }
 
       function formatMegabytes(valueMb) {
@@ -1990,7 +2179,7 @@
               point[seriesKey] = 0;
             }
           });
-          point[key] = sizeBytes / (1024 * 1024);
+          point[key] = sizeBytes / 1000000;
           pointMap.set(bucketKey, point);
         });
         return Array.from(pointMap.values())
@@ -2310,7 +2499,7 @@
           }
           const key = String(ms);
           const point = pointMap.get(key) || { ms, ingestdb: null, obs_aqidb: null };
-          point[label] = sizeBytes / (1024 * 1024);
+          point[label] = sizeBytes / 1000000;
           point[`${label}_oldest_observed_at`] = oldestObservedAt || null;
           pointMap.set(key, point);
         });
@@ -3157,6 +3346,416 @@
         return `<div class="coverage-year-grid">${monthMarkup}</div>`;
       }
 
+      function formatR2CountAxisValue(value) {
+        if (value === null || value === undefined || Number.isNaN(Number(value))) {
+          return "n/a";
+        }
+        const numeric = Number(value);
+        const abs = Math.abs(numeric);
+        if (abs >= 1000) {
+          return formatCompactCount(numeric);
+        }
+        if (abs >= 100) {
+          return Math.round(numeric).toLocaleString();
+        }
+        if (abs >= 10) {
+          return numeric.toFixed(0);
+        }
+        return numeric.toFixed(1);
+      }
+
+      function buildR2ConnectorCountsRequest(monthStartUtc, isYearMode) {
+        if (isYearMode) {
+          const yearStartUtc = new Date(Date.UTC(monthStartUtc.getUTCFullYear(), 0, 1, 0, 0, 0, 0));
+          const yearEndUtc = new Date(Date.UTC(monthStartUtc.getUTCFullYear(), 11, 31, 0, 0, 0, 0));
+          const fromDay = toUtcDateKey(yearStartUtc);
+          const toDay = toUtcDateKey(yearEndUtc);
+          return {
+            requestKey: `month:${fromDay}:${toDay}`,
+            fromDay,
+            toDay,
+            grain: "month",
+          };
+        }
+        const fromDay = toUtcDateKey(monthStartUtc);
+        const toDay = toUtcDateKey(addUtcDays(addUtcMonths(monthStartUtc, 1), -1));
+        return {
+          requestKey: `day:${fromDay}:${toDay}`,
+          fromDay,
+          toDay,
+          grain: "day",
+        };
+      }
+
+      function findR2ConnectorCountsEntry(payload, connectorId) {
+        if (!payload || !Array.isArray(payload.connectors)) {
+          return null;
+        }
+        return payload.connectors.find((entry) => Number(entry.connector_id) === Number(connectorId)) || null;
+      }
+
+      function resolveR2ConnectorChartConfigs(payload) {
+        const seen = new Set();
+        const resolved = [];
+        R2_CONNECTOR_CHARTS.forEach((entry) => {
+          seen.add(entry.connectorId);
+          resolved.push(entry);
+        });
+        const payloadIds = Array.isArray(payload?.connectors)
+          ? payload.connectors
+            .map((entry) => Number(entry && entry.connector_id))
+            .filter((value) => Number.isFinite(value) && value > 0)
+            .sort((a, b) => a - b)
+          : [];
+        payloadIds.forEach((connectorId) => {
+          if (seen.has(connectorId)) {
+            return;
+          }
+          seen.add(connectorId);
+          resolved.push({
+            connectorId,
+            title: `Connector ${connectorId}`,
+            observsColor: "#4B443A",
+            aqiColor: "#A08D74",
+          });
+        });
+        return resolved;
+      }
+
+      function buildEmptyConnectorBuckets(request) {
+        const buckets = [];
+        let cursorDay = request.fromDay;
+        while (cursorDay && cursorDay <= request.toDay) {
+          const bucketKey = request.grain === "month" ? cursorDay.slice(0, 7) : cursorDay;
+          const current = buckets[buckets.length - 1];
+          if (current && current.bucket_key === bucketKey) {
+            current.bucket_end_day_utc = cursorDay;
+            current.calendar_day_count += 1;
+          } else {
+            buckets.push({
+              bucket_key: bucketKey,
+              bucket_start_day_utc: cursorDay,
+              bucket_end_day_utc: cursorDay,
+              calendar_day_count: 1,
+              observations_rows: 0,
+              observations_present_days: 0,
+              observations_avg_rows_per_day: 0,
+              aqilevels_rows: 0,
+              aqilevels_present_days: 0,
+              aqilevels_avg_rows_per_day: 0,
+              total_rows: 0,
+              total_avg_rows_per_day: 0,
+            });
+          }
+          cursorDay = addUtcDays(parseUtcDateKey(cursorDay), 1);
+          cursorDay = cursorDay ? toUtcDateKey(cursorDay) : null;
+        }
+        return buckets;
+      }
+
+      function normalizeR2ConnectorBuckets(entry, request) {
+        const buckets = Array.isArray(entry?.buckets) ? entry.buckets : [];
+        if (buckets.length > 0) {
+          return buckets;
+        }
+        return buildEmptyConnectorBuckets(request);
+      }
+
+      function buildR2ConnectorBucketTooltip(config, bucket, isYearMode) {
+        const obsRows = Number(bucket?.observations_rows || 0);
+        const aqiRows = Number(bucket?.aqilevels_rows || 0);
+        const totalRows = obsRows + aqiRows;
+        const periodLabel = isYearMode
+          ? formatMonthYearLabel(bucket?.bucket_start_day_utc)
+          : (formatDateDdMmYyyy(bucket?.bucket_start_day_utc) || String(bucket?.bucket_start_day_utc || ""));
+        if (isYearMode) {
+          return [
+            config.title,
+            periodLabel,
+            `Obs avg/day: ${formatRowRate(bucket?.observations_avg_rows_per_day || 0)}`,
+            `AQI avg/day: ${formatRowRate(bucket?.aqilevels_avg_rows_per_day || 0)}`,
+            `Obs rows: ${formatCount(obsRows)}`,
+            `AQI rows: ${formatCount(aqiRows)}`,
+            `Total rows: ${formatCount(totalRows)}`,
+            `Calendar days: ${formatCount(bucket?.calendar_day_count || 0)}`,
+          ].join("\n");
+        }
+        return [
+          config.title,
+          periodLabel,
+          `Obs rows: ${formatCount(obsRows)}`,
+          `AQI rows: ${formatCount(aqiRows)}`,
+          `Total rows: ${formatCount(totalRows)}`,
+        ].join("\n");
+      }
+
+      function buildR2ConnectorChartSvg({ connectorConfig, entry, request, isYearMode }) {
+        const buckets = normalizeR2ConnectorBuckets(entry, request);
+        const displayMode = r2ConnectorCountsMode;
+        const width = 960;
+        const height = 210;
+        const margin = { top: 10, right: 10, bottom: 28, left: 44 };
+        const innerWidth = width - margin.left - margin.right;
+        const innerHeight = height - margin.top - margin.bottom;
+        const baselineY = height - margin.bottom;
+        const bucketCount = Math.max(1, buckets.length);
+        const stepX = innerWidth / bucketCount;
+        const barWidth = Math.max(1.5, stepX * 0.72);
+
+        const seriesValues = buckets.map((bucket) => {
+          const obsValue = isYearMode
+            ? Number(bucket?.observations_avg_rows_per_day || 0)
+            : Number(bucket?.observations_rows || 0);
+          const aqiValue = isYearMode
+            ? Number(bucket?.aqilevels_avg_rows_per_day || 0)
+            : Number(bucket?.aqilevels_rows || 0);
+          return {
+            observations: obsValue,
+            aqilevels: aqiValue,
+            total: obsValue + aqiValue,
+          };
+        });
+        const maxValue = seriesValues.reduce((max, value) => {
+          if (displayMode === "observs") {
+            return Math.max(max, value.observations);
+          }
+          if (displayMode === "aqi") {
+            return Math.max(max, value.aqilevels);
+          }
+          return Math.max(max, value.total);
+        }, 0);
+
+        if (maxValue <= 0) {
+          return `<div class="coverage-connector-chart-empty">No R2 rows in the selected period.</div>`;
+        }
+
+        const yMax = computeAxisMax(maxValue);
+        const yFor = (value) => margin.top + (1 - (Number(value) || 0) / yMax) * innerHeight;
+        const yTicks = buildYAxisTicks(yMax, 4);
+        const xTickIndexes = (() => {
+          if (bucketCount <= 3) {
+            return Array.from({ length: bucketCount }, (_, idx) => idx);
+          }
+          return Array.from(new Set([0, Math.floor((bucketCount - 1) / 2), bucketCount - 1]));
+        })();
+
+        const barsMarkup = buckets.map((bucket, index) => {
+          const x = margin.left + index * stepX + (stepX - barWidth) / 2;
+          const obsValue = seriesValues[index].observations;
+          const aqiValue = seriesValues[index].aqilevels;
+          const tooltip = escapeHtml(buildR2ConnectorBucketTooltip(connectorConfig, bucket, isYearMode));
+
+          if (displayMode === "observs" || displayMode === "aqi") {
+            const value = displayMode === "observs" ? obsValue : aqiValue;
+            const y = yFor(value);
+            const barHeight = Math.max(0, baselineY - y);
+            const color = displayMode === "observs"
+              ? connectorConfig.observsColor
+              : connectorConfig.aqiColor;
+            return `
+              <g>
+                <title>${tooltip}</title>
+                <rect x="${x.toFixed(2)}" y="${y.toFixed(2)}" width="${barWidth.toFixed(2)}" height="${barHeight.toFixed(2)}" rx="3" fill="${color}" />
+              </g>
+            `;
+          }
+
+          const aqiTopY = yFor(aqiValue);
+          const totalTopY = yFor(aqiValue + obsValue);
+          const aqiHeight = Math.max(0, baselineY - aqiTopY);
+          const obsHeight = Math.max(0, aqiTopY - totalTopY);
+          return `
+            <g>
+              <title>${tooltip}</title>
+              <rect x="${x.toFixed(2)}" y="${aqiTopY.toFixed(2)}" width="${barWidth.toFixed(2)}" height="${aqiHeight.toFixed(2)}" rx="3" fill="${connectorConfig.aqiColor}" />
+              <rect x="${x.toFixed(2)}" y="${totalTopY.toFixed(2)}" width="${barWidth.toFixed(2)}" height="${obsHeight.toFixed(2)}" rx="3" fill="${connectorConfig.observsColor}" />
+            </g>
+          `;
+        }).join("");
+
+        const xLabelsMarkup = xTickIndexes.map((index) => {
+          const bucket = buckets[index];
+          const x = margin.left + index * stepX + stepX / 2;
+          const label = isYearMode
+            ? formatMonthShortLabel(bucket?.bucket_start_day_utc)
+            : String((bucket?.bucket_start_day_utc || "").slice(-2)).replace(/^0/, "");
+          const anchor = index === 0 ? "start" : index === bucketCount - 1 ? "end" : "middle";
+          const dx = index === 0 ? -stepX / 2 + barWidth / 2 : index === bucketCount - 1 ? stepX / 2 - barWidth / 2 : 0;
+          return `
+            <text x="${(x + dx).toFixed(2)}" y="${height - 8}" text-anchor="${anchor}" fill="#6b6255" font-size="10" font-family="IBM Plex Mono, ui-monospace, monospace">${escapeHtml(label)}</text>
+          `;
+        }).join("");
+
+        return `
+          <svg class="coverage-connector-chart-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" role="img" aria-label="${escapeHtml(connectorConfig.title)} R2 connector row counts">
+            ${yTicks.map((tick) => {
+              const y = yFor(tick);
+              return `
+                <line x1="${margin.left}" y1="${y.toFixed(2)}" x2="${width - margin.right}" y2="${y.toFixed(2)}" stroke="#e8ddcd" stroke-width="1" />
+                <text x="${margin.left - 6}" y="${(y + 4).toFixed(2)}" text-anchor="end" fill="#6b6255" font-size="10" font-family="IBM Plex Mono, ui-monospace, monospace">${escapeHtml(formatR2CountAxisValue(tick))}</text>
+              `;
+            }).join("")}
+            <line x1="${margin.left}" y1="${baselineY}" x2="${width - margin.right}" y2="${baselineY}" stroke="#bfae91" stroke-width="1.2" />
+            ${barsMarkup}
+            ${xLabelsMarkup}
+          </svg>
+        `;
+      }
+
+      function renderR2ConnectorCountsBody(container, request, isYearMode, payload, errorMessage = "", isLoading = false) {
+        const chartConfigs = resolveR2ConnectorChartConfigs(payload);
+        const sectionTitle = "R2 connector row counts";
+        const toggleMarkup = Array.from(R2_CONNECTOR_COUNTS_MODE_VALUES).map((mode) => {
+          const active = mode === r2ConnectorCountsMode;
+          const label = mode === "stacked" ? "Stacked" : mode === "observs" ? "Observs" : "AQI";
+          return `
+            <button
+              type="button"
+              class="coverage-calendar-view-btn${active ? " is-active" : ""}"
+              data-action="r2-counts-mode"
+              data-mode="${mode}"
+              ${active ? "disabled aria-pressed=\"true\"" : "aria-pressed=\"false\""}
+            >${label}</button>
+          `;
+        }).join("");
+
+        let bodyMarkup = `<div class="coverage-connector-chart-empty">Loading R2 connector counts...</div>`;
+        if (errorMessage) {
+          bodyMarkup = `<div class="coverage-connector-chart-empty">Failed to load R2 connector counts: ${escapeHtml(errorMessage)}</div>`;
+        } else if (!isLoading) {
+          const cardsMarkup = chartConfigs.map((config) => {
+            const entry = findR2ConnectorCountsEntry(payload, config.connectorId);
+            const chartTitle = `${config.title} - Connector Id ${config.connectorId}`;
+            const svgMarkup = buildR2ConnectorChartSvg({
+              connectorConfig: config,
+              entry,
+              request,
+              isYearMode,
+            });
+            return `
+              <article class="coverage-connector-chart-card">
+                <div class="coverage-connector-chart-head">
+                  <h3>${escapeHtml(chartTitle)}</h3>
+                  <div class="coverage-connector-chart-legend">
+                    <span><span class="coverage-connector-chart-swatch" style="background:${config.observsColor}"></span>Observs</span>
+                    <span><span class="coverage-connector-chart-swatch" style="background:${config.aqiColor}"></span>AQI</span>
+                  </div>
+                </div>
+                <div class="coverage-connector-chart-wrap">${svgMarkup}</div>
+              </article>
+            `;
+          }).join("");
+          bodyMarkup = `<div class="coverage-connector-chart-grid">${cardsMarkup}</div>`;
+        }
+
+        const subtitle = isYearMode
+          ? "Year view shows monthly average rows per day. Stacked mode places AQI on the bottom and Observs on the top."
+          : "Month view shows daily row totals. Stacked mode places AQI on the bottom and Observs on the top.";
+
+        container.innerHTML = `
+          <div class="coverage-connector-counts-head">
+            <h3 class="coverage-connector-counts-title">${escapeHtml(sectionTitle)}</h3>
+            <div class="coverage-calendar-view">
+              <span class="coverage-calendar-view-label">Series</span>
+              <span class="coverage-calendar-view-toggle" role="group" aria-label="R2 connector count display mode">
+                ${toggleMarkup}
+              </span>
+            </div>
+          </div>
+          <div class="coverage-connector-counts-note">${escapeHtml(subtitle)}</div>
+          ${bodyMarkup}
+        `;
+
+        const modeButtons = Array.from(container.querySelectorAll('[data-action="r2-counts-mode"]'));
+        modeButtons.forEach((button) => {
+          button.addEventListener("click", () => {
+            const requestedMode = String(button.dataset.mode || "");
+            if (!R2_CONNECTOR_COUNTS_MODE_VALUES.has(requestedMode) || requestedMode === r2ConnectorCountsMode) {
+              return;
+            }
+            r2ConnectorCountsMode = requestedMode;
+            try {
+              localStorage.setItem(R2_CONNECTOR_COUNTS_MODE_STORAGE_KEY, r2ConnectorCountsMode);
+            } catch (_err) {
+              // Ignore localStorage write failures.
+            }
+            const cachedPayload = latestR2ConnectorCounts && latestR2ConnectorCounts.requestKey === request.requestKey
+              ? latestR2ConnectorCounts.payload
+              : payload;
+            renderR2ConnectorCountsBody(
+              container,
+              request,
+              isYearMode,
+              cachedPayload,
+              errorMessage,
+              isLoading,
+            );
+          });
+        });
+      }
+
+      async function loadR2ConnectorCounts(container, { monthStartUtc, isYearMode }) {
+        const requestId = ++r2ConnectorCountsLoadSequence;
+        const request = buildR2ConnectorCountsRequest(monthStartUtc, isYearMode);
+        container.dataset.requestKey = request.requestKey;
+        const cached = latestR2ConnectorCounts && latestR2ConnectorCounts.requestKey === request.requestKey
+          ? latestR2ConnectorCounts.payload
+          : null;
+        if (cached) {
+          renderR2ConnectorCountsBody(container, request, isYearMode, cached);
+          return;
+        }
+
+        renderR2ConnectorCountsBody(container, request, isYearMode, null, "", true);
+        try {
+          const params = new URLSearchParams({
+            from_day: request.fromDay,
+            to_day: request.toDay,
+            grain: request.grain,
+            t: String(Date.now()),
+          });
+          const resp = await fetch(`/api/r2_connector_counts?${params.toString()}`);
+          const text = await resp.text();
+          let payload = null;
+          try {
+            payload = JSON.parse(text);
+          } catch (_err) {
+            payload = null;
+          }
+          if (!resp.ok) {
+            const message =
+              (payload && (payload.error || payload.message)) ||
+              text ||
+              `Request failed (${resp.status})`;
+            throw new Error(message);
+          }
+          if (requestId !== r2ConnectorCountsLoadSequence) {
+            return;
+          }
+          if (!document.body.contains(container) || container.dataset.requestKey !== request.requestKey) {
+            return;
+          }
+          latestR2ConnectorCounts = {
+            requestKey: request.requestKey,
+            payload,
+          };
+          renderR2ConnectorCountsBody(container, request, isYearMode, payload);
+          if (String(errorEl.textContent || "").startsWith(R2_CONNECTOR_COUNTS_ERROR_PREFIX)) {
+            setError("");
+          }
+        } catch (error) {
+          if (requestId !== r2ConnectorCountsLoadSequence) {
+            return;
+          }
+          if (!document.body.contains(container) || container.dataset.requestKey !== request.requestKey) {
+            return;
+          }
+          const message = error && error.message ? error.message : String(error);
+          renderR2ConnectorCountsBody(container, request, isYearMode, null, message, false);
+          setError(`${R2_CONNECTOR_COUNTS_ERROR_PREFIX} ${message}`);
+        }
+      }
+
       function renderStorageCoverageCalendarPanel(serverCoverageRows) {
         const monthStartUtc = storageCoverageMonthCursor || startOfUtcMonth(new Date());
         const resolved = resolveCoverageRowsForMonth(monthStartUtc, serverCoverageRows);
@@ -3256,6 +3855,7 @@
           </div>
           ${bodyMarkup}
           <div class="footnote">${escapeHtml(footnoteText)}</div>
+          <div class="coverage-connector-counts-section" data-role="r2-connector-counts"></div>
         `;
 
         const handlePeriodChange = (monthDelta) => {
@@ -3334,6 +3934,14 @@
               const nextPanel = renderStorageCoverageCalendarPanel(serverCoverageRows);
               panel.replaceWith(nextPanel);
             });
+          });
+        }
+
+        const connectorCountsContainer = panel.querySelector('[data-role="r2-connector-counts"]');
+        if (connectorCountsContainer) {
+          void loadR2ConnectorCounts(connectorCountsContainer, {
+            monthStartUtc,
+            isYearMode,
           });
         }
 

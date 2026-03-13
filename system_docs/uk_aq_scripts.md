@@ -218,6 +218,42 @@ BILLING_EXPORT_PROJECT=my-billing-proj BILLING_EXPORT_DATASET=billing_export \
 Notes:
 - Reports `PASS` only when billing export tables are present.
 - If a dataset exists but no export tables are present yet, reports `FAIL` with a startup-delay warning.
+
+### `../CIC-test-uk-aq Operations/CIC-test-uk-aq-ops/scripts/backup_r2/uk_aq_build_r2_history_index.mjs`
+Purpose:
+- Rebuild the derived R2 history index manifests used by the history-days API fast path:
+  - `history/_index/observations_latest.json`
+  - `history/_index/aqilevels_latest.json`
+- Read committed top-level day manifests only; does not scan Parquet row data.
+- Preserve per-day connector row counts inside the derived index files for future dashboard/report use.
+
+Common commands:
+```bash
+node ../CIC-test-uk-aq\ Operations/CIC-test-uk-aq-ops/scripts/backup_r2/uk_aq_build_r2_history_index.mjs
+node ../CIC-test-uk-aq\ Operations/CIC-test-uk-aq-ops/scripts/backup_r2/uk_aq_build_r2_history_index.mjs --domain observations
+```
+
+Notes:
+- This script lives in the ops repo, not the ingest repo.
+- It is called automatically after successful non-dry local monthly `source_to_r2` runs.
+- The daily ingestdb prune service also rebuilds the same index files after successful non-dry Phase B history export.
+
+### `../CIC-test-uk-aq Operations/CIC-test-uk-aq-ops/scripts/backup_r2/uk_aq_cleanup_sos_empty_mirror_files.mjs`
+Purpose:
+- Clean up legacy UK-AIR SOS mirror files that only contain exact empty payloads such as `{"values":[]}`.
+- Migrate those known-empty timeseries/day combinations into the newer per-day `_no_data_timeseries.json` manifest format.
+
+Common commands:
+```bash
+node ../CIC-test-uk-aq\ Operations/CIC-test-uk-aq-ops/scripts/backup_r2/uk_aq_cleanup_sos_empty_mirror_files.mjs
+node ../CIC-test-uk-aq\ Operations/CIC-test-uk-aq-ops/scripts/backup_r2/uk_aq_cleanup_sos_empty_mirror_files.mjs --apply
+node ../CIC-test-uk-aq\ Operations/CIC-test-uk-aq-ops/scripts/backup_r2/uk_aq_cleanup_sos_empty_mirror_files.mjs --apply --day 2025-01-15
+```
+
+Notes:
+- Dry-run is the default; `--apply` is required to write manifests and delete old empty files.
+- The script reads `UK_AQ_BACKFILL_SOS_RAW_MIRROR_ROOT` unless `--root` is passed.
+- Non-empty SOS mirror files are left untouched.
 - Console path to enable export: `Billing -> Billing export -> BigQuery export`.
 
 ### `scripts/uk_aq_export_connectors_snapshot.py`
@@ -1361,3 +1397,28 @@ Environment:
 - `CFLARE_R2_ACCESS_KEY_ID`
 - `CFLARE_R2_SECRET_ACCESS_KEY`
 - `UK_AQ_R2_HISTORY_CORE_PREFIX` (optional; default `history/v1/core`)
+
+### `scripts/uk_aq_backfill_local_monthly.sh` (ops repo)
+Purpose:
+- Run local backfill month-by-month over one date window.
+- Invoke `workers/uk_aq_backfill_cloud_run/run_job.ts` once per month and store per-month logs.
+
+Repo / docs:
+- Script path: `CIC-test-uk-aq-ops/scripts/uk_aq_backfill_local_monthly.sh`
+- Usage notes: `CIC-test-uk-aq-ops/system_docs/uk-aq-backfill-cloud-run-script.md`
+
+Common commands:
+```bash
+export UK_AQ_BACKFILL_RUN_MODE="source_to_r2"
+export UK_AQ_BACKFILL_DRY_RUN="false"
+export UK_AQ_BACKFILL_FORCE_REPLACE="false"
+export UK_AQ_BACKFILL_FROM_DAY_UTC="2025-01-01"
+export UK_AQ_BACKFILL_TO_DAY_UTC="2025-12-31"
+unset UK_AQ_BACKFILL_CONNECTOR_IDS
+
+./scripts/uk_aq_backfill_local_monthly.sh
+```
+
+Notes:
+- Leave `UK_AQ_BACKFILL_CONNECTOR_IDS` unset to include all available source adapters.
+- With `UK_AQ_BACKFILL_FORCE_REPLACE=false`, existing connector/day outputs are skipped.

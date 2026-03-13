@@ -64,6 +64,10 @@ R2_HISTORY_DAYS_API_URL = str(os.getenv("UK_AQ_R2_HISTORY_DAYS_API_URL") or "").
 R2_HISTORY_DAYS_API_TOKEN = str(
     os.getenv("UK_AQ_R2_HISTORY_DAYS_API_TOKEN") or DB_SIZE_API_TOKEN
 ).strip()
+R2_HISTORY_COUNTS_API_URL = str(os.getenv("UK_AQ_R2_HISTORY_COUNTS_API_URL") or "").strip()
+R2_HISTORY_COUNTS_API_TOKEN = str(
+    os.getenv("UK_AQ_R2_HISTORY_COUNTS_API_TOKEN") or R2_HISTORY_DAYS_API_TOKEN
+).strip()
 try:
     _raw_r2_history_days_max = int(str(os.getenv("UK_AQ_R2_HISTORY_DAYS_API_MAX_DAYS", "3660")).strip())
 except ValueError:
@@ -299,6 +303,22 @@ def _resolve_r2_history_days_api_url() -> str:
         return ""
     origin = f"{parsed.scheme}://{parsed.netloc}"
     return f"{origin}/v1/r2-history-days"
+
+
+def _resolve_r2_history_counts_api_url() -> str:
+    if R2_HISTORY_COUNTS_API_URL:
+        return R2_HISTORY_COUNTS_API_URL
+    if R2_HISTORY_DAYS_API_URL:
+        parsed = urlparse(R2_HISTORY_DAYS_API_URL)
+    elif DB_SIZE_API_URL:
+        parsed = urlparse(DB_SIZE_API_URL)
+    else:
+        return ""
+
+    if not parsed.scheme or not parsed.netloc:
+        return ""
+    origin = f"{parsed.scheme}://{parsed.netloc}"
+    return f"{origin}/v1/r2-history-counts"
 
 
 def _ensure_allowed_base_url(base_url: str) -> str:
@@ -1787,6 +1807,56 @@ def _fetch_r2_history_days_from_external_api(
     return day_sets, r2_window, bucket_value, None
 
 
+def _fetch_r2_history_counts_from_external_api(
+    *,
+    from_day: str,
+    to_day: str,
+    grain: str,
+    connector_ids: Optional[str] = None,
+) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+    api_url = _resolve_r2_history_counts_api_url()
+    if not api_url:
+        return None, "R2 history-counts API not configured"
+
+    params: Dict[str, str] = {
+        "from_day": from_day,
+        "to_day": to_day,
+        "grain": grain,
+    }
+    if connector_ids:
+        params["connector_ids"] = connector_ids
+
+    headers: Dict[str, str] = {
+        "Accept": "application/json",
+    }
+    if R2_HISTORY_COUNTS_API_TOKEN:
+        headers["Authorization"] = f"Bearer {R2_HISTORY_COUNTS_API_TOKEN}"
+
+    try:
+        resp = requests.get(api_url, headers=headers, params=params, timeout=60)
+    except requests.RequestException as exc:
+        return None, f"R2 history-counts API request failed ({exc.__class__.__name__})"
+
+    if not resp.ok:
+        return None, (
+            f"R2 history-counts API HTTP {resp.status_code}: {_safe_response_text(resp)}"
+        )
+
+    try:
+        payload = resp.json()
+    except ValueError:
+        return None, "R2 history-counts API returned non-JSON payload"
+
+    if not isinstance(payload, dict):
+        return None, "R2 history-counts API payload is not an object"
+
+    raw_error = payload.get("error")
+    if isinstance(raw_error, str) and raw_error.strip():
+        return None, raw_error.strip()
+
+    return payload, None
+
+
 def _fetch_r2_backup_window(
     base_url: str,
     headers: Dict[str, str],
@@ -2690,6 +2760,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
             if parsed.path == "/api/storage_coverage":
                 self._serve_storage_coverage(parsed)
                 return
+            if parsed.path == "/api/r2_connector_counts":
+                self._serve_r2_connector_counts(parsed)
+                return
             self.send_error(HTTPStatus.NOT_FOUND, "Not found")
         except Exception as exc:
             if self._is_client_disconnect_error(exc):
@@ -2876,6 +2949,36 @@ class DashboardHandler(BaseHTTPRequestHandler):
             },
             indent=2,
         )
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.end_headers()
+        self.wfile.write(payload.encode("utf-8"))
+
+    def _serve_r2_connector_counts(self, parsed) -> None:
+        query = parse_qs(parsed.query, keep_blank_values=False)
+        from_day = ((query.get("from_day") or [""])[0] or "").strip()
+        to_day = ((query.get("to_day") or [""])[0] or "").strip()
+        grain = ((query.get("grain") or ["day"])[0] or "day").strip().lower()
+        connector_ids = ((query.get("connector_ids") or [""])[0] or "").strip()
+
+        payload_data, payload_error = _fetch_r2_history_counts_from_external_api(
+            from_day=from_day,
+            to_day=to_day,
+            grain=grain,
+            connector_ids=connector_ids or None,
+        )
+        if payload_error or payload_data is None:
+            payload = json.dumps({"error": payload_error or "unknown error"}, indent=2)
+            self.send_response(HTTPStatus.INTERNAL_SERVER_ERROR)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(payload.encode("utf-8"))
+            return
+
+        payload = json.dumps(payload_data, indent=2)
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", "application/json")
         self.send_header("Cache-Control", "no-store")
