@@ -54,6 +54,7 @@ Per run, worker updates:
   - `last_observed_at` uses ingest payload when present; otherwise falls back to
     `max(timeseries.last_value_at)` across selected timeseries ids.
 - `uk_aq_raw.error_logs` on ingest failure
+  - When Dropbox error logging is enabled, the wrapper mirrors the inserted failure row into `/error_log/YYYY-MM-DD/` and patches `error_logs.dropbox_path`.
 - `uk_aq_raw.uk_air_sos_station_checkpoints` after successful/partial runs
 - History observations via shared history mode (`OBSERVS_WRITE_MODE`, default `pubsub_only`)
 - Dropbox artifacts use `uk_aq_*_cloud_run_*` filename prefixes

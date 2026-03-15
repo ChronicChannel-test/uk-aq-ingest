@@ -1,4 +1,8 @@
 import "../../supabase/functions/_shared/fetch_egress_patch.ts";
+import {
+  normalizeDropboxPath,
+  uploadErrorLogJsonToDropbox,
+} from "../shared/dropbox_error_log.ts";
 
 const CONNECTOR_CODE = (Deno.env.get("OPENAQ_CONNECTOR_CODE") || "openaq")
   .trim();
@@ -120,6 +124,26 @@ const UK_AQ_CORE_SCHEMA = (Deno.env.get("UK_AQ_CORE_SCHEMA") || "uk_aq_core")
 const UK_AQ_RAW_SCHEMA = (Deno.env.get("UK_AQ_RAW_SCHEMA") || "uk_aq_raw")
   .trim();
 const REST_BASE_URL = `${SUPABASE_URL.replace(/\/$/, "")}/rest/v1`;
+const UK_AQ_DROPBOX_ROOT = normalizeDropboxPath(
+  Deno.env.get("OPENAQ_DROPBOX_ROOT") ??
+    Deno.env.get("UK_AQ_DROPBOX_ROOT") ??
+    "",
+);
+const DROPBOX_APP_KEY = (Deno.env.get("DROPBOX_APP_KEY") || "").trim();
+const DROPBOX_APP_SECRET = (Deno.env.get("DROPBOX_APP_SECRET") || "").trim();
+const DROPBOX_REFRESH_TOKEN = (Deno.env.get("DROPBOX_REFRESH_TOKEN") || "")
+  .trim();
+const DROPBOX_ERROR_ALLOWED_SUPABASE_URL = (
+  Deno.env.get("OPENAQ_ERROR_DROPBOX_ALLOWED_SUPABASE_URL") ??
+  Deno.env.get("OPENAQ_RAW_DROPBOX_ALLOWED_SUPABASE_URL") ??
+  Deno.env.get("UK_AIR_ERROR_DROPBOX_ALLOWED_SUPABASE_URL") ??
+  Deno.env.get("UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL") ??
+  ""
+).trim();
+const DROPBOX_ERROR_FOLDER = (
+  Deno.env.get("OPENAQ_ERROR_DROPBOX_FOLDER") ??
+  "/error_log"
+).trim();
 
 type IngestResponse = {
   ok: boolean;
@@ -233,6 +257,10 @@ function parseRunTarget(raw: string | undefined): "job" | "service" {
     return "service";
   }
   return "job";
+}
+
+function shortError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function parseRequestPayload(raw: string): Record<string, unknown> {
@@ -861,9 +889,12 @@ async function insertRunRow(
 async function insertErrorLog(
   connectorId: number,
   ingestResponse: IngestResponse,
-): Promise<void> {
+): Promise<{ errorId: string; createdAtIso: string; row: Record<string, unknown> }> {
+  const errorId = crypto.randomUUID();
+  const createdAtIso = new Date().toISOString();
   const entry = {
-    id: crypto.randomUUID(),
+    id: errorId,
+    created_at: createdAtIso,
     source: "cloud_run",
     severity: "error",
     message: "ingest_openaq dispatch failed",
@@ -889,6 +920,52 @@ async function insertErrorLog(
       `Failed to insert error_logs row (${response.status}): ${response.text}`,
     );
   }
+  return { errorId, createdAtIso, row: entry };
+}
+
+async function patchErrorLogDropboxPath(
+  errorId: string,
+  dropboxPath: string,
+): Promise<void> {
+  const response = await postgrestRequest("PATCH", "error_logs", {
+    schema: UK_AQ_RAW_SCHEMA,
+    query: { id: `eq.${errorId}` },
+    body: { dropbox_path: dropboxPath },
+    prefer: "return=minimal",
+  });
+  if (!response.ok) {
+    throw new Error(
+      `Failed to patch error_logs.dropbox_path (${response.status}): ${response.text}`,
+    );
+  }
+}
+
+async function uploadErrorLogRowToDropbox(
+  errorId: string,
+  createdAtIso: string,
+  row: Record<string, unknown>,
+): Promise<string | null> {
+  const dropboxPath = await uploadErrorLogJsonToDropbox({
+    appKey: DROPBOX_APP_KEY,
+    appSecret: DROPBOX_APP_SECRET,
+    refreshToken: DROPBOX_REFRESH_TOKEN,
+    allowedSupabaseUrl: DROPBOX_ERROR_ALLOWED_SUPABASE_URL,
+    supabaseUrl: SUPABASE_URL,
+    dropboxRoot: UK_AQ_DROPBOX_ROOT,
+    errorFolder: DROPBOX_ERROR_FOLDER,
+    errorId,
+    createdAtIso,
+    connectorCode: CONNECTOR_CODE,
+    payload: {
+      ...row,
+      connector_code: CONNECTOR_CODE,
+    },
+  });
+  if (!dropboxPath) {
+    return null;
+  }
+  await patchErrorLogDropboxPath(errorId, dropboxPath);
+  return dropboxPath;
 }
 
 async function waitForServer(url: string, maxWaitMs = 30_000): Promise<void> {
@@ -1654,7 +1731,7 @@ async function main(): Promise<void> {
       await waitForServer(`http://127.0.0.1:${PORT}/`);
       ingestResponse = await runIngestOnce(payloadPlan.payload);
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = shortError(error);
       const runEndedAtIso = new Date().toISOString();
       if (connectorId === null) {
         connectorId = await resolveConnectorId(null);
@@ -1667,6 +1744,27 @@ async function main(): Promise<void> {
         errorMessage,
       );
       runFailed = true;
+      try {
+        const inserted = await insertErrorLog(connectorId, {
+          ok: false,
+          status: 500,
+          body: {
+            error: "cloud_run_wrapper_failed",
+            message: errorMessage,
+          },
+          raw: errorMessage,
+        });
+        await uploadErrorLogRowToDropbox(
+          inserted.errorId,
+          inserted.createdAtIso,
+          inserted.row,
+        );
+      } catch (loggingError) {
+        logSummary("dropbox_error_upload_warning", {
+          trigger_mode: OPENAQ_TRIGGER_MODE,
+          error: shortError(loggingError),
+        });
+      }
       throw error;
     }
 
@@ -1701,7 +1799,19 @@ async function main(): Promise<void> {
     );
 
     if (runFailed) {
-      await insertErrorLog(connectorId, ingestResponse);
+      const inserted = await insertErrorLog(connectorId, ingestResponse);
+      try {
+        await uploadErrorLogRowToDropbox(
+          inserted.errorId,
+          inserted.createdAtIso,
+          inserted.row,
+        );
+      } catch (error) {
+        logSummary("dropbox_error_upload_warning", {
+          trigger_mode: OPENAQ_TRIGGER_MODE,
+          error: shortError(error),
+        });
+      }
       throw new Error(
         `ingest_openaq failed (${ingestResponse.status}): ${ingestResponse.raw}`,
       );

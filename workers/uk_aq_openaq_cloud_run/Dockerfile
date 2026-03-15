@@ -5,6 +5,7 @@ WORKDIR /app
 # Cloud Run runner (service invokes run_job.ts per request)
 COPY workers/uk_aq_openaq_cloud_run/run_job.ts /app/workers/uk_aq_openaq_cloud_run/run_job.ts
 COPY workers/uk_aq_openaq_cloud_run/run_service.ts /app/workers/uk_aq_openaq_cloud_run/run_service.ts
+COPY workers/shared/dropbox_error_log.ts /app/workers/shared/dropbox_error_log.ts
 
 # Reuse existing OpenAQ ingest implementation + shared helpers.
 COPY supabase/functions/ingest_openaq/index.ts /app/runtime/ingest_openaq/index.ts

@@ -14,6 +14,7 @@ The worker:
 3. Loads due station refs from `uk_aq_public.uk_aq_rpc_openaq_select_station_refs`.
 4. Runs OpenAQ ingest once with scoped `station_refs`.
 5. Writes run summary to `connectors`, `uk_aq_ingest_runs`, and `error_logs` on failures.
+   - When Dropbox error logging is enabled, the wrapper mirrors that inserted failure row into `/error_log/YYYY-MM-DD/` and patches `error_logs.dropbox_path`.
 6. Schedules the next run using Cloud Tasks based on earliest checkpoint due time.
 7. Publishes history rows using shared history mode (`OBSERVS_WRITE_MODE`).
 

@@ -19,6 +19,10 @@ This Cloud Run service runs OpenAQ ingest in Google Cloud using the existing
    - `OBSERVS_WRITE_MODE=outbox_only` keeps main DB outbox behavior.
    - `OBSERVS_WRITE_MODE=direct` performs direct observs RPC writes.
 
+Dropbox behavior in Cloud Run:
+- Wrapper-inserted direct failure `error_logs` rows are mirrored into `/error_log/YYYY-MM-DD/` and patch `error_logs.dropbox_path` when Dropbox error logging is enabled.
+- Existing OpenAQ log/raw uploads remain controlled by the ingest runtime.
+
 If no station refs are due, run is recorded as `skipped` (`no_station_refs`) and
 the worker only schedules the next check task.
 If station refs are selected but do not meet minimum station thresholds
@@ -104,6 +108,7 @@ gcloud run deploy uk-aq-openaq-ingest \
 - `OBSERVS_PUBSUB_PUBLISH_BATCH_SIZE` (optional; defaults to `500`)
 - `DROPBOX_APP_KEY`, `DROPBOX_APP_SECRET`, `DROPBOX_REFRESH_TOKEN`
 - `OPENAQ_RAW_DROPBOX_ALLOWED_SUPABASE_URL` (or `UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL`)
+- `OPENAQ_ERROR_DROPBOX_ALLOWED_SUPABASE_URL` (optional; falls back to raw allowlist env)
 - `UK_AQ_DROPBOX_ROOT` (default `/CIC-Test`)
 
 ## Task Queue Reconciliation

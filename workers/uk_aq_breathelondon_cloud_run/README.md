@@ -28,6 +28,7 @@ and no local ingest call is made.
 Dropbox behavior in Cloud Run:
 - Log uploads are always attempted when Dropbox credentials are present.
 - Raw uploads are gated by `BREATHELONDON_RAW_DROPBOX_ALLOWED_SUPABASE_URL` (or `UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL`) matching `SUPABASE_URL`.
+- Wrapper-inserted direct failure `error_logs` rows are mirrored into `/error_log/YYYY-MM-DD/` and patch `error_logs.dropbox_path` when Dropbox error logging is enabled.
 - File prefixes are `uk_aq_log_cloud_run_*` and `uk_aq_raw_cloud_run_*`.
 - Runtime budget in `ingest_breathelondon` is disabled by default in Cloud Run (`BREATHELONDON_DROPBOX_UPLOAD_SOURCE=cloud_run`).
   - Set `BREATHELONDON_ENFORCE_RUNTIME_BUDGET=true` to re-enable the edge-style cutoff.

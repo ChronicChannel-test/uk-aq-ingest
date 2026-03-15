@@ -13,6 +13,10 @@ This Cloud Run service runs UK-AIR SOS ingest in Google Cloud using the existing
 6. Updates `uk_aq_raw.uk_air_sos_station_checkpoints` after successful/partial runs.
 7. Writes observs via shared observs client mode (`OBSERVS_WRITE_MODE`, workflow default `pubsub_only`).
 
+Dropbox behavior in Cloud Run:
+- Wrapper-inserted direct failure `error_logs` rows are mirrored into `/error_log/YYYY-MM-DD/` and patch `error_logs.dropbox_path` when Dropbox error logging is enabled.
+- Existing SOS log/raw/error uploads from the local ingest runtime still use `UK_AIR_SOS_DROPBOX_UPLOAD_SOURCE=cloud_run`.
+
 Run feed note:
 - If the ingest response omits `last_observed_at`, the worker derives it from
   `max(timeseries.last_value_at)` across the run's selected timeseries ids.
@@ -87,4 +91,5 @@ gcloud run deploy uk-aq-sos-ingest \
 - `OBS_AQIDB_SUPABASE_URL`, `OBS_AQIDB_SECRET_KEY`, `OBS_AQIDB_RPC_SCHEMA` (required when `OBSERVS_WRITE_MODE=direct`; not injected for `pubsub_only`/`outbox_only`)
 - `DROPBOX_APP_KEY`, `DROPBOX_APP_SECRET`, `DROPBOX_REFRESH_TOKEN`
 - `UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL`
+- `UK_AIR_SOS_ERROR_DROPBOX_ALLOWED_SUPABASE_URL` or `UK_AIR_ERROR_DROPBOX_ALLOWED_SUPABASE_URL`
 - `UK_AQ_DROPBOX_ROOT`, `UK_AIR_RAW_DROPBOX_FOLDER`

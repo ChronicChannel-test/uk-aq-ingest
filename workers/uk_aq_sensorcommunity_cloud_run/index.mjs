@@ -2084,8 +2084,11 @@ async function insertRunRow(
 }
 
 async function insertErrorLog(connectorId, ingestResponse) {
+  const errorId = crypto.randomUUID();
+  const createdAtIso = new Date().toISOString();
   const entry = {
-    id: crypto.randomUUID(),
+    id: errorId,
+    created_at: createdAtIso,
     source: "cloud_run",
     severity: "error",
     message: "ingest_sensorcommunity dispatch failed",
@@ -2111,6 +2114,7 @@ async function insertErrorLog(connectorId, ingestResponse) {
       `Failed to insert error_logs row (${response.status}): ${response.text}`,
     );
   }
+  return { errorId, createdAtIso, row: entry };
 }
 
 async function patchErrorLogDropboxPath(errorId, dropboxPath) {
@@ -2160,7 +2164,7 @@ async function insertFailureMonitorAlert(connectorId, alertType, details) {
   return { errorId, createdAtIso, row };
 }
 
-async function uploadFailureMonitorAlertToDropbox(errorId, createdAtIso, row) {
+async function uploadErrorLogRowToDropbox(errorId, createdAtIso, row) {
   const dropboxConfig = loadDropboxErrorConfig();
   if (!dropboxConfig) {
     return null;
@@ -2175,7 +2179,7 @@ async function uploadFailureMonitorAlertToDropbox(errorId, createdAtIso, row) {
     dropbox_path: dropboxPath,
   };
   const bytes = new TextEncoder().encode(`${JSON.stringify(payload, null, 2)}\n`);
-  accessToken = await dropboxUploadFileWithRetry(
+  await dropboxUploadFileWithRetry(
     accessToken,
     dropboxPath,
     bytes,
@@ -2304,7 +2308,7 @@ async function evaluateAndWriteFailureAlerts(connectorId) {
     );
     let dropboxPath = null;
     try {
-      dropboxPath = await uploadFailureMonitorAlertToDropbox(
+      dropboxPath = await uploadErrorLogRowToDropbox(
         inserted.errorId,
         inserted.createdAtIso,
         inserted.row,
@@ -2345,7 +2349,7 @@ async function evaluateAndWriteFailureAlerts(connectorId) {
     );
     let dropboxPath = null;
     try {
-      dropboxPath = await uploadFailureMonitorAlertToDropbox(
+      dropboxPath = await uploadErrorLogRowToDropbox(
         inserted.errorId,
         inserted.createdAtIso,
         inserted.row,
@@ -2508,7 +2512,19 @@ async function main() {
   }
 
   if (runFailed) {
-    await insertErrorLog(connectorId, ingestResponse);
+    const inserted = await insertErrorLog(connectorId, ingestResponse);
+    try {
+      await uploadErrorLogRowToDropbox(
+        inserted.errorId,
+        inserted.createdAtIso,
+        inserted.row,
+      );
+    } catch (error) {
+      logSummary("dropbox_error_upload_warning", {
+        alert_type: "direct_ingest_failure",
+        message: shortError(error),
+      });
+    }
     throw new Error(
       `ingest_sensorcommunity failed (${ingestResponse.status}): ${ingestResponse.raw || runMessage
       }`,

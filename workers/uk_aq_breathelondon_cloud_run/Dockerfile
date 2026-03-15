@@ -5,6 +5,7 @@ WORKDIR /app
 # Cloud Run service runner
 COPY workers/uk_aq_breathelondon_cloud_run/run_job.ts /app/workers/uk_aq_breathelondon_cloud_run/run_job.ts
 COPY workers/uk_aq_breathelondon_cloud_run/run_service.ts /app/workers/uk_aq_breathelondon_cloud_run/run_service.ts
+COPY workers/shared/dropbox_error_log.ts /app/workers/shared/dropbox_error_log.ts
 
 # Reuse existing BL ingest implementation + shared helpers.
 COPY supabase/functions/ingest_breathelondon/index.ts /app/runtime/ingest_breathelondon/index.ts
