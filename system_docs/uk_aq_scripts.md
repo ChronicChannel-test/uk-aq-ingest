@@ -1015,7 +1015,7 @@ Purpose:
 
 Output:
 - `uk_aq_stations_<timestamp>.json` uploaded to the Dropbox folder (default `uk_aq_stations/<YYYY-MM>`).
-- `daily_summary.json` uploaded alongside the stations snapshot (connector/network counts + OpenAQ provider counts).
+- `daily_summary_{YYYY-MM-DD}.json` uploaded alongside the stations snapshot (connector/network counts + OpenAQ provider counts).
 
 Environment:
 - `SUPABASE_DB_URL` (required; direct Postgres connection)
