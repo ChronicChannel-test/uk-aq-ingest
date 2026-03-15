@@ -198,14 +198,19 @@ Behavior:
 - Monthly calendar view:
   - charts request `grain=day`
   - bars show daily row totals per connector
+  - x-axis shows every visible day label for the selected month
 - Year calendar view:
   - charts request `grain=month`
   - bars show monthly average rows per day per connector
+  - x-axis shows every month label
   - tooltips still show monthly total rows and calendar day counts
 - Chart mode toggle:
   - `Stacked`: AQI bottom, Observs top
   - `Observs`
   - `AQI`
+- Frontend cache:
+  - chart payloads are cached in-memory for up to 6 hours per visible period
+  - `Force Refresh` bypasses that cache and refetches the current chart payload immediately
 - Each connector chart uses its own y-axis scale.
 - Dashboard keeps this separate from storage-coverage booleans; it is purely an R2 history row-count view.
 
@@ -268,7 +273,7 @@ Defaults:
 - R2 usage cache:
   - `R2_CACHE_TTL_SECONDS=3600` (1 hour).
 - Storage coverage cache:
-  - Refreshes at the next hourly `COVERAGE_REFRESH_MINUTE_UTC` boundary (currently `:58` UTC each hour).
+  - `STORAGE_COVERAGE_CACHE_TTL_SECONDS=21600` (6 hours).
   - `force` refresh clears cache immediately.
 - Dispatch runs:
   - Incremental in-memory merge with overlap and max-row cap.

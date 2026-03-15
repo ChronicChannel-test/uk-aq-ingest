@@ -19,6 +19,8 @@ This worker runs Sensor.Community ingest directly in Cloud Run Service
 - Uploads run log + raw payload snapshot to Dropbox when Dropbox env/secrets are configured and allowed for the active Supabase URL.
   - Log artifact: `uk_aq_log_cloud_run_scomm_<timestamp>.json`
   - Raw artifact: `uk_aq_raw_cloud_run_scomm_<timestamp>.zip`
+  - On source-fetch failure, the log payload now includes `payload.details` with fetch context such as source URL, retry count, timeout, final attempt, and HTTP status or transport error.
+  - On source-fetch failure before rows are downloaded, the raw Dropbox artifact still includes the attempted source URL and fetch error details.
 - Evaluates failure monitor rules from recent `uk_aq_ingest_runs` history:
   - consecutive server-error streak threshold (`SCOMM_ALERT_CONSECUTIVE_500_THRESHOLD`, default `3`)
   - lookback failure-rate threshold (`SCOMM_ALERT_FAILURE_RATE_THRESHOLD`, default `0.5`) over `SCOMM_ALERT_FAILURE_RATE_LOOKBACK_MINUTES` (default `60`)

@@ -49,6 +49,8 @@ Per run, worker updates:
   - log JSON under `/connectors/sensorcommunity/log/YYYY-MM-DD/` with `uk_aq_log_cloud_run_*`
   - raw ZIP under `/connectors/sensorcommunity/raw_data/YYYY-MM-DD/` with `uk_aq_raw_cloud_run_*`
   - failure-monitor alert JSON under `/error_log/YYYY-MM-DD/` with `uk_aq_error_cloud_run_*`
+  - source-fetch failures include `payload.details` in the log/error payload with source URL, retries, timeout, final attempt, and HTTP status or transport error
+  - if source fetch fails before any rows are returned, the raw Dropbox artifact still records the attempted source URL and fetch error details
 
 ## Deployment
 

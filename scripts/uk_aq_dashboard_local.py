@@ -118,7 +118,7 @@ DISPATCH_RUNS_STATE: Dict[str, Any] = {
 }
 CACHE_TTL_SECONDS = 20
 R2_CACHE_TTL_SECONDS = 60 * 60
-COVERAGE_REFRESH_MINUTE_UTC = 58
+STORAGE_COVERAGE_CACHE_TTL_SECONDS = 6 * 60 * 60
 UTC_DATETIME_MIN = datetime.min.replace(tzinfo=timezone.utc)
 R2_BYTES_PER_GB = 1024 ** 3
 R2_CLASS_A_ACTION_TYPES = {
@@ -1486,18 +1486,7 @@ def _build_live_storage_coverage_days(
 
 
 def _next_storage_coverage_refresh(now_utc: datetime) -> datetime:
-    refresh_this_hour = datetime(
-        now_utc.year,
-        now_utc.month,
-        now_utc.day,
-        now_utc.hour,
-        COVERAGE_REFRESH_MINUTE_UTC,
-        0,
-        tzinfo=timezone.utc,
-    )
-    if now_utc < refresh_this_hour:
-        return refresh_this_hour
-    return refresh_this_hour + timedelta(hours=1)
+    return now_utc + timedelta(seconds=STORAGE_COVERAGE_CACHE_TTL_SECONDS)
 
 
 def _get_cached_storage_coverage_days(now: datetime) -> Optional[List[Dict[str, Any]]]:

@@ -552,6 +552,23 @@ function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function buildStructuredError(message, details) {
+  const error = new Error(message);
+  error.details = details;
+  return error;
+}
+
+function extractErrorDetails(error) {
+  if (!error || typeof error !== "object" || Array.isArray(error)) {
+    return null;
+  }
+  const details = error.details;
+  if (!details || typeof details !== "object" || Array.isArray(details)) {
+    return null;
+  }
+  return { ...details };
+}
+
 function isLikelyJwt(value) {
   return typeof value === "string" &&
     value.startsWith("eyJ") &&
@@ -559,6 +576,12 @@ function isLikelyJwt(value) {
 }
 
 async function fetchJsonWithRetry(url, retries = SOURCE_FETCH_RETRIES) {
+  const baseDetails = {
+    stage: "source_fetch",
+    source_url: url,
+    timeout_ms: SOURCE_FETCH_TIMEOUT_MS,
+    retries,
+  };
   for (let attempt = 1; attempt <= retries; attempt += 1) {
     let response;
     try {
@@ -574,8 +597,16 @@ async function fetchJsonWithRetry(url, retries = SOURCE_FETCH_RETRIES) {
         SOURCE_FETCH_TIMEOUT_MS,
       );
     } catch (error) {
+      const causeMessage = error instanceof Error ? error.message : String(error);
       if (attempt === retries) {
-        throw error;
+        throw buildStructuredError(
+          `Sensor.Community source fetch failed after ${attempt} attempts for ${url}: ${causeMessage}`,
+          {
+            ...baseDetails,
+            attempt,
+            cause_message: causeMessage,
+          },
+        );
       }
       await wait(Math.min(30_000, 2 ** attempt * 1_000));
       continue;
@@ -587,17 +618,38 @@ async function fetchJsonWithRetry(url, retries = SOURCE_FETCH_RETRIES) {
       try {
         payload = JSON.parse(text);
       } catch {
-        throw new Error("Sensor.Community response was not valid JSON.");
+        throw buildStructuredError(
+          `Sensor.Community response was not valid JSON for ${url}`,
+          {
+            ...baseDetails,
+            attempt,
+            http_status: response.status,
+            response_excerpt: text.length > 500 ? `${text.slice(0, 497)}...` : text,
+          },
+        );
       }
       if (!Array.isArray(payload)) {
-        throw new Error("Sensor.Community response was not an array.");
+        throw buildStructuredError(
+          `Sensor.Community response was not an array for ${url}`,
+          {
+            ...baseDetails,
+            attempt,
+            http_status: response.status,
+          },
+        );
       }
       return payload;
     }
 
     if (!RETRYABLE_STATUS.has(response.status) || attempt === retries) {
-      throw new Error(
-        `Sensor.Community request failed (${response.status}): ${text}`,
+      throw buildStructuredError(
+        `Sensor.Community request failed (${response.status}) after ${attempt} attempts for ${url}`,
+        {
+          ...baseDetails,
+          attempt,
+          http_status: response.status,
+          response_excerpt: text.length > 500 ? `${text.slice(0, 497)}...` : text,
+        },
       );
     }
 
@@ -1776,13 +1828,33 @@ async function uploadDropboxArtifacts(
 
 async function runDirectIngest(connectorId, overwriteStationName, dropboxCapture) {
   const sourceUrl = `${SCOMM_BASE_URL}/airrohr/v1/filter/country=${encodeURIComponent(SCOMM_COUNTRY)}`;
-  const sourceRows = await fetchJsonWithRetry(sourceUrl, SOURCE_FETCH_RETRIES);
-  const filteredRows = sourceRows.filter((row) => stationInBboxOrMissingCoords(row));
   if (dropboxCapture) {
     dropboxCapture.raw = {
       connector_code: CONNECTOR_CODE,
       service_ref: SCOMM_SERVICE_REF,
       source_url: sourceUrl,
+    };
+  }
+  let sourceRows;
+  try {
+    sourceRows = await fetchJsonWithRetry(sourceUrl, SOURCE_FETCH_RETRIES);
+  } catch (error) {
+    const errorDetails = extractErrorDetails(error);
+    if (dropboxCapture) {
+      dropboxCapture.raw = {
+        ...dropboxCapture.raw,
+        fetch_error: {
+          message: shortError(error),
+          details: errorDetails,
+        },
+      };
+    }
+    throw error;
+  }
+  const filteredRows = sourceRows.filter((row) => stationInBboxOrMissingCoords(row));
+  if (dropboxCapture) {
+    dropboxCapture.raw = {
+      ...dropboxCapture.raw,
       fetched: sourceRows.length,
       filtered: filteredRows.length,
       records: filteredRows,
@@ -2358,6 +2430,7 @@ async function main() {
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      const errorDetails = extractErrorDetails(error);
       const runEndedAtIso = new Date().toISOString();
       await updateConnectorRun(
         connectorId,
@@ -2366,6 +2439,10 @@ async function main() {
         message,
         runStartedAtIso,
       );
+      logSummary("direct_ingest_error", {
+        error: message,
+        ...(errorDetails ? { error_details: errorDetails } : {}),
+      });
       runFailed = true;
       ingestResponse = {
         ok: false,
@@ -2373,8 +2450,9 @@ async function main() {
         body: {
           error: "direct_ingest_failed",
           message,
+          details: errorDetails,
         },
-        raw: message,
+        raw: errorDetails ? `${message} | details=${JSON.stringify(errorDetails)}` : message,
       };
       throw error;
     }
