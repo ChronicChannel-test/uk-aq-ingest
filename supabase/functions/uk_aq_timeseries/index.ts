@@ -36,6 +36,15 @@ const RECENT_SOURCE_OF_TRUTH_HOURS = Math.max(
     ) ?? 24 * 14,
   ),
 );
+const INGEST_SOURCE_OF_TRUTH_HOURS = Math.max(
+  1,
+  Math.min(
+    RECENT_SOURCE_OF_TRUTH_HOURS,
+    parsePositiveInteger(
+      Deno.env.get("UK_AQ_TIMESERIES_INGEST_SOURCE_OF_TRUTH_HOURS"),
+    ) ?? 24,
+  ),
+);
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ??
   Deno.env.get("SB_SUPABASE_URL") ??
@@ -455,33 +464,45 @@ async function fetchTimeseriesRowsStitched(
     now,
   }: StitchedFetchOptions,
 ): Promise<StitchedFetchResult> {
-  const splitBoundary = new Date(
+  const localBoundary = new Date(
     now.getTime() - RECENT_SOURCE_OF_TRUTH_HOURS * HOUR_MS,
   );
+  const ingestBoundary = new Date(
+    now.getTime() - INGEST_SOURCE_OF_TRUTH_HOURS * HOUR_MS,
+  );
   const historyStart = requestStart;
-  const historyEnd = requestEnd.getTime() < splitBoundary.getTime()
+  const historyEnd = requestEnd.getTime() < localBoundary.getTime()
     ? requestEnd
-    : splitBoundary;
-  const recentStart = requestStart.getTime() > splitBoundary.getTime()
+    : localBoundary;
+  const obsAqidbStart = requestStart.getTime() > localBoundary.getTime()
     ? requestStart
-    : splitBoundary;
-  const recentEnd = requestEnd.getTime() < now.getTime() ? requestEnd : now;
+    : localBoundary;
+  const obsAqidbEnd = requestEnd.getTime() < ingestBoundary.getTime()
+    ? requestEnd
+    : ingestBoundary;
+  const ingestStart = requestStart.getTime() > ingestBoundary.getTime()
+    ? requestStart
+    : ingestBoundary;
+  const ingestEnd = requestEnd.getTime() < now.getTime() ? requestEnd : now;
   const hasHistoryWindow = historyEnd.getTime() > historyStart.getTime();
-  const hasRecentWindow = recentEnd.getTime() > recentStart.getTime();
+  const hasObsAqidbWindow = obsAqidbEnd.getTime() > obsAqidbStart.getTime();
+  const hasIngestWindow = ingestEnd.getTime() > ingestStart.getTime();
   const sinceMs = since ? Date.parse(since) : Number.NaN;
   const hasSince = Number.isFinite(sinceMs);
   const shouldFetchHistory = hasHistoryWindow &&
     (!hasSince || sinceMs < historyEnd.getTime());
-  const shouldFetchRecentRows = hasRecentWindow &&
-    (!hasSince || sinceMs < recentEnd.getTime());
+  const shouldFetchObsAqidbRows = hasObsAqidbWindow &&
+    (!hasSince || sinceMs < obsAqidbEnd.getTime());
+  const shouldFetchIngestRows = hasIngestWindow &&
+    (!hasSince || sinceMs < ingestEnd.getTime());
 
-  const ingestWindowLabel = shouldFetchRecentRows
-    ? selectIngestWindowLabel(recentStart, now)
+  const ingestWindowLabel = shouldFetchIngestRows
+    ? selectIngestWindowLabel(ingestStart, now)
     : "12h";
-  const ingestLimit = shouldFetchRecentRows
-    ? (hasHistoryWindow ? null : limit)
+  const ingestLimit = shouldFetchIngestRows
+    ? (shouldFetchHistory || shouldFetchObsAqidbRows ? null : limit)
     : 1;
-  const ingestSince = shouldFetchRecentRows ? since : null;
+  const ingestSince = shouldFetchIngestRows ? since : null;
   const { data, error } = await callTimeseriesRpc({
     timeseriesId,
     windowLabel: ingestWindowLabel,
@@ -494,28 +515,34 @@ async function fetchTimeseriesRowsStitched(
 
   const ingestRow = Array.isArray(data) && data.length > 0 ? data[0] : null;
   const guideline = ingestRow?.guideline ?? null;
-  const ingestFallbackRows = shouldFetchRecentRows
-    ? normalizeTimeseriesRows(
-      Array.isArray(ingestRow?.data) ? ingestRow.data : [],
+  const ingestRpcRows = shouldFetchIngestRows
+    ? normalizeTimeseriesRows(Array.isArray(ingestRow?.data) ? ingestRow.data : [])
+    : [];
+  const ingestRows = shouldFetchIngestRows
+    ? filterRowsToWindow(
+      ingestRpcRows,
+      ingestStart,
+      ingestEnd,
+      since,
     )
     : [];
 
   let connectorId: number | null = null;
-  if (shouldFetchHistory || shouldFetchRecentRows) {
+  if (shouldFetchHistory || shouldFetchObsAqidbRows) {
     connectorId = await resolveTimeseriesConnectorId(timeseriesId);
   }
 
-  let recentRows: TimeseriesRow[] = [];
-  if (shouldFetchRecentRows) {
+  let obsAqidbRows: TimeseriesRow[] = [];
+  if (shouldFetchObsAqidbRows) {
     if (connectorId !== null) {
       try {
-        recentRows = await callObservsRecentWindow({
+        obsAqidbRows = await callObservsRecentWindow({
           timeseriesId,
           connectorId,
-          startUtc: recentStart.toISOString(),
-          endUtc: recentEnd.toISOString(),
+          startUtc: obsAqidbStart.toISOString(),
+          endUtc: obsAqidbEnd.toISOString(),
           since,
-          limit: hasHistoryWindow ? null : limit,
+          limit: shouldFetchHistory || shouldFetchIngestRows ? null : limit,
         });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -524,7 +551,23 @@ async function fetchTimeseriesRowsStitched(
           connector_id: connectorId,
           message,
         });
-        recentRows = ingestFallbackRows;
+        try {
+          obsAqidbRows = await callIngestFallbackWindow({
+            timeseriesId,
+            start: obsAqidbStart,
+            end: obsAqidbEnd,
+            now,
+            since,
+          });
+        } catch (fallbackError) {
+          const fallbackMessage = fallbackError instanceof Error
+            ? fallbackError.message
+            : String(fallbackError);
+          console.warn("uk_aq_timeseries ingest fallback fetch failed", {
+            timeseries_id: timeseriesId,
+            message: fallbackMessage,
+          });
+        }
       }
     } else {
       console.warn(
@@ -533,7 +576,23 @@ async function fetchTimeseriesRowsStitched(
           timeseries_id: timeseriesId,
         },
       );
-      recentRows = ingestFallbackRows;
+      try {
+        obsAqidbRows = await callIngestFallbackWindow({
+          timeseriesId,
+          start: obsAqidbStart,
+          end: obsAqidbEnd,
+          now,
+          since,
+        });
+      } catch (fallbackError) {
+        const fallbackMessage = fallbackError instanceof Error
+          ? fallbackError.message
+          : String(fallbackError);
+        console.warn("uk_aq_timeseries ingest fallback fetch failed", {
+          timeseries_id: timeseriesId,
+          message: fallbackMessage,
+        });
+      }
     }
   }
 
@@ -613,7 +672,7 @@ async function fetchTimeseriesRowsStitched(
   }
 
   const source: StitchedFetchResult["source"] =
-    didLoadHistoryRows && shouldFetchRecentRows
+    didLoadHistoryRows && (shouldFetchObsAqidbRows || shouldFetchIngestRows)
       ? "recent_history_stitched"
       : didLoadHistoryRows
       ? "history_only"
@@ -623,7 +682,8 @@ async function fetchTimeseriesRowsStitched(
     guideline,
     rows: finalizeStitchedRows(
       historyRows,
-      recentRows,
+      obsAqidbRows,
+      ingestRows,
       since,
       limit,
       requestStart,
@@ -765,6 +825,39 @@ async function callObservsHistoryWindow(
       Array.isArray(payload?.rows) ? payload.rows : [],
     ),
   };
+}
+
+async function callIngestFallbackWindow(
+  {
+    timeseriesId,
+    start,
+    end,
+    now,
+    since,
+  }: {
+    timeseriesId: number;
+    start: Date;
+    end: Date;
+    now: Date;
+    since: string | null;
+  },
+): Promise<TimeseriesRow[]> {
+  const { data, error } = await callTimeseriesRpc({
+    timeseriesId,
+    windowLabel: selectIngestWindowLabel(start, now),
+    limit: null,
+    since,
+  });
+  if (error) {
+    throw new Error(error.message);
+  }
+  const ingestRow = Array.isArray(data) && data.length > 0 ? data[0] : null;
+  return filterRowsToWindow(
+    normalizeTimeseriesRows(Array.isArray(ingestRow?.data) ? ingestRow.data : []),
+    start,
+    end,
+    since,
+  );
 }
 
 async function callObservsRecentWindow(
@@ -975,51 +1068,69 @@ function shouldRetryHistoryChunked(
 
 function finalizeStitchedRows(
   historyRows: TimeseriesRow[],
+  obsAqidbRows: TimeseriesRow[],
   ingestRows: TimeseriesRow[],
   since: string | null,
   limit: number | null,
   requestStart: Date,
   requestEnd: Date,
 ): TimeseriesRow[] {
-  let rows = mergeRowsPreferIngest(historyRows, ingestRows);
-  const startMs = requestStart.getTime();
-  const endMs = requestEnd.getTime();
-
-  rows = rows.filter((row) => {
-    const observedMs = Date.parse(row.observed_at);
-    return Number.isFinite(observedMs) && observedMs >= startMs &&
-      observedMs <= endMs;
-  });
-
-  if (since) {
-    const sinceMs = Date.parse(since);
-    if (Number.isFinite(sinceMs)) {
-      rows = rows.filter((row) => Date.parse(row.observed_at) > sinceMs);
-    }
-  }
-
-  if (limit !== null && rows.length > limit) {
-    rows = rows.slice(0, limit);
-  }
-
-  return rows;
+  return filterRowsToWindow(
+    mergeRowsPreferNewestSource(historyRows, obsAqidbRows, ingestRows),
+    requestStart,
+    requestEnd,
+    since,
+    limit,
+  );
 }
 
-function mergeRowsPreferIngest(
+function mergeRowsPreferNewestSource(
   historyRows: TimeseriesRow[],
+  obsAqidbRows: TimeseriesRow[],
   ingestRows: TimeseriesRow[],
 ): TimeseriesRow[] {
   const byObservedAt = new Map<string, TimeseriesRow>();
   for (const row of historyRows) {
     byObservedAt.set(row.observed_at, row);
   }
-  // Ingest is source of truth and overwrites overlapping timestamps.
+  for (const row of obsAqidbRows) {
+    byObservedAt.set(row.observed_at, row);
+  }
+  // Ingest is freshest source and overwrites overlapping timestamps.
   for (const row of ingestRows) {
     byObservedAt.set(row.observed_at, row);
   }
   return Array.from(byObservedAt.values()).sort((a, b) =>
     Date.parse(a.observed_at) - Date.parse(b.observed_at)
   );
+}
+
+function filterRowsToWindow(
+  rows: TimeseriesRow[],
+  start: Date,
+  end: Date,
+  since: string | null,
+  limit: number | null = null,
+): TimeseriesRow[] {
+  const startMs = start.getTime();
+  const endMs = end.getTime();
+  const sinceMs = since ? Date.parse(since) : Number.NaN;
+  let filteredRows = rows.filter((row) => {
+    const observedMs = Date.parse(row.observed_at);
+    if (!Number.isFinite(observedMs)) {
+      return false;
+    }
+    if (observedMs < startMs || observedMs > endMs) {
+      return false;
+    }
+    return !Number.isFinite(sinceMs) || observedMs > sinceMs;
+  });
+
+  if (limit !== null && filteredRows.length > limit) {
+    filteredRows = filteredRows.slice(0, limit);
+  }
+
+  return filteredRows;
 }
 
 function looksLikeTimeseriesSignatureMismatch(message: string): boolean {
