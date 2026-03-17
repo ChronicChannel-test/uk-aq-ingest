@@ -1,8 +1,0 @@
-pytest
-responses
-supabase
-requests
-python-dotenv
-psycopg2-binary
-shapely
-pyproj

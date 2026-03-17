@@ -15,6 +15,7 @@ const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
 
 type NamedWindowLabel = "12h" | "24h" | "7d" | "31d" | "90d";
+type IngestWindowLabel = "12h" | "24h" | "7d" | "30d";
 
 const WINDOW_HOURS: Record<NamedWindowLabel, number> = {
   "12h": 12,
@@ -26,17 +27,30 @@ const WINDOW_HOURS: Record<NamedWindowLabel, number> = {
 const MAX_WINDOW_DAYS = parsePositiveInteger(
   Deno.env.get("UK_AQ_TIMESERIES_MAX_WINDOW_DAYS"),
 ) ?? 366;
-const INGEST_SOURCE_OF_TRUTH_HOURS = 24 * 7;
+const RECENT_SOURCE_OF_TRUTH_HOURS = Math.max(
+  1,
+  Math.min(
+    24 * 45,
+    parsePositiveInteger(
+      Deno.env.get("UK_AQ_TIMESERIES_RECENT_SOURCE_OF_TRUTH_HOURS"),
+    ) ?? 24 * 14,
+  ),
+);
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ??
   Deno.env.get("SB_SUPABASE_URL") ??
   "";
 const SB_SECRET_KEY = Deno.env.get("SB_SECRET_KEY") ?? "";
 const SUPABASE_PRIVILEGED_KEY = SB_SECRET_KEY;
+const OBS_AQIDB_SUPABASE_URL = (
+  Deno.env.get("OBS_AQIDB_SUPABASE_URL") ?? ""
+).trim();
+const OBS_AQIDB_SECRET_KEY = (Deno.env.get("OBS_AQIDB_SECRET_KEY") ?? "").trim();
 const EDGE_UPSTREAM_SECRET = Deno.env.get("UK_AQ_EDGE_UPSTREAM_SECRET") ?? "";
 const OBSERVS_HISTORY_R2_API_URL = String(
   Deno.env.get("UK_AQ_OBSERVS_HISTORY_R2_API_URL") ?? "",
 ).trim();
+const OBS_AQIDB_TIMESERIES_WINDOW_RPC = "uk_aq_rpc_observs_timeseries_window";
 const OBSERVS_HISTORY_R2_API_TIMEOUT_MS = Math.max(
   2000,
   Math.min(
@@ -67,6 +81,8 @@ const OBSERVS_HISTORY_R2_CHUNK_MAX_RETRIES = Math.max(
 const UK_AQ_CORE_SCHEMA = Deno.env.get("UK_AQ_CORE_SCHEMA") ??
   "uk_aq_core";
 const UK_AQ_PUBLIC_SCHEMA = Deno.env.get("UK_AQ_PUBLIC_SCHEMA") ??
+  "uk_aq_public";
+const OBS_AQIDB_RPC_SCHEMA = Deno.env.get("OBS_AQIDB_RPC_SCHEMA") ??
   "uk_aq_public";
 
 const CORS_HEADERS = {
@@ -342,7 +358,7 @@ function parseId(value: string | null): number | null {
 
 type TimeseriesRpcCallOptions = {
   timeseriesId: number;
-  windowLabel: NamedWindowLabel;
+  windowLabel: IngestWindowLabel;
   limit: number | null;
   since: string | null;
 };
@@ -359,7 +375,7 @@ type StitchedFetchOptions = {
 type StitchedFetchResult = {
   guideline: unknown;
   rows: TimeseriesRow[];
-  source: "ingest_only" | "history_only" | "ingest_history_stitched";
+  source: "recent_only" | "history_only" | "recent_history_stitched";
 };
 
 type TimeseriesConnectorRow = {
@@ -373,6 +389,11 @@ type ObservsHistoryWindowCallOptions = {
   endUtc: string;
   since: string | null;
   limit: number | null;
+};
+
+type ObservsRecentWindowRow = {
+  observed_at: unknown;
+  value: unknown;
 };
 
 type ObservsHistoryApiPayload = {
@@ -435,32 +456,32 @@ async function fetchTimeseriesRowsStitched(
   }: StitchedFetchOptions,
 ): Promise<StitchedFetchResult> {
   const splitBoundary = new Date(
-    now.getTime() - INGEST_SOURCE_OF_TRUTH_HOURS * HOUR_MS,
+    now.getTime() - RECENT_SOURCE_OF_TRUTH_HOURS * HOUR_MS,
   );
   const historyStart = requestStart;
   const historyEnd = requestEnd.getTime() < splitBoundary.getTime()
     ? requestEnd
     : splitBoundary;
-  const ingestStart = requestStart.getTime() > splitBoundary.getTime()
+  const recentStart = requestStart.getTime() > splitBoundary.getTime()
     ? requestStart
     : splitBoundary;
-  const ingestEnd = requestEnd.getTime() < now.getTime() ? requestEnd : now;
+  const recentEnd = requestEnd.getTime() < now.getTime() ? requestEnd : now;
   const hasHistoryWindow = historyEnd.getTime() > historyStart.getTime();
-  const hasIngestWindow = ingestEnd.getTime() > ingestStart.getTime();
+  const hasRecentWindow = recentEnd.getTime() > recentStart.getTime();
   const sinceMs = since ? Date.parse(since) : Number.NaN;
   const hasSince = Number.isFinite(sinceMs);
   const shouldFetchHistory = hasHistoryWindow &&
     (!hasSince || sinceMs < historyEnd.getTime());
-  const shouldFetchIngestRows = hasIngestWindow &&
-    (!hasSince || sinceMs < ingestEnd.getTime());
+  const shouldFetchRecentRows = hasRecentWindow &&
+    (!hasSince || sinceMs < recentEnd.getTime());
 
-  const ingestWindowLabel = hasIngestWindow
-    ? selectIngestWindowLabel(ingestStart, now)
+  const ingestWindowLabel = shouldFetchRecentRows
+    ? selectIngestWindowLabel(recentStart, now)
     : "12h";
-  const ingestLimit = shouldFetchIngestRows
+  const ingestLimit = shouldFetchRecentRows
     ? (hasHistoryWindow ? null : limit)
     : 1;
-  const ingestSince = shouldFetchIngestRows ? since : null;
+  const ingestSince = shouldFetchRecentRows ? since : null;
   const { data, error } = await callTimeseriesRpc({
     timeseriesId,
     windowLabel: ingestWindowLabel,
@@ -473,16 +494,52 @@ async function fetchTimeseriesRowsStitched(
 
   const ingestRow = Array.isArray(data) && data.length > 0 ? data[0] : null;
   const guideline = ingestRow?.guideline ?? null;
-  const ingestRows = shouldFetchIngestRows
+  const ingestFallbackRows = shouldFetchRecentRows
     ? normalizeTimeseriesRows(
       Array.isArray(ingestRow?.data) ? ingestRow.data : [],
     )
     : [];
 
+  let connectorId: number | null = null;
+  if (shouldFetchHistory || shouldFetchRecentRows) {
+    connectorId = await resolveTimeseriesConnectorId(timeseriesId);
+  }
+
+  let recentRows: TimeseriesRow[] = [];
+  if (shouldFetchRecentRows) {
+    if (connectorId !== null) {
+      try {
+        recentRows = await callObservsRecentWindow({
+          timeseriesId,
+          connectorId,
+          startUtc: recentStart.toISOString(),
+          endUtc: recentEnd.toISOString(),
+          since,
+          limit: hasHistoryWindow ? null : limit,
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.warn("uk_aq_timeseries obs_aqidb recent fetch fallback", {
+          timeseries_id: timeseriesId,
+          connector_id: connectorId,
+          message,
+        });
+        recentRows = ingestFallbackRows;
+      }
+    } else {
+      console.warn(
+        "uk_aq_timeseries recent obs_aqidb fetch skipped: connector unresolved",
+        {
+          timeseries_id: timeseriesId,
+        },
+      );
+      recentRows = ingestFallbackRows;
+    }
+  }
+
   let historyRows: TimeseriesRow[] = [];
   let didLoadHistoryRows = false;
   if (shouldFetchHistory) {
-    const connectorId = await resolveTimeseriesConnectorId(timeseriesId);
     if (connectorId !== null) {
       const historyStartUtc = historyStart.toISOString();
       const historyEndUtc = historyEnd.toISOString();
@@ -556,17 +613,17 @@ async function fetchTimeseriesRowsStitched(
   }
 
   const source: StitchedFetchResult["source"] =
-    didLoadHistoryRows && shouldFetchIngestRows
-      ? "ingest_history_stitched"
+    didLoadHistoryRows && shouldFetchRecentRows
+      ? "recent_history_stitched"
       : didLoadHistoryRows
       ? "history_only"
-      : "ingest_only";
+      : "recent_only";
 
   return {
     guideline,
     rows: finalizeStitchedRows(
       historyRows,
-      ingestRows,
+      recentRows,
       since,
       limit,
       requestStart,
@@ -576,7 +633,7 @@ async function fetchTimeseriesRowsStitched(
   };
 }
 
-function selectIngestWindowLabel(start: Date, now: Date): NamedWindowLabel {
+function selectIngestWindowLabel(start: Date, now: Date): IngestWindowLabel {
   const spanHours = (now.getTime() - start.getTime()) / HOUR_MS;
   if (spanHours <= 12) {
     return "12h";
@@ -584,7 +641,10 @@ function selectIngestWindowLabel(start: Date, now: Date): NamedWindowLabel {
   if (spanHours <= 24) {
     return "24h";
   }
-  return "7d";
+  if (spanHours <= 24 * 7) {
+    return "7d";
+  }
+  return "30d";
 }
 
 async function resolveTimeseriesConnectorId(
@@ -705,6 +765,48 @@ async function callObservsHistoryWindow(
       Array.isArray(payload?.rows) ? payload.rows : [],
     ),
   };
+}
+
+async function callObservsRecentWindow(
+  {
+    timeseriesId,
+    connectorId,
+    startUtc,
+    endUtc,
+    since,
+    limit,
+  }: ObservsHistoryWindowCallOptions,
+): Promise<TimeseriesRow[]> {
+  if (!OBS_AQIDB_SUPABASE_URL || !OBS_AQIDB_SECRET_KEY) {
+    throw new Error(
+      "Missing OBS_AQIDB_SUPABASE_URL or OBS_AQIDB_SECRET_KEY.",
+    );
+  }
+
+  const obsAqidbRestBaseUrl = `${OBS_AQIDB_SUPABASE_URL.replace(/\/$/, "")}/rest/v1`;
+  const response = await postgrestRequest<ObservsRecentWindowRow[]>(
+    "POST",
+    `rpc/${OBS_AQIDB_TIMESERIES_WINDOW_RPC}`,
+    undefined,
+    OBS_AQIDB_RPC_SCHEMA,
+    {
+      p_connector_id: connectorId,
+      p_timeseries_id: timeseriesId,
+      p_start_utc: startUtc,
+      p_end_utc: endUtc,
+      p_since_ts: since,
+      p_limit: limit,
+    },
+    {
+      baseUrl: obsAqidbRestBaseUrl,
+      apiKey: OBS_AQIDB_SECRET_KEY,
+      caller: "uk_aq_timeseries_obs_aqidb_recent",
+    },
+  );
+  if (response.error) {
+    throw new Error(response.error.message);
+  }
+  return normalizeTimeseriesRows(Array.isArray(response.data) ? response.data : []);
 }
 
 async function callObservsHistoryWindowChunked(
