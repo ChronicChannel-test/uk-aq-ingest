@@ -25,7 +25,7 @@ Execute the hard-cut DB/schema consolidation to final names:
 - `schemas/migrations/2026-03-08_phase3_obs_aqidb_schema_hard_cut.sql`
 
 Schema repo absolute path:
-`/Users/mikehinford/Library/CloudStorage/Dropbox/Projects/CIC Website/CIC Air Quality Networks/CIC-Test-UK-AQ-Schema/CIC-test-uk-aq-schema`
+`/Users/mikehinford/Dropbox/Projects/CIC Website/CIC Air Quality Networks/CIC-Test-UK-AQ-Schema/CIC-test-uk-aq-schema`
 
 ## Apply Order
 1. Apply obs_aqidb DB-label cutover SQL on `obs_aqidb`.
@@ -39,7 +39,7 @@ Schema repo absolute path:
 Recommended commands:
 
 ```bash
-SCHEMA_REPO="/Users/mikehinford/Library/CloudStorage/Dropbox/Projects/CIC Website/CIC Air Quality Networks/CIC-Test-UK-AQ-Schema/CIC-test-uk-aq-schema"
+SCHEMA_REPO="/Users/mikehinford/Dropbox/Projects/CIC Website/CIC Air Quality Networks/CIC-Test-UK-AQ-Schema/CIC-test-uk-aq-schema"
 
 psql "$OBS_AQIDB_SUPABASE_DB_URL" -v ON_ERROR_STOP=1 \
   -f "$SCHEMA_REPO/schemas/migrations/2026-03-08_obs_aqidb_db_size_label_cutover.sql"

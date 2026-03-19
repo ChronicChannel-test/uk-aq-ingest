@@ -453,6 +453,7 @@ Common commands:
 
 Notes:
 - `dev_dashboards.sh` writes `./.dashboards.pids` and logs to `./logs/`.
+- `dev_dashboards.sh` prefers `./.venv/bin/python3` when present, otherwise falls back to `python3`, and it exits early if the selected interpreter cannot import `requests`.
 - `dev_dashboards_stop.sh` only stops exact PIDs listed in `./.dashboards.pids` (no broad `pkill`).
 
 Environment:

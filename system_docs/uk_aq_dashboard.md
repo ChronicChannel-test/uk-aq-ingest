@@ -257,7 +257,7 @@ Resolution order:
    - `<UK_AQ_DROPBOX_LOCAL_ROOT>/Apps/<UK_AQ_DROPBOX_APP_FOLDER>/<UK_AQ_DROPBOX_ROOT>/<UK_AQ_R2_HISTORY_DROPBOX_DIR>/<UK_AQ_R2_HISTORY_BACKUP_STATE_REL_PATH>`
    - If `UK_AQ_DROPBOX_APP_FOLDER` is unset, dashboard scans `.../Apps/*/` (prefers `github-uk-air-quality-networks` first).
 4. If `UK_AQ_DROPBOX_LOCAL_ROOT` is unset, default local root candidate:
-   - `~/Library/CloudStorage/Dropbox`
+   - `~/Dropbox`
 
 Defaults:
 
@@ -336,6 +336,6 @@ Dispatch feed behavior:
 
 ## Operational Notes
 
-- `dev_dashboards.sh` exports `.env` and `.env.supabase` before launching Python; this is the recommended way to run locally.
+- `dev_dashboards.sh` exports `.env` and `.env.supabase` before launching Python, prefers `./.venv/bin/python3` when present, and fails fast if the selected interpreter is missing dashboard dependencies.
 - If the DB size API is down, dashboard falls back to direct Supabase metric reads and emits warning strings in payload.
 - If Dropbox checkpoint is missing, unreadable, or malformed, only Dropbox status labels are affected; core dashboard remains available.

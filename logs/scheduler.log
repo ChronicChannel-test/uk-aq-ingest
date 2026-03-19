@@ -2136,3 +2136,23 @@ Traceback (most recent call last):
   File "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/socketserver.py", line 466, in server_bind
     self.socket.bind(self.server_address)
 OSError: [Errno 48] Address already in use
+Traceback (most recent call last):
+  File "/Users/mikehinford/Dropbox/Projects/CIC Website/CIC Air Quality Networks/CIC-test-uk-aq-ingest/scripts/uk_aq_dashboard_local.py", line 28, in <module>
+    import requests
+ModuleNotFoundError: No module named 'requests'
+Traceback (most recent call last):
+  File "/Users/mikehinford/Dropbox/Projects/CIC Website/CIC Air Quality Networks/CIC-test-uk-aq-ingest/scripts/uk_aq_dashboard_local.py", line 28, in <module>
+    import requests
+ModuleNotFoundError: No module named 'requests'
+Traceback (most recent call last):
+  File "/Users/mikehinford/Dropbox/Projects/CIC Website/CIC Air Quality Networks/CIC-test-uk-aq-ingest/scripts/uk_aq_dashboard_local.py", line 28, in <module>
+    import requests
+ModuleNotFoundError: No module named 'requests'
+Traceback (most recent call last):
+  File "/Users/mikehinford/Dropbox/Projects/CIC Website/CIC Air Quality Networks/CIC-test-uk-aq-ingest/scripts/uk_aq_dashboard_local.py", line 28, in <module>
+    import requests
+ModuleNotFoundError: No module named 'requests'
+Traceback (most recent call last):
+  File "/Users/mikehinford/Dropbox/Projects/CIC Website/CIC Air Quality Networks/CIC-test-uk-aq-ingest/scripts/uk_aq_dashboard_local.py", line 28, in <module>
+    import requests
+ModuleNotFoundError: No module named 'requests'
