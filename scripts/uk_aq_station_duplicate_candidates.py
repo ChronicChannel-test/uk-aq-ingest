@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
 DEFAULT_JSON_ROOT = Path(
-    "/Users/mikehinford/Library/CloudStorage/Dropbox/Apps/github-uk-air-quality-networks/CIC-Test/uk_aq_stations"
+    "/Users/mikehinford/Dropbox/Apps/github-uk-air-quality-networks/CIC-Test/uk_aq_stations"
 )
 DEFAULT_AURN_DIR = Path("network_info/AURN")
 DEFAULT_OUTPUT_CSV = Path("plans/uk_aq_station_duplicate_candidates_long.csv")

@@ -324,7 +324,7 @@ Environment:
 - `UK_AQ_R2_HISTORY_DAYS_API_MAX_DAYS` (optional; default `3660`)
 - `UK_AQ_R2_HISTORY_WINDOW_RPC` (optional; default `uk_aq_rpc_r2_history_window`)
 - `UK_AQ_R2_HISTORY_DROPBOX_STATE_FILE` (optional explicit local path to checkpoint JSON; highest priority)
-- `UK_AQ_DROPBOX_LOCAL_ROOT` (optional local Dropbox sync root; default auto-detect: `~/Library/CloudStorage/Dropbox`)
+- `UK_AQ_DROPBOX_LOCAL_ROOT` (optional local Dropbox sync root; default auto-detect: `~/Dropbox`)
 - `UK_AQ_DROPBOX_APP_FOLDER` (optional app-folder name under `.../Dropbox/Apps/`; if unset dashboard scans app folders)
 - `UK_AQ_DROPBOX_ROOT` (optional; default `CIC-Test`; used to build checkpoint path under local Dropbox root)
 - `UK_AQ_R2_HISTORY_DROPBOX_DIR` (optional; default `R2_history_backup`)

@@ -1202,7 +1202,7 @@ def _candidate_dropbox_state_paths() -> List[Path]:
     local_roots: List[Path] = []
     if UK_AQ_DROPBOX_LOCAL_ROOT:
         local_roots.append(Path(UK_AQ_DROPBOX_LOCAL_ROOT))
-    default_local_root = Path.home() / "Library" / "CloudStorage" / "Dropbox"
+    default_local_root = Path.home() / "Dropbox"
     if default_local_root.exists():
         local_roots.append(default_local_root)
 
@@ -1221,10 +1221,10 @@ def _candidate_dropbox_state_paths() -> List[Path]:
         add_candidate(Path(*path_parts))
 
     for local_root in local_roots:
-        # Full-access Dropbox paths (for example ~/Library/CloudStorage/Dropbox/CIC-Test/...).
+        # Full-access Dropbox paths (for example ~/Dropbox/CIC-Test/...).
         add_from_base(local_root)
 
-        # App-folder Dropbox paths (for example ~/Library/CloudStorage/Dropbox/Apps/github-uk-air-quality-networks/CIC-Test/...).
+        # App-folder Dropbox paths (for example ~/Dropbox/Apps/github-uk-air-quality-networks/CIC-Test/...).
         apps_root = local_root / "Apps"
         if UK_AQ_DROPBOX_APP_FOLDER:
             add_from_base(apps_root / UK_AQ_DROPBOX_APP_FOLDER)
