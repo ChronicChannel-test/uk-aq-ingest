@@ -27,19 +27,22 @@ const WINDOW_HOURS: Record<NamedWindowLabel, number> = {
 const MAX_WINDOW_DAYS = parsePositiveInteger(
   Deno.env.get("UK_AQ_TIMESERIES_MAX_WINDOW_DAYS"),
 ) ?? 366;
-const RECENT_SOURCE_OF_TRUTH_HOURS = Math.max(
+const DEFAULT_OBSAQIDB_SOURCE_OF_TRUTH_HOURS = 24 * 7;
+const OBSAQIDB_SOURCE_OF_TRUTH_HOURS = Math.max(
   1,
   Math.min(
     24 * 45,
     parsePositiveInteger(
+      Deno.env.get("UK_AQ_TIMESERIES_OBSAQIDB_SOURCE_OF_TRUTH_HOURS"),
+    ) ?? parsePositiveInteger(
       Deno.env.get("UK_AQ_TIMESERIES_RECENT_SOURCE_OF_TRUTH_HOURS"),
-    ) ?? 24 * 14,
+    ) ?? DEFAULT_OBSAQIDB_SOURCE_OF_TRUTH_HOURS,
   ),
 );
 const INGEST_SOURCE_OF_TRUTH_HOURS = Math.max(
   1,
   Math.min(
-    RECENT_SOURCE_OF_TRUTH_HOURS,
+    OBSAQIDB_SOURCE_OF_TRUTH_HOURS,
     parsePositiveInteger(
       Deno.env.get("UK_AQ_TIMESERIES_INGEST_SOURCE_OF_TRUTH_HOURS"),
     ) ?? 24,
@@ -465,7 +468,7 @@ async function fetchTimeseriesRowsStitched(
   }: StitchedFetchOptions,
 ): Promise<StitchedFetchResult> {
   const localBoundary = new Date(
-    now.getTime() - RECENT_SOURCE_OF_TRUTH_HOURS * HOUR_MS,
+    now.getTime() - OBSAQIDB_SOURCE_OF_TRUTH_HOURS * HOUR_MS,
   );
   const ingestBoundary = new Date(
     now.getTime() - INGEST_SOURCE_OF_TRUTH_HOURS * HOUR_MS,

@@ -469,7 +469,7 @@ curl "https://YOUR_PROJECT.supabase.co/functions/v1/uk_aq_latest?region=London&p
 - Read path:
   - request interval is split twice by default:
     - newest `24` hours from ingestdb (configurable via `UK_AQ_TIMESERIES_INGEST_SOURCE_OF_TRUTH_HOURS`, default `24`)
-    - next `13` days from obs_aqidb inside the local `14`-day window (outer boundary configurable via `UK_AQ_TIMESERIES_RECENT_SOURCE_OF_TRUTH_HOURS`, default `336`)
+    - next `6` days from obs_aqidb inside the local `7`-day window (outer boundary configurable via `UK_AQ_TIMESERIES_OBSAQIDB_SOURCE_OF_TRUTH_HOURS`, default `168`)
     - older overlap from the Observs History R2 API worker (`UK_AQ_OBSERVS_HISTORY_R2_API_URL`) using committed manifests only
   - obs_aqidb middle overlap is read via `uk_aq_public.uk_aq_rpc_observs_timeseries_window`.
   - edge resolves `connector_id` from ingest `uk_aq_core.timeseries` and sends `timeseries_id + connector_id + start_utc/end_utc` to the worker.
@@ -567,7 +567,8 @@ Optional:
 - `UK_AQ_OBSERVS_HISTORY_R2_CHUNK_DAYS` (optional; default `7`; history retry chunk size for `uk_aq_timeseries` when large-window history reads return upstream `5xx`/timeout)
 - `UK_AQ_OBSERVS_HISTORY_R2_CHUNK_MAX_RETRIES` (optional; default `4`; per-chunk retry attempts during history chunk fallback in `uk_aq_timeseries`)
 - `UK_AQ_TIMESERIES_INGEST_SOURCE_OF_TRUTH_HOURS` (optional; default `24`; freshest local observations window served from ingestdb)
-- `UK_AQ_TIMESERIES_RECENT_SOURCE_OF_TRUTH_HOURS` (optional; default `336`; outer local observations window boundary before R2 fallback; the gap between this and the ingest-hours setting is served from obs_aqidb)
+- `UK_AQ_TIMESERIES_OBSAQIDB_SOURCE_OF_TRUTH_HOURS` (optional; default `168`; outer local observations window boundary before R2 fallback; the gap between this and the ingest-hours setting is served from obs_aqidb)
+- `UK_AQ_TIMESERIES_RECENT_SOURCE_OF_TRUTH_HOURS` (optional legacy alias for `UK_AQ_TIMESERIES_OBSAQIDB_SOURCE_OF_TRUTH_HOURS`; kept for backward compatibility)
 - `OBSERVS_OUTBOX_CLOUD_RUN_MAX_BATCHES` (optional; defaults to `30`; Cloud Run outbox batches per run)
 - `OBSERVS_OUTBOX_CLOUD_RUN_CLAIM_BATCH_LIMIT` (optional; defaults to `20`; outbox claim size per batch in Cloud Run)
 - `OBSERVS_OUTBOX_CLOUD_RUN_BUDGET_SECONDS` (optional; defaults to `540`; Cloud Run runtime budget)
