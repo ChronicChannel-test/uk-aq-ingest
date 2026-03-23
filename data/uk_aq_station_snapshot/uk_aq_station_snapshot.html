@@ -264,12 +264,12 @@
     </section>
 
     <section class="card">
-      <h2>ObsAQIDB AQI hourly (uk_aq_aqilevels.station_aqi_hourly)</h2>
+      <h2>ObsAQIDB AQI hourly (uk_aq_aqilevels.timeseries_aqi_hourly)</h2>
       <div class="table-wrap"><table id="obsAqidbAqiHourlyTable"></table></div>
     </section>
 
     <section class="card">
-      <h2>ObsAQIDB AQI daily (uk_aq_aqilevels.station_aqi_daily)</h2>
+      <h2>ObsAQIDB AQI daily (uk_aq_aqilevels.timeseries_aqi_daily)</h2>
       <div class="table-wrap"><table id="obsAqidbAqiDailyTable"></table></div>
     </section>
   </main>
@@ -405,8 +405,8 @@
         ["ingest_obs_all", (snapshot.observations_all || []).length],
         ["obs_aqidb_obs_selected", (snapshot.obs_aqidb_observations || []).length],
         ["obs_aqidb_obs_all", (snapshot.obs_aqidb_observations_all || []).length],
-        ["obs_aqidb_aqi_hourly", (snapshot.obs_aqidb_station_aqi_hourly || []).length],
-        ["obs_aqidb_aqi_daily", (snapshot.obs_aqidb_station_aqi_daily || []).length],
+        ["obs_aqidb_aqi_hourly", (snapshot.obs_aqidb_timeseries_aqi_hourly || []).length],
+        ["obs_aqidb_aqi_daily", (snapshot.obs_aqidb_timeseries_aqi_daily || []).length],
       ];
       el.counts.innerHTML = data
         .map(([label, value]) => `<span class="pill">${label}: ${value}</span>`)
@@ -453,8 +453,8 @@
       renderRowsTable(el.observationAllTable, snapshot.observations_all || []);
       renderRowsTable(el.obsAqidbObservationTable, snapshot.obs_aqidb_observations || []);
       renderRowsTable(el.obsAqidbObservationAllTable, snapshot.obs_aqidb_observations_all || []);
-      renderRowsTable(el.obsAqidbAqiHourlyTable, snapshot.obs_aqidb_station_aqi_hourly || []);
-      renderRowsTable(el.obsAqidbAqiDailyTable, snapshot.obs_aqidb_station_aqi_daily || []);
+      renderRowsTable(el.obsAqidbAqiHourlyTable, snapshot.obs_aqidb_timeseries_aqi_hourly || []);
+      renderRowsTable(el.obsAqidbAqiDailyTable, snapshot.obs_aqidb_timeseries_aqi_daily || []);
       renderTimeseriesSelect(snapshot);
     }
 

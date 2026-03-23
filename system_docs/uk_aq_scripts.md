@@ -330,7 +330,7 @@ Environment:
 - `UK_AQ_R2_HISTORY_DROPBOX_DIR` (optional; default `R2_history_backup`)
 - `UK_AQ_R2_HISTORY_BACKUP_STATE_REL_PATH` (optional; default `_ops/checkpoints/r2_history_backup_state_v1.json`)
 - `UK_AQ_COVERAGE_DAY_FETCH_LIMIT` (optional; default `1000`, page size for per-day coverage fetches)
-- `UK_AQ_AQILEVELS_COVERAGE_DAYS_VIEW` (optional; default `uk_aq_station_aqi_daily`)
+- `UK_AQ_AQILEVELS_COVERAGE_DAYS_VIEW` (optional; default `uk_aq_timeseries_aqi_daily`)
 
 Dropbox checkpoint local path resolution (for monthly bar second-line status):
 - First: `UK_AQ_R2_HISTORY_DROPBOX_STATE_FILE` if set.
@@ -391,7 +391,7 @@ Notes:
 - The HTML lives at `data/uk_aq_station_snapshot/uk_aq_station_snapshot.html`.
 - In service-role mode (preferred), `/api/snapshot` reads directly from:
   - ingestdb: `uk_aq_core.stations`, `uk_aq_core.timeseries`, `uk_aq_raw.openaq_station_checkpoints`, `uk_aq_raw.openaq_timeseries_checkpoints`, `uk_aq_core.observations`
-  - ObsAQIDB: `uk_aq_observs.observations`, `uk_aq_aqilevels.station_aqi_hourly`, `uk_aq_aqilevels.station_aqi_daily` (via direct SQL when DB URL is available)
+  - ObsAQIDB: `uk_aq_observs.observations`, `uk_aq_aqilevels.timeseries_aqi_hourly`, `uk_aq_aqilevels.timeseries_aqi_daily` (via direct SQL when DB URL is available)
 - The page renders ingestdb selected-timeseries observations, ingestdb all-timeseries observations, ObsAQIDB observs, and ObsAQIDB AQI hourly/daily rows.
 - `obs_limit` supports `all` or positive integer values in the UI.
 - If service-role ingest access is not configured, script falls back to edge mode and uses `uk_aq_station_snapshot` with JWT auth.

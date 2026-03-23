@@ -532,8 +532,8 @@ def _build_snapshot_from_ingest_postgrest(
         "observations_all": [],
         "obs_aqidb_observations": [],
         "obs_aqidb_observations_all": [],
-        "obs_aqidb_station_aqi_hourly": [],
-        "obs_aqidb_station_aqi_daily": [],
+        "obs_aqidb_timeseries_aqi_hourly": [],
+        "obs_aqidb_timeseries_aqi_daily": [],
         "meta": {
             "window": window,
             "window_start": window_start_iso,
@@ -839,7 +839,6 @@ def _psql_query_json_rows(obs_db_url: str, inner_select_sql: str) -> List[Dict[s
 
 def _fetch_obs_aqidb_snapshot_via_psql(
     obs_db_url: str,
-    station_id: int,
     timeseries_ids: List[int],
     selected_timeseries_id: Optional[int],
     window_start_iso: str,
@@ -894,45 +893,48 @@ def _fetch_obs_aqidb_snapshot_via_psql(
         if len(observations_all) >= rows_limit:
             truncated = True
 
-    aqi_hourly_rows = _psql_query_json_rows(
-        obs_db_url,
-        (
-            "select station_id, timestamp_hour_utc, no2_hourly_mean_ugm3, pm25_hourly_mean_ugm3, "
-            "pm10_hourly_mean_ugm3, pm25_rolling24h_mean_ugm3, pm10_rolling24h_mean_ugm3, "
-            "daqi_no2_index_level, daqi_pm25_rolling24h_index_level, daqi_pm10_rolling24h_index_level, "
-            "eaqi_no2_index_level, eaqi_pm25_index_level, eaqi_pm10_index_level, updated_at "
-            "from uk_aq_aqilevels.station_aqi_hourly "
-            f"where station_id = {station_id} "
-            f"and timestamp_hour_utc >= {_sql_literal(window_start_iso)}::timestamptz "
-            f"and timestamp_hour_utc <= {_sql_literal(window_end_iso)}::timestamptz "
-            "order by timestamp_hour_utc desc"
-            + aqi_limit_clause
-        ),
-    )
-    if len(aqi_hourly_rows) >= max_rows:
-        truncated = True
+    if has_timeseries:
+        aqi_hourly_rows = _psql_query_json_rows(
+            obs_db_url,
+            (
+                "select timeseries_id, station_id, connector_id, pollutant_code, timestamp_hour_utc, "
+                "no2_hourly_mean_ugm3, pm25_hourly_mean_ugm3, pm10_hourly_mean_ugm3, "
+                "pm25_rolling24h_mean_ugm3, pm10_rolling24h_mean_ugm3, hourly_sample_count, "
+                "daqi_index_level, eaqi_index_level, daqi_no2_index_level, "
+                "daqi_pm25_rolling24h_index_level, daqi_pm10_rolling24h_index_level, "
+                "eaqi_no2_index_level, eaqi_pm25_index_level, eaqi_pm10_index_level, updated_at "
+                "from uk_aq_aqilevels.timeseries_aqi_hourly "
+                f"where timeseries_id = any(array[{ids_sql}]::integer[]) "
+                f"and timestamp_hour_utc >= {_sql_literal(window_start_iso)}::timestamptz "
+                f"and timestamp_hour_utc <= {_sql_literal(window_end_iso)}::timestamptz "
+                "order by timestamp_hour_utc desc, timeseries_id asc"
+                + aqi_limit_clause
+            ),
+        )
+        if len(aqi_hourly_rows) >= max_rows:
+            truncated = True
 
-    aqi_daily_rows = _psql_query_json_rows(
-        obs_db_url,
-        (
-            "select station_id, observed_day, standard_code, pollutant_code, index_level_hour_counts, "
-            "valid_hour_count, max_index_level, updated_at "
-            "from uk_aq_aqilevels.station_aqi_daily "
-            f"where station_id = {station_id} "
-            f"and observed_day >= {_sql_literal(window_start_day)}::date "
-            f"and observed_day <= {_sql_literal(window_end_day)}::date "
-            "order by observed_day desc, standard_code asc, pollutant_code asc"
-            + aqi_limit_clause
-        ),
-    )
-    if len(aqi_daily_rows) >= max_rows:
-        truncated = True
+        aqi_daily_rows = _psql_query_json_rows(
+            obs_db_url,
+            (
+                "select timeseries_id, station_id, connector_id, observed_day, standard_code, pollutant_code, "
+                "index_level_hour_counts, valid_hour_count, max_index_level, updated_at "
+                "from uk_aq_aqilevels.timeseries_aqi_daily "
+                f"where timeseries_id = any(array[{ids_sql}]::integer[]) "
+                f"and observed_day >= {_sql_literal(window_start_day)}::date "
+                f"and observed_day <= {_sql_literal(window_end_day)}::date "
+                "order by observed_day desc, timeseries_id asc, standard_code asc, pollutant_code asc"
+                + aqi_limit_clause
+            ),
+        )
+        if len(aqi_daily_rows) >= max_rows:
+            truncated = True
 
     return {
         "observations_selected": observations_selected,
         "observations_all": observations_all,
-        "station_aqi_hourly": aqi_hourly_rows,
-        "station_aqi_daily": aqi_daily_rows,
+        "timeseries_aqi_hourly": aqi_hourly_rows,
+        "timeseries_aqi_daily": aqi_daily_rows,
     }, truncated
 
 
@@ -953,11 +955,6 @@ def _augment_snapshot_with_obs_aqidb(
         payload.setdefault("meta", {})["obs_aqidb_error"] = (
             "ObsAQIDB is not configured (set OBS_AQIDB_SUPABASE_DB_URL or OBS_AQIDB_SUPABASE_URL/OBS_AQIDB_SECRET_KEY)"
         )
-        return
-
-    try:
-        station_id = int(station.get("id"))
-    except (TypeError, ValueError):
         return
 
     meta = payload.setdefault("meta", {})
@@ -997,8 +994,8 @@ def _augment_snapshot_with_obs_aqidb(
 
     payload["obs_aqidb_observations"] = []
     payload["obs_aqidb_observations_all"] = []
-    payload["obs_aqidb_station_aqi_hourly"] = []
-    payload["obs_aqidb_station_aqi_daily"] = []
+    payload["obs_aqidb_timeseries_aqi_hourly"] = []
+    payload["obs_aqidb_timeseries_aqi_daily"] = []
 
     obs_aqidb_errors: List[str] = []
     obs_aqidb_truncated = False
@@ -1007,7 +1004,6 @@ def _augment_snapshot_with_obs_aqidb(
         try:
             sql_payload, sql_truncated = _fetch_obs_aqidb_snapshot_via_psql(
                 obs_db_url=obs_db_url,
-                station_id=station_id,
                 timeseries_ids=timeseries_ids,
                 selected_timeseries_id=selected_timeseries_id,
                 window_start_iso=window_start_iso,
@@ -1019,8 +1015,8 @@ def _augment_snapshot_with_obs_aqidb(
             )
             payload["obs_aqidb_observations"] = sql_payload["observations_selected"]
             payload["obs_aqidb_observations_all"] = sql_payload["observations_all"]
-            payload["obs_aqidb_station_aqi_hourly"] = sql_payload["station_aqi_hourly"]
-            payload["obs_aqidb_station_aqi_daily"] = sql_payload["station_aqi_daily"]
+            payload["obs_aqidb_timeseries_aqi_hourly"] = sql_payload["timeseries_aqi_hourly"]
+            payload["obs_aqidb_timeseries_aqi_daily"] = sql_payload["timeseries_aqi_daily"]
             obs_aqidb_truncated = sql_truncated
             meta["obs_aqidb_source"] = "direct_sql_psql"
         except Exception as exc:
@@ -1068,15 +1064,16 @@ def _augment_snapshot_with_obs_aqidb(
         except Exception as exc:
             obs_aqidb_errors.append(str(exc))
 
-    if (not payload["obs_aqidb_station_aqi_hourly"] and not payload["obs_aqidb_station_aqi_daily"]) and obs_rest_url and obs_key:
+    if (not payload["obs_aqidb_timeseries_aqi_hourly"] and not payload["obs_aqidb_timeseries_aqi_daily"]) and obs_rest_url and obs_key and timeseries_ids:
         try:
+            timeseries_filter = "in.(" + ",".join(str(ts_id) for ts_id in sorted(set(timeseries_ids))) + ")"
             aqi_hourly_rows, aqi_hourly_truncated = _fetch_postgrest_all(
                 rest_url=obs_rest_url,
                 api_key=obs_key,
                 schema="uk_aq_public",
-                table="uk_aq_station_aqi_hourly",
+                table="uk_aq_timeseries_aqi_hourly",
                 base_params=[
-                    ("station_id", f"eq.{station_id}"),
+                    ("timeseries_id", timeseries_filter),
                     ("timestamp_hour_utc", f"gte.{window_start_iso}"),
                     ("timestamp_hour_utc", f"lte.{window_end_iso}"),
                     ("select", "*"),
@@ -1091,20 +1088,20 @@ def _augment_snapshot_with_obs_aqidb(
                 rest_url=obs_rest_url,
                 api_key=obs_key,
                 schema="uk_aq_public",
-                table="uk_aq_station_aqi_daily",
+                table="uk_aq_timeseries_aqi_daily",
                 base_params=[
-                    ("station_id", f"eq.{station_id}"),
+                    ("timeseries_id", timeseries_filter),
                     ("observed_day", f"gte.{window_start_day}"),
                     ("observed_day", f"lte.{window_end_day}"),
                     ("select", "*"),
                 ],
-                order="observed_day.desc,standard_code.asc,pollutant_code.asc",
+                order="observed_day.desc,timeseries_id.asc,standard_code.asc,pollutant_code.asc",
                 limit=None,
                 page_size=page_size,
                 max_rows=max_rows,
             )
-            payload["obs_aqidb_station_aqi_hourly"] = aqi_hourly_rows
-            payload["obs_aqidb_station_aqi_daily"] = aqi_daily_rows
+            payload["obs_aqidb_timeseries_aqi_hourly"] = aqi_hourly_rows
+            payload["obs_aqidb_timeseries_aqi_daily"] = aqi_daily_rows
             obs_aqidb_truncated = bool(
                 obs_aqidb_truncated
                 or aqi_hourly_truncated
@@ -1119,8 +1116,8 @@ def _augment_snapshot_with_obs_aqidb(
         [
             payload["obs_aqidb_observations"],
             payload["obs_aqidb_observations_all"],
-            payload["obs_aqidb_station_aqi_hourly"],
-            payload["obs_aqidb_station_aqi_daily"],
+            payload["obs_aqidb_timeseries_aqi_hourly"],
+            payload["obs_aqidb_timeseries_aqi_daily"],
         ]
     ):
         if obs_aqidb_errors:
@@ -1134,8 +1131,8 @@ def _augment_snapshot_with_obs_aqidb(
     meta["obs_aqidb_counts"] = {
         "observations_selected": len(payload["obs_aqidb_observations"]),
         "observations_all": len(payload["obs_aqidb_observations_all"]),
-        "station_aqi_hourly": len(payload["obs_aqidb_station_aqi_hourly"]),
-        "station_aqi_daily": len(payload["obs_aqidb_station_aqi_daily"]),
+        "timeseries_aqi_hourly": len(payload["obs_aqidb_timeseries_aqi_hourly"]),
+        "timeseries_aqi_daily": len(payload["obs_aqidb_timeseries_aqi_daily"]),
     }
     if obs_aqidb_errors:
         meta["obs_aqidb_warning"] = "; ".join(obs_aqidb_errors)
@@ -1217,8 +1214,8 @@ def _fetch_snapshot_via_edge(
     payload.setdefault("observations_all", list(payload.get("observations") or []))
     payload.setdefault("obs_aqidb_observations", [])
     payload.setdefault("obs_aqidb_observations_all", [])
-    payload.setdefault("obs_aqidb_station_aqi_hourly", [])
-    payload.setdefault("obs_aqidb_station_aqi_daily", [])
+    payload.setdefault("obs_aqidb_timeseries_aqi_hourly", [])
+    payload.setdefault("obs_aqidb_timeseries_aqi_daily", [])
     meta = payload.setdefault("meta", {})
     if isinstance(meta, dict):
         meta["ingest_source"] = "edge_rpc"
