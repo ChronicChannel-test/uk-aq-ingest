@@ -76,7 +76,7 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
   - `ingest_erg_laqn` (`station_refs`, `days=ceil(poll_window_hours/24)`, `group=London`)
 - Notes:
   - Requires `X-Cron-Secret` when `SB_UK_AQ_CRON_SECRET` is set.
-  - Uses `SB_SECRET_KEY` (preferred) with fallback to `SB_SECRET_KEY` for internal PostgREST reads/writes.
+  - Uses `SB_SECRET_KEY` (preferred) with fallback to `SUPABASE_SERVICE_ROLE_KEY` for internal PostgREST reads/writes.
   - Calls ingest functions with `SB_PUBLISHABLE_DEFAULT_KEY` (or `SB_SECRET_KEY` fallback) plus `X-Cron-Secret`; `verify_jwt=false` is set for dispatcher/ingest functions.
   - Uses a runtime budget guard to avoid platform timeout overruns:
     - `DISPATCH_TIME_BUDGET_MS` (default `150000`)
@@ -170,13 +170,14 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
   - `.github/workflows/uk_aq_observs_egress_monitor.yml` (history Supabase project; every 5 minutes)
   - Manual invocation.
 - Reads:
-  - `uk_aq_public.uk_aq_endpoint_egress_metrics_minute`
+  - Primary: `uk_aq_public.uk_aq_endpoint_egress_metrics_minute`
+  - Fallback: `uk_aq_raw.endpoint_egress_metrics_minute` (when public view path fails)
 - Writes:
   - Optional `uk_aq_raw.error_logs` warning row when threshold is exceeded.
 - Auth:
   - Requires `X-Cron-Secret` only when `SB_UK_AQ_CRON_SECRET` is set.
 - Notes:
-  - Internal PostgREST access uses `SB_SECRET_KEY` via `apikey` (no Bearer header required).
+  - Internal PostgREST access uses `SB_SECRET_KEY` via `apikey` (with `SUPABASE_SERVICE_ROLE_KEY` fallback).
   - For history-project deployment, use `.github/workflows/uk_aq_observs_edge_deploy.yml` which deploys with `--no-verify-jwt` so invocations can remain publishable-key based.
   - Uses `x-ukaq-egress-bypass: 1` on its own PostgREST calls so monitor traffic does not recursively inflate egress metrics.
   - Paginates through `uk_aq_endpoint_egress_metrics_minute` for the lookback window (not capped to a single page).
@@ -184,6 +185,7 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
   - Returns both observed sampled totals and sampling-adjusted estimated totals; alert threshold uses `estimated_mb`.
   - Aggregates endpoint totals with caller tags normalized back to base endpoint names, and also returns `top_endpoint_callers_estimated` for endpoint+caller attribution.
   - Supports query params `lookback_minutes`, `top_n`, `alert_mb`, `write_error_log`, `page_size`, `max_rows`, `runtime_budget_ms`, `request_timeout_ms`.
+  - On failures, response body includes `message` for faster workflow-side diagnostics.
 
 ### ingest_uk_air_sos
 - Purpose: Poll UK-AIR SOS timeseries and write observations + last_value fields.

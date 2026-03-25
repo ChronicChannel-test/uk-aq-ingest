@@ -22,9 +22,13 @@ jobs:
             echo "Missing SUPABASE_URL or SB_PUBLISHABLE_DEFAULT_KEY secret." >&2
             exit 1
           fi
+          MONITOR_URL="${SUPABASE_URL%/}/functions/v1/uk_aq_egress_monitor?lookback_minutes=60&top_n=15&page_size=5000&max_rows=25000&runtime_budget_ms=115000&request_timeout_ms=20000"
           curl --silent --show-error --fail-with-body \
+            --retry 2 \
+            --retry-delay 2 \
+            --retry-all-errors \
             -X POST \
-            "${SUPABASE_URL%/}/functions/v1/uk_aq_egress_monitor?lookback_minutes=60&top_n=15" \
+            "${MONITOR_URL}" \
             -H "apikey: ${SB_PUBLISHABLE_DEFAULT_KEY}" \
             -H "Content-Type: application/json" \
             -H "X-Cron-Secret: ${SB_UK_AQ_CRON_SECRET:-}" \

@@ -12,7 +12,9 @@ type EgressMinuteRow = {
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ??
   Deno.env.get("SB_SUPABASE_URL") ??
   "";
-const SB_SECRET_KEY = Deno.env.get("SB_SECRET_KEY") ?? "";
+const SB_SECRET_KEY = Deno.env.get("SB_SECRET_KEY") ??
+  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
+  "";
 const SUPABASE_PRIVILEGED_KEY = SB_SECRET_KEY;
 const SB_UK_AQ_CRON_SECRET = Deno.env.get("SB_UK_AQ_CRON_SECRET") ?? "";
 const UK_AQ_PUBLIC_SCHEMA = Deno.env.get("UK_AQ_PUBLIC_SCHEMA") ??
@@ -200,6 +202,10 @@ async function fetchEgressRowsSince(
   let offset = 0;
   let budgetExhausted = false;
   let requestTimedOut = false;
+  const metricsSources: Array<{ table: string; schema: string }> = [
+    { table: "uk_aq_endpoint_egress_metrics_minute", schema: UK_AQ_PUBLIC_SCHEMA },
+    { table: "endpoint_egress_metrics_minute", schema: UK_AQ_RAW_SCHEMA },
+  ];
   while (rows.length < maxRows) {
     const elapsedMs = Date.now() - options.startedAtMs;
     const remainingBudgetMs = options.runtimeBudgetMs - elapsedMs;
@@ -223,24 +229,31 @@ async function fetchEgressRowsSince(
     );
     let data: EgressMinuteRow[] | null = null;
     let error: { message: string } | null = null;
+    const sourceErrors: string[] = [];
     try {
-      const response = await postgrestRequest<EgressMinuteRow[]>(
-        "GET",
-        "uk_aq_endpoint_egress_metrics_minute",
-        {
-          select:
-            "endpoint,response_bytes_sum,observed_requests,estimated_requests,bucket_minute",
-          bucket_minute: `gte.${sinceIso}`,
-          order: "bucket_minute.asc",
-          limit: String(limit),
-          offset: String(offset),
-        },
-        undefined,
-        UK_AQ_PUBLIC_SCHEMA,
-        requestController.signal,
-      );
-      data = response.data;
-      error = response.error;
+      for (const source of metricsSources) {
+        const response = await postgrestRequest<EgressMinuteRow[]>(
+          "GET",
+          source.table,
+          {
+            select:
+              "endpoint,response_bytes_sum,observed_requests,estimated_requests,bucket_minute",
+            bucket_minute: `gte.${sinceIso}`,
+            order: "bucket_minute.asc",
+            limit: String(limit),
+            offset: String(offset),
+          },
+          undefined,
+          source.schema,
+          requestController.signal,
+        );
+        data = response.data;
+        error = response.error;
+        if (!error) {
+          break;
+        }
+        sourceErrors.push(`${source.schema}.${source.table}: ${error.message}`);
+      }
     } catch (requestError) {
       if (
         requestError instanceof DOMException &&
@@ -254,7 +267,10 @@ async function fetchEgressRowsSince(
       clearTimeout(requestTimer);
     }
     if (error) {
-      throw new Error(`Failed to load egress metrics: ${error.message}`);
+      const errorDetails = sourceErrors.length > 0
+        ? sourceErrors.join(" | ")
+        : error.message;
+      throw new Error(`Failed to load egress metrics: ${errorDetails}`);
     }
     const batch = data ?? [];
     rows.push(...batch);
@@ -548,7 +564,10 @@ serve(async (req) => {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error("uk_aq_egress_monitor failed", { message });
-    return new Response(JSON.stringify({ error: "Internal server error." }), {
+    return new Response(JSON.stringify({
+      error: "Internal server error.",
+      message,
+    }), {
       status: 500,
       headers: { "Content-Type": "application/json" },
     });

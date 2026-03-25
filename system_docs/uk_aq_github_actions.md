@@ -60,6 +60,9 @@ UK_AQ_EDGE_UPSTREAM_SECRET=...
   - `vars.SUPABASE_URL`
   - `secrets.SB_PUBLISHABLE_DEFAULT_KEY`
   - optional `secrets.SB_UK_AQ_CRON_SECRET` header.
+- Invocation guardrails:
+  - Uses `lookback_minutes=60`, `top_n=15`, `page_size=5000`, `max_rows=25000`, `runtime_budget_ms=115000`, `request_timeout_ms=20000`.
+  - Uses `curl` retries for transient failures: `--retry 2 --retry-delay 2 --retry-all-errors`.
 
 ### `uk_aq_observs_egress_monitor.yml`
 - Trigger: schedule every 5 minutes, or manual dispatch.
