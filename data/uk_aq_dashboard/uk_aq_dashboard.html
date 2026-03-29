@@ -1205,7 +1205,7 @@
         <div class="meta">
           <div class="meta-left">
             <span class="meta-status" id="status">Waiting for data...</span>
-            <span class="meta-note" id="data-meta">Project n/a • Data n/a</span>
+            <span class="meta-note" id="data-meta">Project n/a • Times in UTC</span>
           </div>
           <div class="refresh-controls">
             <span>Refresh</span>
@@ -1401,8 +1401,7 @@
 
       function formatTime(value) {
         if (!value) return "n/a";
-        const date = new Date(value);
-        return date.toLocaleString();
+        return formatDateTimeDdMmYyyyHhMmSs(value);
       }
 
       function formatDateTimeDdMmYyyyHhMmSs(value) {
@@ -1410,7 +1409,7 @@
         const date = new Date(value);
         if (Number.isNaN(date.getTime())) return "n/a";
         const pad = (num) => String(num).padStart(2, "0");
-        return `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+        return `${pad(date.getUTCDate())}/${pad(date.getUTCMonth() + 1)}/${date.getUTCFullYear()} ${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}:${pad(date.getUTCSeconds())}`;
       }
 
       function formatDateDdMmYyyy(value) {
@@ -1418,7 +1417,7 @@
         const date = new Date(value);
         if (Number.isNaN(date.getTime())) return null;
         const pad = (num) => String(num).padStart(2, "0");
-        return `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()}`;
+        return `${pad(date.getUTCDate())}/${pad(date.getUTCMonth() + 1)}/${date.getUTCFullYear()}`;
       }
 
       function parseUtcDayMs(value) {
@@ -1846,7 +1845,7 @@
 
       function setDataMeta(payload) {
         const projectRef = payload && payload.project_ref ? payload.project_ref : "n/a";
-        dataMetaEl.textContent = `Project ${projectRef}`;
+        dataMetaEl.textContent = `Project ${projectRef} • Times in UTC`;
       }
 
       function setError(text) {
@@ -2209,7 +2208,7 @@
               ? chartRight
               : (currentX + xPositions[index + 1]) / 2;
             const width = Math.max(1, rightBound - leftBound);
-            const bucketLabel = new Date(point.ms).toLocaleString();
+            const bucketLabel = formatTime(point.ms);
             const seriesPayload = seriesDefs.map((series) => {
               const value = Number(point[series.key] || 0);
               return {
@@ -2244,7 +2243,7 @@
             if (value === null || value === undefined || Number.isNaN(Number(value))) {
               return "";
             }
-            const bucketLabel = new Date(point.ms).toLocaleString();
+            const bucketLabel = formatTime(point.ms);
             const sizeLabel = `${formatMegabytes(Number(value))} MB`;
             const oldestKey = `${key}_oldest_observed_at`;
             const oldestDayLabel = formatDbOldestDayLabel(point[oldestKey] || null);
@@ -2442,7 +2441,7 @@
             dashboardEl.appendChild(nextPanel);
           }
           const generatedAt = (payload && payload.generated_at) || new Date().toISOString();
-          setStatus(`R2 metrics refreshed ${formatTime(generatedAt)} (local time)`);
+          setStatus(`R2 metrics refreshed ${formatTime(generatedAt)}`);
         } catch (err) {
           setError(err.message || String(err));
           setStatus("Error");
@@ -2603,7 +2602,7 @@
                   const anchor = idx === 0 ? "start" : idx === xTicks.length - 1 ? "end" : "middle";
                   return `
                     <line x1="${x}" y1="${height - margin.bottom}" x2="${x}" y2="${height - margin.bottom + 5}" stroke="#bfae91" stroke-width="1" />
-                    <text x="${x}" y="${height - margin.bottom + 20}" text-anchor="${anchor}" fill="#6b6255" font-size="11" font-family="IBM Plex Mono, ui-monospace, monospace">${new Date(tick).toLocaleString()}</text>
+                    <text x="${x}" y="${height - margin.bottom + 20}" text-anchor="${anchor}" fill="#6b6255" font-size="11" font-family="IBM Plex Mono, ui-monospace, monospace">${formatTime(tick)}</text>
                   `;
                 })
                 .join("")}
@@ -2722,7 +2721,7 @@
                       const anchor = idx === 0 ? "start" : idx === xTicks.length - 1 ? "end" : "middle";
                       return `
                         <line x1="${x}" y1="${height - margin.bottom}" x2="${x}" y2="${height - margin.bottom + 5}" stroke="#bfae91" stroke-width="1" />
-                        <text x="${x}" y="${height - margin.bottom + 20}" text-anchor="${anchor}" fill="#6b6255" font-size="11" font-family="IBM Plex Mono, ui-monospace, monospace">${new Date(tick).toLocaleString()}</text>
+                        <text x="${x}" y="${height - margin.bottom + 20}" text-anchor="${anchor}" fill="#6b6255" font-size="11" font-family="IBM Plex Mono, ui-monospace, monospace">${formatTime(tick)}</text>
                       `;
                     })
                     .join("")}
@@ -2812,18 +2811,7 @@
           backupWindowYears = backupWindowDays / 365.25;
         }
         const backupWindowLabel = `CLOUDFLARE R2 HISTORY WINDOW - ${backupWindowMin} -> ${backupWindowMax} - ${backupWindowDays !== null ? backupWindowDays : "n/a"} Days - ${backupWindowYears !== null ? backupWindowYears.toFixed(1) : "n/a"} Years`;
-        const getNextR2LimitsResetDate = () => {
-          const now = new Date();
-          let target = new Date(now.getFullYear(), now.getMonth(), 24);
-          if (now.getDate() >= 24) {
-            target = new Date(now.getFullYear(), now.getMonth() + 1, 24);
-          }
-          const day = String(target.getDate()).padStart(2, "0");
-          const month = String(target.getMonth() + 1).padStart(2, "0");
-          const year = String(target.getFullYear());
-          return `${day}/${month}/${year}`;
-        };
-        const r2LimitsResetLabel = `Limits reset: ${getNextR2LimitsResetDate()}`;
+        const r2LimitsResetLabel = "Limits are per calendar month";
         const r2Rows = [];
         let r2LastUpdate = "n/a";
         const addUsageRow = (title, summaryText, percentValue, subText, subRightText) => {
@@ -4319,9 +4307,9 @@
           );
           upsertStorageCoveragePanel(renderStorageCoverageLoadingPanel("Refreshing calendar..."));
           if (forceRefresh) {
-            setStatus(`Force refreshed ${formatTime(data.generated_at)} (local time)`);
+            setStatus(`Force refreshed ${formatTime(data.generated_at)}`);
           } else {
-            setStatus(`Updated ${formatTime(data.generated_at)} (local time)`);
+            setStatus(`Updated ${formatTime(data.generated_at)}`);
           }
           setDataMeta(data);
           void loadStorageCoverage({ forceRefresh, parentLoadId: loadId });
