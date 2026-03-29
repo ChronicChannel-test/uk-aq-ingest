@@ -238,11 +238,30 @@
         font-family: "Space Grotesk", "Segoe UI", sans-serif;
       }
 
+      .db-size-legend-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-bottom: 10px;
+      }
+
       .db-size-legend {
         display: flex;
         flex-wrap: wrap;
         gap: 12px;
-        margin-bottom: 10px;
+        margin-bottom: 0;
+        flex: 1 1 520px;
+        min-width: 0;
+      }
+
+      .db-size-timezone-note {
+        font-family: "IBM Plex Mono", ui-monospace, monospace;
+        font-size: 12px;
+        color: var(--ink-soft);
+        margin-left: auto;
+        white-space: nowrap;
       }
 
       .db-size-item {
@@ -1205,7 +1224,7 @@
         <div class="meta">
           <div class="meta-left">
             <span class="meta-status" id="status">Waiting for data...</span>
-            <span class="meta-note" id="data-meta">Project n/a • Times in UTC</span>
+            <span class="meta-note" id="data-meta">Project n/a</span>
           </div>
           <div class="refresh-controls">
             <span>Refresh</span>
@@ -1410,6 +1429,33 @@
         if (Number.isNaN(date.getTime())) return "n/a";
         const pad = (num) => String(num).padStart(2, "0");
         return `${pad(date.getUTCDate())}/${pad(date.getUTCMonth() + 1)}/${date.getUTCFullYear()} ${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}:${pad(date.getUTCSeconds())}`;
+      }
+
+      function formatLocalTimezoneLabel(date) {
+        const utcOffsetMinutes = -date.getTimezoneOffset();
+        if (utcOffsetMinutes === 0) {
+          return "UTC";
+        }
+        if (utcOffsetMinutes === 60) {
+          return "BST (UTC+1hr)";
+        }
+        const sign = utcOffsetMinutes >= 0 ? "+" : "-";
+        const absoluteMinutes = Math.abs(utcOffsetMinutes);
+        const hours = Math.floor(absoluteMinutes / 60);
+        const minutes = absoluteMinutes % 60;
+        if (minutes === 0) {
+          return `UTC${sign}${hours}hr`;
+        }
+        return `UTC${sign}${hours}h${String(minutes).padStart(2, "0")}m`;
+      }
+
+      function formatDateTimeLocalWithTimezone(value) {
+        if (!value) return "n/a";
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return "n/a";
+        const pad = (num) => String(num).padStart(2, "0");
+        const timestamp = `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+        return `${timestamp} ${formatLocalTimezoneLabel(date)}`;
       }
 
       function formatDateDdMmYyyy(value) {
@@ -1845,7 +1891,7 @@
 
       function setDataMeta(payload) {
         const projectRef = payload && payload.project_ref ? payload.project_ref : "n/a";
-        dataMetaEl.textContent = `Project ${projectRef} • Times in UTC`;
+        dataMetaEl.textContent = `Project ${projectRef}`;
       }
 
       function setError(text) {
@@ -2042,7 +2088,7 @@
                 : `<tr><td colspan="8">No runs found for selected filters.</td></tr>`}
             </tbody>
           </table>
-          <div class="footnote">Ordered by most recent run end time. Filters persist across refresh.</div>
+          <div class="footnote">Ordered by most recent run end time. Filters persist across refresh. Times in UTC.</div>
         `;
 
         const connectorSelect = panel.querySelector("#dispatch-connector-filter");
@@ -2441,7 +2487,7 @@
             dashboardEl.appendChild(nextPanel);
           }
           const generatedAt = (payload && payload.generated_at) || new Date().toISOString();
-          setStatus(`R2 metrics refreshed ${formatTime(generatedAt)}`);
+          setStatus(`R2 metrics refreshed ${formatDateTimeLocalWithTimezone(generatedAt)}`);
         } catch (err) {
           setError(err.message || String(err));
           setStatus("Error");
@@ -2851,7 +2897,7 @@
           `);
         };
         if (r2UsageObject) {
-          r2LastUpdate = formatDateTimeDdMmYyyyHhMmSs(r2UsageObject.as_of_utc);
+          r2LastUpdate = formatDateTimeLocalWithTimezone(r2UsageObject.as_of_utc);
 
           const usedGb = asNumber(r2UsageObject.standard_used_gb);
           const usedBytes = asNumber(r2UsageObject.standard_used_bytes);
@@ -2940,6 +2986,7 @@
               </label>
             </div>
           </h2>
+          <div class="db-size-legend-row">
             <div class="db-size-legend">
               <span class="db-size-item">
               <span class="db-size-item-title"><span class="db-size-swatch" style="background:${COLOR_INGEST_DB}"></span>Ingest DB Cluster</span>
@@ -2949,6 +2996,8 @@
               <span class="db-size-item-title"><span class="db-size-swatch" style="background:${COLOR_OBSAQI_OBSERVS}"></span>Observs &amp; AQI DB Cluster</span>
               <span class="db-size-item-min">uk_aq_observs ${escapeHtml(observsOldestDayLabel)}&nbsp;&nbsp;&nbsp;uk_aq_aqilevels ${escapeHtml(aqilevelsOldestDayLabel)}</span>
             </span>
+            </div>
+            <strong class="db-size-timezone-note">Times in UTC</strong>
           </div>
           <div class="db-size-chart-wrap">${chartMarkup}<div class="db-size-hover-tooltip" aria-hidden="true"></div></div>
           ${schemaChartMarkup}
@@ -4306,11 +4355,7 @@
             ),
           );
           upsertStorageCoveragePanel(renderStorageCoverageLoadingPanel("Refreshing calendar..."));
-          if (forceRefresh) {
-            setStatus(`Force refreshed ${formatTime(data.generated_at)}`);
-          } else {
-            setStatus(`Updated ${formatTime(data.generated_at)}`);
-          }
+          setStatus(`Updated ${formatDateTimeLocalWithTimezone(data.generated_at)}`);
           setDataMeta(data);
           void loadStorageCoverage({ forceRefresh, parentLoadId: loadId });
         } catch (err) {
