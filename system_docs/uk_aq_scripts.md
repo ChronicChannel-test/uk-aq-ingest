@@ -298,6 +298,10 @@ Notes:
 - Dispatcher feed shows gap-station context for OpenAQ runs as `(<n> GAP)` under Stations when `gap_stations_polled > 0`.
 - Local dashboard request handlers suppress client-disconnect socket noise (`BrokenPipeError` / `ConnectionResetError`) so refresh/closed-tab events do not flood local logs.
 - Includes a DB cluster size panel with period selector (`6h`, `12h`, `24h`, `48h`, `7d`, `14d`, `28d`): line chart for `ingestdb` + `obs_aqidb` cluster MB (dynamic Y max), schema stacked area chart for `uk_aq_observs` + `uk_aq_aqilevels` MB, and R2 History domain stacked area chart for `observations` + `aqilevels` MB; missing series values render as `0`, stacked charts expose full-height bucket hover tooltips showing both series plus their total at the hovered datetime, the schema oldest-day legend row is `uk_aq_observs >= DD/MM/YYYY   uk_aq_aqilevels >= DD/MM/YYYY`, and calendar/chart colors are fixed to: ingest red `#FE2E2E`, R2 observations orange `#F48021`, R2 AQI levels yellow `#F4C04B`, ObsAQI observations blue `#3C82F5`, ObsAQI AQI levels green `#61D836`.
+- Direct Supabase metric fallback reads are paginated (`offset`/`limit`) so chart windows are not clipped by PostgREST row caps.
+- External DB-size API payloads are accepted when DB series is current; if schema/R2 lag DB by more than 6 hours, dashboard keeps external rows and performs targeted direct-Supabase top-up only for lagging series (avoids full all-series fallback on each refresh).
+- R2 usage refresh gathers storage and operation metrics in parallel to reduce force-refresh latency.
+- R2 history-days API reads are cached in-memory for 5 minutes and reused across `/api/dashboard`, `/api/storage_coverage`, and `/api/r2_metrics`.
 - Requires a service role key (anon/authenticated JWTs will be rejected).
 
 Data sources used by storage coverage:

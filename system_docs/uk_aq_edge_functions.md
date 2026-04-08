@@ -112,6 +112,9 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
   - Uses `uk_aq_public.uk_aq_rpc_dispatch_claim` to atomically claim a connector slot before dispatch.
   - Updates `connectors.last_run_start`, `last_run_end`, `last_run_status`, `last_run_message`, and `last_polled_at` for each attempted dispatch.
   - Inserts per-run summaries into `uk_aq_ingest_runs` (status, counts, last_observed_at, response payload) for dashboard feeds.
+  - In ingest DB, run-log retention is 30 days via
+    `uk_aq_public.uk_aq_rpc_ingest_runs_cleanup`, scheduled by
+    `pg_cron` job `uk_aq_ingest_runtime_metrics_cleanup_daily`.
   - Dispatcher write calls to PostgREST (`connectors`, `uk_aq_ingest_runs`, `error_logs`) now use `Prefer: return=minimal` to reduce PostgREST egress.
   - Stored `uk_aq_ingest_runs.response_payload` is compacted to dashboard-relevant summary keys (counts/partial flags/rate-limit summary/error message) instead of full child ingest responses.
   - When a child ingest returns partial/limit signals, dispatcher records run status as `partial` using reason precedence from payload (`stopped_reason`, rate-limit stop flags/reasons, request-budget saturation); runtime timeout remains `runtime_budget_exceeded`.
@@ -131,6 +134,9 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
   - History-side RPC pressure can be monitored via
     `uk_aq_public.uk_aq_history_rpc_metrics_minute` and
     `uk_aq_public.uk_aq_observation_rpc_metrics_minute` (history DB alias view).
+  - In ingest DB, observation write metrics retention is 30 days via
+    `uk_aq_public.uk_aq_rpc_observation_rpc_metrics_cleanup`, scheduled by
+    `pg_cron` job `uk_aq_ingest_runtime_metrics_cleanup_daily`.
   - Archived edge/cloudflare implementation is under `archive/2026-02-12_observs_outbox_migration/`.
 
 ### History Pub/Sub Writer (Cloud Run)

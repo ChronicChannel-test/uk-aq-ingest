@@ -110,8 +110,12 @@ Fallback source (direct Supabase reads):
 - Ingest DB view `uk_aq_public.uk_aq_r2_domain_size_metrics_hourly` for:
   - `observations`
   - `aqilevels`
+- Direct fallback metric reads are paginated with `offset`/`limit` so windows larger than the PostgREST row cap still include the newest buckets.
 
 If primary source fails or is stale, backend reports warning fields and uses fallback.
+Primary payload guardrails:
+- DB-size payload must include a recent `db_size_metrics` latest bucket (within 6 hours of current UTC time).
+- `schema_size_metrics` and `r2_domain_size_metrics` latest buckets are checked against the DB latest bucket (6-hour max lag). If either lags, dashboard performs targeted direct-Supabase top-up for only that lagging series instead of full all-series fallback.
 
 R2 domain chart consistency rule:
 
@@ -166,6 +170,7 @@ Rules:
 - If the current day-count view is unavailable, AQI day presence falls back to `uk_aq_rpc_aqilevels_drop_candidates` and then oldest-day range logic only if that fallback fails.
 - Calendar `r2_observs` / `r2_aqilevels` day presence is only taken from committed-day API per-day lists.
 - If committed-day API is unavailable, calendar does not infer per-day R2 presence from RPC min/max windows.
+- Backend caches committed-day API payloads in-memory for 5 minutes to avoid repeated network fetches across dashboard/calendar/R2 metrics requests.
 - R2 history window day count uses explicit committed-day overlap:
   - `day_count = |observations_days ∩ aqilevels_days|`
   - only days with both domain manifests are counted.

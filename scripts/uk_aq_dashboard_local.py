@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+from concurrent.futures import ThreadPoolExecutor
 import json
 import math
 import os
@@ -58,6 +59,12 @@ DB_SIZE_LOOKBACK_DAYS = max(
     1,
     int(os.getenv("UK_AQ_DB_SIZE_LOOKBACK_DAYS", "28")),
 )
+METRICS_VIEW_PAGE_SIZE = 1000
+EXTERNAL_METRICS_MAX_LAG = timedelta(hours=6)
+EXTERNAL_SCHEMA_MISSING_WARNING = "External DB size API payload missing usable schema_size_metrics rows"
+EXTERNAL_SCHEMA_LAG_WARNING = "External DB size API returned lagging schema_size_metrics window"
+EXTERNAL_R2_MISSING_WARNING = "External DB size API payload missing usable r2_domain_size_metrics rows"
+EXTERNAL_R2_LAG_WARNING = "External DB size API returned lagging r2_domain_size_metrics window"
 DB_SIZE_API_URL = str(os.getenv("UK_AQ_DB_SIZE_API_URL") or "").strip()
 DB_SIZE_API_TOKEN = str(os.getenv("UK_AQ_DB_SIZE_API_TOKEN") or "").strip()
 R2_HISTORY_DAYS_API_URL = str(os.getenv("UK_AQ_R2_HISTORY_DAYS_API_URL") or "").strip()
@@ -111,6 +118,13 @@ CACHE_STATE: Dict[str, Dict[str, Any]] = {
     "without_coverage": {"data": None, "generated_at": None},
 }
 R2_CACHE_STATE: Dict[str, Any] = {"usage": None, "error": None, "generated_at": None}
+R2_HISTORY_DAYS_CACHE_STATE: Dict[str, Any] = {
+    "day_sets": None,
+    "window": None,
+    "bucket": None,
+    "error": None,
+    "generated_at": None,
+}
 STORAGE_COVERAGE_CACHE_STATE: Dict[str, Any] = {"rows": None, "next_refresh_at": None}
 DISPATCH_RUNS_STATE: Dict[str, Any] = {
     "rows": [],
@@ -118,6 +132,7 @@ DISPATCH_RUNS_STATE: Dict[str, Any] = {
 }
 CACHE_TTL_SECONDS = 20
 R2_CACHE_TTL_SECONDS = 60 * 60
+R2_HISTORY_DAYS_CACHE_TTL_SECONDS = 5 * 60
 STORAGE_COVERAGE_CACHE_TTL_SECONDS = 6 * 60 * 60
 UTC_DATETIME_MIN = datetime.min.replace(tzinfo=timezone.utc)
 R2_BYTES_PER_GB = 1024 ** 3
@@ -911,19 +926,31 @@ def _fetch_metric_rows_from_supabase_view(
     public_headers["Authorization"] = f"Bearer {service_role_key}"
     public_headers["Accept-Profile"] = PUBLIC_SCHEMA
     try:
-        rows = _fetch_json(
-            f"{base_url}/{view_name}",
+        rows = _fetch_all(
+            base_url,
             public_headers,
+            view_name,
             {
                 "select": select,
                 "bucket_hour": f"gte.{_to_postgrest_ts(since)}",
                 "order": "bucket_hour.asc",
-                "limit": "5000",
             },
+            limit=METRICS_VIEW_PAGE_SIZE,
         )
     except Exception as exc:
         return [], str(exc)
     return normalizer(rows), None
+
+
+def _latest_bucket_hour(rows: List[Dict[str, Any]]) -> Optional[datetime]:
+    latest: Optional[datetime] = None
+    for row in rows:
+        bucket_hour = _parse_timestamp((row or {}).get("bucket_hour"))
+        if bucket_hour is None:
+            continue
+        if latest is None or bucket_hour > latest:
+            latest = bucket_hour
+    return latest
 
 
 def _fetch_size_metrics_from_external_api(
@@ -1007,11 +1034,21 @@ def _fetch_size_metrics_from_external_api(
     schema_rows = _normalize_schema_size_metrics_rows(schema_rows_raw)
     r2_rows = _normalize_r2_domain_size_metrics_rows(r2_rows_raw)
 
-    latest_bucket = None
-    if db_rows:
-        latest_bucket = _parse_timestamp(db_rows[-1].get("bucket_hour"))
-    if latest_bucket and latest_bucket < now - timedelta(days=DB_SIZE_LOOKBACK_DAYS + 1):
-        return None, None, None, None, None, None, "External DB size API returned stale metrics window"
+    db_latest_bucket = _latest_bucket_hour(db_rows)
+    schema_latest_bucket = _latest_bucket_hour(schema_rows)
+    r2_latest_bucket = _latest_bucket_hour(r2_rows)
+    if db_latest_bucket is None:
+        return None, None, None, None, None, None, "External DB size API payload missing usable db_size_metrics rows"
+    if db_latest_bucket < now - EXTERNAL_METRICS_MAX_LAG:
+        return None, None, None, None, None, None, "External DB size API returned stale db_size_metrics window"
+    if schema_latest_bucket is None:
+        schema_error = _join_error_messages(schema_error, EXTERNAL_SCHEMA_MISSING_WARNING)
+    elif schema_latest_bucket < db_latest_bucket - EXTERNAL_METRICS_MAX_LAG:
+        schema_error = _join_error_messages(schema_error, EXTERNAL_SCHEMA_LAG_WARNING)
+    if r2_latest_bucket is None:
+        r2_error = _join_error_messages(r2_error, EXTERNAL_R2_MISSING_WARNING)
+    elif r2_latest_bucket < db_latest_bucket - EXTERNAL_METRICS_MAX_LAG:
+        r2_error = _join_error_messages(r2_error, EXTERNAL_R2_LAG_WARNING)
 
     return db_rows, schema_rows, r2_rows, db_error, schema_error, r2_error, None
 
@@ -1021,6 +1058,69 @@ def _join_error_messages(*parts: Optional[str]) -> Optional[str]:
     if not values:
         return None
     return "; ".join(values)
+
+
+def _strip_error_markers(message: Optional[str], markers: Set[str]) -> Optional[str]:
+    if not message:
+        return None
+    parts = [
+        part.strip()
+        for part in str(message).split(";")
+        if part and part.strip() and part.strip() not in markers
+    ]
+    if not parts:
+        return None
+    return "; ".join(parts)
+
+
+def _row_sample_timestamp(row: Dict[str, Any]) -> datetime:
+    recorded_at = _parse_timestamp((row or {}).get("recorded_at"))
+    bucket_hour = _parse_timestamp((row or {}).get("bucket_hour"))
+    return recorded_at or bucket_hour or UTC_DATETIME_MIN
+
+
+def _merge_metric_rows(
+    existing: List[Dict[str, Any]],
+    incoming: List[Dict[str, Any]],
+    *,
+    key_fields: Tuple[str, ...],
+) -> List[Dict[str, Any]]:
+    merged: Dict[Tuple[Any, ...], Dict[str, Any]] = {}
+    for row in [*existing, *incoming]:
+        if not isinstance(row, dict):
+            continue
+        key = tuple(row.get(field) for field in key_fields)
+        if any(value is None for value in key):
+            continue
+        prior = merged.get(key)
+        if prior is None or _row_sample_timestamp(row) >= _row_sample_timestamp(prior):
+            merged[key] = row
+
+    rows = list(merged.values())
+    rows.sort(key=lambda item: _parse_timestamp(item.get("bucket_hour")) or UTC_DATETIME_MIN)
+    return rows
+
+
+def _merge_schema_metric_rows(
+    existing: List[Dict[str, Any]],
+    incoming: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    return _merge_metric_rows(
+        existing,
+        incoming,
+        key_fields=("bucket_hour", "database_label", "schema_name"),
+    )
+
+
+def _merge_r2_metric_rows(
+    existing: List[Dict[str, Any]],
+    incoming: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    return _merge_metric_rows(
+        existing,
+        incoming,
+        key_fields=("bucket_hour", "domain_name"),
+    )
 
 
 def _fetch_size_metrics(
@@ -1036,6 +1136,12 @@ def _fetch_size_metrics(
     Optional[str],
 ]:
     since = now - timedelta(days=DB_SIZE_LOOKBACK_DAYS)
+    ingest_key = str(headers.get("apikey") or "").strip()
+    obs_aqidb_base_url = (
+        f"{OBS_AQIDB_SUPABASE_URL.rstrip('/')}/rest/v1"
+        if OBS_AQIDB_SUPABASE_URL and OBS_AQIDB_SECRET_KEY
+        else None
+    )
 
     (
         external_db_rows,
@@ -1048,13 +1154,107 @@ def _fetch_size_metrics(
     ) = _fetch_size_metrics_from_external_api(now)
 
     if external_db_rows is not None and external_schema_rows is not None and external_r2_rows is not None:
+        db_rows = list(external_db_rows)
+        schema_rows = list(external_schema_rows)
+        r2_rows = list(external_r2_rows)
+        db_warning = external_db_error
+        schema_warning = external_schema_error
+        r2_warning = external_r2_error
+        db_latest_bucket = _latest_bucket_hour(db_rows)
+
+        if db_latest_bucket is not None:
+            schema_latest_bucket = _latest_bucket_hour(schema_rows)
+            if (
+                schema_latest_bucket is None
+                or schema_latest_bucket < db_latest_bucket - EXTERNAL_METRICS_MAX_LAG
+            ):
+                if obs_aqidb_base_url and OBS_AQIDB_SECRET_KEY:
+                    schema_since = (
+                        max(since, schema_latest_bucket - timedelta(hours=1))
+                        if schema_latest_bucket is not None
+                        else since
+                    )
+                    schema_topup_rows, schema_topup_error = _fetch_metric_rows_from_supabase_view(
+                        base_url=obs_aqidb_base_url,
+                        service_role_key=OBS_AQIDB_SECRET_KEY,
+                        view_name="uk_aq_schema_size_metrics_hourly",
+                        select="bucket_hour,database_label,schema_name,size_bytes,oldest_observed_at,recorded_at",
+                        since=schema_since,
+                        normalizer=_normalize_schema_size_metrics_rows,
+                    )
+                    if schema_topup_error:
+                        schema_warning = _join_error_messages(
+                            schema_warning,
+                            f"schema top-up failed: {schema_topup_error}",
+                        )
+                    else:
+                        schema_rows = _merge_schema_metric_rows(schema_rows, schema_topup_rows)
+                        schema_latest_bucket = _latest_bucket_hour(schema_rows)
+                        if (
+                            schema_latest_bucket is not None
+                            and schema_latest_bucket >= db_latest_bucket - EXTERNAL_METRICS_MAX_LAG
+                        ):
+                            schema_warning = _strip_error_markers(
+                                schema_warning,
+                                {EXTERNAL_SCHEMA_MISSING_WARNING, EXTERNAL_SCHEMA_LAG_WARNING},
+                            )
+                else:
+                    schema_warning = _join_error_messages(
+                        schema_warning,
+                        "obs_aqidb: missing OBS_AQIDB_SUPABASE_URL or OBS_AQIDB_SECRET_KEY",
+                    )
+
+            r2_latest_bucket = _latest_bucket_hour(r2_rows)
+            if (
+                r2_latest_bucket is None
+                or r2_latest_bucket < db_latest_bucket - EXTERNAL_METRICS_MAX_LAG
+            ):
+                if base_url and ingest_key:
+                    r2_since = (
+                        max(since, r2_latest_bucket - timedelta(hours=1))
+                        if r2_latest_bucket is not None
+                        else since
+                    )
+                    r2_topup_rows, r2_topup_error = _fetch_metric_rows_from_supabase_view(
+                        base_url=base_url,
+                        service_role_key=ingest_key,
+                        view_name="uk_aq_r2_domain_size_metrics_hourly",
+                        select="bucket_hour,domain_name,size_bytes,recorded_at",
+                        since=r2_since,
+                        normalizer=_normalize_r2_domain_size_metrics_rows,
+                    )
+                    if r2_topup_error:
+                        r2_warning = _join_error_messages(
+                            r2_warning,
+                            f"r2-domain top-up failed: {r2_topup_error}",
+                        )
+                    else:
+                        r2_rows = _merge_r2_metric_rows(r2_rows, r2_topup_rows)
+                        r2_latest_bucket = _latest_bucket_hour(r2_rows)
+                        if (
+                            r2_latest_bucket is not None
+                            and r2_latest_bucket >= db_latest_bucket - EXTERNAL_METRICS_MAX_LAG
+                        ):
+                            r2_warning = _strip_error_markers(
+                                r2_warning,
+                                {EXTERNAL_R2_MISSING_WARNING, EXTERNAL_R2_LAG_WARNING},
+                            )
+                else:
+                    r2_warning = _join_error_messages(
+                        r2_warning,
+                        "ingestdb: missing base URL or service key",
+                    )
+
+        db_rows.sort(key=lambda item: _parse_timestamp(item.get("bucket_hour")) or UTC_DATETIME_MIN)
+        schema_rows.sort(key=lambda item: _parse_timestamp(item.get("bucket_hour")) or UTC_DATETIME_MIN)
+        r2_rows.sort(key=lambda item: _parse_timestamp(item.get("bucket_hour")) or UTC_DATETIME_MIN)
         return (
-            external_db_rows,
-            external_schema_rows,
-            external_r2_rows,
-            external_db_error,
-            external_schema_error,
-            external_r2_error,
+            db_rows,
+            schema_rows,
+            r2_rows,
+            db_warning,
+            schema_warning,
+            r2_warning,
         )
 
     fallback_note = (
@@ -1066,7 +1266,6 @@ def _fetch_size_metrics(
     db_source_errors: List[str] = []
     db_rows: List[Dict[str, Any]] = []
 
-    ingest_key = str(headers.get("apikey") or "").strip()
     if base_url and ingest_key:
         ingest_rows, ingest_error = _fetch_metric_rows_from_supabase_view(
             base_url=base_url,
@@ -1086,12 +1285,6 @@ def _fetch_size_metrics(
         db_rows.extend(ingest_rows)
     else:
         db_source_errors.append("ingestdb: missing base URL or service key")
-
-    obs_aqidb_base_url = (
-        f"{OBS_AQIDB_SUPABASE_URL.rstrip('/')}/rest/v1"
-        if OBS_AQIDB_SUPABASE_URL and OBS_AQIDB_SECRET_KEY
-        else None
-    )
 
     if obs_aqidb_base_url and OBS_AQIDB_SECRET_KEY:
         obs_aqidb_rows, obs_aqidb_error = _fetch_metric_rows_from_supabase_view(
@@ -1878,6 +2071,40 @@ def _fetch_r2_history_days_from_external_api(
     return day_sets, r2_window, bucket_value, None
 
 
+def _get_r2_history_days_cached(
+    *,
+    force_refresh: bool = False,
+) -> Tuple[
+    Optional[Dict[str, Set[date]]],
+    Optional[Dict[str, Any]],
+    Optional[str],
+    Optional[str],
+]:
+    now = datetime.now(timezone.utc)
+    with CACHE_LOCK:
+        cached_generated_at = R2_HISTORY_DAYS_CACHE_STATE.get("generated_at")
+        if (
+            not force_refresh
+            and isinstance(cached_generated_at, datetime)
+            and (now - cached_generated_at).total_seconds() < R2_HISTORY_DAYS_CACHE_TTL_SECONDS
+        ):
+            return (
+                R2_HISTORY_DAYS_CACHE_STATE.get("day_sets"),
+                R2_HISTORY_DAYS_CACHE_STATE.get("window"),
+                R2_HISTORY_DAYS_CACHE_STATE.get("bucket"),
+                R2_HISTORY_DAYS_CACHE_STATE.get("error"),
+            )
+
+    day_sets, r2_window, bucket_value, error = _fetch_r2_history_days_from_external_api()
+    with CACHE_LOCK:
+        R2_HISTORY_DAYS_CACHE_STATE["day_sets"] = day_sets
+        R2_HISTORY_DAYS_CACHE_STATE["window"] = r2_window
+        R2_HISTORY_DAYS_CACHE_STATE["bucket"] = bucket_value
+        R2_HISTORY_DAYS_CACHE_STATE["error"] = error
+        R2_HISTORY_DAYS_CACHE_STATE["generated_at"] = datetime.now(timezone.utc)
+    return day_sets, r2_window, bucket_value, error
+
+
 def _fetch_r2_history_counts_from_external_api(
     *,
     from_day: str,
@@ -1986,12 +2213,21 @@ def _fetch_r2_account_metrics(now: datetime) -> Tuple[Optional[Dict[str, Any]], 
     storage_fetch_warning: Optional[str] = None
     standard_used_bytes = 0
     standard_objects = 0
-
-    storage_metrics, storage_error = _fetch_r2_storage_fallback_metrics(
-        account_id,
-        api_token,
-        now,
-    )
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        storage_future = executor.submit(
+            _fetch_r2_storage_fallback_metrics,
+            account_id,
+            api_token,
+            now,
+        )
+        ops_future = executor.submit(
+            _fetch_r2_operations_metrics,
+            account_id,
+            api_token,
+            now,
+        )
+        storage_metrics, storage_error = storage_future.result()
+        ops_metrics, ops_error = ops_future.result()
     if storage_metrics is not None:
         standard_used_bytes = int(storage_metrics.get("standard_used_bytes") or 0)
         standard_objects = int(storage_metrics.get("standard_objects") or 0)
@@ -2086,8 +2322,6 @@ def _fetch_r2_account_metrics(now: datetime) -> Tuple[Optional[Dict[str, Any]], 
         "source": "cloudflare_r2_account_metrics",
         "as_of_utc": now.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
     }
-
-    ops_metrics, ops_error = _fetch_r2_operations_metrics(account_id, api_token, now)
     if ops_metrics is None:
         payload["class_ops_error"] = ops_error
         return payload, None
@@ -2350,7 +2584,7 @@ def _fetch_storage_coverage_context(
         r2_backup_window_from_history_days,
         r2_history_days_bucket,
         r2_history_days_error,
-    ) = _fetch_r2_history_days_from_external_api()
+    ) = _get_r2_history_days_cached(force_refresh=False)
     r2_backup_window_rpc, r2_backup_window_rpc_error = _fetch_r2_backup_window(
         base_url,
         headers,
@@ -2982,7 +3216,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 r2_backup_window_from_history_days,
                 r2_history_days_bucket,
                 r2_history_days_error,
-            ) = _fetch_r2_history_days_from_external_api()
+            ) = _get_r2_history_days_cached(force_refresh=False)
             r2_backup_window_rpc, r2_backup_window_rpc_error = _fetch_r2_backup_window(
                 self.server.base_url,
                 headers,

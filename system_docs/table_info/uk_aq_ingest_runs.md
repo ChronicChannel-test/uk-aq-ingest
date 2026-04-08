@@ -21,3 +21,6 @@ Stores per-run dispatcher summaries for dashboard ingest feeds.
 
 ## Notes
 - Inserted by `uk_aq_dispatch_polls` for each attempted dispatch.
+- Retention is enforced at 30 days by cleanup RPC `uk_aq_public.uk_aq_rpc_ingest_runs_cleanup`.
+- Daily cleanup schedule is `pg_cron` job `uk_aq_ingest_runtime_metrics_cleanup_daily`
+  via `uk_aq_ops.uk_aq_ingest_runtime_metrics_cleanup_tick(30)`.
