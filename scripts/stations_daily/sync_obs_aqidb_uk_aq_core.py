@@ -157,6 +157,9 @@ STATIC_SOURCE_TABLE_META: Dict[str, Dict[str, Any]] = {
             {"column_name": "status_intervals", "udt_name": "jsonb", "is_nullable": "YES", "column_default": None, "ordinal_position": 18},
             {"column_name": "created_at", "udt_name": "timestamptz", "is_nullable": "YES", "column_default": "now()", "ordinal_position": 19},
             {"column_name": "updated_at", "udt_name": "timestamptz", "is_nullable": "YES", "column_default": "now()", "ordinal_position": 20},
+            {"column_name": "last_catalog_seen_at", "udt_name": "timestamptz", "is_nullable": "YES", "column_default": None, "ordinal_position": 21},
+            {"column_name": "catalog_missing_runs", "udt_name": "int4", "is_nullable": "NO", "column_default": "0", "ordinal_position": 22},
+            {"column_name": "ended_at", "udt_name": "timestamptz", "is_nullable": "YES", "column_default": None, "ordinal_position": 23},
         ],
     },
 }

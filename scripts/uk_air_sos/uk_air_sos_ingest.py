@@ -1256,7 +1256,7 @@ class SupabaseWriter:
             return stats
 
         seen_at_value = seen_at.isoformat()
-        seen_updates: List[Dict[str, Any]] = []
+        seen_ids: List[int] = []
         missing_updates: List[Dict[str, Any]] = []
 
         for row in existing_rows:
@@ -1277,14 +1277,7 @@ class SupabaseWriter:
             ended_at = row.get("ended_at")
 
             if timeseries_ref in seen_refs:
-                seen_updates.append(
-                    {
-                        "id": row_id,
-                        "last_catalog_seen_at": seen_at_value,
-                        "catalog_missing_runs": 0,
-                        "ended_at": None,
-                    }
-                )
+                seen_ids.append(row_id)
                 if ended_at is not None:
                     stats["rows_reactivated"] += 1
                 continue
@@ -1302,12 +1295,39 @@ class SupabaseWriter:
                 stats["rows_ended"] += 1
             missing_updates.append(update_payload)
 
-        for chunk in _chunked(seen_updates, 500):
-            self.core.table("timeseries").upsert(chunk, on_conflict="id").execute()
-        for chunk in _chunked(missing_updates, 500):
-            self.core.table("timeseries").upsert(chunk, on_conflict="id").execute()
+        for chunk in _chunked(seen_ids, 500):
+            self.core.table("timeseries").update(
+                {
+                    "last_catalog_seen_at": seen_at_value,
+                    "catalog_missing_runs": 0,
+                    "ended_at": None,
+                }
+            ).in_("id", chunk).execute()
 
-        stats["rows_seen_updated"] = len(seen_updates)
+        missing_groups: Dict[Tuple[int, bool], List[int]] = {}
+        for payload in missing_updates:
+            row_id = payload.get("id")
+            if row_id is None:
+                continue
+            try:
+                row_id_int = int(row_id)
+            except (TypeError, ValueError):
+                continue
+            try:
+                missing_runs = int(payload.get("catalog_missing_runs", 0))
+            except (TypeError, ValueError):
+                missing_runs = 0
+            should_end = payload.get("ended_at") is not None
+            missing_groups.setdefault((missing_runs, should_end), []).append(row_id_int)
+
+        for (missing_runs, should_end), ids in missing_groups.items():
+            update_payload: Dict[str, Any] = {"catalog_missing_runs": missing_runs}
+            if should_end:
+                update_payload["ended_at"] = seen_at_value
+            for chunk in _chunked(ids, 500):
+                self.core.table("timeseries").update(update_payload).in_("id", chunk).execute()
+
+        stats["rows_seen_updated"] = len(seen_ids)
         stats["rows_missing_incremented"] = len(missing_updates)
         return stats
 
