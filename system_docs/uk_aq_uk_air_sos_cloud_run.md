@@ -37,6 +37,7 @@ Use `connectors.scheduler_backend` in the dashboard:
 Cloud Run picks due stations first, then scopes timeseries to those stations.
 The station selector is constrained to stations that have at least one SOS timeseries row,
 so worker runs do not churn on `no_timeseries_ids` for orphaned stations.
+Rows with `uk_aq_core.timeseries.ended_at` set are excluded from selector/load scopes.
 
 ## Run safety
 

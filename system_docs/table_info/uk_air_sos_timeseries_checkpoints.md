@@ -10,5 +10,8 @@ even when a station stops sending data.
 
 ## Usage
 - `uk_aq_dispatch_polls` calls `uk_air_sos_select_timeseries_ids` to select the
-  oldest checkpoints (nulls first) for each batch.
+  oldest checkpoints (nulls first) for each batch among active rows
+  (`uk_aq_core.timeseries.ended_at is null`).
 - `ingest_uk_air_sos` upserts rows after each batch run.
+- Lifecycle end-dating/reactivation is stored on `uk_aq_core.timeseries`
+  (`last_catalog_seen_at`, `catalog_missing_runs`, `ended_at`), not in this checkpoint table.

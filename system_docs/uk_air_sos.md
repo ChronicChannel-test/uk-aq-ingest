@@ -79,7 +79,15 @@ python3 scripts/uk_air_sos/uk_air_sos_ingest.py --station-type AURN --region Bri
 The Edge Function `ingest_uk_air_sos` polls recent observations using the existing `timeseries` rows.
 It does not update `stations.station_name` (station metadata comes from the ingest/list scripts).
 `uk_air_sos_timeseries_checkpoints` tracks the last poll attempt per timeseries so the dispatcher can rotate batches.
+Both edge and Cloud Run polling paths only select active rows (`timeseries.ended_at is null`).
 Pollutant filters now match canonical observed-property codes/display names (via `phenomena.observed_property_id -> observed_properties`) with fallback to legacy `notation`/`label`/`source_label`.
+
+## Timeseries lifecycle reconciliation
+- Daily full-catalog UK-AIR discovery (`scripts/uk_air_sos/uk_air_sos_ingest.py --discover` when timeseries are not station-scoped) is the source of truth for timeseries lifecycle.
+- `timeseries.last_catalog_seen_at` stores the last discovery run where the source `timeseries_ref` was present.
+- `timeseries.catalog_missing_runs` increments when an active timeseries is absent from a full-catalog discovery.
+- `timeseries.ended_at` is set after 2 consecutive missing runs.
+- If a previously ended `timeseries_ref` reappears in discovery, it is automatically reactivated (`ended_at` cleared, `catalog_missing_runs` reset to `0`).
 
 ## Cloud Run polling
 - Cloud Run worker: `workers/uk_aq_uk_air_sos_cloud_run/run_job.ts`

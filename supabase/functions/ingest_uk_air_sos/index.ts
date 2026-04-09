@@ -1548,6 +1548,7 @@ async function loadTimeseries(
     >("GET", "timeseries", {
       select: "id,timeseries_ref,service_ref,phenomenon_id,last_value_at",
       connector_id: `eq.${connectorId}`,
+      ended_at: "is.null",
       limit: String(PAGE_SIZE),
       offset: String(offset),
     });

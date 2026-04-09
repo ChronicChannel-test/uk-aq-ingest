@@ -9,6 +9,7 @@ This note describes how the `timeseries` and `observations` tables work, how to 
 - Each series is tied to a monitoring site via `timeseries.station_id` (FK → `stations.id`).
 - Series identify a pollutant/parameter via `timeseries.phenomenon_id` and include units, labels, and raw metadata.
 - The pair `(connector_id, service_ref, timeseries_ref)` is unique, so each external SOS series maps to exactly one row.
+- UK-AIR lifecycle fields: `last_catalog_seen_at`, `catalog_missing_runs`, `ended_at` (ended rows are not polled).
 
 ### `observations`
 - Stores the actual time-value measurements for each series.

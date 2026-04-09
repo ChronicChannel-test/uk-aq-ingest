@@ -500,6 +500,9 @@ Stations bbox:
 - If `connectors.stations_bbox_supported` is false, the script skips bbox when calling `/stations`.
 Timeseries station filter:
 - If `connectors.timeseries_station_filter_supported` is false, the script skips station filtering for `/timeseries`.
+- On full-catalog discovery runs (timeseries not station-scoped), the script reconciles UK-AIR timeseries lifecycle:
+  present refs set `last_catalog_seen_at` and reset `catalog_missing_runs`; missing active refs increment
+  `catalog_missing_runs`; `ended_at` is set after 2 consecutive misses; reappearing refs auto-reactivate.
 Phenomenon lookup:
 - If a timeseries label contains a `dd.eionet.europa.eu/vocabulary/aq/pollutant/` URL and `phenomenon` is missing, the script resolves Eionet metadata and stores `phenomena.source_label` + `phenomena.notation` (shortname), with `label` falling back to `prefLabel`.
 

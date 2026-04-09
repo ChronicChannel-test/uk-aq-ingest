@@ -141,12 +141,14 @@ begin
       max(t.last_value_at) as last_observed_at
     from timeseries t
     where t.connector_id = v_connector_id
+      and t.ended_at is null
     group by t.station_id
   ),
   station_with_timeseries as (
     select distinct t.station_id
     from timeseries t
     where t.connector_id = v_connector_id
+      and t.ended_at is null
   ),
   candidates as (
     select

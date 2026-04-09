@@ -203,7 +203,9 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
 - Notes:
   - Requires an existing connector row; the ingest does not create connectors.
   - Edge path checkpointing is unchanged and uses `uk_air_sos_timeseries_checkpoints`.
+  - Polling reads only active SOS rows (`uk_aq_core.timeseries.ended_at is null`); ended rows are excluded from edge and Cloud Run polling scopes.
   - Cloud Run path uses station-level selector/checkpoints (`uk_air_sos_select_station_refs`, `uk_air_sos_station_checkpoints`) before passing scoped `timeseries_ids` into the same ingest handler.
+  - Daily full-catalog UK-AIR discovery reconciles timeseries lifecycle: rows missing for 2 consecutive runs get `timeseries.ended_at`; reappearing rows are auto-reactivated.
   - Logs cron secret mismatch diagnostics (presence/length only) when authorization fails.
   - Skips timeseries with missing `last_value_at` or `last_value_at` older than the poll window.
   - When `timeseries_ids` are explicitly scoped (Cloud Run path) and recency filtering would otherwise yield zero work, it falls back to polling stale `last_value_at` rows for that scoped set to recover after pauses.

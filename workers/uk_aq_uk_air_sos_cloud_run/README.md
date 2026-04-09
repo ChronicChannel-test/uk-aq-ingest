@@ -8,7 +8,7 @@ This Cloud Run service runs UK-AIR SOS ingest in Google Cloud using the existing
 1. Checks connector due state in `uk_aq_core.connectors`.
 2. Claims the connector via `uk_aq_public.uk_aq_rpc_dispatch_claim`.
 3. Selects due SOS station refs with `uk_aq_core.uk_air_sos_select_station_refs`.
-4. Resolves scoped `timeseries_ids` for those stations and invokes local SOS ingest once.
+4. Resolves scoped active `timeseries_ids` (`timeseries.ended_at is null`) for those stations and invokes local SOS ingest once.
 5. Records run status in `connectors` + `uk_aq_ingest_runs` (+ `error_logs` on failure).
 6. Updates `uk_aq_raw.uk_air_sos_station_checkpoints` after successful/partial runs.
 7. Writes observs via shared observs client mode (`OBSERVS_WRITE_MODE`, workflow default `pubsub_only`).

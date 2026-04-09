@@ -84,6 +84,7 @@ UK_BBOX = {
 DEFAULT_POLLUTANTS = {"no2", "o3", "pm10", "pm2.5"}
 EIONET_POLLUTANT_RE = re.compile(r"https?://dd\.eionet\.europa\.eu/vocabulary/aq/pollutant/\d+")
 DEFAULT_TIMESERIES_STATION_BATCH_SIZE = 50
+UK_AIR_TIMESERIES_END_MISSING_RUNS = 2
 DEFAULT_RAW_DROPBOX_FOLDER = "/connectors/uk_air_sos/raw_data"
 DEFAULT_ERROR_DROPBOX_FOLDER = "/error_log"
 DROPBOX_TOKEN_URL = "https://api.dropbox.com/oauth2/token"
@@ -1178,6 +1179,138 @@ class SupabaseWriter:
             ).execute()
         return label_match_count
 
+    def _fetch_timeseries_lifecycle_rows(
+        self,
+        connector_id: int,
+        service_ref: str,
+    ) -> List[Dict[str, Any]]:
+        rows: List[Dict[str, Any]] = []
+        offset = 0
+        batch_size = 1000
+        while True:
+            resp = (
+                self.core.table("timeseries")
+                .select("id,timeseries_ref,catalog_missing_runs,ended_at")
+                .eq("connector_id", connector_id)
+                .eq("service_ref", str(service_ref))
+                .order("id", desc=False)
+                .range(offset, offset + batch_size - 1)
+                .execute()
+            )
+            data = resp.data if hasattr(resp, "data") else resp.get("data")
+            if not data:
+                break
+            if isinstance(data, list):
+                rows.extend([row for row in data if isinstance(row, dict)])
+            elif isinstance(data, dict):
+                rows.append(data)
+            if not isinstance(data, list) or len(data) < batch_size:
+                break
+            offset += batch_size
+        return rows
+
+    def reconcile_timeseries_catalog(
+        self,
+        connector_id: int,
+        service_ref: str,
+        seen_timeseries_refs: Sequence[str],
+        seen_at: datetime,
+        end_after_missing_runs: int = UK_AIR_TIMESERIES_END_MISSING_RUNS,
+    ) -> Dict[str, int]:
+        seen_refs = {
+            str(ref).strip()
+            for ref in seen_timeseries_refs
+            if ref is not None and str(ref).strip()
+        }
+        stats = {
+            "seen_refs": len(seen_refs),
+            "existing_rows": 0,
+            "rows_seen_updated": 0,
+            "rows_missing_incremented": 0,
+            "rows_ended": 0,
+            "rows_reactivated": 0,
+            "skipped": 0,
+        }
+        if not seen_refs:
+            LOG.warning(
+                "Timeseries lifecycle reconcile skipped: discovered catalog is empty "
+                "(connector_id=%s service_ref=%s).",
+                connector_id,
+                service_ref,
+            )
+            stats["skipped"] = 1
+            return stats
+        if end_after_missing_runs < 1:
+            end_after_missing_runs = 1
+        try:
+            existing_rows = self._fetch_timeseries_lifecycle_rows(connector_id, service_ref)
+        except Exception as exc:
+            LOG.warning(
+                "Timeseries lifecycle reconcile skipped (schema/query error): %s",
+                exc,
+            )
+            stats["skipped"] = 1
+            return stats
+        stats["existing_rows"] = len(existing_rows)
+        if not existing_rows:
+            return stats
+
+        seen_at_value = seen_at.isoformat()
+        seen_updates: List[Dict[str, Any]] = []
+        missing_updates: List[Dict[str, Any]] = []
+
+        for row in existing_rows:
+            try:
+                row_id = int(row.get("id"))
+            except (TypeError, ValueError):
+                continue
+            timeseries_ref = str(row.get("timeseries_ref") or "").strip()
+            if not timeseries_ref:
+                continue
+            raw_missing_runs = row.get("catalog_missing_runs")
+            try:
+                current_missing_runs = int(raw_missing_runs) if raw_missing_runs is not None else 0
+            except (TypeError, ValueError):
+                current_missing_runs = 0
+            if current_missing_runs < 0:
+                current_missing_runs = 0
+            ended_at = row.get("ended_at")
+
+            if timeseries_ref in seen_refs:
+                seen_updates.append(
+                    {
+                        "id": row_id,
+                        "last_catalog_seen_at": seen_at_value,
+                        "catalog_missing_runs": 0,
+                        "ended_at": None,
+                    }
+                )
+                if ended_at is not None:
+                    stats["rows_reactivated"] += 1
+                continue
+
+            if ended_at is not None:
+                continue
+
+            next_missing_runs = current_missing_runs + 1
+            update_payload: Dict[str, Any] = {
+                "id": row_id,
+                "catalog_missing_runs": next_missing_runs,
+            }
+            if next_missing_runs >= end_after_missing_runs:
+                update_payload["ended_at"] = seen_at_value
+                stats["rows_ended"] += 1
+            missing_updates.append(update_payload)
+
+        for chunk in _chunked(seen_updates, 500):
+            self.core.table("timeseries").upsert(chunk, on_conflict="id").execute()
+        for chunk in _chunked(missing_updates, 500):
+            self.core.table("timeseries").upsert(chunk, on_conflict="id").execute()
+
+        stats["rows_seen_updated"] = len(seen_updates)
+        stats["rows_missing_incremented"] = len(missing_updates)
+        return stats
+
     def get_station_id_map(
         self, connector_id: int, service_ref: str, station_refs: Sequence[str]
     ) -> Dict[str, int]:
@@ -1735,6 +1868,25 @@ class UkAirIngestor:
                 connector.id,
                 connector.service_ref,
                 connector.label,
+            )
+        if station_refs is None:
+            lifecycle_stats = self.writer.reconcile_timeseries_catalog(
+                connector.id,
+                connector.service_ref,
+                [str(ts.get("id")) for ts in series if ts.get("id") is not None],
+                seen_at=utcnow(),
+                end_after_missing_runs=UK_AIR_TIMESERIES_END_MISSING_RUNS,
+            )
+            LOG.info(
+                "Timeseries lifecycle reconcile complete "
+                "(seen_refs=%s existing=%s seen_updated=%s missing_incremented=%s ended=%s reactivated=%s skipped=%s).",
+                lifecycle_stats["seen_refs"],
+                lifecycle_stats["existing_rows"],
+                lifecycle_stats["rows_seen_updated"],
+                lifecycle_stats["rows_missing_incremented"],
+                lifecycle_stats["rows_ended"],
+                lifecycle_stats["rows_reactivated"],
+                lifecycle_stats["skipped"],
             )
         timeseries_id_map = self.writer.get_timeseries_id_map(
             connector.id,
