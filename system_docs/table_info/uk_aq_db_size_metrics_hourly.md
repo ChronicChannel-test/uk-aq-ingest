@@ -11,7 +11,7 @@ Hourly database size points used by the dashboard DB cluster trend charts.
 - `bucket_hour` (timestamptz, PK part): UTC hour bucket for the sample.
 - `database_label` (text, PK part): Database identifier (`ingestdb` or `obs_aqidb`).
 - `database_name` (text): Postgres database name returned by `current_database()` in the source project.
-- `size_bytes` (bigint): Cluster-wide database size in bytes from `sum(pg_database_size(pg_database.datname))` over `pg_database`.
+- `size_bytes` (bigint): Current project database size in bytes from `pg_database_size(current_database())`.
 - `oldest_observed_at` (timestamptz, nullable): Oldest source timestamp persisted for that DB at sample time (null when unavailable).
 - `source` (text): Writer source tag (typically `uk_aq_db_size_logger_pg_cron` or `uk_aq_db_size_logger_cloud_run`).
 - `recorded_at` (timestamptz): Exact sample timestamp.

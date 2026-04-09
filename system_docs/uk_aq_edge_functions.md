@@ -148,7 +148,7 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
   - Mixed rows across connectors are processed in the same batch, reducing history RPC call overhead.
 
 ### DB Size Logger (Cloud Run)
-- Purpose: Sample cluster-wide DB size (sum of `pg_database_size(datname)` across `pg_database`) from ingest DB and Obs AQI DB once per run, then upsert hourly points into ingest DB. It also writes R2 History domain metrics, and can still write Obs AQI schema-size metrics only when explicitly re-enabled as a fallback.
+- Purpose: Sample current project DB size (`pg_database_size(current_database())`) from ingest DB and Obs AQI DB once per run, then upsert hourly points into ingest DB. It also writes R2 History domain metrics, and can still write Obs AQI schema-size metrics only when explicitly re-enabled as a fallback.
 - Triggered by: Cloud Scheduler -> Cloud Run service (`workers/uk_aq_db_size_logger_cloud_run`).
 - Reads:
   - Ingest DB RPC: `uk_aq_public.uk_aq_rpc_database_size_bytes`
