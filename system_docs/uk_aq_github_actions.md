@@ -19,6 +19,14 @@ Cloud Run deploy idempotency:
   `gcloud run jobs update` when image/env/secret/label config is unchanged.
 - Deploy updates use `--set-secrets` to replace secret bindings, which removes
   stale bindings from prior revisions.
+- Ingest Cloud Run service deploy workflows (`uk_aq_openaq_cloud_run_deploy.yml`,
+  `uk_aq_breathelondon_cloud_run_deploy.yml`,
+  `uk_aq_uk_air_sos_cloud_run_deploy.yml`,
+  `uk_aq_scomm_cloud_run_deploy.yml`) now bind optional secrets only when
+  their corresponding values are configured for that deploy (and only bind
+  Dropbox secrets when the full `DROPBOX_APP_KEY/SECRET/REFRESH_TOKEN` set is
+  present). This reduces unnecessary Secret Manager access operations on
+  container startup.
 - Deploy updates apply `--update-labels "job_name=<job>"` and verify the
   deployed job label after each run.
 
