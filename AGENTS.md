@@ -47,6 +47,9 @@
 - Remove any legacy code if it is definitely redundant.
 - This project was never completed, so assume all existing code is still relevant.
 
+## Environment Variables
+- Whenever a new environment variable is added to any repo, add a corresponding row to the master CSV at `CIC-test-uk-aq-ops/env-vars-master.csv`. Place it in the correct section, fill in the env var name, default value, and which services require it (GitHub/Supabase/Cloudflare/GCP). Leave the Test Value and Live Value columns blank — the user maintains those.
+
 ## Documentation
 - Add a script note to `system_docs/uk_aq_scripts.md` when new scripts are added.
 - Add a per-network doc in `system_docs/` (e.g., `uk_air_sos.md`) when a new network is introduced.
