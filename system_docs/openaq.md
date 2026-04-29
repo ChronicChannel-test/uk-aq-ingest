@@ -39,6 +39,13 @@ This network uses OpenAQ's API to pull UK monitoring locations and latest values
   `OPENAQ_DEFAULT_BATCH_LIMIT` and `OPENAQ_STALE_LIMIT`, with tier1 re-poll guard
   configurable via `OPENAQ_TIER1_RETRY_SECONDS` (default 300s).
 - Uses OpenAQ rate-limit headers as a guardrail and stops issuing new requests when remaining is low.
+- Cloud Run wrapper applies an hourly request guard (`OPENAQ_MAX_REQUESTS_PER_HOUR`,
+  default `1900`) using recent `uk_aq_ingest_runs.response_payload.requests_total`.
+  When the hourly budget is exhausted, runs are recorded as `Skipped - Rate Limit`
+  and the next run is deferred to reset (or `OPENAQ_RATE_LIMIT_FALLBACK_SECONDS`,
+  default 300s, when reset metadata is unavailable).
+- Auth safety guard can auto-disable OpenAQ connector polling on `auth_401`/`auth_403`
+  (`OPENAQ_AUTH_SAFETY_DISABLE_POLLING=true`) and clear queued self-tasks.
 - When `OPENAQ_INGEST_STATION_FETCH=true`, the ingest performs the bbox station fetch; otherwise it only polls latest values using cached metadata.
 
 ## Connector creation

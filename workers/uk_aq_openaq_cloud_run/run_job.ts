@@ -67,6 +67,18 @@ const OPENAQ_NEXT_CHECK_SKIPPED_MIN_SECONDS = parsePositiveInt(
   Deno.env.get("OPENAQ_NEXT_CHECK_SKIPPED_MIN_SECONDS"),
   OPENAQ_NEXT_CHECK_MIN_SECONDS,
 );
+const OPENAQ_RATE_LIMIT_FALLBACK_SECONDS = parsePositiveInt(
+  Deno.env.get("OPENAQ_RATE_LIMIT_FALLBACK_SECONDS"),
+  300,
+);
+const OPENAQ_MAX_REQUESTS_PER_HOUR = parsePositiveInt(
+  Deno.env.get("OPENAQ_MAX_REQUESTS_PER_HOUR"),
+  1900,
+);
+const OPENAQ_AUTH_SAFETY_DISABLE_POLLING = parseBool(
+  Deno.env.get("OPENAQ_AUTH_SAFETY_DISABLE_POLLING"),
+  true,
+);
 const OPENAQ_FAILURE_RETRY_SECONDS = parsePositiveInt(
   Deno.env.get("OPENAQ_FAILURE_RETRY_SECONDS"),
   120,
@@ -196,10 +208,24 @@ type OpenAQStationRefRow = {
   station_id: unknown;
 };
 
+type OpenAQHourlyUsageRow = {
+  run_started_at: unknown;
+  response_payload: unknown;
+};
+
 type PendingOpenAQTask = {
   name: string;
   scheduleAt: string;
   scheduleAtMs: number;
+};
+
+type OpenAQHourlyBudgetState = {
+  cap: number;
+  used: number;
+  remaining: number;
+  resetAt: string | null;
+  rowsConsidered: number;
+  windowStartIso: string;
 };
 
 function requiredEnv(name: string): string {
@@ -309,6 +335,27 @@ function toPositiveIntegerOrNull(value: unknown): number | null {
     return null;
   }
   return parsed;
+}
+
+function isRateLimitReason(reason: string | null): boolean {
+  if (!reason) {
+    return false;
+  }
+  return [
+    "remaining_low",
+    "rate_limit_429",
+    "rate_limit_guard",
+    "request_budget_limited",
+    "max_requests_per_run",
+    "hourly_rate_limit_guard",
+  ].includes(reason);
+}
+
+function isAuthStopReason(reason: string | null): boolean {
+  if (!reason) {
+    return false;
+  }
+  return reason === "auth_401" || reason === "auth_403";
 }
 
 function parseTimestamp(value: unknown): Date | null {
@@ -543,8 +590,10 @@ async function loadEarliestNextDueAt(
 
 async function buildIngestPayload(
   connector: ConnectorConfig | null,
+  options: { batchLimitOverride?: number } = {},
 ): Promise<{
   payload: Record<string, unknown>;
+  configuredBatchLimit: number;
   batchLimit: number;
   windowHours: number;
   staleLimit: number;
@@ -558,7 +607,11 @@ async function buildIngestPayload(
   const connectorCode = toStringOrNull(payload.connector_code) ||
     CONNECTOR_CODE;
   const windowHours = getWindowHours(connector);
-  const batchLimit = getBatchLimit(connector);
+  const configuredBatchLimit = getBatchLimit(connector);
+  const requestedOverride = toIntegerOrNull(options.batchLimitOverride);
+  const batchLimit = requestedOverride === null
+    ? configuredBatchLimit
+    : Math.max(0, Math.min(configuredBatchLimit, requestedOverride));
   const staleLimitConfigured = toPositiveIntegerOrNull(payload.stale_limit) ??
     DEFAULT_STALE_LIMIT;
   const staleLimit = Math.min(staleLimitConfigured, Math.max(0, batchLimit));
@@ -580,6 +633,7 @@ async function buildIngestPayload(
 
   return {
     payload,
+    configuredBatchLimit,
     batchLimit,
     windowHours,
     staleLimit,
@@ -614,11 +668,8 @@ function deriveRunSummary(ingestResponse: IngestResponse): RunSummary {
     null;
   const rateLimitStopReason = toStringOrNull(payload?.rate_limit_stop_reason)
     ?.toLowerCase() ?? null;
-  const rateLimitStop = payload?.rate_limit_stop === true ||
-    Boolean(rateLimitStopReason) ||
-    stoppedReason === "remaining_low" ||
-    stoppedReason === "rate_limit_429" ||
-    stoppedReason === "rate_limit_guard";
+  const rateLimitStop = isRateLimitReason(rateLimitStopReason) ||
+    isRateLimitReason(stoppedReason);
   const requestsTotal = toIntegerOrNull(payload?.requests_total);
   const maxRequestsPerRun = toIntegerOrNull(payload?.max_requests_per_run);
   const gapRequestsSkippedBudget = toIntegerOrNull(
@@ -635,12 +686,17 @@ function deriveRunSummary(ingestResponse: IngestResponse): RunSummary {
     stoppedReason === "request_budget_limited" ||
     stoppedReason === "max_requests_per_run";
 
-  if (
-    partial || stoppedReason !== null || rateLimitStop || requestBudgetLimited
-  ) {
+  if (rateLimitStop || requestBudgetLimited) {
+    return {
+      runStatus: "skipped",
+      runMessage: "Skipped - Rate Limit",
+      payload,
+    };
+  }
+
+  if (partial || stoppedReason !== null) {
     const reason = stoppedReason ||
-      (rateLimitStop ? (rateLimitStopReason || "rate_limit_guard") : null) ||
-      (requestBudgetLimited ? "request_budget_limited" : null) ||
+      (isAuthStopReason(rateLimitStopReason) ? rateLimitStopReason : null) ||
       "partial_run";
     return {
       runStatus: "partial",
@@ -734,6 +790,78 @@ async function resolveConnectorId(
     throw new Error(`Connector not found: ${CONNECTOR_CODE}`);
   }
   return id;
+}
+
+async function loadRecentHourlyRequestBudget(
+  now: Date,
+): Promise<OpenAQHourlyBudgetState> {
+  const windowStart = new Date(now.getTime() - 60 * 60 * 1000);
+  const windowStartIso = windowStart.toISOString();
+  const response = await postgrestRequest("GET", "uk_aq_ingest_runs", {
+    query: {
+      connector_code: `eq.${CONNECTOR_CODE}`,
+      run_started_at: `gte.${windowStartIso}`,
+      select: "run_started_at,response_payload",
+      order: "run_started_at.asc",
+      limit: "1000",
+    },
+  });
+  if (!response.ok) {
+    throw new Error(
+      `Failed to load OpenAQ hourly request usage (${response.status}): ${response.text}`,
+    );
+  }
+  const rows = Array.isArray(response.data)
+    ? response.data as OpenAQHourlyUsageRow[]
+    : [];
+
+  const usageRows: Array<{ runStartedAtMs: number; requests: number }> = [];
+  let used = 0;
+  for (const row of rows) {
+    const runStartedAt = parseTimestamp(row.run_started_at);
+    if (!runStartedAt) {
+      continue;
+    }
+    const payload = toObject(row.response_payload);
+    const requestsTotal = toIntegerOrNull(payload?.requests_total) ?? 0;
+    if (requestsTotal <= 0) {
+      continue;
+    }
+    const runStartedAtMs = runStartedAt.getTime();
+    if (!Number.isFinite(runStartedAtMs)) {
+      continue;
+    }
+    usageRows.push({ runStartedAtMs, requests: requestsTotal });
+    used += requestsTotal;
+  }
+
+  const cap = Math.max(1, OPENAQ_MAX_REQUESTS_PER_HOUR);
+  const remaining = Math.max(0, cap - used);
+  let resetAt: string | null = null;
+  if (remaining <= 0) {
+    let rollingUsed = used;
+    for (const row of usageRows) {
+      rollingUsed -= row.requests;
+      if (rollingUsed < cap) {
+        resetAt = new Date(row.runStartedAtMs + 60 * 60 * 1000).toISOString();
+        break;
+      }
+    }
+    if (!resetAt) {
+      resetAt = new Date(
+        now.getTime() + OPENAQ_RATE_LIMIT_FALLBACK_SECONDS * 1000,
+      ).toISOString();
+    }
+  }
+
+  return {
+    cap,
+    used,
+    remaining,
+    resetAt,
+    rowsConsidered: usageRows.length,
+    windowStartIso,
+  };
 }
 
 async function loadConnector(): Promise<ConnectorConfig | null> {
@@ -835,6 +963,31 @@ async function updateConnectorRun(
   if (!response.ok) {
     throw new Error(
       `Failed to update connector run (${response.status}): ${response.text}`,
+    );
+  }
+}
+
+async function disableConnectorPollingForAuthStop(
+  connectorId: number,
+  runStartedAtIso: string,
+  runEndedAtIso: string,
+  authReason: string,
+): Promise<void> {
+  const message = `OpenAQ polling auto-disabled (${authReason})`;
+  const response = await postgrestRequest("PATCH", "connectors", {
+    query: { id: `eq.${connectorId}` },
+    body: {
+      poll_enabled: false,
+      last_run_start: runStartedAtIso,
+      last_run_end: runEndedAtIso,
+      last_run_status: "skipped",
+      last_run_message: message,
+    },
+    prefer: "return=minimal",
+  });
+  if (!response.ok) {
+    throw new Error(
+      `Failed to disable OpenAQ polling after ${authReason} (${response.status}): ${response.text}`,
     );
   }
 }
@@ -1312,6 +1465,41 @@ async function deletePendingTasks(
   return { deletedCount, deleteErrors };
 }
 
+async function clearPendingOpenaqTasks(
+  reason: string,
+): Promise<void> {
+  const tasksState = effectiveTasksEnabled();
+  if (!tasksState.enabled) {
+    logSummary("task_clear_skipped", {
+      reason,
+      tasks_state: tasksState.reason,
+    });
+    return;
+  }
+  const queueUri =
+    `https://cloudtasks.googleapis.com/v2/projects/${OPENAQ_GCP_PROJECT_ID}/locations/${OPENAQ_GCP_REGION}/queues/${OPENAQ_TASK_QUEUE_ID}/tasks`;
+  const token = await fetchGoogleAccessToken();
+  const pendingTasks = await listPendingOpenaqTasks(queueUri, token);
+  if (!pendingTasks.length) {
+    logSummary("task_clear_skipped", {
+      reason,
+      tasks_state: "no_pending_tasks",
+    });
+    return;
+  }
+  const { deletedCount, deleteErrors } = await deletePendingTasks(
+    pendingTasks,
+    token,
+    reason,
+  );
+  logSummary("task_cleared_for_safety", {
+    reason,
+    pending_count: pendingTasks.length,
+    deleted_count: deletedCount,
+    delete_errors: deleteErrors,
+  });
+}
+
 function hasEarlierOrEqualPendingTask(
   pendingTasks: PendingOpenAQTask[],
   requestedScheduleMs: number,
@@ -1550,10 +1738,27 @@ function deriveRateLimitResetAt(
   if (!payload) {
     return null;
   }
-  const stopReason = toStringOrNull(payload.rate_limit_stop_reason);
-  const rateLimitStop = payload.rate_limit_stop === true ||
-    stopReason === "remaining_low" ||
-    stopReason === "rate_limit_429";
+  const stopReason = toStringOrNull(payload.stopped_reason)?.toLowerCase() ??
+    null;
+  const rateLimitStopReason =
+    toStringOrNull(payload.rate_limit_stop_reason)?.toLowerCase() ??
+      null;
+  const requestsTotal = toIntegerOrNull(payload.requests_total);
+  const maxRequestsPerRun = toIntegerOrNull(payload.max_requests_per_run);
+  const gapRequestsSkippedBudget = toIntegerOrNull(
+    payload.gap_requests_skipped_budget,
+  );
+  const requestBudgetLimited =
+    (gapRequestsSkippedBudget !== null && gapRequestsSkippedBudget > 0) ||
+    (
+      requestsTotal !== null &&
+      maxRequestsPerRun !== null &&
+      maxRequestsPerRun > 0 &&
+      requestsTotal >= maxRequestsPerRun
+    );
+  const rateLimitStop = isRateLimitReason(rateLimitStopReason) ||
+    isRateLimitReason(stopReason) ||
+    requestBudgetLimited;
   if (!rateLimitStop) {
     return null;
   }
@@ -1571,24 +1776,29 @@ function deriveRateLimitResetAt(
         : nowMs + Math.max(0, numericReset * 1000);
     return new Date(resetMs).toISOString();
   }
-  return null;
+  return new Date(
+    Date.now() + OPENAQ_RATE_LIMIT_FALLBACK_SECONDS * 1000,
+  ).toISOString();
 }
 
 async function recordSkippedRun(
   connectorId: number,
   runStartedAtIso: string,
   runMessage: string,
+  payloadExtras: Record<string, unknown> | null = null,
 ): Promise<void> {
   const runEndedAtIso = new Date().toISOString();
   const runStatus = "skipped";
+  const payload = {
+    run_status: runStatus,
+    run_message: runMessage,
+    connector_code: CONNECTOR_CODE,
+    ...(payloadExtras ?? {}),
+  };
   const ingestResponse: IngestResponse = {
     ok: true,
     status: 204,
-    body: {
-      run_status: runStatus,
-      run_message: runMessage,
-      connector_code: CONNECTOR_CODE,
-    },
+    body: payload,
     raw: "",
   };
   await updateConnectorRun(
@@ -1605,7 +1815,7 @@ async function recordSkippedRun(
     runStatus,
     runMessage,
     ingestResponse,
-    toObject(ingestResponse.body),
+    payload,
     null,
   );
 }
@@ -1671,7 +1881,62 @@ async function main(): Promise<void> {
     connectorId = await resolveConnectorId(null);
   }
 
-  const payloadPlan = await buildIngestPayload(connector);
+  let hourlyBudget: OpenAQHourlyBudgetState = {
+    cap: OPENAQ_MAX_REQUESTS_PER_HOUR,
+    used: 0,
+    remaining: OPENAQ_MAX_REQUESTS_PER_HOUR,
+    resetAt: null,
+    rowsConsidered: 0,
+    windowStartIso: new Date(now.getTime() - 60 * 60 * 1000).toISOString(),
+  };
+  try {
+    hourlyBudget = await loadRecentHourlyRequestBudget(now);
+  } catch (error) {
+    logSummary("hourly_budget_lookup_failed", {
+      trigger_mode: OPENAQ_TRIGGER_MODE,
+      connector_id: connectorId,
+      error: shortError(error),
+      fallback_cap: OPENAQ_MAX_REQUESTS_PER_HOUR,
+    });
+  }
+  if (hourlyBudget.remaining <= 0) {
+    await recordSkippedRun(
+      connectorId,
+      runStartedAtIso,
+      "Skipped - Rate Limit",
+      {
+        stopped_reason: "hourly_rate_limit_guard",
+        rate_limit_stop: true,
+        rate_limit_stop_reason: "hourly_rate_limit_guard",
+        rate_limit_reset_at: hourlyBudget.resetAt,
+        requests_total: 0,
+        max_requests_per_run: 0,
+      },
+    );
+    await scheduleNextCheck(
+      connectorId,
+      "rate_limit_hourly_guard",
+      "skipped",
+      false,
+      hourlyBudget.resetAt,
+    );
+    logSummary("skipped", {
+      reason: "rate_limit_hourly_guard",
+      trigger_mode: OPENAQ_TRIGGER_MODE,
+      connector_id: connectorId,
+      max_requests_per_hour: hourlyBudget.cap,
+      hourly_requests_used: hourlyBudget.used,
+      hourly_requests_remaining: hourlyBudget.remaining,
+      hourly_window_start: hourlyBudget.windowStartIso,
+      hourly_rows_considered: hourlyBudget.rowsConsidered,
+      next_retry_at: hourlyBudget.resetAt,
+    });
+    return;
+  }
+
+  const payloadPlan = await buildIngestPayload(connector, {
+    batchLimitOverride: hourlyBudget.remaining,
+  });
   if (!payloadPlan.stationRows.length) {
     await recordSkippedRun(connectorId, runStartedAtIso, "no_station_refs");
     await scheduleNextCheck(
@@ -1685,6 +1950,11 @@ async function main(): Promise<void> {
       reason: "no_station_refs",
       trigger_mode: OPENAQ_TRIGGER_MODE,
       connector_id: connectorId,
+      max_requests_per_hour: hourlyBudget.cap,
+      hourly_requests_used: hourlyBudget.used,
+      hourly_requests_remaining: hourlyBudget.remaining,
+      hourly_window_start: hourlyBudget.windowStartIso,
+      configured_batch_limit: payloadPlan.configuredBatchLimit,
       batch_limit: payloadPlan.batchLimit,
       tiered_limit: payloadPlan.tieredLimit,
       stale_limit: payloadPlan.staleLimit,
@@ -1696,6 +1966,10 @@ async function main(): Promise<void> {
   logSummary("dispatching", {
     trigger_mode: OPENAQ_TRIGGER_MODE,
     connector_id: connectorId,
+    max_requests_per_hour: hourlyBudget.cap,
+    hourly_requests_used: hourlyBudget.used,
+    hourly_requests_remaining: hourlyBudget.remaining,
+    configured_batch_limit: payloadPlan.configuredBatchLimit,
     batch_limit: payloadPlan.batchLimit,
     tiered_limit: payloadPlan.tieredLimit,
     stale_limit: payloadPlan.staleLimit,
@@ -1724,6 +1998,8 @@ async function main(): Promise<void> {
   let runFailed = false;
   let runStatus = "failed";
   let rateLimitResetAt: string | null = null;
+  let suppressScheduling = false;
+  let suppressSchedulingReason: string | null = null;
   let summary: RunSummary;
 
   try {
@@ -1778,14 +2054,45 @@ async function main(): Promise<void> {
     }
 
     rateLimitResetAt = deriveRateLimitResetAt(summary.payload);
-
-    await updateConnectorRun(
-      connectorId,
-      runStartedAtIso,
-      runEndedAtIso,
-      runStatus,
-      summary.runMessage,
-    );
+    const stoppedReason =
+      toStringOrNull(summary.payload?.stopped_reason)?.toLowerCase() ?? null;
+    const rateLimitStopReason = toStringOrNull(
+      summary.payload?.rate_limit_stop_reason,
+    )?.toLowerCase() ?? null;
+    const authReason = isAuthStopReason(stoppedReason)
+      ? stoppedReason
+      : (isAuthStopReason(rateLimitStopReason) ? rateLimitStopReason : null);
+    if (OPENAQ_AUTH_SAFETY_DISABLE_POLLING && authReason) {
+      suppressScheduling = true;
+      suppressSchedulingReason = `auth_safety_${authReason}`;
+      runStatus = "skipped";
+      runFailed = false;
+      summary = {
+        runStatus: "skipped",
+        runMessage: `OpenAQ polling auto-disabled (${authReason})`,
+        payload: {
+          ...(summary.payload ?? {}),
+          run_status: "skipped",
+          run_message: `OpenAQ polling auto-disabled (${authReason})`,
+          stopped_reason: authReason,
+          rate_limit_stop_reason: authReason,
+        },
+      };
+      await disableConnectorPollingForAuthStop(
+        connectorId,
+        runStartedAtIso,
+        runEndedAtIso,
+        authReason,
+      );
+    } else {
+      await updateConnectorRun(
+        connectorId,
+        runStartedAtIso,
+        runEndedAtIso,
+        runStatus,
+        summary.runMessage,
+      );
+    }
 
     await insertRunRow(
       connectorId,
@@ -1797,6 +2104,17 @@ async function main(): Promise<void> {
       summary.payload,
       payloadPlan.stationRows.length,
     );
+
+    if (suppressScheduling) {
+      try {
+        await clearPendingOpenaqTasks(suppressSchedulingReason ?? "auth_safety");
+      } catch (error) {
+        logSummary("task_clear_failed", {
+          reason: suppressSchedulingReason ?? "auth_safety",
+          error: shortError(error),
+        });
+      }
+    }
 
     if (runFailed) {
       const inserted = await insertErrorLog(connectorId, ingestResponse);
@@ -1844,6 +2162,8 @@ async function main(): Promise<void> {
       series_polled: toIntegerOrNull(summary.payload?.series_polled),
       partial: summary.payload?.partial === true,
       stopped_reason: toStringOrNull(summary.payload?.stopped_reason),
+      suppress_scheduling: suppressScheduling,
+      suppress_scheduling_reason: suppressSchedulingReason,
     });
   } finally {
     try {
@@ -1864,21 +2184,29 @@ async function main(): Promise<void> {
       // Ignore shutdown race.
     }
 
-    try {
-      await scheduleNextCheck(
-        connectorId,
-        runFailed ? "failed_retry" : runStatus,
-        runStatus,
-        runFailed,
-        rateLimitResetAt,
-      );
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      logSummary("task_schedule_failed", {
+    if (suppressScheduling) {
+      logSummary("task_schedule_skipped", {
         trigger_mode: OPENAQ_TRIGGER_MODE,
         connector_id: connectorId,
-        error: message,
+        reason: suppressSchedulingReason ?? "suppressed",
       });
+    } else {
+      try {
+        await scheduleNextCheck(
+          connectorId,
+          runFailed ? "failed_retry" : runStatus,
+          runStatus,
+          runFailed,
+          rateLimitResetAt,
+        );
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        logSummary("task_schedule_failed", {
+          trigger_mode: OPENAQ_TRIGGER_MODE,
+          connector_id: connectorId,
+          error: message,
+        });
+      }
     }
   }
 

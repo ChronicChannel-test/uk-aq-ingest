@@ -1380,6 +1380,14 @@ async function openaqRequest(
         : JSON.stringify(payload);
       throw new Error(`OpenAQ request failed (401): ${message}`);
     }
+    if (resp.status === 403) {
+      rateLimitState.stop = true;
+      rateLimitState.stopReason = "auth_403";
+      const message = typeof payload === "string"
+        ? payload
+        : JSON.stringify(payload);
+      throw new Error(`OpenAQ request failed (403): ${message}`);
+    }
     if (resp.status === 429) {
       rateLimitState.stop = true;
       rateLimitState.stopReason = "rate_limit_429";

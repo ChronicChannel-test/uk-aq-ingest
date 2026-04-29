@@ -296,6 +296,9 @@ UK_AQ_EDGE_UPSTREAM_SECRET=...
 - Optional:
   - `OBS_AQIDB_SUPABASE_URL`, `OBS_AQIDB_SECRET_KEY` (required only for `OBSERVS_WRITE_MODE=direct`; not injected for `pubsub_only`/`outbox_only`)
   - `OPENAQ_OBSERVS_WRITE_MODE` (workflow default `pubsub_only` for direct history Pub/Sub publishing)
+  - `OPENAQ_MAX_REQUESTS_PER_HOUR` (workflow default `1900`; hourly OpenAQ wrapper budget)
+  - `OPENAQ_RATE_LIMIT_FALLBACK_SECONDS` (workflow default `300`; fallback delay when no OpenAQ reset timestamp is returned)
+  - `OPENAQ_AUTH_SAFETY_DISABLE_POLLING` (workflow default `true`; disables `connectors.poll_enabled` on OpenAQ auth 401/403)
   - `GCP_OBSERVS_PUBSUB_TOPIC`, `OBSERVS_PUBSUB_PUBLISH_BATCH_SIZE`
   - `SB_UK_AQ_CRON_SECRET`
   - Dropbox secrets (`DROPBOX_*`) and raw-upload allowlist env (`OPENAQ_RAW_DROPBOX_ALLOWED_SUPABASE_URL` or legacy `UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL`)

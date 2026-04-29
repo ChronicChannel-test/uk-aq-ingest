@@ -78,6 +78,7 @@ gcloud run deploy uk-aq-openaq-ingest \
 - `OPENAQ_SERVICE_REF` (default `openaq`)
 - `OPENAQ_DEFAULT_WINDOW_HOURS` (default `6`)
 - `OPENAQ_DEFAULT_BATCH_LIMIT` (default `56`)
+- `OPENAQ_MAX_REQUESTS_PER_HOUR` (default `1900`; hourly wrapper guard to stay below OpenAQ account cap)
 - `OPENAQ_STALE_LIMIT` (default `4`)
 - `OPENAQ_TIER1_RETRY_SECONDS` (default `300`; minimum seconds since `last_polled_at` for tier1 due candidates)
 - `OPENAQ_MIN_GAP_STATIONS` (default `1`; minimum selected gap stations needed to run regardless of non-gap count)
@@ -89,7 +90,9 @@ gcloud run deploy uk-aq-openaq-ingest \
 - `OPENAQ_NEXT_CHECK_MIN_SECONDS` (default `60`)
 - `OPENAQ_NEXT_CHECK_PARTIAL_MIN_SECONDS` (default `60`; minimum delay floor when run result is `partial`)
 - `OPENAQ_NEXT_CHECK_SKIPPED_MIN_SECONDS` (default `60`; minimum delay floor when run result is `skipped`)
+- `OPENAQ_RATE_LIMIT_FALLBACK_SECONDS` (default `300`; fallback delay when no OpenAQ reset timestamp is returned)
 - `OPENAQ_FAILURE_RETRY_SECONDS` (default `120`)
+- `OPENAQ_AUTH_SAFETY_DISABLE_POLLING` (default `true`; auto-disables connector polling on OpenAQ auth 401/403 and skips self-reschedule)
 - `OPENAQ_LAG_STAT` (default `min`; options: `min`, `median`, `p25` for non-gap checkpoint lag scheduling)
 - `OPENAQ_GCP_PROJECT_ID`, `OPENAQ_GCP_REGION`
 - `OPENAQ_CLOUD_RUN_TARGET` (recommended: `service`)

@@ -17,6 +17,7 @@ The worker:
    - When Dropbox error logging is enabled, the wrapper mirrors that inserted failure row into `/error_log/YYYY-MM-DD/` and patches `error_logs.dropbox_path`.
 6. Schedules the next run using Cloud Tasks based on earliest checkpoint due time.
 7. Publishes history rows using shared history mode (`OBSERVS_WRITE_MODE`).
+8. Enforces an hourly OpenAQ request budget (`OPENAQ_MAX_REQUESTS_PER_HOUR`) from recent `uk_aq_ingest_runs.response_payload.requests_total`; when exhausted, run rows are recorded as `run_status=skipped` and `run_message=Skipped - Rate Limit`.
 
 Run-summary metric note:
 - `uk_aq_ingest_runs.stations_updated` is populated from response station activity
@@ -61,10 +62,14 @@ Safety trigger mode:
 If no due checkpoint is available, worker schedules a short fallback recheck.
 When OpenAQ signals rate-limit stop/reset, the worker schedules no earlier than
 the reported reset time.
+If rate-limit metadata is missing a reset timestamp, the worker waits
+`OPENAQ_RATE_LIMIT_FALLBACK_SECONDS` (default 300 seconds).
 Delay floors are outcome-aware:
 - `OPENAQ_NEXT_CHECK_MIN_SECONDS` for succeeded runs.
 - `OPENAQ_NEXT_CHECK_PARTIAL_MIN_SECONDS` for partial runs.
 - `OPENAQ_NEXT_CHECK_SKIPPED_MIN_SECONDS` for skipped runs.
+Auth safety guard:
+- With `OPENAQ_AUTH_SAFETY_DISABLE_POLLING=true`, any OpenAQ `auth_401` or `auth_403` stop disables `connectors.poll_enabled`, skips rescheduling, and clears queued OpenAQ self-tasks.
 
 ## Required Config
 
@@ -80,9 +85,12 @@ Delay floors are outcome-aware:
 - `OPENAQ_MIN_GAP_STATIONS` (default `1`)
 - `OPENAQ_MIN_NON_GAP_STATIONS` (default `10`)
 - `OPENAQ_TIER1_RETRY_SECONDS` (default `300`; tier1 re-poll guard for station selection)
+- `OPENAQ_MAX_REQUESTS_PER_HOUR` (default `1900`; hourly OpenAQ request guard)
 - `OPENAQ_NEXT_CHECK_MIN_SECONDS` (default `60`)
 - `OPENAQ_NEXT_CHECK_PARTIAL_MIN_SECONDS` (default `60`)
 - `OPENAQ_NEXT_CHECK_SKIPPED_MIN_SECONDS` (default `60`)
+- `OPENAQ_RATE_LIMIT_FALLBACK_SECONDS` (default `300`; retry delay when rate-limit reset timestamp is absent)
+- `OPENAQ_AUTH_SAFETY_DISABLE_POLLING` (default `true`; auto-disable OpenAQ polling on auth 401/403)
 - `OPENAQ_INGEST_SCRIPT_PATH` (default `/app/runtime/ingest_openaq/index.ts`)
 - `OPENAQ_SAFETY_SUCCESS_LOOKBACK_MINUTES` (default `10`; only used when `OPENAQ_TRIGGER_MODE=safety`; applies to recent `succeeded|success|partial|skipped` runs)
 - `OPENAQ_LAG_STAT` (default `min`; options `min|median|p25` for OpenAQ lag samples)

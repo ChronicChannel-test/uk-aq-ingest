@@ -288,6 +288,7 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
   - Applies strict pre-write exact dedupe on `(connector_id, timeseries_id, observed_at, value, status)` before main observations upsert and before history write enqueue/publish.
   - `request_budget_limited` means the ingest was constrained by the local per-run request budget/gap guard (our budget), not OpenAQ API rate-limit headers.
   - OpenAQ API rate-limit-driven stops are surfaced as `remaining_low`, `rate_limit_429`, or `rate_limit_guard`.
+  - Cloud Run wrapper enforces an hourly OpenAQ request budget using recent `uk_aq_ingest_runs.response_payload.requests_total`; when exhausted, the wrapper records `run_status=skipped` with `run_message=Skipped - Rate Limit` and defers next run to reset/fallback.
   - Tracks per-station scheduling in `uk_aq_raw.openaq_station_checkpoints` (next due, last observed, sample arrays, last polled). `last_polled_at` only updates for stations where at least one OpenAQ request is issued in the run. When fewer than 10 interval/lag samples exist, `next_due_at` is set to `now() + 5 minutes`. Otherwise it uses the minimum interval (capped at 1 hour) plus lag selected by `OPENAQ_LAG_STAT` (`min` default, `median`, `p25`). If no observations are returned and `next_due_at` is null, it is set to `now() + 5 minutes`. For gap-mode stations with no new observations, `next_due_at` is set to `last_observed_at + min(observ_interval_samples)` capped at `+1 hour` (fallback `+1 hour` when samples are empty).
   - Tracks per-timeseries scheduling in `uk_aq_raw.openaq_timeseries_checkpoints` (next due, last observed, lag samples, last polled); when fewer than 10 lag samples exist, `next_due_at` is set to `now() + 5 minutes`. Otherwise it uses `last_observed_at + 3600s + lag_stat(lag)` (`OPENAQ_LAG_STAT`) and only updates `next_due_at` on new observations or when null.
   - Checkpoint reads are staged for lower egress: the first read loads lightweight per-timeseries `last_observed_at` snapshots from `uk_aq_raw.openaq_timeseries_checkpoints` for gap decisions, then full lag-sample rows are fetched only for timeseries being checkpoint-updated.
@@ -298,8 +299,9 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
   - Enforces a runtime budget (default 120s) and returns `partial=true` when exceeded.
   - Runtime-vs-rate-limit stop signaling is explicit: `partial=true` is only set when the runtime deadline is reached; rate-limit/request-budget early stops are reported via `stopped_reason` without forcing `partial=true`.
   - Requires `X-Cron-Secret` when `SB_UK_AQ_CRON_SECRET` is set.
-  - Stops issuing new requests when rate-limit remaining drops below the threshold (default 5), on HTTP 429, on OpenAQ HTTP 401, or when the per-run request budget is exhausted.
-  - Response metadata includes `rate_limit_reset` and `rate_limit_reset_at` so Cloud Run scheduling can defer next run until reset when throttled; if a pending self-task exists before reset, Cloud Run now replaces it with a post-reset task.
+  - Stops issuing new requests when rate-limit remaining drops below the threshold (default 5), on HTTP 429, on OpenAQ HTTP 401/403, or when the per-run request budget is exhausted.
+  - Response metadata includes `rate_limit_reset` and `rate_limit_reset_at` so Cloud Run scheduling can defer next run until reset when throttled; if no reset is present, Cloud Run falls back to `OPENAQ_RATE_LIMIT_FALLBACK_SECONDS` (default 300s).
+  - Cloud Run auth safety guard can auto-disable OpenAQ polling (`connectors.poll_enabled=false`) on OpenAQ auth 401/403 and clears queued OpenAQ self-tasks to avoid retry loops.
 - Logs:
   - Filename prefixes are runtime-specific via `OPENAQ_DROPBOX_UPLOAD_SOURCE`:
     - Edge runtime (default): `uk_aq_log_edge_openaq_`, `uk_aq_raw_edge_openaq_`, `uk_aq_error_edge_openaq_`.
@@ -652,6 +654,9 @@ Optional:
 - `OPENAQ_MIN_GAP_STATIONS` (optional; defaults to `1`; minimum selected gap stations needed to run regardless of non-gap count)
 - `OPENAQ_MIN_NON_GAP_STATIONS` (optional; defaults to `10`; skip when no gap stations and selected non-gap stations are below this threshold)
 - `OPENAQ_RATE_LIMIT_STOP_THRESHOLD` (optional; defaults to `5`)
+- `OPENAQ_MAX_REQUESTS_PER_HOUR` (optional; Cloud Run wrapper default `1900`; hourly OpenAQ budget guard)
+- `OPENAQ_RATE_LIMIT_FALLBACK_SECONDS` (optional; Cloud Run wrapper default `300`; retry delay when rate-limit reset is unavailable)
+- `OPENAQ_AUTH_SAFETY_DISABLE_POLLING` (optional; Cloud Run wrapper default `true`; auto-disable OpenAQ connector polling on auth 401/403)
 - `CLEANAIRSURB_ST_ID` (optional; defaults to `189841`; OpenAQ debug station id used in ingest debug logs)
 - `BREATHELONDON_BASE_URL` (optional override for Breathe London API base URL)
 - `BREATHELONDON_CONNECTOR_CODE` / `BREATHELONDON_SERVICE_REF` (optional override)
