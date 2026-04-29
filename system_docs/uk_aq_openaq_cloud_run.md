@@ -17,7 +17,7 @@ The worker:
    - When Dropbox error logging is enabled, the wrapper mirrors that inserted failure row into `/error_log/YYYY-MM-DD/` and patches `error_logs.dropbox_path`.
 6. Schedules the next run using Cloud Tasks based on earliest checkpoint due time.
 7. Publishes history rows using shared history mode (`OBSERVS_WRITE_MODE`).
-8. Enforces an hourly OpenAQ request budget (`OPENAQ_MAX_REQUESTS_PER_HOUR`) from recent `uk_aq_ingest_runs.response_payload.requests_total`; when exhausted, run rows are recorded as `run_status=skipped` and `run_message=Skipped - Rate Limit`.
+8. Enforces an hourly OpenAQ request budget (`OPENAQ_MAX_REQUESTS_PER_HOUR`) from recent `uk_aq_ingest_runs.response_payload.requests_total`; when exhausted before ingest starts, run rows are recorded as `run_status=skipped` and `run_message=Skipped - Hourly Limit`.
 
 Run-summary metric note:
 - `uk_aq_ingest_runs.stations_updated` is populated from response station activity
@@ -28,6 +28,9 @@ Run-summary metric note:
   request-budget stats, and selected/polled station counts).
 - `request_budget_limited` indicates local request-budget/gap-guard limiting
   (our configured per-run budget), not an OpenAQ API rate-limit stop.
+- Cloud Run status mapping is strict:
+  - `run_status=skipped` is reserved for station-eligibility skips (`no_station_refs`/ingest threshold skips) and hourly-cap skips (`hourly_rate_limit_guard`).
+  - Non-hourly OpenAQ rate-limit/request-budget stops are recorded as `run_status=partial` with the stop reason in `run_message`/`stopped_reason`.
 - When OpenAQ ingest returns `run_status=skipped` (for example, selected
   stations do not meet `OPENAQ_MIN_GAP_STATIONS`/`OPENAQ_MIN_NON_GAP_STATIONS`
   thresholds), the worker writes `run_status` as `skipped` and preserves
@@ -69,7 +72,7 @@ Delay floors are outcome-aware:
 - `OPENAQ_NEXT_CHECK_PARTIAL_MIN_SECONDS` for partial runs.
 - `OPENAQ_NEXT_CHECK_SKIPPED_MIN_SECONDS` for skipped runs.
 Auth safety guard:
-- With `OPENAQ_AUTH_SAFETY_DISABLE_POLLING=true`, any OpenAQ `auth_401` or `auth_403` stop disables `connectors.poll_enabled`, skips rescheduling, and clears queued OpenAQ self-tasks.
+- With `OPENAQ_AUTH_SAFETY_DISABLE_POLLING=true`, any OpenAQ `auth_401` or `auth_403` stop disables `connectors.poll_enabled`, records `run_status=failed`, skips rescheduling, and clears queued OpenAQ self-tasks.
 
 ## Required Config
 

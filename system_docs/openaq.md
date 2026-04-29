@@ -41,9 +41,11 @@ This network uses OpenAQ's API to pull UK monitoring locations and latest values
 - Uses OpenAQ rate-limit headers as a guardrail and stops issuing new requests when remaining is low.
 - Cloud Run wrapper applies an hourly request guard (`OPENAQ_MAX_REQUESTS_PER_HOUR`,
   default `1900`) using recent `uk_aq_ingest_runs.response_payload.requests_total`.
-  When the hourly budget is exhausted, runs are recorded as `Skipped - Rate Limit`
+  When the hourly budget is exhausted before ingest starts, runs are recorded as `Skipped - Hourly Limit`
   and the next run is deferred to reset (or `OPENAQ_RATE_LIMIT_FALLBACK_SECONDS`,
   default 300s, when reset metadata is unavailable).
+- Non-hourly rate-limit/request-budget stops inside ingest are recorded as partial runs
+  (not skipped) with reason fields in `run_message`/`stopped_reason`.
 - Auth safety guard can auto-disable OpenAQ connector polling on `auth_401`/`auth_403`
   (`OPENAQ_AUTH_SAFETY_DISABLE_POLLING=true`) and clear queued self-tasks.
 - When `OPENAQ_INGEST_STATION_FETCH=true`, the ingest performs the bbox station fetch; otherwise it only polls latest values using cached metadata.

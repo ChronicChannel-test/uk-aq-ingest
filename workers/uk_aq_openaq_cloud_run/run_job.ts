@@ -668,8 +668,16 @@ function deriveRunSummary(ingestResponse: IngestResponse): RunSummary {
     null;
   const rateLimitStopReason = toStringOrNull(payload?.rate_limit_stop_reason)
     ?.toLowerCase() ?? null;
-  const rateLimitStop = isRateLimitReason(rateLimitStopReason) ||
-    isRateLimitReason(stoppedReason);
+  const hourlyRateLimitGuard = stoppedReason === "hourly_rate_limit_guard" ||
+    rateLimitStopReason === "hourly_rate_limit_guard";
+  const rateLimitStop = (
+    stoppedReason === "remaining_low" ||
+    stoppedReason === "rate_limit_429" ||
+    stoppedReason === "rate_limit_guard" ||
+    rateLimitStopReason === "remaining_low" ||
+    rateLimitStopReason === "rate_limit_429" ||
+    rateLimitStopReason === "rate_limit_guard"
+  );
   const requestsTotal = toIntegerOrNull(payload?.requests_total);
   const maxRequestsPerRun = toIntegerOrNull(payload?.max_requests_per_run);
   const gapRequestsSkippedBudget = toIntegerOrNull(
@@ -686,10 +694,27 @@ function deriveRunSummary(ingestResponse: IngestResponse): RunSummary {
     stoppedReason === "request_budget_limited" ||
     stoppedReason === "max_requests_per_run";
 
-  if (rateLimitStop || requestBudgetLimited) {
+  if (hourlyRateLimitGuard) {
     return {
       runStatus: "skipped",
-      runMessage: "Skipped - Rate Limit",
+      runMessage: "Skipped - Hourly Limit",
+      payload,
+    };
+  }
+
+  if (rateLimitStop) {
+    const reason = rateLimitStopReason || stoppedReason || "rate_limit_guard";
+    return {
+      runStatus: "partial",
+      runMessage: reason,
+      payload,
+    };
+  }
+
+  if (requestBudgetLimited) {
+    return {
+      runStatus: "partial",
+      runMessage: "request_budget_limited",
       payload,
     };
   }
@@ -980,7 +1005,7 @@ async function disableConnectorPollingForAuthStop(
       poll_enabled: false,
       last_run_start: runStartedAtIso,
       last_run_end: runEndedAtIso,
-      last_run_status: "skipped",
+      last_run_status: "failed",
       last_run_message: message,
     },
     prefer: "return=minimal",
@@ -1903,7 +1928,7 @@ async function main(): Promise<void> {
     await recordSkippedRun(
       connectorId,
       runStartedAtIso,
-      "Skipped - Rate Limit",
+      "Skipped - Hourly Limit",
       {
         stopped_reason: "hourly_rate_limit_guard",
         rate_limit_stop: true,
@@ -2065,14 +2090,14 @@ async function main(): Promise<void> {
     if (OPENAQ_AUTH_SAFETY_DISABLE_POLLING && authReason) {
       suppressScheduling = true;
       suppressSchedulingReason = `auth_safety_${authReason}`;
-      runStatus = "skipped";
+      runStatus = "failed";
       runFailed = false;
       summary = {
-        runStatus: "skipped",
+        runStatus: "failed",
         runMessage: `OpenAQ polling auto-disabled (${authReason})`,
         payload: {
           ...(summary.payload ?? {}),
-          run_status: "skipped",
+          run_status: "failed",
           run_message: `OpenAQ polling auto-disabled (${authReason})`,
           stopped_reason: authReason,
           rate_limit_stop_reason: authReason,
