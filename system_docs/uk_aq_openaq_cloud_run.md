@@ -18,6 +18,7 @@ The worker:
 6. Schedules the next run using Cloud Tasks based on earliest checkpoint due time.
 7. Publishes history rows using shared history mode (`OBSERVS_WRITE_MODE`).
 8. Enforces an hourly OpenAQ request budget (`OPENAQ_MAX_REQUESTS_PER_HOUR`) from recent `uk_aq_ingest_runs.response_payload.requests_total`; when exhausted before ingest starts, run rows are recorded as `run_status=skipped` and `run_message=Skipped - Hourly Limit`.
+9. Enforces a DB-backed shared token budget (`uk_aq_public.uk_aq_rpc_openaq_token_budget_reserve`) before each OpenAQ API call with shared minute/hour caps, so Cloud Run ingest and station-sync scripts consume one central budget.
 
 Run-summary metric note:
 - `uk_aq_ingest_runs.stations_updated` is populated from response station activity
@@ -25,7 +26,7 @@ Run-summary metric note:
   `stations_selected`, `stations_updated`, `stations`.
 - `uk_aq_ingest_runs.response_payload` stores a compact subset of OpenAQ ingest
   response fields for run diagnostics (partial/stop reasons, rate-limit summary,
-  request-budget stats, and selected/polled station counts).
+  request-budget stats, shared-budget token telemetry, and selected/polled station counts).
 - `request_budget_limited` indicates local request-budget/gap-guard limiting
   (our configured per-run budget), not an OpenAQ API rate-limit stop.
 - Cloud Run status mapping is strict:
@@ -67,6 +68,8 @@ When OpenAQ signals rate-limit stop/reset, the worker schedules no earlier than
 the reported reset time.
 If rate-limit metadata is missing a reset timestamp, the worker waits
 `OPENAQ_RATE_LIMIT_FALLBACK_SECONDS` (default 300 seconds).
+For shared-budget stops, the worker also honors shared reset hints from the ingest payload:
+`shared_budget_hour_reset_at`, `shared_budget_minute_reset_at`, and `shared_budget_retry_after_seconds`.
 Delay floors are outcome-aware:
 - `OPENAQ_NEXT_CHECK_MIN_SECONDS` for succeeded runs.
 - `OPENAQ_NEXT_CHECK_PARTIAL_MIN_SECONDS` for partial runs.
@@ -89,6 +92,11 @@ Auth safety guard:
 - `OPENAQ_MIN_NON_GAP_STATIONS` (default `10`)
 - `OPENAQ_TIER1_RETRY_SECONDS` (default `300`; tier1 re-poll guard for station selection)
 - `OPENAQ_MAX_REQUESTS_PER_HOUR` (default `1900`; hourly OpenAQ request guard)
+- `OPENAQ_SHARED_BUDGET_ENFORCE` (default `true`; enforce shared DB-backed minute/hour token budget)
+- `OPENAQ_SHARED_BUDGET_KEY` (default `openaq`; shared budget key used by all OpenAQ callers)
+- `OPENAQ_SHARED_BUDGET_CALLER` (default `ingest_openaq`; caller label for token telemetry)
+- `OPENAQ_SHARED_BUDGET_MINUTE_LIMIT` (default `50`; hard shared per-minute cap)
+- `OPENAQ_SHARED_BUDGET_HOUR_LIMIT` (default `1500`; hard shared rolling-hour cap)
 - `OPENAQ_NEXT_CHECK_MIN_SECONDS` (default `60`)
 - `OPENAQ_NEXT_CHECK_PARTIAL_MIN_SECONDS` (default `60`)
 - `OPENAQ_NEXT_CHECK_SKIPPED_MIN_SECONDS` (default `60`)

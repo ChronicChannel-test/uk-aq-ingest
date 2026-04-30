@@ -195,6 +195,11 @@ jobs:
           SB_SECRET_KEY: ${{ secrets.SB_SECRET_KEY }}
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL || secrets.DATABASE_URL }}
           OPENAQ_API_KEY: ${{ secrets.OPENAQ_API_KEY }}
+          OPENAQ_SHARED_BUDGET_ENFORCE: ${{ vars.OPENAQ_SHARED_BUDGET_ENFORCE || 'true' }}
+          OPENAQ_SHARED_BUDGET_KEY: ${{ vars.OPENAQ_SHARED_BUDGET_KEY || 'openaq' }}
+          OPENAQ_SHARED_BUDGET_MINUTE_LIMIT: ${{ vars.OPENAQ_SHARED_BUDGET_MINUTE_LIMIT || '50' }}
+          OPENAQ_SHARED_BUDGET_HOUR_LIMIT: ${{ vars.OPENAQ_SHARED_BUDGET_HOUR_LIMIT || '1500' }}
+          OPENAQ_SHARED_BUDGET_FAIL_OPEN: ${{ vars.OPENAQ_SHARED_BUDGET_FAIL_OPEN || 'false' }}
         run: |
           python3 scripts/openaq/openaq_list_stations.py --to-supabase --toggle-polling
 

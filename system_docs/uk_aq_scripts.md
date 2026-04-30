@@ -563,11 +563,12 @@ python3 scripts/openaq/openaq_list_stations.py --to-supabase
 
 Notes:
 - Connector upserts preserve existing `poll_enabled`; new connectors default to `poll_enabled=false`.
+- Shared token budget enforcement is enabled by default and reserves one token per OpenAQ request via `uk_aq_rpc_openaq_token_budget_reserve` (same shared key/caps used by ingest runtime).
 
 Environment:
 - `SUPABASE_URL`
 - `SB_SECRET_KEY`
-- `SUPABASE_DB_URL` (required when using `--to-supabase`)
+- `SUPABASE_DB_URL` (required for `--to-supabase`; also required when `OPENAQ_SHARED_BUDGET_ENFORCE=true` unless `OPENAQ_SHARED_BUDGET_FAIL_OPEN=true`)
 - `OPENAQ_BASE_URL` (optional; defaults to `https://api.openaq.org/v3`)
 - `OPENAQ_API_KEY` (required)
 - `OPENAQ_CONNECTOR_CODE` (optional; defaults to `openaq`)
@@ -578,6 +579,12 @@ Environment:
 - `OPENAQ_PAGE_LIMIT` (optional; defaults to `1000`)
 - `OPENAQ_MAX_PAGES` (optional; defaults to `0` meaning no cap)
 - `OPENAQ_RATE_LIMIT_PER_MIN` (optional; defaults to `60`)
+- `OPENAQ_SHARED_BUDGET_ENFORCE` (optional; defaults to `true`)
+- `OPENAQ_SHARED_BUDGET_KEY` (optional; defaults to `openaq`)
+- `OPENAQ_SHARED_BUDGET_CALLER` (optional; defaults to `openaq_list_stations`)
+- `OPENAQ_SHARED_BUDGET_MINUTE_LIMIT` (optional; defaults to `50`)
+- `OPENAQ_SHARED_BUDGET_HOUR_LIMIT` (optional; defaults to `1500`)
+- `OPENAQ_SHARED_BUDGET_FAIL_OPEN` (optional; defaults to `false`; when `true`, script continues if budget RPC is unavailable/denied)
 - `OPENAQ_LOG_LEVEL` (optional; defaults to `INFO`)
 
 ### `scripts/erg_laqn/erg_laqn_ingest.py`

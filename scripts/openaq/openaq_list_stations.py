@@ -39,6 +39,29 @@ logging.basicConfig(
 logging.getLogger("httpx").setLevel(getattr(logging, DEFAULT_LOG_LEVEL, logging.INFO))
 logging.getLogger("postgrest").setLevel(getattr(logging, DEFAULT_LOG_LEVEL, logging.INFO))
 
+
+def parse_env_bool(name: str, default: bool) -> bool:
+    value = (os.getenv(name) or "").strip().lower()
+    if not value:
+        return default
+    if value in {"1", "true", "yes", "on"}:
+        return True
+    if value in {"0", "false", "no", "off"}:
+        return False
+    return default
+
+
+def parse_positive_int(name: str, default: int) -> int:
+    raw = (os.getenv(name) or "").strip()
+    if not raw:
+        return default
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return default
+    return value if value > 0 else default
+
+
 OPENAQ_BASE_URL = (os.getenv("OPENAQ_BASE_URL") or "https://api.openaq.org/v3").rstrip("/")
 OPENAQ_API_KEY = (os.getenv("OPENAQ_API_KEY") or "").strip()
 OPENAQ_CONNECTOR_CODE = os.getenv("OPENAQ_CONNECTOR_CODE") or "openaq"
@@ -49,6 +72,12 @@ OPENAQ_BBOX = os.getenv("OPENAQ_BBOX") or "-8.623555,49.863222,1.763337,60.87122
 OPENAQ_PAGE_LIMIT = int(os.getenv("OPENAQ_PAGE_LIMIT") or "1000")
 OPENAQ_MAX_PAGES = int(os.getenv("OPENAQ_MAX_PAGES") or "0")
 OPENAQ_RATE_LIMIT_PER_MIN = int(os.getenv("OPENAQ_RATE_LIMIT_PER_MIN") or "60")
+OPENAQ_SHARED_BUDGET_ENFORCE = parse_env_bool("OPENAQ_SHARED_BUDGET_ENFORCE", True)
+OPENAQ_SHARED_BUDGET_FAIL_OPEN = parse_env_bool("OPENAQ_SHARED_BUDGET_FAIL_OPEN", False)
+OPENAQ_SHARED_BUDGET_KEY = (os.getenv("OPENAQ_SHARED_BUDGET_KEY") or OPENAQ_CONNECTOR_CODE).strip() or OPENAQ_CONNECTOR_CODE
+OPENAQ_SHARED_BUDGET_CALLER = (os.getenv("OPENAQ_SHARED_BUDGET_CALLER") or "openaq_list_stations").strip() or "openaq_list_stations"
+OPENAQ_SHARED_BUDGET_MINUTE_LIMIT = parse_positive_int("OPENAQ_SHARED_BUDGET_MINUTE_LIMIT", 50)
+OPENAQ_SHARED_BUDGET_HOUR_LIMIT = parse_positive_int("OPENAQ_SHARED_BUDGET_HOUR_LIMIT", 1500)
 SUPABASE_DB_URL = os.getenv("SUPABASE_DB_URL") or os.getenv("DATABASE_URL")
 
 PROVIDER_SHORTNAMES = {
@@ -139,7 +168,13 @@ def _station_name(location: Dict[str, Any]) -> Optional[str]:
 
 
 class OpenAQClient:
-    def __init__(self, base_url: str = OPENAQ_BASE_URL, timeout: int = 60, retries: int = 3) -> None:
+    def __init__(
+        self,
+        base_url: str = OPENAQ_BASE_URL,
+        timeout: int = 60,
+        retries: int = 3,
+        budget_writer: Optional["DbWriter"] = None,
+    ) -> None:
         if not OPENAQ_API_KEY:
             raise RuntimeError("OPENAQ_API_KEY is required.")
         self.base_url = base_url.rstrip("/")
@@ -149,6 +184,7 @@ class OpenAQClient:
         self.min_interval_seconds = 0.0
         if OPENAQ_RATE_LIMIT_PER_MIN > 0:
             self.min_interval_seconds = max(0.0, 60.0 / float(OPENAQ_RATE_LIMIT_PER_MIN))
+        self.budget_writer = budget_writer
         self.session = requests.Session()
         self.session.headers.update(
             {
@@ -157,6 +193,62 @@ class OpenAQClient:
                 "X-API-Key": OPENAQ_API_KEY,
             }
         )
+        if OPENAQ_SHARED_BUDGET_ENFORCE and not self.budget_writer:
+            message = (
+                "OPENAQ_SHARED_BUDGET_ENFORCE is true but no SUPABASE_DB_URL-backed "
+                "writer is available for token reservation."
+            )
+            if OPENAQ_SHARED_BUDGET_FAIL_OPEN:
+                LOG.warning("%s Continuing fail-open.", message)
+            else:
+                raise RuntimeError(message)
+
+    def _reserve_shared_budget(self) -> None:
+        if not OPENAQ_SHARED_BUDGET_ENFORCE:
+            return
+        if not self.budget_writer:
+            if OPENAQ_SHARED_BUDGET_FAIL_OPEN:
+                return
+            raise RuntimeError("Shared token budget is enforced but DB writer is unavailable.")
+        try:
+            budget = self.budget_writer.reserve_openaq_token_budget(
+                tokens=1,
+                budget_key=OPENAQ_SHARED_BUDGET_KEY,
+                caller=OPENAQ_SHARED_BUDGET_CALLER,
+                minute_limit=OPENAQ_SHARED_BUDGET_MINUTE_LIMIT,
+                hour_limit=OPENAQ_SHARED_BUDGET_HOUR_LIMIT,
+            )
+        except Exception as exc:
+            if OPENAQ_SHARED_BUDGET_FAIL_OPEN:
+                LOG.warning("OpenAQ shared token budget RPC failed (%s); continuing fail-open.", exc)
+                return
+            raise RuntimeError(f"OpenAQ shared token budget RPC failed: {exc}") from exc
+
+        granted = budget.get("granted") is True
+        if granted:
+            LOG.debug(
+                "OpenAQ shared budget granted minute_remaining=%s hour_remaining=%s",
+                budget.get("minute_remaining"),
+                budget.get("hour_remaining"),
+            )
+            return
+
+        reason = str(budget.get("reason") or "unknown")
+        retry_after = budget.get("retry_after_seconds")
+        minute_remaining = budget.get("minute_remaining")
+        hour_remaining = budget.get("hour_remaining")
+        minute_reset_at = budget.get("minute_reset_at")
+        hour_reset_at = budget.get("hour_reset_at")
+        message = (
+            "OpenAQ shared token budget denied "
+            f"(reason={reason}, retry_after_seconds={retry_after}, "
+            f"minute_remaining={minute_remaining}, hour_remaining={hour_remaining}, "
+            f"minute_reset_at={minute_reset_at}, hour_reset_at={hour_reset_at})"
+        )
+        if OPENAQ_SHARED_BUDGET_FAIL_OPEN:
+            LOG.warning("%s; continuing fail-open.", message)
+            return
+        raise RuntimeError(message)
 
     def _rate_limit_info(self, resp: requests.Response) -> Dict[str, Optional[int]]:
         def to_int(value: Optional[str]) -> Optional[int]:
@@ -211,6 +303,7 @@ class OpenAQClient:
         url = f"{self.base_url}/{path.lstrip('/')}"
         for attempt in range(1, self.retries + 1):
             try:
+                self._reserve_shared_budget()
                 self._respect_min_interval()
                 resp = self.session.get(url, params=params, timeout=self.timeout)
                 self.last_request_at = time.time()
@@ -595,6 +688,45 @@ class DbWriter:
             self._execute_values(cursor, insert_sql, values)
         return len(values)
 
+    def reserve_openaq_token_budget(
+        self,
+        tokens: int,
+        budget_key: str,
+        caller: str,
+        minute_limit: int,
+        hour_limit: int,
+    ) -> Dict[str, Any]:
+        safe_tokens = max(0, int(tokens))
+        safe_minute_limit = max(1, int(minute_limit))
+        safe_hour_limit = max(1, int(hour_limit))
+        safe_key = budget_key.strip() or OPENAQ_CONNECTOR_CODE
+        safe_caller = caller.strip() or "openaq_list_stations"
+        with self.conn, self.conn.cursor() as cursor:
+            cursor.execute(
+                """
+                select *
+                from uk_aq_public.uk_aq_rpc_openaq_token_budget_reserve(
+                  p_budget_key => %s,
+                  p_tokens => %s,
+                  p_minute_limit => %s,
+                  p_hour_limit => %s,
+                  p_caller => %s
+                )
+                """,
+                (
+                    safe_key,
+                    safe_tokens,
+                    safe_minute_limit,
+                    safe_hour_limit,
+                    safe_caller,
+                ),
+            )
+            row = cursor.fetchone()
+            if row is None or cursor.description is None:
+                raise RuntimeError("Shared token budget RPC returned no row.")
+            columns = [col[0] for col in cursor.description]
+        return {columns[idx]: row[idx] for idx in range(len(columns))}
+
 
 def normalize_location(location: Dict[str, Any]) -> Dict[str, Any]:
     location_id = location.get("id")
@@ -836,10 +968,20 @@ def main() -> None:
 
     writer = None
     original_poll_enabled = None
-    if args.to_supabase:
+    needs_db_writer = bool(args.to_supabase or OPENAQ_SHARED_BUDGET_ENFORCE)
+    if needs_db_writer:
         if not SUPABASE_DB_URL:
+            if OPENAQ_SHARED_BUDGET_ENFORCE and not OPENAQ_SHARED_BUDGET_FAIL_OPEN:
+                raise RuntimeError(
+                    "SUPABASE_DB_URL (or DATABASE_URL) is required when OPENAQ_SHARED_BUDGET_ENFORCE is true."
+                )
+            if args.to_supabase:
+                raise RuntimeError("SUPABASE_DB_URL (or DATABASE_URL) is required for --to-supabase.")
+        else:
+            writer = DbWriter(SUPABASE_DB_URL)
+    if args.to_supabase:
+        if not writer:
             raise RuntimeError("SUPABASE_DB_URL (or DATABASE_URL) is required for --to-supabase.")
-        writer = DbWriter(SUPABASE_DB_URL)
         if args.toggle_polling:
             original_poll_enabled = writer.get_poll_enabled()
             if original_poll_enabled is None:
@@ -849,7 +991,7 @@ def main() -> None:
                 LOG.info("Disabled OpenAQ polling while listing stations.")
 
     try:
-        client = OpenAQClient()
+        client = OpenAQClient(budget_writer=writer)
         locations = client.list_locations(bbox_str, args.limit, args.max_pages or None)
         LOG.info("Fetched %s locations from OpenAQ.", len(locations))
 

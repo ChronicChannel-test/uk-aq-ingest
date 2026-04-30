@@ -79,6 +79,11 @@ gcloud run deploy uk-aq-openaq-ingest \
 - `OPENAQ_DEFAULT_WINDOW_HOURS` (default `6`)
 - `OPENAQ_DEFAULT_BATCH_LIMIT` (default `56`)
 - `OPENAQ_MAX_REQUESTS_PER_HOUR` (default `1900`; hourly wrapper guard to stay below OpenAQ account cap)
+- `OPENAQ_SHARED_BUDGET_ENFORCE` (default `true`; enforce DB-backed shared minute/hour token budget before each OpenAQ API call)
+- `OPENAQ_SHARED_BUDGET_KEY` (default `openaq`; shared budget key used across all OpenAQ callers)
+- `OPENAQ_SHARED_BUDGET_CALLER` (default `ingest_openaq`; caller label written into budget telemetry)
+- `OPENAQ_SHARED_BUDGET_MINUTE_LIMIT` (default `50`; hard shared per-minute cap)
+- `OPENAQ_SHARED_BUDGET_HOUR_LIMIT` (default `1500`; hard shared rolling-hour cap)
 - `OPENAQ_STALE_LIMIT` (default `4`)
 - `OPENAQ_TIER1_RETRY_SECONDS` (default `300`; minimum seconds since `last_polled_at` for tier1 due candidates)
 - `OPENAQ_MIN_GAP_STATIONS` (default `1`; minimum selected gap stations needed to run regardless of non-gap count)
@@ -119,3 +124,4 @@ gcloud run deploy uk-aq-openaq-ingest \
 - If an earlier/equal pending OpenAQ self-task exists, enqueue is skipped.
 - If only later pending OpenAQ self-task(s) exist, those later tasks are deleted and the newly computed earlier task is enqueued.
 - If a run returns `rate_limit_reset_at`, any pending self-task scheduled before that reset time is deleted and replaced with a post-reset task.
+- Shared-budget reset hints are also honored (`shared_budget_hour_reset_at`, `shared_budget_minute_reset_at`, `shared_budget_retry_after_seconds`) when OpenAQ header reset metadata is absent.

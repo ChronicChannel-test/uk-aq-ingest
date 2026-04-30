@@ -44,6 +44,10 @@ This network uses OpenAQ's API to pull UK monitoring locations and latest values
   When the hourly budget is exhausted before ingest starts, runs are recorded as `Skipped - Hourly Limit`
   and the next run is deferred to reset (or `OPENAQ_RATE_LIMIT_FALLBACK_SECONDS`,
   default 300s, when reset metadata is unavailable).
+- Ingest now reserves a shared DB-backed OpenAQ token budget before each OpenAQ call
+  (`OPENAQ_SHARED_BUDGET_ENFORCE=true` by default). This shared minute/hour budget is
+  consumed by both Cloud Run ingest and OpenAQ station-sync scripts via
+  `uk_aq_rpc_openaq_token_budget_reserve`.
 - Non-hourly rate-limit/request-budget stops inside ingest are recorded as partial runs
   (not skipped) with reason fields in `run_message`/`stopped_reason`.
 - Auth safety guard can auto-disable OpenAQ connector polling on `auth_401`/`auth_403`

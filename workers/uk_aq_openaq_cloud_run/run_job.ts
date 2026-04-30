@@ -348,6 +348,10 @@ function isRateLimitReason(reason: string | null): boolean {
     "request_budget_limited",
     "max_requests_per_run",
     "hourly_rate_limit_guard",
+    "shared_budget_minute_limit",
+    "shared_budget_hour_limit",
+    "shared_budget_rpc_error",
+    "shared_budget_rpc_empty",
   ].includes(reason);
 }
 
@@ -746,6 +750,23 @@ const STORED_RESPONSE_PAYLOAD_KEYS = [
   "rate_limit_limit",
   "rate_limit_reset",
   "rate_limit_reset_at",
+  "shared_budget_enabled",
+  "shared_budget_key",
+  "shared_budget_caller",
+  "shared_budget_minute_limit",
+  "shared_budget_hour_limit",
+  "shared_budget_granted",
+  "shared_budget_reason",
+  "shared_budget_requested_tokens",
+  "shared_budget_minute_used_before",
+  "shared_budget_minute_used_after",
+  "shared_budget_minute_remaining",
+  "shared_budget_minute_reset_at",
+  "shared_budget_hour_used_before",
+  "shared_budget_hour_used_after",
+  "shared_budget_hour_remaining",
+  "shared_budget_hour_reset_at",
+  "shared_budget_retry_after_seconds",
   "requests_total",
   "max_requests_per_run",
   "lag_stat",
@@ -1791,6 +1812,17 @@ function deriveRateLimitResetAt(
   if (explicitResetAt) {
     return explicitResetAt;
   }
+  const sharedResetAt = toStringOrNull(payload.shared_budget_hour_reset_at) ||
+    toStringOrNull(payload.shared_budget_minute_reset_at);
+  if (sharedResetAt) {
+    return sharedResetAt;
+  }
+  const sharedRetrySeconds = toIntegerOrNull(
+    payload.shared_budget_retry_after_seconds,
+  );
+  if (sharedRetrySeconds !== null && sharedRetrySeconds > 0) {
+    return new Date(Date.now() + sharedRetrySeconds * 1000).toISOString();
+  }
   const numericReset = toIntegerOrNull(payload.rate_limit_reset);
   if (numericReset !== null) {
     const nowMs = Date.now();
@@ -2187,6 +2219,32 @@ async function main(): Promise<void> {
       series_polled: toIntegerOrNull(summary.payload?.series_polled),
       partial: summary.payload?.partial === true,
       stopped_reason: toStringOrNull(summary.payload?.stopped_reason),
+      shared_budget_enabled: summary.payload?.shared_budget_enabled === true,
+      shared_budget_key: toStringOrNull(summary.payload?.shared_budget_key),
+      shared_budget_caller: toStringOrNull(summary.payload?.shared_budget_caller),
+      shared_budget_reason: toStringOrNull(summary.payload?.shared_budget_reason),
+      shared_budget_granted: summary.payload?.shared_budget_granted === true,
+      shared_budget_minute_limit: toIntegerOrNull(
+        summary.payload?.shared_budget_minute_limit,
+      ),
+      shared_budget_minute_used_after: toIntegerOrNull(
+        summary.payload?.shared_budget_minute_used_after,
+      ),
+      shared_budget_minute_remaining: toIntegerOrNull(
+        summary.payload?.shared_budget_minute_remaining,
+      ),
+      shared_budget_hour_limit: toIntegerOrNull(
+        summary.payload?.shared_budget_hour_limit,
+      ),
+      shared_budget_hour_used_after: toIntegerOrNull(
+        summary.payload?.shared_budget_hour_used_after,
+      ),
+      shared_budget_hour_remaining: toIntegerOrNull(
+        summary.payload?.shared_budget_hour_remaining,
+      ),
+      shared_budget_retry_after_seconds: toIntegerOrNull(
+        summary.payload?.shared_budget_retry_after_seconds,
+      ),
       suppress_scheduling: suppressScheduling,
       suppress_scheduling_reason: suppressSchedulingReason,
     });

@@ -39,6 +39,7 @@
 - Create archive snapshots before major/high-risk changes (for example: broad refactors, cross-repo updates, schema-shape migrations, or large workflow rewires), and whenever the user explicitly asks.
 - For `/Users/mikehinford/Dropbox/Projects/CIC Website/CIC Air Quality Networks/CIC-Test-UK-AQ-Schema/CIC-test-uk-aq-schema`, edits are allowed for any file except under `archive/` directories. Archive files are read-only; new files may be added under `archive/` but must never be modified once created.
 - The agent has permission to read files under `/Users/mikehinford/Dropbox/Apps/github-uk-air-quality-networks/CIC-Test` (including subdirectories).
+- Archive paths are retired for active execution. Active scripts, workers, services, and runner-path defaults must only target non-archive paths, and archive fallbacks must not be used for active runtime code paths.
 
 ## Permissions
 - The agent may edit any files without asking for permission, except files under any `/archive` directory.
@@ -49,6 +50,8 @@
 
 ## Environment Variables
 - Whenever a new environment variable is added to any repo, add a corresponding row to the master CSV at `CIC-test-uk-aq-ops/env-vars-master.csv`. Place it in the correct section, fill in the env var name, default value, and which services require it (GitHub/Supabase/Cloudflare/GCP). Leave the Test Value and Live Value columns blank — the user maintains those.
+- Whenever a new env var is added/removed/renamed in ingest workflows or scripts, also update `config/uk_aq_github_env_targets.csv` in this repo so GitHub variable/secret targeting stays correct.
+- Keep `scripts/uk_aq_sync_github_secrets.sh` in sync with the target map and env set; update the script when env handling rules or target behavior changes.
 
 ## Documentation
 - Add a script note to `system_docs/uk_aq_scripts.md` when new scripts are added.

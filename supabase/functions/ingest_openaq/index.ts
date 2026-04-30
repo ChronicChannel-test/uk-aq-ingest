@@ -146,6 +146,27 @@ type OpenAQHourlyRecord = {
   sensorsId?: number | null;
 };
 
+type OpenAQSharedBudgetReserveRow = {
+  granted?: boolean | null;
+  reason?: string | null;
+  budget_key?: string | null;
+  caller?: string | null;
+  requested_tokens?: number | null;
+  minute_bucket?: string | null;
+  minute_limit?: number | null;
+  minute_used_before?: number | null;
+  minute_used_after?: number | null;
+  minute_remaining?: number | null;
+  minute_reset_at?: string | null;
+  hour_window_start?: string | null;
+  hour_limit?: number | null;
+  hour_used_before?: number | null;
+  hour_used_after?: number | null;
+  hour_remaining?: number | null;
+  hour_reset_at?: string | null;
+  retry_after_seconds?: number | null;
+};
+
 const DEFAULT_BASE_URL = "https://api.openaq.org/v3";
 const DEFAULT_CONNECTOR_CODE = "openaq";
 //const DEFAULT_SERVICE_LABEL = "OpenAQ";
@@ -164,6 +185,9 @@ const DEFAULT_RATE_LIMIT_STOP_THRESHOLD = 5;
 const DEFAULT_GAP_REQUESTS_REMAINING_MIN = 10;
 const DEFAULT_MIN_GAP_STATIONS = 1;
 const DEFAULT_MIN_NON_GAP_STATIONS = 10;
+const DEFAULT_SHARED_BUDGET_MINUTE_LIMIT = 50;
+const DEFAULT_SHARED_BUDGET_HOUR_LIMIT = 1500;
+const DEFAULT_SHARED_BUDGET_CALLER = "ingest_openaq";
 type LagStat = "min" | "median" | "p25";
 const DEFAULT_LAG_STAT: LagStat = "min";
 const PROVIDER_SHORTNAMES: Record<string, string> = {
@@ -233,6 +257,24 @@ const OPENAQ_MIN_NON_GAP_STATIONS = Number(
   Deno.env.get("OPENAQ_MIN_NON_GAP_STATIONS") ??
     DEFAULT_MIN_NON_GAP_STATIONS,
 );
+const OPENAQ_SHARED_BUDGET_ENFORCE = parseEnvBoolean(
+  Deno.env.get("OPENAQ_SHARED_BUDGET_ENFORCE"),
+  true,
+);
+const OPENAQ_SHARED_BUDGET_KEY = (
+  Deno.env.get("OPENAQ_SHARED_BUDGET_KEY") ?? OPENAQ_CONNECTOR_CODE
+).trim() || OPENAQ_CONNECTOR_CODE;
+const OPENAQ_SHARED_BUDGET_CALLER = (
+  Deno.env.get("OPENAQ_SHARED_BUDGET_CALLER") ?? DEFAULT_SHARED_BUDGET_CALLER
+).trim() || DEFAULT_SHARED_BUDGET_CALLER;
+const OPENAQ_SHARED_BUDGET_MINUTE_LIMIT = Number(
+  Deno.env.get("OPENAQ_SHARED_BUDGET_MINUTE_LIMIT") ??
+    DEFAULT_SHARED_BUDGET_MINUTE_LIMIT,
+);
+const OPENAQ_SHARED_BUDGET_HOUR_LIMIT = Number(
+  Deno.env.get("OPENAQ_SHARED_BUDGET_HOUR_LIMIT") ??
+    DEFAULT_SHARED_BUDGET_HOUR_LIMIT,
+);
 const OPENAQ_LAG_STAT: LagStat = parseLagStat(
   Deno.env.get("OPENAQ_LAG_STAT"),
 );
@@ -280,6 +322,50 @@ const requestBudgetState: {
   gapExecutedRequests: 0,
   gapSkippedBudgetRequests: 0,
   gapZeroYieldTimeseries: 0,
+};
+
+const sharedBudgetState: {
+  enabled: boolean;
+  key: string;
+  caller: string;
+  minuteLimit: number;
+  hourLimit: number;
+  granted: boolean | null;
+  reason: string | null;
+  requestedTokens: number | null;
+  minuteUsedBefore: number | null;
+  minuteUsedAfter: number | null;
+  minuteRemaining: number | null;
+  hourUsedBefore: number | null;
+  hourUsedAfter: number | null;
+  hourRemaining: number | null;
+  minuteResetAt: string | null;
+  hourResetAt: string | null;
+  retryAfterSeconds: number | null;
+} = {
+  enabled: OPENAQ_SHARED_BUDGET_ENFORCE,
+  key: OPENAQ_SHARED_BUDGET_KEY,
+  caller: OPENAQ_SHARED_BUDGET_CALLER,
+  minuteLimit: Math.max(
+    1,
+    positiveInt(OPENAQ_SHARED_BUDGET_MINUTE_LIMIT, DEFAULT_SHARED_BUDGET_MINUTE_LIMIT),
+  ),
+  hourLimit: Math.max(
+    1,
+    positiveInt(OPENAQ_SHARED_BUDGET_HOUR_LIMIT, DEFAULT_SHARED_BUDGET_HOUR_LIMIT),
+  ),
+  granted: null,
+  reason: null,
+  requestedTokens: null,
+  minuteUsedBefore: null,
+  minuteUsedAfter: null,
+  minuteRemaining: null,
+  hourUsedBefore: null,
+  hourUsedAfter: null,
+  hourRemaining: null,
+  minuteResetAt: null,
+  hourResetAt: null,
+  retryAfterSeconds: null,
 };
 
 let errorLogLines: string[] | null = null;
@@ -973,6 +1059,22 @@ function appendSample(
   return next;
 }
 
+function parseEnvBoolean(raw: string | undefined, fallback: boolean): boolean {
+  const value = String(raw ?? "")
+    .trim()
+    .toLowerCase();
+  if (!value) {
+    return fallback;
+  }
+  if (["1", "true", "yes", "on"].includes(value)) {
+    return true;
+  }
+  if (["0", "false", "no", "off"].includes(value)) {
+    return false;
+  }
+  return fallback;
+}
+
 function parseLagStat(raw: string | undefined): LagStat {
   const value = String(raw ?? "")
     .trim()
@@ -1308,6 +1410,128 @@ async function maybeSleepForRateLimit(
   }
 }
 
+function toNumberOrNull(value: unknown): number | null {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return null;
+  }
+  return parsed;
+}
+
+function applySharedBudgetRow(row: OpenAQSharedBudgetReserveRow): void {
+  sharedBudgetState.granted = row.granted === true;
+  sharedBudgetState.reason = row.reason ?? null;
+  sharedBudgetState.requestedTokens = toNumberOrNull(row.requested_tokens);
+  sharedBudgetState.minuteUsedBefore = toNumberOrNull(row.minute_used_before);
+  sharedBudgetState.minuteUsedAfter = toNumberOrNull(row.minute_used_after);
+  sharedBudgetState.minuteRemaining = toNumberOrNull(row.minute_remaining);
+  sharedBudgetState.hourUsedBefore = toNumberOrNull(row.hour_used_before);
+  sharedBudgetState.hourUsedAfter = toNumberOrNull(row.hour_used_after);
+  sharedBudgetState.hourRemaining = toNumberOrNull(row.hour_remaining);
+  sharedBudgetState.minuteResetAt = row.minute_reset_at ?? null;
+  sharedBudgetState.hourResetAt = row.hour_reset_at ?? null;
+  sharedBudgetState.retryAfterSeconds = toNumberOrNull(
+    row.retry_after_seconds,
+  );
+}
+
+function sharedBudgetResponseFields(): Record<string, unknown> {
+  return {
+    shared_budget_enabled: sharedBudgetState.enabled,
+    shared_budget_key: sharedBudgetState.key,
+    shared_budget_caller: sharedBudgetState.caller,
+    shared_budget_minute_limit: sharedBudgetState.minuteLimit,
+    shared_budget_hour_limit: sharedBudgetState.hourLimit,
+    shared_budget_granted: sharedBudgetState.granted,
+    shared_budget_reason: sharedBudgetState.reason,
+    shared_budget_requested_tokens: sharedBudgetState.requestedTokens,
+    shared_budget_minute_used_before: sharedBudgetState.minuteUsedBefore,
+    shared_budget_minute_used_after: sharedBudgetState.minuteUsedAfter,
+    shared_budget_minute_remaining: sharedBudgetState.minuteRemaining,
+    shared_budget_minute_reset_at: sharedBudgetState.minuteResetAt,
+    shared_budget_hour_used_before: sharedBudgetState.hourUsedBefore,
+    shared_budget_hour_used_after: sharedBudgetState.hourUsedAfter,
+    shared_budget_hour_remaining: sharedBudgetState.hourRemaining,
+    shared_budget_hour_reset_at: sharedBudgetState.hourResetAt,
+    shared_budget_retry_after_seconds: sharedBudgetState.retryAfterSeconds,
+  };
+}
+
+async function reserveSharedOpenaqBudget(
+  tokens: number,
+  rawRecorder?: RawRecorder | null,
+): Promise<boolean> {
+  const requestedTokens = Math.max(0, Math.trunc(tokens));
+  sharedBudgetState.requestedTokens = requestedTokens;
+  if (!sharedBudgetState.enabled) {
+    sharedBudgetState.granted = true;
+    sharedBudgetState.reason = "disabled";
+    return true;
+  }
+
+  const budgetResponse = await rpcRequest<OpenAQSharedBudgetReserveRow[]>(
+    "uk_aq_rpc_openaq_token_budget_reserve",
+    {
+      p_budget_key: sharedBudgetState.key,
+      p_tokens: requestedTokens,
+      p_minute_limit: sharedBudgetState.minuteLimit,
+      p_hour_limit: sharedBudgetState.hourLimit,
+      p_caller: sharedBudgetState.caller,
+    },
+  );
+
+  if (budgetResponse.error || !Array.isArray(budgetResponse.data)) {
+    sharedBudgetState.granted = false;
+    sharedBudgetState.reason = "shared_budget_rpc_error";
+    if (rawRecorder) {
+      rawRecorder.recordEvent("shared_budget", {
+        granted: false,
+        reason: "shared_budget_rpc_error",
+        error: budgetResponse.error?.message ?? "missing budget response",
+        requested_tokens: requestedTokens,
+      });
+    }
+    return false;
+  }
+
+  const row = budgetResponse.data[0];
+  if (!row || typeof row !== "object") {
+    sharedBudgetState.granted = false;
+    sharedBudgetState.reason = "shared_budget_rpc_empty";
+    if (rawRecorder) {
+      rawRecorder.recordEvent("shared_budget", {
+        granted: false,
+        reason: "shared_budget_rpc_empty",
+        requested_tokens: requestedTokens,
+      });
+    }
+    return false;
+  }
+
+  applySharedBudgetRow(row);
+  if (rawRecorder) {
+    rawRecorder.recordEvent("shared_budget", {
+      granted: sharedBudgetState.granted,
+      reason: sharedBudgetState.reason,
+      requested_tokens: sharedBudgetState.requestedTokens,
+      minute_limit: sharedBudgetState.minuteLimit,
+      minute_used_before: sharedBudgetState.minuteUsedBefore,
+      minute_used_after: sharedBudgetState.minuteUsedAfter,
+      minute_remaining: sharedBudgetState.minuteRemaining,
+      minute_reset_at: sharedBudgetState.minuteResetAt,
+      hour_limit: sharedBudgetState.hourLimit,
+      hour_used_before: sharedBudgetState.hourUsedBefore,
+      hour_used_after: sharedBudgetState.hourUsedAfter,
+      hour_remaining: sharedBudgetState.hourRemaining,
+      hour_reset_at: sharedBudgetState.hourResetAt,
+      retry_after_seconds: sharedBudgetState.retryAfterSeconds,
+      budget_key: sharedBudgetState.key,
+      caller: sharedBudgetState.caller,
+    });
+  }
+  return sharedBudgetState.granted === true;
+}
+
 async function openaqRequest(
   path: string,
   params?: Record<string, string | number>,
@@ -1327,7 +1551,23 @@ async function openaqRequest(
       rateLimitState.stop = true;
       rateLimitState.stopReason = "max_requests_per_run";
       throw new Error(
-        `OpenAQ request budget exceeded (${requestBudgetState.maxPerRun}); skipped ${path}`,
+          `OpenAQ request budget exceeded (${requestBudgetState.maxPerRun}); skipped ${path}`,
+      );
+    }
+
+    const sharedBudgetGranted = await reserveSharedOpenaqBudget(1, rawRecorder);
+    if (!sharedBudgetGranted) {
+      const sharedReason = sharedBudgetState.reason ?? "shared_budget_denied";
+      rateLimitState.stop = true;
+      if (sharedReason === "minute_limit") {
+        rateLimitState.stopReason = "shared_budget_minute_limit";
+      } else if (sharedReason === "hour_limit") {
+        rateLimitState.stopReason = "shared_budget_hour_limit";
+      } else {
+        rateLimitState.stopReason = sharedReason;
+      }
+      throw new Error(
+        `OpenAQ shared budget blocked request (${rateLimitState.stopReason})`,
       );
     }
 
@@ -2924,6 +3164,7 @@ serve(async (req) => {
       gap_requests_skipped_budget: 0,
       gap_zero_yield_timeseries: 0,
       dry_run: dryRun,
+      ...sharedBudgetResponseFields(),
     });
   }
   const gapStationPlan = Array.from(gapStationIds).map((stationId) => {
@@ -3900,6 +4141,19 @@ serve(async (req) => {
     gap_requests_skipped_budget: requestBudgetState.gapSkippedBudgetRequests,
     gap_zero_yield_timeseries: requestBudgetState.gapZeroYieldTimeseries,
     raw_responses: rawRecorder?.responseCount ?? requestBudgetState.total,
+    shared_budget_enabled: sharedBudgetState.enabled,
+    shared_budget_key: sharedBudgetState.key,
+    shared_budget_caller: sharedBudgetState.caller,
+    shared_budget_minute_limit: sharedBudgetState.minuteLimit,
+    shared_budget_hour_limit: sharedBudgetState.hourLimit,
+    shared_budget_granted: sharedBudgetState.granted,
+    shared_budget_reason: sharedBudgetState.reason,
+    shared_budget_requested_tokens: sharedBudgetState.requestedTokens,
+    shared_budget_minute_used_after: sharedBudgetState.minuteUsedAfter,
+    shared_budget_minute_remaining: sharedBudgetState.minuteRemaining,
+    shared_budget_hour_used_after: sharedBudgetState.hourUsedAfter,
+    shared_budget_hour_remaining: sharedBudgetState.hourRemaining,
+    shared_budget_retry_after_seconds: sharedBudgetState.retryAfterSeconds,
   });
 
   logLine("INFO", "OpenAQ rate limit summary", {
@@ -3923,6 +4177,23 @@ serve(async (req) => {
     min_gap_stations: minGapStations,
     min_non_gap_stations: minNonGapStations,
     stopped_reason: stoppedReason,
+    shared_budget_enabled: sharedBudgetState.enabled,
+    shared_budget_key: sharedBudgetState.key,
+    shared_budget_caller: sharedBudgetState.caller,
+    shared_budget_minute_limit: sharedBudgetState.minuteLimit,
+    shared_budget_hour_limit: sharedBudgetState.hourLimit,
+    shared_budget_granted: sharedBudgetState.granted,
+    shared_budget_reason: sharedBudgetState.reason,
+    shared_budget_requested_tokens: sharedBudgetState.requestedTokens,
+    shared_budget_minute_used_before: sharedBudgetState.minuteUsedBefore,
+    shared_budget_minute_used_after: sharedBudgetState.minuteUsedAfter,
+    shared_budget_minute_remaining: sharedBudgetState.minuteRemaining,
+    shared_budget_minute_reset_at: sharedBudgetState.minuteResetAt,
+    shared_budget_hour_used_before: sharedBudgetState.hourUsedBefore,
+    shared_budget_hour_used_after: sharedBudgetState.hourUsedAfter,
+    shared_budget_hour_remaining: sharedBudgetState.hourRemaining,
+    shared_budget_hour_reset_at: sharedBudgetState.hourResetAt,
+    shared_budget_retry_after_seconds: sharedBudgetState.retryAfterSeconds,
   });
 
   if (dropboxConfig) {
@@ -4013,5 +4284,6 @@ serve(async (req) => {
     gap_requests_skipped_budget: requestBudgetState.gapSkippedBudgetRequests,
     gap_zero_yield_timeseries: requestBudgetState.gapZeroYieldTimeseries,
     dry_run: dryRun,
+    ...sharedBudgetResponseFields(),
   });
 });
