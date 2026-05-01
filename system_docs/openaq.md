@@ -48,6 +48,10 @@ This network uses OpenAQ's API to pull UK monitoring locations and latest values
   (`OPENAQ_SHARED_BUDGET_ENFORCE=true` by default). This shared minute/hour budget is
   consumed by both Cloud Run ingest and OpenAQ station-sync scripts via
   `uk_aq_rpc_openaq_token_budget_reserve`.
+- Troubleshooting: if logs show `shared_budget_rpc_error` with
+  `column reference "budget_key" is ambiguous`, the deployed
+  `uk_aq_rpc_openaq_token_budget_reserve` function is stale; re-apply
+  `schemas/ingest_db/uk_aq_rpc.sql` from the schema repo to MAIN DB.
 - Non-hourly rate-limit/request-budget stops inside ingest are recorded as partial runs
   (not skipped) with reason fields in `run_message`/`stopped_reason`.
 - Auth safety guard can auto-disable OpenAQ connector polling on `auth_401`/`auth_403`
