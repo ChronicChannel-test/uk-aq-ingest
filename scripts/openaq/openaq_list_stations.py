@@ -78,6 +78,8 @@ OPENAQ_SHARED_BUDGET_KEY = (os.getenv("OPENAQ_SHARED_BUDGET_KEY") or OPENAQ_CONN
 OPENAQ_SHARED_BUDGET_CALLER = (os.getenv("OPENAQ_SHARED_BUDGET_CALLER") or "openaq_list_stations").strip() or "openaq_list_stations"
 OPENAQ_SHARED_BUDGET_MINUTE_LIMIT = parse_positive_int("OPENAQ_SHARED_BUDGET_MINUTE_LIMIT", 50)
 OPENAQ_SHARED_BUDGET_HOUR_LIMIT = parse_positive_int("OPENAQ_SHARED_BUDGET_HOUR_LIMIT", 1500)
+OPENAQ_SHARED_BUDGET_WAIT_MAX_SECONDS = 180
+OPENAQ_SHARED_BUDGET_WAIT_MAX_ATTEMPTS = 6
 SUPABASE_DB_URL = os.getenv("SUPABASE_DB_URL") or os.getenv("DATABASE_URL")
 
 PROVIDER_SHORTNAMES = {
@@ -210,45 +212,107 @@ class OpenAQClient:
             if OPENAQ_SHARED_BUDGET_FAIL_OPEN:
                 return
             raise RuntimeError("Shared token budget is enforced but DB writer is unavailable.")
-        try:
-            budget = self.budget_writer.reserve_openaq_token_budget(
-                tokens=1,
-                budget_key=OPENAQ_SHARED_BUDGET_KEY,
-                caller=OPENAQ_SHARED_BUDGET_CALLER,
-                minute_limit=OPENAQ_SHARED_BUDGET_MINUTE_LIMIT,
-                hour_limit=OPENAQ_SHARED_BUDGET_HOUR_LIMIT,
-            )
-        except Exception as exc:
-            if OPENAQ_SHARED_BUDGET_FAIL_OPEN:
-                LOG.warning("OpenAQ shared token budget RPC failed (%s); continuing fail-open.", exc)
+        started_at = time.time()
+        wait_attempt = 0
+        while True:
+            try:
+                budget = self.budget_writer.reserve_openaq_token_budget(
+                    tokens=1,
+                    budget_key=OPENAQ_SHARED_BUDGET_KEY,
+                    caller=OPENAQ_SHARED_BUDGET_CALLER,
+                    minute_limit=OPENAQ_SHARED_BUDGET_MINUTE_LIMIT,
+                    hour_limit=OPENAQ_SHARED_BUDGET_HOUR_LIMIT,
+                )
+            except Exception as exc:
+                if OPENAQ_SHARED_BUDGET_FAIL_OPEN:
+                    LOG.warning("OpenAQ shared token budget RPC failed (%s); continuing fail-open.", exc)
+                    return
+                raise RuntimeError(f"OpenAQ shared token budget RPC failed: {exc}") from exc
+
+            granted = budget.get("granted") is True
+            if granted:
+                LOG.debug(
+                    "OpenAQ shared budget granted minute_remaining=%s hour_remaining=%s",
+                    budget.get("minute_remaining"),
+                    budget.get("hour_remaining"),
+                )
                 return
-            raise RuntimeError(f"OpenAQ shared token budget RPC failed: {exc}") from exc
 
-        granted = budget.get("granted") is True
-        if granted:
-            LOG.debug(
-                "OpenAQ shared budget granted minute_remaining=%s hour_remaining=%s",
-                budget.get("minute_remaining"),
-                budget.get("hour_remaining"),
+            reason = str(budget.get("reason") or "unknown")
+            retry_after = budget.get("retry_after_seconds")
+            minute_remaining = budget.get("minute_remaining")
+            hour_remaining = budget.get("hour_remaining")
+            minute_reset_at = budget.get("minute_reset_at")
+            hour_reset_at = budget.get("hour_reset_at")
+            message = (
+                "OpenAQ shared token budget denied "
+                f"(reason={reason}, retry_after_seconds={retry_after}, "
+                f"minute_remaining={minute_remaining}, hour_remaining={hour_remaining}, "
+                f"minute_reset_at={minute_reset_at}, hour_reset_at={hour_reset_at})"
             )
-            return
+            if OPENAQ_SHARED_BUDGET_FAIL_OPEN:
+                LOG.warning("%s; continuing fail-open.", message)
+                return
 
-        reason = str(budget.get("reason") or "unknown")
-        retry_after = budget.get("retry_after_seconds")
-        minute_remaining = budget.get("minute_remaining")
-        hour_remaining = budget.get("hour_remaining")
-        minute_reset_at = budget.get("minute_reset_at")
-        hour_reset_at = budget.get("hour_reset_at")
-        message = (
-            "OpenAQ shared token budget denied "
-            f"(reason={reason}, retry_after_seconds={retry_after}, "
-            f"minute_remaining={minute_remaining}, hour_remaining={hour_remaining}, "
-            f"minute_reset_at={minute_reset_at}, hour_reset_at={hour_reset_at})"
-        )
-        if OPENAQ_SHARED_BUDGET_FAIL_OPEN:
-            LOG.warning("%s; continuing fail-open.", message)
-            return
-        raise RuntimeError(message)
+            wait_seconds = self._shared_budget_wait_seconds(budget)
+            elapsed = time.time() - started_at
+            remaining_wait_budget = max(0.0, OPENAQ_SHARED_BUDGET_WAIT_MAX_SECONDS - elapsed)
+            should_wait = (
+                reason in {"minute_limit", "hour_limit"}
+                and wait_seconds > 0
+                and remaining_wait_budget > 0
+                and wait_attempt < OPENAQ_SHARED_BUDGET_WAIT_MAX_ATTEMPTS
+            )
+            if should_wait:
+                sleep_for = min(wait_seconds, remaining_wait_budget)
+                wait_attempt += 1
+                LOG.warning(
+                    "%s; waiting %.1fs before retry (%s/%s).",
+                    message,
+                    sleep_for,
+                    wait_attempt,
+                    OPENAQ_SHARED_BUDGET_WAIT_MAX_ATTEMPTS,
+                )
+                time.sleep(sleep_for)
+                continue
+
+            raise RuntimeError(message)
+
+    def _shared_budget_wait_seconds(self, budget: Dict[str, Any]) -> float:
+        retry_after = self._coerce_positive_float(budget.get("retry_after_seconds"))
+        if retry_after is not None:
+            return retry_after
+        now = utcnow()
+        minute_reset_at = self._coerce_datetime(budget.get("minute_reset_at"))
+        hour_reset_at = self._coerce_datetime(budget.get("hour_reset_at"))
+        candidates = [dt for dt in (minute_reset_at, hour_reset_at) if dt]
+        if not candidates:
+            return 0.0
+        target = min(candidates)
+        delay = (target - now).total_seconds()
+        return max(0.0, delay)
+
+    def _coerce_positive_float(self, value: Any) -> Optional[float]:
+        try:
+            parsed = float(value)
+        except (TypeError, ValueError):
+            return None
+        return parsed if parsed > 0 else None
+
+    def _coerce_datetime(self, value: Any) -> Optional[datetime]:
+        if not isinstance(value, str):
+            return None
+        raw = value.strip()
+        if not raw:
+            return None
+        normalized = raw[:-1] + "+00:00" if raw.endswith("Z") else raw
+        try:
+            parsed = datetime.fromisoformat(normalized)
+        except ValueError:
+            return None
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc)
 
     def _rate_limit_info(self, resp: requests.Response) -> Dict[str, Optional[int]]:
         def to_int(value: Optional[str]) -> Optional[int]:

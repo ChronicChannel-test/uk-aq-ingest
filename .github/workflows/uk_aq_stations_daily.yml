@@ -59,6 +59,74 @@ jobs:
           print(f"SUPABASE_DB_URL looks valid for host={host}, user={user}.")
           PY
 
+      - name: Check OpenAQ polling flag
+        id: check_openaq_polling
+        env:
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          SB_SECRET_KEY: ${{ secrets.SB_SECRET_KEY }}
+        run: |
+          python3 - <<'PY'
+          import os
+          import requests
+
+          supabase_url = os.environ.get("SUPABASE_URL")
+          supabase_key = os.environ.get("SB_SECRET_KEY")
+          if not supabase_url or not supabase_key:
+              raise SystemExit("SUPABASE_URL and SB_SECRET_KEY are required.")
+          url = f"{supabase_url}/rest/v1/connectors"
+          resp = requests.get(
+              url,
+              params={"connector_code": "eq.openaq", "select": "poll_enabled"},
+              headers={
+                  "apikey": supabase_key,
+                  "Authorization": f"Bearer {supabase_key}",
+                  "Accept-Profile": "uk_aq_core",
+                  "Content-Profile": "uk_aq_core",
+              },
+              timeout=30,
+          )
+          resp.raise_for_status()
+          rows = resp.json()
+          poll_enabled = bool(rows and rows[0].get("poll_enabled"))
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as handle:
+              handle.write(f"OPENAQ_POLL_WAS_ENABLED={'1' if poll_enabled else '0'}\\n")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as handle:
+              handle.write(f"poll_was_enabled={'1' if poll_enabled else '0'}\\n")
+          print(f"OPENAQ_POLL_WAS_ENABLED={poll_enabled}")
+          PY
+
+      - name: Pause OpenAQ polling
+        if: steps.check_openaq_polling.outputs.poll_was_enabled == '1'
+        env:
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          SB_SECRET_KEY: ${{ secrets.SB_SECRET_KEY }}
+        run: |
+          python3 - <<'PY'
+          import os
+          import requests
+
+          supabase_url = os.environ.get("SUPABASE_URL")
+          supabase_key = os.environ.get("SB_SECRET_KEY")
+          if not supabase_url or not supabase_key:
+              raise SystemExit("SUPABASE_URL and SB_SECRET_KEY are required.")
+          url = f"{supabase_url}/rest/v1/connectors"
+          resp = requests.patch(
+              url,
+              params={"connector_code": "eq.openaq"},
+              headers={
+                  "apikey": supabase_key,
+                  "Authorization": f"Bearer {supabase_key}",
+                  "Content-Type": "application/json",
+                  "Accept-Profile": "uk_aq_core",
+                  "Content-Profile": "uk_aq_core",
+              },
+              json={"poll_enabled": False},
+              timeout=30,
+          )
+          resp.raise_for_status()
+          print("Paused openaq polling.")
+          PY
+
       - name: Sync stations
         env:
           SUPABASE_URL: ${{ vars.SUPABASE_URL }}
@@ -201,7 +269,7 @@ jobs:
           OPENAQ_SHARED_BUDGET_HOUR_LIMIT: ${{ vars.OPENAQ_SHARED_BUDGET_HOUR_LIMIT || '1500' }}
           OPENAQ_SHARED_BUDGET_FAIL_OPEN: ${{ vars.OPENAQ_SHARED_BUDGET_FAIL_OPEN || 'false' }}
         run: |
-          python3 scripts/openaq/openaq_list_stations.py --to-supabase --toggle-polling
+          python3 scripts/openaq/openaq_list_stations.py --to-supabase
 
       - name: Discover Sensor.Community stations (optional)
         if: env.RUN_SCOMM_STATIONS_EXPORT == '1'
@@ -392,3 +460,35 @@ jobs:
           SYNC_CALLER_PREFIX: stations_daily_sync_obs_aqidb
         run: |
           python3 scripts/stations_daily/sync_obs_aqidb_uk_aq_core.py
+
+      - name: Resume OpenAQ polling
+        if: always() && steps.check_openaq_polling.outputs.poll_was_enabled == '1'
+        env:
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          SB_SECRET_KEY: ${{ secrets.SB_SECRET_KEY }}
+        run: |
+          python3 - <<'PY'
+          import os
+          import requests
+
+          supabase_url = os.environ.get("SUPABASE_URL")
+          supabase_key = os.environ.get("SB_SECRET_KEY")
+          if not supabase_url or not supabase_key:
+              raise SystemExit("SUPABASE_URL and SB_SECRET_KEY are required.")
+          url = f"{supabase_url}/rest/v1/connectors"
+          resp = requests.patch(
+              url,
+              params={"connector_code": "eq.openaq"},
+              headers={
+                  "apikey": supabase_key,
+                  "Authorization": f"Bearer {supabase_key}",
+                  "Content-Type": "application/json",
+                  "Accept-Profile": "uk_aq_core",
+                  "Content-Profile": "uk_aq_core",
+              },
+              json={"poll_enabled": True},
+              timeout=30,
+          )
+          resp.raise_for_status()
+          print("Resumed openaq polling.")
+          PY
