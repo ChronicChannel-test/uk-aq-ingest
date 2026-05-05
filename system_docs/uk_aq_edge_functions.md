@@ -123,6 +123,40 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
   - Logs each dispatched edge call with the target function name and cron secret presence (length only).
   - Writes dispatch errors to `error_logs`.
 
+### uk_aq_sync_openaq_from_live
+- Purpose: keep test OpenAQ data current from LIVE without any test-side OpenAQ API calls.
+- Triggered by:
+  - Supabase `pg_cron` jobs in ingest DB (`uk_aq_openaq_live_sync_observations_15m`, `uk_aq_openaq_live_sync_core_hourly`) via `uk_aq_ops.uk_aq_openaq_live_sync_schedule_invoke`.
+  - Manual POST invocation for one-time cutover/reseed (`mode=reseed`).
+- Scheduler Vault secrets:
+  - `UK_AQ_OPENAQ_MIRROR_FUNCTION_URL` (full `/functions/v1/uk_aq_sync_openaq_from_live` URL)
+  - `UK_AQ_OPENAQ_MIRROR_AUTH_TOKEN` (Bearer token value)
+  - `SB_UK_AQ_CRON_SECRET` (optional; forwarded as `X-Cron-Secret` when present)
+- Example Vault setup (run in test ingest DB SQL editor):
+  - `select vault.create_secret('https://<test-project-ref>.supabase.co/functions/v1/uk_aq_sync_openaq_from_live', 'UK_AQ_OPENAQ_MIRROR_FUNCTION_URL');`
+  - `select vault.create_secret('<same-value-as-UK_AQ_OPENAQ_MIRROR_AUTH_TOKEN>', 'UK_AQ_OPENAQ_MIRROR_AUTH_TOKEN');`
+- Modes:
+  - `mode=observations`: cursor + overlap based pull from LIVE `uk_aq_core.observations`, upsert into test ingest (`uk_aq_rpc_observations_upsert`) and test history (`uk_aq_rpc_observs_observations_upsert` via shared observs client).
+  - `mode=core`: hourly sync of OpenAQ `connectors`, `phenomena`, `stations`, `timeseries` by ID.
+  - `mode=reseed`: one-time destructive reset/reseed flow for OpenAQ slice in test (clear then reseed from LIVE with LIVE IDs), then reseed recent observations and reseed identity sequences.
+  - Reseed safety: requires `confirm=RESEED_OPENAQ` in POST body.
+- Guardrails:
+  - Hard-coded source filter: connector code `openaq` only.
+  - Per-mode lock/state table: `uk_aq_ops.uk_aq_openaq_live_sync_state`.
+  - Lock/state RPCs in `uk_aq_public`:
+    - `uk_aq_rpc_openaq_live_sync_lock_acquire`
+    - `uk_aq_rpc_openaq_live_sync_lock_release`
+    - `uk_aq_rpc_openaq_live_sync_state_get`
+    - `uk_aq_rpc_openaq_live_sync_sequence_reseed`
+  - Auth checks:
+    - `Authorization: Bearer <UK_AQ_OPENAQ_MIRROR_AUTH_TOKEN>` (when configured)
+    - `X-Cron-Secret` must match `SB_UK_AQ_CRON_SECRET` (when configured)
+- Runtime env:
+  - Source LIVE credentials: `OPENAQ_LIVE_SOURCE_SUPABASE_URL`, `OPENAQ_LIVE_SOURCE_SB_SECRET_KEY`
+  - Auth token: `UK_AQ_OPENAQ_MIRROR_AUTH_TOKEN`
+  - Tuning: `OPENAQ_MIRROR_*` (page size, overlap, lookback, chunk size, lock lease)
+  - Existing history dual-write env remains in use (`OBS_AQIDB_*`).
+
 ### History Outbox Flusher (Cloud Run)
 - Purpose: Flush history dual-write outbox rows in bounded batches.
 - Triggered by: Cloud Scheduler -> Cloud Run job (`workers/uk_aq_observs_outbox_cloud_run`).

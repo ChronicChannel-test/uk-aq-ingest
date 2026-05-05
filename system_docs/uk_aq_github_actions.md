@@ -44,11 +44,11 @@ Cloud Run deploy idempotency:
 - Deployed functions: `ingest_uk_air_sos`, `ingest_breathelondon`, `ingest_sensorcommunity`,
   `uk_aq_dispatch_polls`, `uk_aq_latest`,
   `uk_aq_stations_chart`, `uk_aq_la_hex`, `uk_aq_pcon_hex`,
-  `uk_aq_stations`, `uk_aq_timeseries`.
+  `uk_aq_stations`, `uk_aq_timeseries`, `uk_aq_sync_openaq_from_live`.
 - Secrets: `SUPABASE_PROJECT_REF`, `SB_PUBLISHABLE_DEFAULT_KEY`, `SUPABASE_ACCESS_TOKEN`,
   `SUPABASE_SECRETS_ENV` (newline-delimited env file contents).
 - Public read functions are deployed with `--no-verify-jwt` in workflow to keep website/cache access JWT-free:
-  `uk_aq_latest`, `uk_aq_stations_chart`, `uk_aq_la_hex`, `uk_aq_pcon_hex`, `uk_aq_stations`, `uk_aq_timeseries`.
+  `uk_aq_latest`, `uk_aq_stations_chart`, `uk_aq_la_hex`, `uk_aq_pcon_hex`, `uk_aq_stations`, `uk_aq_timeseries`, `uk_aq_sync_openaq_from_live`.
 - Supabase secret names cannot start with `SUPABASE_`. Use `SB_` (or another prefix) in
   `SUPABASE_SECRETS_ENV`.
 
@@ -127,6 +127,11 @@ UK_AQ_EDGE_UPSTREAM_SECRET=...
 - Purpose: sync stations to Supabase (UK-AIR SOS + Breathe London) and export a combined stations snapshot to Dropbox.
 - Script: `python3 scripts/uk_air_sos/uk_air_sos_list_stations.py --to-supabase`.
 - Script: `python3 scripts/breathelondon/breathelondon_list_stations.py --to-supabase`.
+- OpenAQ station discovery guard:
+  - `Pause OpenAQ polling` captures `connector_found` + `poll_was_enabled`.
+  - `Sync OpenAQ stations` runs only when `poll_was_enabled=1`.
+  - `Resume OpenAQ polling` runs only when `poll_was_enabled=1` (so polling stays off when intentionally off).
+  - Workflow logs explicit skip/unchanged messages when OpenAQ was already off.
 - Script: `python3 scripts/uk_aq_refresh_station_geo_aiven.py` (refresh PCON/LA codes from Aiven).
 - Export: `python3 scripts/uk_aq_export_stations_dropbox.py` (uploads `uk_aq_stations_<timestamp>.json`).
 - Final mirror step: `python3 scripts/stations_daily/sync_obs_aqidb_uk_aq_core.py`.

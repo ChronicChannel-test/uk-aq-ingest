@@ -248,21 +248,28 @@ jobs:
       #     python3 scripts/erg_laqn/erg_laqn_list_stations.py --to-supabase
 
       - name: Sync OpenAQ stations
+        if: steps.pause_openaq_polling.outputs.connector_found == '1' && steps.pause_openaq_polling.outputs.poll_was_enabled == '1'
         env:
           SUPABASE_URL: ${{ vars.SUPABASE_URL }}
           SB_SECRET_KEY: ${{ secrets.SB_SECRET_KEY }}
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL || secrets.DATABASE_URL }}
           OPENAQ_API_KEY: ${{ secrets.OPENAQ_API_KEY }}
+          OPENAQ_RATE_LIMIT_PER_MIN: ${{ vars.OPENAQ_RATE_LIMIT_PER_MIN || '60' }}
           OPENAQ_SHARED_BUDGET_ENFORCE: ${{ vars.OPENAQ_SHARED_BUDGET_ENFORCE || 'true' }}
           OPENAQ_SHARED_BUDGET_KEY: ${{ vars.OPENAQ_SHARED_BUDGET_KEY || 'openaq' }}
-          OPENAQ_SHARED_BUDGET_MINUTE_LIMIT: ${{ vars.OPENAQ_SHARED_BUDGET_MINUTE_LIMIT || '50' }}
+          OPENAQ_SHARED_BUDGET_MINUTE_LIMIT: ${{ vars.OPENAQ_SHARED_BUDGET_MINUTE_LIMIT || '40' }}
           OPENAQ_SHARED_BUDGET_HOUR_LIMIT: ${{ vars.OPENAQ_SHARED_BUDGET_HOUR_LIMIT || '1500' }}
           OPENAQ_SHARED_BUDGET_FAIL_OPEN: ${{ vars.OPENAQ_SHARED_BUDGET_FAIL_OPEN || 'false' }}
         run: |
           python3 scripts/openaq/openaq_list_stations.py --to-supabase
 
+      - name: Skip OpenAQ stations sync (polling already off or connector missing)
+        if: steps.pause_openaq_polling.outputs.connector_found != '1' || steps.pause_openaq_polling.outputs.poll_was_enabled != '1'
+        run: |
+          echo "Skipping OpenAQ stations sync because connector missing or polling was already off."
+
       - name: Resume OpenAQ polling
-        if: always()
+        if: always() && steps.pause_openaq_polling.outputs.poll_was_enabled == '1'
         env:
           SUPABASE_URL: ${{ vars.SUPABASE_URL }}
           SB_SECRET_KEY: ${{ secrets.SB_SECRET_KEY }}
@@ -292,6 +299,11 @@ jobs:
           resp.raise_for_status()
           print("Resumed openaq polling.")
           PY
+
+      - name: Keep OpenAQ polling unchanged
+        if: always() && (steps.pause_openaq_polling.outputs.connector_found != '1' || steps.pause_openaq_polling.outputs.poll_was_enabled != '1')
+        run: |
+          echo "Leaving OpenAQ polling unchanged (workflow did not pause it)."
 
       - name: Discover Sensor.Community stations (optional)
         if: env.RUN_SCOMM_STATIONS_EXPORT == '1'
