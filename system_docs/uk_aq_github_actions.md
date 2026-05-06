@@ -137,6 +137,8 @@ UK_AQ_EDGE_UPSTREAM_SECRET=...
 - Final mirror step: `python3 scripts/stations_daily/sync_obs_aqidb_uk_aq_core.py`.
   - Mirrors `uk_aq_core.connectors`, `uk_aq_core.phenomena`, `uk_aq_core.stations`, `uk_aq_core.timeseries`.
   - Also syncs FK dependency tables (`observed_properties`, `categories`, `offerings`, `features`, `procedures`) so the mirrored tables can be applied with exact FK constraints.
+  - Runs a timeseries pre-sync mismatch check and prints per-connector hash summary (row count + `key_only_hash` + `key_plus_id_hash`).
+  - For timeseries keys that exist in both DBs with different IDs, remaps source upsert PKs to existing destination IDs to avoid unique-key collision failures in daily runs.
   - Sync mode: upsert by PK plus hard-delete missing PKs in destination.
   - Pre-write guard: destination schema must match source metadata (columns/defaults/nullability/order + PK), or workflow fails.
 - Optional: Sensor.Community discovery step (disabled by default).

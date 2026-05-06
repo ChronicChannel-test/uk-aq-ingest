@@ -126,7 +126,7 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
 ### uk_aq_sync_openaq_from_live
 - Purpose: keep test OpenAQ data current from LIVE without any test-side OpenAQ API calls.
 - Triggered by:
-  - Supabase `pg_cron` jobs in ingest DB (`uk_aq_openaq_live_sync_observations_15m`, `uk_aq_openaq_live_sync_core_hourly`) via `uk_aq_ops.uk_aq_openaq_live_sync_schedule_invoke`.
+  - Supabase `pg_cron` jobs in ingest DB (`uk_aq_openaq_live_sync_observations_15m`, `uk_aq_openaq_live_sync_core_6h`) via `uk_aq_ops.uk_aq_openaq_live_sync_schedule_invoke`.
   - Manual POST invocation for one-time cutover/reseed (`mode=reseed`).
 - Scheduler Vault secrets:
   - `UK_AQ_OPENAQ_MIRROR_FUNCTION_URL` (full `/functions/v1/uk_aq_sync_openaq_from_live` URL)

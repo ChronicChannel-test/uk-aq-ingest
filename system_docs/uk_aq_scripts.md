@@ -357,6 +357,13 @@ Behavior:
   - `uk_aq_rpc_core_table_select`
   - `uk_aq_rpc_core_table_upsert`
   - `uk_aq_rpc_core_table_delete_keys`
+- Runs a pre-sync timeseries alignment check keyed by `(connector_id, service_ref, timeseries_ref)`:
+  - prints per-connector row-count/hash summary (`key_only_hash`, `key_plus_id_hash`) for source vs destination
+  - reports key-only gaps (`missing_in_destination`, `extra_in_destination`) and ID mismatches
+- For timeseries key matches with different IDs, applies a safe sync remap:
+  - keeps the existing destination `timeseries.id` as the effective upsert PK for that key
+  - still upserts all other source timeseries fields by that destination ID
+  - this avoids natural-key unique-index collisions during upsert and preserves existing Obs AQI references that use destination IDs
 - Upserts destination rows by table primary key and hard-deletes destination rows whose PKs no longer exist in ingest.
 - Also syncs FK dependency tables (`observed_properties`, `categories`, `offerings`, `features`, `procedures`) in dependency-safe order so mirrored rows can insert/delete cleanly.
 - Validates destination schema against source metadata (column order/name/type/nullability/default + PK) before any write.

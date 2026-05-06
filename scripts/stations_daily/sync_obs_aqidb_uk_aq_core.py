@@ -18,6 +18,7 @@ Tables synced (dependency order):
 from __future__ import annotations
 
 import difflib
+import hashlib
 import json
 import os
 import re
@@ -779,6 +780,171 @@ def pk_tuple(row: Dict[str, Any], pk_columns: Sequence[str]) -> Tuple[Any, ...]:
     return tuple(row.get(col) for col in pk_columns)
 
 
+def as_int(value: Any, *, context: str) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError) as exc:
+        raise SyncError(f"{context}: expected integer, got {value!r}") from exc
+
+
+def build_connector_code_map(rows: Sequence[Dict[str, Any]]) -> Dict[int, str]:
+    out: Dict[int, str] = {}
+    for row in rows:
+        cid = as_int(row.get("id"), context="connector.id")
+        code = str(row.get("connector_code") or "").strip()
+        out[cid] = code or f"connector_{cid}"
+    return out
+
+
+def timeseries_key(row: Dict[str, Any]) -> Tuple[int, str, str]:
+    return (
+        as_int(row.get("connector_id"), context="timeseries.connector_id"),
+        str(row.get("service_ref") or ""),
+        str(row.get("timeseries_ref") or ""),
+    )
+
+
+def md5_lines(lines: Sequence[str]) -> str:
+    payload = "\n".join(lines)
+    return hashlib.md5(payload.encode("utf-8")).hexdigest()
+
+
+def summarize_timeseries_by_connector(
+    rows: Sequence[Dict[str, Any]],
+    connector_codes: Dict[int, str],
+) -> Dict[str, Dict[str, Any]]:
+    by_connector: Dict[str, List[Tuple[str, str, int]]] = {}
+    for row in rows:
+        cid, service_ref, ts_ref = timeseries_key(row)
+        ts_id = as_int(row.get("id"), context="timeseries.id")
+        code = connector_codes.get(cid, f"connector_{cid}")
+        by_connector.setdefault(code, []).append((service_ref, ts_ref, ts_id))
+
+    summary: Dict[str, Dict[str, Any]] = {}
+    for code, items in by_connector.items():
+        key_only = sorted((sref, tref) for sref, tref, _ in items)
+        key_plus_id = sorted((sref, tref, tsid) for sref, tref, tsid in items)
+        summary[code] = {
+            "row_count": len(items),
+            "key_only_hash": md5_lines([f"{sref}|{tref}" for sref, tref in key_only]),
+            "key_plus_id_hash": md5_lines([f"{sref}|{tref}|{tsid}" for sref, tref, tsid in key_plus_id]),
+        }
+    return summary
+
+
+def build_timeseries_id_remap(
+    *,
+    src_client: PostgrestClient,
+    dst_client: PostgrestClient,
+) -> Dict[int, int]:
+    src_connectors = src_client.fetch_all_rows(
+        "connectors",
+        profile=CORE_SCHEMA,
+        select="id,connector_code",
+        order="id.asc",
+    )
+    dst_connectors = dst_client.fetch_core_rows_via_rpc(
+        "connectors",
+        select_columns=["id", "connector_code"],
+        order_columns=["id"],
+    )
+    src_connector_codes = build_connector_code_map(src_connectors)
+    dst_connector_codes = build_connector_code_map(dst_connectors)
+
+    src_timeseries = src_client.fetch_all_rows(
+        "timeseries",
+        profile=CORE_SCHEMA,
+        select="id,connector_id,service_ref,timeseries_ref",
+        order="connector_id.asc,id.asc",
+    )
+    dst_timeseries = dst_client.fetch_core_rows_via_rpc(
+        "timeseries",
+        select_columns=["id", "connector_id", "service_ref", "timeseries_ref"],
+        order_columns=["connector_id", "id"],
+    )
+
+    src_by_key = {timeseries_key(row): as_int(row.get("id"), context="source timeseries.id") for row in src_timeseries}
+    dst_by_key = {timeseries_key(row): as_int(row.get("id"), context="destination timeseries.id") for row in dst_timeseries}
+
+    missing_in_dst: List[Tuple[Tuple[int, str, str], int]] = []
+    extra_in_dst: List[Tuple[Tuple[int, str, str], int]] = []
+    id_mismatches: List[Tuple[Tuple[int, str, str], int, int]] = []
+    remap: Dict[int, int] = {}
+
+    for key in sorted(set(src_by_key) | set(dst_by_key)):
+        src_id = src_by_key.get(key)
+        dst_id = dst_by_key.get(key)
+        if src_id is None and dst_id is not None:
+            extra_in_dst.append((key, dst_id))
+        elif dst_id is None and src_id is not None:
+            missing_in_dst.append((key, src_id))
+        elif src_id is not None and dst_id is not None and src_id != dst_id:
+            id_mismatches.append((key, src_id, dst_id))
+            remap[src_id] = dst_id
+
+    src_summary = summarize_timeseries_by_connector(src_timeseries, src_connector_codes)
+    dst_summary = summarize_timeseries_by_connector(dst_timeseries, dst_connector_codes)
+
+    print(
+        "Timeseries pre-sync alignment summary: "
+        f"id_mismatch={len(id_mismatches)} missing_in_destination={len(missing_in_dst)} "
+        f"extra_in_destination={len(extra_in_dst)}"
+    )
+    print(
+        "connector_code,source_row_count,destination_row_count,"
+        "source_key_only_hash,destination_key_only_hash,"
+        "source_key_plus_id_hash,destination_key_plus_id_hash"
+    )
+    for code in sorted(set(src_summary) | set(dst_summary)):
+        src_item = src_summary.get(code, {})
+        dst_item = dst_summary.get(code, {})
+        print(
+            f"{code},"
+            f"{src_item.get('row_count', 0)},{dst_item.get('row_count', 0)},"
+            f"{src_item.get('key_only_hash', '')},{dst_item.get('key_only_hash', '')},"
+            f"{src_item.get('key_plus_id_hash', '')},{dst_item.get('key_plus_id_hash', '')}"
+        )
+
+    for key, src_id, dst_id in id_mismatches[:100]:
+        cid, service_ref, ts_ref = key
+        connector_code = src_connector_codes.get(cid) or dst_connector_codes.get(cid) or f"connector_{cid}"
+        print(
+            "TIMESERIES_ID_MISMATCH "
+            f"connector_code={connector_code} connector_id={cid} "
+            f"service_ref={service_ref} timeseries_ref={ts_ref} "
+            f"source_id={src_id} destination_id={dst_id}"
+        )
+
+    target_to_source: Dict[int, int] = {}
+    for src_id, dst_id in remap.items():
+        other = target_to_source.get(dst_id)
+        if other is not None and other != src_id:
+            raise SyncError(
+                "Unsafe timeseries ID remap: multiple source IDs map to one destination ID "
+                f"(destination_id={dst_id}, source_ids={other},{src_id})"
+            )
+        target_to_source[dst_id] = src_id
+
+    effective_id_to_key: Dict[int, Tuple[int, str, str]] = {}
+    for key, src_id in src_by_key.items():
+        effective_id = remap.get(src_id, src_id)
+        other_key = effective_id_to_key.get(effective_id)
+        if other_key is not None and other_key != key:
+            raise SyncError(
+                "Unsafe timeseries ID remap: effective source IDs collide "
+                f"(effective_id={effective_id}, key_a={other_key}, key_b={key})"
+            )
+        effective_id_to_key[effective_id] = key
+
+    if id_mismatches:
+        print(
+            "Applying safe timeseries ID remap for sync "
+            f"({len(id_mismatches)} source IDs mapped to existing destination IDs)."
+        )
+
+    return remap
+
+
 def main() -> int:
     src_url = required_env("SRC_SUPABASE_URL")
     src_key = required_env("SRC_SECRET_KEY")
@@ -849,6 +1015,7 @@ def main() -> int:
     )
 
     print("Schema verification passed for all primary sync tables.")
+    timeseries_id_remap = build_timeseries_id_remap(src_client=src_client, dst_client=dst_client)
 
     table_stats: Dict[str, Dict[str, Any]] = {}
     missing_by_table: Dict[str, List[Tuple[Any, ...]]] = {}
@@ -867,6 +1034,20 @@ def main() -> int:
             select="*",
             order=order_expr,
         )
+
+        if table == "timeseries" and timeseries_id_remap:
+            remapped_rows = 0
+            for row in source_rows:
+                source_id = as_int(row.get("id"), context="timeseries source id before remap")
+                destination_id = timeseries_id_remap.get(source_id)
+                if destination_id is not None and destination_id != source_id:
+                    row["id"] = destination_id
+                    remapped_rows += 1
+            if remapped_rows:
+                print(
+                    f"timeseries: remapped {remapped_rows} source IDs to existing destination IDs "
+                    "before upsert to avoid natural-key collision failures."
+                )
 
         source_count = len(source_rows)
         for batch in chunks(source_rows, UPSERT_BATCH_SIZE):
