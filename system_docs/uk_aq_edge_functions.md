@@ -138,6 +138,7 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
 - Modes:
   - `mode=observations`: cursor + overlap based pull from LIVE `uk_aq_core.observations`, upsert into test ingest (`uk_aq_rpc_observations_upsert`) and test history (`uk_aq_rpc_observs_observations_upsert` via shared observs client).
   - `mode=core`: hourly sync of OpenAQ `connectors`, `phenomena`, `stations`, `timeseries` by ID.
+    - Connector sync preserves TEST runtime fields (`poll_enabled`, poll timing/batch settings, scheduler backend, and `last_*` runtime status columns) so LIVE core sync cannot re-toggle test polling.
   - `mode=reseed`: one-time destructive reset/reseed flow for OpenAQ slice in test (clear then reseed from LIVE with LIVE IDs), then reseed recent observations and reseed identity sequences.
   - Reseed safety: requires `confirm=RESEED_OPENAQ` in POST body.
 - Guardrails:

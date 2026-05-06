@@ -1087,10 +1087,14 @@ async function runCoreSync(
     ? null
     : subtractMinutes(coreCursor, options.overlapMinutes);
 
+  const connectorUpsertRow = buildConnectorUpsertRow(
+    sourceConnector,
+    targetConnector ?? null,
+  );
   const rowsWrittenConnector = await upsertCoreRows(
     targetClient,
     "connectors",
-    [sourceConnector as unknown as Record<string, unknown>],
+    [connectorUpsertRow],
   );
 
   const phenomenaSync = await syncCoreTableByConnector(
@@ -1149,6 +1153,53 @@ async function runCoreSync(
       stations_rows: stationsSync.rowsRead,
       timeseries_rows: timeseriesSync.rowsRead,
     },
+  };
+}
+
+function buildConnectorUpsertRow(
+  sourceConnector: ConnectorRow,
+  targetConnector: ConnectorRow | null,
+): Record<string, unknown> {
+  // Keep source identity/catalog metadata in sync, but preserve test runtime
+  // control and runtime status fields so LIVE cannot re-toggle test polling.
+  return {
+    id: sourceConnector.id,
+    connector_code: sourceConnector.connector_code,
+    label: sourceConnector.label,
+    display_name: sourceConnector.display_name ??
+      targetConnector?.display_name ??
+      sourceConnector.label,
+    service_url: sourceConnector.service_url ?? targetConnector?.service_url ??
+      null,
+    station_display_name_template:
+      sourceConnector.station_display_name_template ??
+        targetConnector?.station_display_name_template ??
+        null,
+    overwrite_station_name: sourceConnector.overwrite_station_name ??
+      targetConnector?.overwrite_station_name ??
+      true,
+    stations_bbox_supported: sourceConnector.stations_bbox_supported ??
+      targetConnector?.stations_bbox_supported ??
+      null,
+    timeseries_station_filter_supported:
+      sourceConnector.timeseries_station_filter_supported ??
+        targetConnector?.timeseries_station_filter_supported ??
+        null,
+    created_at: sourceConnector.created_at ?? targetConnector?.created_at ??
+      null,
+    poll_enabled: targetConnector?.poll_enabled ?? false,
+    poll_interval_minutes: targetConnector?.poll_interval_minutes ?? null,
+    poll_window_hours: targetConnector?.poll_window_hours ?? null,
+    poll_timeseries_batch_size: targetConnector?.poll_timeseries_batch_size ??
+      null,
+    scheduler_backend: targetConnector?.scheduler_backend ??
+      sourceConnector.scheduler_backend ??
+      "supabase_function",
+    last_polled_at: targetConnector?.last_polled_at ?? null,
+    last_run_start: targetConnector?.last_run_start ?? null,
+    last_run_end: targetConnector?.last_run_end ?? null,
+    last_run_status: targetConnector?.last_run_status ?? null,
+    last_run_message: targetConnector?.last_run_message ?? null,
   };
 }
 
