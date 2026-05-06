@@ -514,7 +514,7 @@ jobs:
       - name: Report daily task health
         if: always()
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           DAILY_TASK_KEY: ingest.stations_daily
           JOB_STATUS: ${{ job.status }}
