@@ -1745,6 +1745,14 @@ function toNumber(value: unknown): number | null {
   if (value === null || value === undefined) {
     return null;
   }
+  if (typeof value === "object" && !Array.isArray(value)) {
+    const record = value as Record<string, unknown>;
+    const nested = record.value ?? record.result ?? record.v;
+    if (nested === null || nested === undefined) {
+      return null;
+    }
+    return toNumber(nested);
+  }
   const num = Number(value);
   if (!Number.isFinite(num)) {
     return null;
@@ -1755,6 +1763,11 @@ function toNumber(value: unknown): number | null {
 function parseTimestamp(value: unknown): Date | null {
   if (value === null || value === undefined) {
     return null;
+  }
+  if (typeof value === "object" && !Array.isArray(value)) {
+    const record = value as Record<string, unknown>;
+    const nested = record.timestamp ?? record.time ?? record.dateTime ?? record.datetime;
+    return parseTimestamp(nested);
   }
   if (typeof value === "number" && Number.isFinite(value)) {
     const timestamp = value < 1e12 ? value * 1000 : value;

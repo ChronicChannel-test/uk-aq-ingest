@@ -507,6 +507,7 @@ Stations bbox:
 - If `connectors.stations_bbox_supported` is false, the script skips bbox when calling `/stations`.
 Timeseries station filter:
 - If `connectors.timeseries_station_filter_supported` is false, the script skips station filtering for `/timeseries`.
+- UK-AIR `firstValue`/`lastValue` metadata can arrive as nested objects (`{timestamp,value}`); the script parses those shapes and only writes `first_value_at` / `last_value_at` / `last_value` when source values are present so discovery runs do not null-clobber existing freshness fields.
 - On full-catalog discovery runs (timeseries not station-scoped), the script reconciles UK-AIR timeseries lifecycle:
   present refs set `last_catalog_seen_at` and reset `catalog_missing_runs`; missing active refs increment
   `catalog_missing_runs`; `ended_at` is set after 2 consecutive misses; reappearing refs auto-reactivate.

@@ -1149,29 +1149,44 @@ class SupabaseWriter:
             if isinstance(ts.get("phenomenon"), dict):
                 phenomenon = ts["phenomenon"]
                 phen_source_label = phenomenon.get("source_label") or phenomenon.get("eionet_uri")
-            rows.append(
-                {
-                    "timeseries_ref": str(ts.get("id")) if ts.get("id") is not None else None,
-                    "label": ts.get("label"),
-                    "uom": ts.get("uom"),
-                    "station_id": station_db_id,
-                    "connector_id": connector_id,
-                    "service_ref": str(service_ref),
-                    "offering_id": offering_id_map.get(str(offering_ref)) if offering_ref is not None else None,
-                    "feature_id": feature_id_map.get(str(feature_ref)) if feature_ref is not None else None,
-                    "procedure_id": procedure_id_map.get(str(procedure_ref)) if procedure_ref is not None else None,
-                    "phenomenon_id": (
-                        phenomenon_id_map.get(str(phen_source_label)) if phen_source_label else None
-                    ),
-                    "category_id": category_id_map.get(str(category_ref)) if category_ref is not None else None,
-                    "first_value_at": _parse_timestamp(ts.get("firstValueTimestamp")),
-                    "last_value_at": _parse_timestamp(ts.get("lastValueTimestamp")),
-                    "last_value": _safe_number(ts.get("lastValue")),
-                    "extras": ts.get("extras") or ts.get("parameters"),
-                    "rendering_hints": ts.get("renderingHints"),
-                    "status_intervals": ts.get("statusIntervals"),
-                }
+            first_value_at = _parse_timestamp(
+                ts.get("firstValueTimestamp")
+                if ts.get("firstValueTimestamp") is not None
+                else ts.get("firstValue")
             )
+            last_value_at = _parse_timestamp(
+                ts.get("lastValueTimestamp")
+                if ts.get("lastValueTimestamp") is not None
+                else ts.get("lastValue")
+            )
+            last_value = _safe_number(ts.get("lastValue"))
+
+            row: Dict[str, Any] = {
+                "timeseries_ref": str(ts.get("id")) if ts.get("id") is not None else None,
+                "label": ts.get("label"),
+                "uom": ts.get("uom"),
+                "station_id": station_db_id,
+                "connector_id": connector_id,
+                "service_ref": str(service_ref),
+                "offering_id": offering_id_map.get(str(offering_ref)) if offering_ref is not None else None,
+                "feature_id": feature_id_map.get(str(feature_ref)) if feature_ref is not None else None,
+                "procedure_id": procedure_id_map.get(str(procedure_ref)) if procedure_ref is not None else None,
+                "phenomenon_id": (
+                    phenomenon_id_map.get(str(phen_source_label)) if phen_source_label else None
+                ),
+                "category_id": category_id_map.get(str(category_ref)) if category_ref is not None else None,
+                "extras": ts.get("extras") or ts.get("parameters"),
+                "rendering_hints": ts.get("renderingHints"),
+                "status_intervals": ts.get("statusIntervals"),
+            }
+            # Avoid clobbering existing values when source metadata omits scalar fields.
+            if first_value_at is not None:
+                row["first_value_at"] = first_value_at
+            if last_value_at is not None:
+                row["last_value_at"] = last_value_at
+            if last_value is not None:
+                row["last_value"] = last_value
+            rows.append(row)
         rows = [row for row in rows if row.get("timeseries_ref")]
         if rows:
             self.core.table("timeseries").upsert(
@@ -1951,7 +1966,11 @@ class UkAirIngestor:
                         last_at = points[-1]["observed_at"]
                     else:
                         last_val = data.get("lastValue")
-                        last_at = _parse_timestamp(data.get("lastValueTimestamp"))
+                        last_at = _parse_timestamp(
+                            data.get("lastValueTimestamp")
+                            if data.get("lastValueTimestamp") is not None
+                            else data.get("lastValue")
+                        )
                     self.writer.update_last_value(ts_db_id, last_at, _safe_number(last_val))
             except Exception as exc:
                 errors += 1
@@ -1995,7 +2014,11 @@ class UkAirIngestor:
                     last_at = points[-1]["observed_at"]
                 else:
                     last_val = data.get("lastValue")
-                    last_at = _parse_timestamp(data.get("lastValueTimestamp"))
+                    last_at = _parse_timestamp(
+                        data.get("lastValueTimestamp")
+                        if data.get("lastValueTimestamp") is not None
+                        else data.get("lastValue")
+                    )
                 self.writer.update_last_value(ts_db_id, last_at, _safe_number(last_val))
             except Exception as exc:
                 errors += 1
@@ -2130,6 +2153,14 @@ def _parse_timestamp(raw: Any) -> Optional[datetime]:
     if raw is None:
         return None
     try:
+        if isinstance(raw, dict):
+            candidate = (
+                raw.get("timestamp")
+                or raw.get("time")
+                or raw.get("dateTime")
+                or raw.get("datetime")
+            )
+            return _parse_timestamp(candidate)
         if isinstance(raw, (int, float)):
             return datetime.fromtimestamp(raw / 1000, tz=timezone.utc)
         if isinstance(raw, str):
@@ -2143,6 +2174,10 @@ def _safe_number(raw: Any) -> Optional[float]:
     try:
         if raw is None:
             return None
+        if isinstance(raw, dict):
+            raw = raw.get("value", raw.get("result", raw.get("v")))
+            if raw is None:
+                return None
         num = float(raw)
         if math.isnan(num):  # NaN guard
             return None
