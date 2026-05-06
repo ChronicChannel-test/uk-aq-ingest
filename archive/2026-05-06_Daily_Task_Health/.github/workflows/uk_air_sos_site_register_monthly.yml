@@ -1,0 +1,43 @@
+name: UK-AIR SOS Site Register (Monthly)
+
+permissions:
+  contents: read
+
+on:
+  schedule:
+    - cron: "15 4 1 * *"
+  workflow_dispatch:
+
+jobs:
+  download-site-register:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install requests python-dotenv supabase
+
+      - name: Download UK-AIR SOS site register CSV
+        env:
+          UK_AIR_SOS_SITE_SEARCH_URL: ${{ secrets.UK_AIR_SOS_SITE_SEARCH_URL }}
+          UK_AIR_SOS_SITE_SEARCH_USER_AGENT: ${{ secrets.UK_AIR_SOS_SITE_SEARCH_USER_AGENT }}
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          SB_SECRET_KEY: ${{ secrets.SB_SECRET_KEY }}
+          UK_AQ_DROPBOX_ROOT: ${{ vars.UK_AQ_DROPBOX_ROOT }}
+          DROPBOX_APP_KEY: ${{ secrets.DROPBOX_APP_KEY }}
+          DROPBOX_APP_SECRET: ${{ secrets.DROPBOX_APP_SECRET }}
+          DROPBOX_REFRESH_TOKEN: ${{ secrets.DROPBOX_REFRESH_TOKEN }}
+        run: |
+          python3 scripts/uk_air_sos/uk_air_sos_site_register.py \
+            --output uk_air_sos_site_register.csv \
+            --dropbox-upload \
+            --dropbox-dir network_info/uk_air_sos \
+            --load
