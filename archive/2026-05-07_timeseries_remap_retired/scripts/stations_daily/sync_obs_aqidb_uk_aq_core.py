@@ -832,11 +832,11 @@ def summarize_timeseries_by_connector(
     return summary
 
 
-def verify_timeseries_id_alignment(
+def build_timeseries_id_remap(
     *,
     src_client: PostgrestClient,
     dst_client: PostgrestClient,
-) -> None:
+) -> Dict[int, int]:
     src_connectors = src_client.fetch_all_rows(
         "connectors",
         profile=CORE_SCHEMA,
@@ -869,6 +869,7 @@ def verify_timeseries_id_alignment(
     missing_in_dst: List[Tuple[Tuple[int, str, str], int]] = []
     extra_in_dst: List[Tuple[Tuple[int, str, str], int]] = []
     id_mismatches: List[Tuple[Tuple[int, str, str], int, int]] = []
+    remap: Dict[int, int] = {}
 
     for key in sorted(set(src_by_key) | set(dst_by_key)):
         src_id = src_by_key.get(key)
@@ -879,6 +880,7 @@ def verify_timeseries_id_alignment(
             missing_in_dst.append((key, src_id))
         elif src_id is not None and dst_id is not None and src_id != dst_id:
             id_mismatches.append((key, src_id, dst_id))
+            remap[src_id] = dst_id
 
     src_summary = summarize_timeseries_by_connector(src_timeseries, src_connector_codes)
     dst_summary = summarize_timeseries_by_connector(dst_timeseries, dst_connector_codes)
@@ -913,12 +915,34 @@ def verify_timeseries_id_alignment(
             f"source_id={src_id} destination_id={dst_id}"
         )
 
-    if missing_in_dst or extra_in_dst or id_mismatches:
-        raise SyncError(
-            "Timeseries ID alignment check failed: destination timeseries keys/IDs do not match source. "
-            "Run scripts/stations_daily/uk_aq_repair_obs_aqidb_timeseries_ids.py first, "
-            "then re-run this core sync."
+    target_to_source: Dict[int, int] = {}
+    for src_id, dst_id in remap.items():
+        other = target_to_source.get(dst_id)
+        if other is not None and other != src_id:
+            raise SyncError(
+                "Unsafe timeseries ID remap: multiple source IDs map to one destination ID "
+                f"(destination_id={dst_id}, source_ids={other},{src_id})"
+            )
+        target_to_source[dst_id] = src_id
+
+    effective_id_to_key: Dict[int, Tuple[int, str, str]] = {}
+    for key, src_id in src_by_key.items():
+        effective_id = remap.get(src_id, src_id)
+        other_key = effective_id_to_key.get(effective_id)
+        if other_key is not None and other_key != key:
+            raise SyncError(
+                "Unsafe timeseries ID remap: effective source IDs collide "
+                f"(effective_id={effective_id}, key_a={other_key}, key_b={key})"
+            )
+        effective_id_to_key[effective_id] = key
+
+    if id_mismatches:
+        print(
+            "Applying safe timeseries ID remap for sync "
+            f"({len(id_mismatches)} source IDs mapped to existing destination IDs)."
         )
+
+    return remap
 
 
 def main() -> int:
@@ -991,7 +1015,7 @@ def main() -> int:
     )
 
     print("Schema verification passed for all primary sync tables.")
-    verify_timeseries_id_alignment(src_client=src_client, dst_client=dst_client)
+    timeseries_id_remap = build_timeseries_id_remap(src_client=src_client, dst_client=dst_client)
 
     table_stats: Dict[str, Dict[str, Any]] = {}
     missing_by_table: Dict[str, List[Tuple[Any, ...]]] = {}
@@ -1010,6 +1034,20 @@ def main() -> int:
             select="*",
             order=order_expr,
         )
+
+        if table == "timeseries" and timeseries_id_remap:
+            remapped_rows = 0
+            for row in source_rows:
+                source_id = as_int(row.get("id"), context="timeseries source id before remap")
+                destination_id = timeseries_id_remap.get(source_id)
+                if destination_id is not None and destination_id != source_id:
+                    row["id"] = destination_id
+                    remapped_rows += 1
+            if remapped_rows:
+                print(
+                    f"timeseries: remapped {remapped_rows} source IDs to existing destination IDs "
+                    "before upsert to avoid natural-key collision failures."
+                )
 
         source_count = len(source_rows)
         for batch in chunks(source_rows, UPSERT_BATCH_SIZE):

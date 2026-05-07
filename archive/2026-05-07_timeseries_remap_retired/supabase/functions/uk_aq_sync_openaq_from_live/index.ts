@@ -119,13 +119,6 @@ type ObservationRow = {
   status: string | null;
 };
 
-type TimeseriesIdentityRow = {
-  id: number;
-  connector_id: number;
-  service_ref: string;
-  timeseries_ref: string;
-};
-
 type PostgrestClient = {
   baseUrl: string;
   key: string;
@@ -531,137 +524,6 @@ async function syncCoreTableByConnector(
   return { rowsRead, rowsWritten };
 }
 
-function makeTimeseriesNaturalKey(
-  connectorId: number,
-  serviceRef: string,
-  timeseriesRef: string,
-): string {
-  return `${connectorId}|${serviceRef}|${timeseriesRef}`;
-}
-
-function buildTimeseriesAlignmentSummary(
-  sourceRows: TimeseriesIdentityRow[],
-  targetRows: TimeseriesIdentityRow[],
-): {
-  idMismatches: number;
-  missingInTarget: number;
-  extraInTarget: number;
-} {
-  const sourceByKey = new Map<string, number>();
-  const targetByKey = new Map<string, number>();
-
-  for (const row of sourceRows) {
-    const key = makeTimeseriesNaturalKey(
-      row.connector_id,
-      row.service_ref,
-      row.timeseries_ref,
-    );
-    sourceByKey.set(key, row.id);
-  }
-  for (const row of targetRows) {
-    const key = makeTimeseriesNaturalKey(
-      row.connector_id,
-      row.service_ref,
-      row.timeseries_ref,
-    );
-    targetByKey.set(key, row.id);
-  }
-
-  let idMismatches = 0;
-  let missingInTarget = 0;
-  let extraInTarget = 0;
-
-  const allKeys = new Set<string>([
-    ...sourceByKey.keys(),
-    ...targetByKey.keys(),
-  ]);
-  for (const key of allKeys) {
-    const sourceId = sourceByKey.get(key);
-    const targetId = targetByKey.get(key);
-
-    if (sourceId === undefined && targetId !== undefined) {
-      extraInTarget += 1;
-      continue;
-    }
-    if (targetId === undefined && sourceId !== undefined) {
-      missingInTarget += 1;
-      continue;
-    }
-    if (sourceId === undefined || targetId === undefined) {
-      continue;
-    }
-    if (sourceId !== targetId) {
-      idMismatches += 1;
-    }
-  }
-
-  return {
-    idMismatches,
-    missingInTarget,
-    extraInTarget,
-  };
-}
-
-function assertTimeseriesAligned(
-  summary: {
-    idMismatches: number;
-    missingInTarget: number;
-    extraInTarget: number;
-  },
-): void {
-  if (
-    summary.idMismatches > 0 ||
-    summary.missingInTarget > 0 ||
-    summary.extraInTarget > 0
-  ) {
-    throw new Error(
-      "OpenAQ LIVE->TEST timeseries alignment check failed "
-        + `(id_mismatches=${summary.idMismatches}, `
-        + `missing_in_target=${summary.missingInTarget}, `
-        + `extra_in_target=${summary.extraInTarget}). `
-        + "Run scripts/stations_daily/uk_aq_repair_obs_aqidb_timeseries_ids.py and retry.",
-    );
-  }
-}
-
-async function fetchTimeseriesIdentityRowsByConnector(
-  client: PostgrestClient,
-  connectorId: number,
-): Promise<TimeseriesIdentityRow[]> {
-  let offset = 0;
-  const rows: TimeseriesIdentityRow[] = [];
-
-  while (true) {
-    const batch = await postgrestRequest<TimeseriesIdentityRow[]>(
-      client,
-      "GET",
-      "timeseries",
-      {
-        schema: UK_AQ_CORE_SCHEMA,
-        params: {
-          select: "id,connector_id,service_ref,timeseries_ref",
-          connector_id: `eq.${connectorId}`,
-          order: "id.asc",
-          limit: DEFAULT_PAGE_SIZE,
-          offset,
-        },
-      },
-    );
-
-    if (!batch.length) {
-      break;
-    }
-
-    rows.push(...batch);
-    if (batch.length < DEFAULT_PAGE_SIZE) {
-      break;
-    }
-    offset += batch.length;
-  }
-
-  return rows;
-}
-
 async function fetchExistingTimeseriesIds(
   client: PostgrestClient,
   timeseriesIds: number[],
@@ -1059,20 +921,6 @@ async function runObservationsSync(
     );
   }
 
-  const sourceTimeseriesRows = await fetchTimeseriesIdentityRowsByConnector(
-    sourceClient,
-    sourceConnector.id,
-  );
-  const targetTimeseriesRows = await fetchTimeseriesIdentityRowsByConnector(
-    targetClient,
-    targetConnector.id,
-  );
-  const timeseriesAlignmentSummary = buildTimeseriesAlignmentSummary(
-    sourceTimeseriesRows,
-    targetTimeseriesRows,
-  );
-  assertTimeseriesAligned(timeseriesAlignmentSummary);
-
   let cursorObservedAt = options.forceSinceIso
     ? null
     : lockRow.cursor_observed_at;
@@ -1132,8 +980,7 @@ async function runObservationsSync(
     const ingestReadyRows = batch.filter((row) =>
       existingTargetTimeseriesIds.has(row.timeseries_id)
     );
-    rowsSkippedMissingTimeseries.value +=
-      batch.length - ingestReadyRows.length;
+    rowsSkippedMissingTimeseries.value += batch.length - ingestReadyRows.length;
 
     if (ingestReadyRows.length) {
       rowsWrittenIngest.value += await upsertMainObservations(
@@ -1193,9 +1040,6 @@ async function runObservationsSync(
       initial_lookback_hours: options.initialLookbackHours,
       force_since: options.forceSinceIso ?? null,
       skipped_rows_missing_timeseries: rowsSkippedMissingTimeseries.value,
-      timeseries_id_mismatches: timeseriesAlignmentSummary.idMismatches,
-      timeseries_missing_in_target: timeseriesAlignmentSummary.missingInTarget,
-      timeseries_extra_in_target: timeseriesAlignmentSummary.extraInTarget,
     },
   };
 }
@@ -1272,21 +1116,6 @@ async function runCoreSync(
         : null,
     },
   );
-
-  const sourceTimeseriesRows = await fetchTimeseriesIdentityRowsByConnector(
-    sourceClient,
-    sourceConnector.id,
-  );
-  const targetTimeseriesRows = await fetchTimeseriesIdentityRowsByConnector(
-    targetClient,
-    targetConnectorId,
-  );
-  const timeseriesAlignmentSummary = buildTimeseriesAlignmentSummary(
-    sourceTimeseriesRows,
-    targetTimeseriesRows,
-  );
-  assertTimeseriesAligned(timeseriesAlignmentSummary);
-
   const timeseriesSync = await syncCoreTableByConnector(
     sourceClient,
     targetClient,
@@ -1323,9 +1152,6 @@ async function runCoreSync(
       phenomena_rows: phenomenaSync.rowsRead,
       stations_rows: stationsSync.rowsRead,
       timeseries_rows: timeseriesSync.rowsRead,
-      timeseries_id_mismatches: timeseriesAlignmentSummary.idMismatches,
-      timeseries_missing_in_target: timeseriesAlignmentSummary.missingInTarget,
-      timeseries_extra_in_target: timeseriesAlignmentSummary.extraInTarget,
     },
   };
 }

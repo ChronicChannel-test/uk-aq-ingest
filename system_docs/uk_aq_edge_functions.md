@@ -137,12 +137,17 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
   - `select vault.create_secret('<same-value-as-UK_AQ_OPENAQ_MIRROR_AUTH_TOKEN>', 'UK_AQ_OPENAQ_MIRROR_AUTH_TOKEN');`
 - Modes:
   - `mode=observations`: cursor + overlap based pull from LIVE `uk_aq_core.observations`, upsert into test ingest (`uk_aq_rpc_observations_upsert`) and test history (`uk_aq_rpc_observs_observations_upsert` via shared observs client).
+    - Enforces strict `timeseries_id` alignment (by natural key: `connector_id + service_ref + timeseries_ref`) before write; fails fast if IDs or key sets differ.
   - `mode=core`: hourly sync of OpenAQ `connectors`, `phenomena`, `stations`, `timeseries` by ID.
+    - Enforces the same strict timeseries alignment check before core sync; no runtime ID remap is applied.
     - Connector sync preserves TEST runtime fields (`poll_enabled`, poll timing/batch settings, scheduler backend, and `last_*` runtime status columns) so LIVE core sync cannot re-toggle test polling.
   - `mode=reseed`: one-time destructive reset/reseed flow for OpenAQ slice in test (clear then reseed from LIVE with LIVE IDs), then reseed recent observations and reseed identity sequences.
   - Reseed safety: requires `confirm=RESEED_OPENAQ` in POST body.
 - Guardrails:
   - Hard-coded source filter: connector code `openaq` only.
+  - If timeseries alignment fails, repair IDs first via:
+    - `python3 scripts/stations_daily/uk_aq_repair_obs_aqidb_timeseries_ids.py`
+    - then retry the function.
   - Per-mode lock/state table: `uk_aq_ops.uk_aq_openaq_live_sync_state`.
   - Lock/state RPCs in `uk_aq_public`:
     - `uk_aq_rpc_openaq_live_sync_lock_acquire`

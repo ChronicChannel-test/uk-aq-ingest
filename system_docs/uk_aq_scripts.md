@@ -360,10 +360,10 @@ Behavior:
 - Runs a pre-sync timeseries alignment check keyed by `(connector_id, service_ref, timeseries_ref)`:
   - prints per-connector row-count/hash summary (`key_only_hash`, `key_plus_id_hash`) for source vs destination
   - reports key-only gaps (`missing_in_destination`, `extra_in_destination`) and ID mismatches
-- For timeseries key matches with different IDs, applies a safe sync remap:
-  - keeps the existing destination `timeseries.id` as the effective upsert PK for that key
-  - still upserts all other source timeseries fields by that destination ID
-  - this avoids natural-key unique-index collisions during upsert and preserves existing Obs AQI references that use destination IDs
+- If any key-set mismatch or ID mismatch is detected, sync fails fast (no remap is applied).
+- Repair path for ID drift:
+  - `python3 scripts/stations_daily/uk_aq_repair_obs_aqidb_timeseries_ids.py` (dry-run)
+  - `python3 scripts/stations_daily/uk_aq_repair_obs_aqidb_timeseries_ids.py --apply` (repair)
 - Upserts destination rows by table primary key and hard-deletes destination rows whose PKs no longer exist in ingest.
 - Also syncs FK dependency tables (`observed_properties`, `categories`, `offerings`, `features`, `procedures`) in dependency-safe order so mirrored rows can insert/delete cleanly.
 - Validates destination schema against source metadata (column order/name/type/nullability/default + PK) before any write.
@@ -383,6 +383,48 @@ Notes:
 - Apply agg_daily schema SQL first on Obs AQI DB:
   - `CIC-test-uk-aq-schema/schemas/obs_aqi_db/uk_aq_obs_aqi_db_schema.sql`
   - Focused apply option for mirror RPC updates: `CIC-test-uk-aq-schema/schemas/obs_aqi_db/uk_aq_core_mirror_rpcs.sql`
+
+### `scripts/stations_daily/uk_aq_repair_obs_aqidb_timeseries_ids.py`
+Purpose:
+- Normalize `obs_aqidb.uk_aq_core.timeseries.id` values so they match ingest DB canonical IDs for the same natural keys.
+- Repairs historical ID drift that remap-only syncs do not resolve.
+
+Behavior:
+- Compares source ingest vs destination obs_aqidb timeseries keyed by:
+  - `(connector_code, service_ref, timeseries_ref)`
+- Reports:
+  - `id_mismatches`
+  - `missing_in_destination`
+  - `extra_in_destination`
+- Default mode is dry-run (no writes).
+- `--apply` mode performs a transactional two-phase ID move in destination:
+  - `dst_id -> temp_id -> src_id`
+  - keeps FK tables valid while IDs move
+- Auto-discovers and updates:
+  - FK tables referencing `uk_aq_core.timeseries(id)` (AQI hourly/daily/monthly)
+  - additional `timeseries_id` tables (for example `uk_aq_observs` partitions, `uk_aq_ops.chart_load_metrics`)
+- Resets `uk_aq_core.timeseries` identity sequence after repair.
+- Runs post-apply validation that shared natural keys now have matching IDs.
+
+Common commands:
+```
+# Dry-run all connectors
+python3 scripts/stations_daily/uk_aq_repair_obs_aqidb_timeseries_ids.py
+
+# Dry-run OpenAQ only
+python3 scripts/stations_daily/uk_aq_repair_obs_aqidb_timeseries_ids.py --connector-code openaq
+
+# Apply repair (all connectors)
+python3 scripts/stations_daily/uk_aq_repair_obs_aqidb_timeseries_ids.py --apply
+```
+
+Environment:
+- `SUPABASE_DB_URL` (source ingest DB URL)
+- `OBS_AQIDB_SUPABASE_DB_URL` (destination Obs AQI DB URL)
+
+Notes:
+- Apply is blocked by default when natural-key sets differ (`missing_in_destination` or `extra_in_destination` non-zero). Use `--allow-key-delta` only when partial repair is intentional.
+- Requires `psql` in `PATH`.
 
 ### `scripts/uk_aq_station_snapshot_local.py`
 Purpose:
