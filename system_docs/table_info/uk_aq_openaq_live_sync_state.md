@@ -17,6 +17,9 @@ Key columns:
 - `rows_read`, `rows_written_ingest`, `rows_written_observs`: latest run counters.
 - `updated_at`: last state update timestamp.
 
+Timestamp note:
+- Timestamp columns use `timestamptz` and are displayed in UTC for this project.
+
 Writers/readers:
 - Writer/reader RPCs (schema `uk_aq_public`):
   - `uk_aq_rpc_openaq_live_sync_lock_acquire`
