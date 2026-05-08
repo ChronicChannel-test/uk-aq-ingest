@@ -913,9 +913,12 @@ def verify_timeseries_id_alignment(
             f"source_id={src_id} destination_id={dst_id}"
         )
 
-    if missing_in_dst or extra_in_dst or id_mismatches:
+    # Missing/extra natural keys are expected drift that this mirror sync can
+    # reconcile via upsert + delete phases. Only block when the same natural
+    # key exists on both sides with different numeric IDs.
+    if id_mismatches:
         raise SyncError(
-            "Timeseries ID alignment check failed: destination timeseries keys/IDs do not match source. "
+            "Timeseries ID alignment check failed: destination timeseries IDs do not match source for shared natural keys. "
             "Run scripts/stations_daily/uk_aq_repair_obs_aqidb_timeseries_ids.py first, "
             "then re-run this core sync."
         )
