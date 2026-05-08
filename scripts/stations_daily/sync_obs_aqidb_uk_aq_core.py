@@ -413,6 +413,7 @@ def load_source_metadata(
     *,
     schema_sql_path: Path,
     tables: Sequence[str],
+    allow_fallback: bool = True,
 ) -> Tuple[Dict[str, List[ColumnMeta]], Dict[str, List[str]], str]:
     # Preferred: parse source DDL from local schema checkout when available.
     if schema_sql_path.exists():
@@ -420,9 +421,13 @@ def load_source_metadata(
             src_cols, src_pk = parse_source_table_metadata(schema_sql_path, tables)
             return src_cols, src_pk, f"schema_sql:{schema_sql_path}"
         except SyncError as exc:
+            if not allow_fallback:
+                raise
             print(f"WARN: source schema SQL parse failed: {exc}; falling back.", file=sys.stderr)
 
     # Final fallback: embedded static metadata from ingest DDL.
+    if not allow_fallback:
+        raise SyncError(f"Source schema SQL file not found: {schema_sql_path}")
     src_cols, src_pk = static_source_metadata(tables)
     return src_cols, src_pk, "embedded_static"
 
@@ -933,12 +938,12 @@ def main() -> int:
     caller_prefix_raw = (os.getenv("SYNC_CALLER_PREFIX") or "stations_daily_sync_core").strip().lower()
     caller_prefix = re.sub(r"[^a-z0-9_]+", "_", caller_prefix_raw).strip("_") or "stations_daily_sync_core"
 
-    schema_sql_path = Path(
-        os.getenv(
-            "UK_AQ_INGEST_CORE_SCHEMA_SQL_PATH",
-            "../CIC-Test-UK-AQ-Schema/CIC-test-uk-aq-schema/schemas/ingest_db/uk_aq_core_schema.sql",
+    schema_sql_path = Path(required_env("UK_AQ_INGEST_CORE_SCHEMA_SQL_PATH"))
+    if not schema_sql_path.exists():
+        raise SyncError(
+            f"Configured schema SQL file does not exist: {schema_sql_path} "
+            "(set UK_AQ_INGEST_CORE_SCHEMA_SQL_PATH per environment)."
         )
-    )
 
     src_client = PostgrestClient(
         base_url=src_url,
@@ -956,6 +961,7 @@ def main() -> int:
     source_columns, source_pk, source_meta_mode = load_source_metadata(
         schema_sql_path=schema_sql_path,
         tables=PRIMARY_TABLES,
+        allow_fallback=False,
     )
     print(f"Loaded source schema metadata via: {source_meta_mode}")
 
