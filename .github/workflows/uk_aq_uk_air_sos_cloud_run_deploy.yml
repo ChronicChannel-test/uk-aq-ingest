@@ -60,7 +60,7 @@ jobs:
       UK_AIR_SOS_STALE_LIMIT: ${{ vars.UK_AIR_SOS_STALE_LIMIT || '4' }}
       UK_AIR_SOS_MAX_RUNTIME_SECONDS: ${{ vars.UK_AIR_SOS_MAX_RUNTIME_SECONDS || '120' }}
       UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL: ${{ vars.UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL || '' }}
-      UK_AQ_DROPBOX_ROOT: ${{ vars.UK_AQ_DROPBOX_ROOT || '/CIC-Test' }}
+      UK_AQ_DROPBOX_ROOT: ${{ vars.UK_AQ_DROPBOX_ROOT }}
       UK_AIR_RAW_DROPBOX_FOLDER: ${{ vars.UK_AIR_RAW_DROPBOX_FOLDER || '/connectors/uk_air_sos/raw_data' }}
       SB_SECRET_KEY: ${{ secrets.SB_SECRET_KEY }}
       OBS_AQIDB_SECRET_KEY: ${{ secrets.OBS_AQIDB_SECRET_KEY }}

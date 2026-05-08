@@ -117,7 +117,7 @@ gcloud run deploy uk-aq-openaq-ingest \
 - `DROPBOX_APP_KEY`, `DROPBOX_APP_SECRET`, `DROPBOX_REFRESH_TOKEN`
 - `OPENAQ_RAW_DROPBOX_ALLOWED_SUPABASE_URL` (or `UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL`)
 - `OPENAQ_ERROR_DROPBOX_ALLOWED_SUPABASE_URL` (optional; falls back to raw allowlist env)
-- `UK_AQ_DROPBOX_ROOT` (default `/CIC-Test`)
+- `UK_AQ_DROPBOX_ROOT`
 
 ## Task Queue Reconciliation
 

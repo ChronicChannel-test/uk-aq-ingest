@@ -330,7 +330,7 @@ Environment:
 - `UK_AQ_R2_HISTORY_DROPBOX_STATE_FILE` (optional explicit local path to checkpoint JSON; highest priority)
 - `UK_AQ_DROPBOX_LOCAL_ROOT` (optional local Dropbox sync root; default auto-detect: `~/Dropbox`)
 - `UK_AQ_DROPBOX_APP_FOLDER` (optional app-folder name under `.../Dropbox/Apps/`; if unset dashboard scans app folders)
-- `UK_AQ_DROPBOX_ROOT` (optional; default `CIC-Test`; used to build checkpoint path under local Dropbox root)
+- `UK_AQ_DROPBOX_ROOT` (used to build checkpoint path under local Dropbox root)
 - `UK_AQ_R2_HISTORY_DROPBOX_DIR` (optional; default `R2_history_backup`)
 - `UK_AQ_R2_HISTORY_BACKUP_STATE_REL_PATH` (optional; default `_ops/checkpoints/r2_history_backup_state_v1.json`)
 - `UK_AQ_COVERAGE_DAY_FETCH_LIMIT` (optional; default `1000`, page size for per-day coverage fetches)
@@ -1378,6 +1378,7 @@ Notes:
 - JSON station rows are expanded to all DB timeseries for that station before duplicate grouping.
 - Duplicate groups are pollutant-aware and must contain at least two different connectors.
 - Groups are excluded when every row has blank `last_value`.
+- Default `--json-root` is derived from `UK_AQ_DROPBOX_ROOT` (with local root from `UK_AQ_DROPBOX_LOCAL_ROOT`, default `~/Dropbox`).
 
 ## SOS metadata glossary
 - `phenomenon`: The observed property (pollutant/parameter), e.g., NO2, O3, PM2.5.

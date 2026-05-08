@@ -68,7 +68,7 @@ The previous proxy worker (Cloud Run -> Supabase Edge function) is archived at:
 - `OBSERVS_WRITE_MODE` (default `outbox_only`; supports `outbox_only`, `direct`, `pubsub_only`)
 - `GCP_OBSERVS_PUBSUB_TOPIC` (required when `OBSERVS_WRITE_MODE=pubsub_only`)
 - `OBSERVS_PUBSUB_PUBLISH_BATCH_SIZE` (default `500`; publish chunk size when `OBSERVS_WRITE_MODE=pubsub_only`)
-- `SCOMM_DROPBOX_ROOT` or `UK_AQ_DROPBOX_ROOT` (default `/CIC-Test`)
+- `UK_AQ_DROPBOX_ROOT`
 - `SCOMM_RAW_DROPBOX_FOLDER` or `UK_AIR_RAW_DROPBOX_FOLDER`
   (default `/connectors/sensorcommunity/raw_data`)
 - `SCOMM_ERROR_DROPBOX_ALLOWED_SUPABASE_URL` or `UK_AIR_ERROR_DROPBOX_ALLOWED_SUPABASE_URL`

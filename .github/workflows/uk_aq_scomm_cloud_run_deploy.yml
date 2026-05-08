@@ -45,8 +45,7 @@ jobs:
       SCOMM_INGEST_MET_FIELDS: ${{ vars.SCOMM_INGEST_MET_FIELDS || 'true' }}
       SCOMM_RAW_DROPBOX_ALLOWED_SUPABASE_URL: ${{ vars.SCOMM_RAW_DROPBOX_ALLOWED_SUPABASE_URL || '' }}
       UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL: ${{ vars.UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL || '' }}
-      SCOMM_DROPBOX_ROOT: ${{ vars.SCOMM_DROPBOX_ROOT || '/CIC-Test' }}
-      UK_AQ_DROPBOX_ROOT: ${{ vars.UK_AQ_DROPBOX_ROOT || '/CIC-Test' }}
+      UK_AQ_DROPBOX_ROOT: ${{ vars.UK_AQ_DROPBOX_ROOT }}
       SCOMM_RAW_DROPBOX_FOLDER: ${{ vars.SCOMM_RAW_DROPBOX_FOLDER || '/connectors/sensorcommunity/raw_data' }}
       UK_AIR_RAW_DROPBOX_FOLDER: ${{ vars.UK_AIR_RAW_DROPBOX_FOLDER || '/connectors/sensorcommunity/raw_data' }}
       SB_SECRET_KEY: ${{ secrets.SB_SECRET_KEY }}
@@ -273,7 +272,6 @@ jobs:
           add_env SCOMM_INGEST_MET_FIELDS
           add_env SCOMM_RAW_DROPBOX_ALLOWED_SUPABASE_URL
           add_env UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL
-          add_env SCOMM_DROPBOX_ROOT
           add_env UK_AQ_DROPBOX_ROOT
           add_env SCOMM_RAW_DROPBOX_FOLDER
           add_env UK_AIR_RAW_DROPBOX_FOLDER

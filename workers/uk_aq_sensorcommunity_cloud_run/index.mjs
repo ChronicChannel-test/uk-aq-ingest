@@ -94,9 +94,7 @@ const DROPBOX_ERROR_ALLOWED_SUPABASE_URL = (
   DROPBOX_ALLOWED_SUPABASE_URL
 ).trim();
 const DROPBOX_ROOT_FOLDER = (() => {
-  const raw = process.env.SCOMM_DROPBOX_ROOT ||
-    process.env.UK_AQ_DROPBOX_ROOT ||
-    "";
+  const raw = process.env.UK_AQ_DROPBOX_ROOT || "";
   return normalizeDropboxPath(raw);
 })();
 const DROPBOX_LOG_FOLDER = dropboxWithRoot(

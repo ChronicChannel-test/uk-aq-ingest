@@ -52,9 +52,7 @@ const UK_AQ_RAW_SCHEMA = (Deno.env.get("UK_AQ_RAW_SCHEMA") || "uk_aq_raw")
   .trim();
 const REST_BASE_URL = `${SUPABASE_URL.replace(/\/$/, "")}/rest/v1`;
 const UK_AQ_DROPBOX_ROOT = normalizeDropboxPath(
-  Deno.env.get("BREATHELONDON_DROPBOX_ROOT") ??
-    Deno.env.get("UK_AQ_DROPBOX_ROOT") ??
-    "",
+  Deno.env.get("UK_AQ_DROPBOX_ROOT") ?? "",
 );
 const DROPBOX_APP_KEY = (Deno.env.get("DROPBOX_APP_KEY") || "").trim();
 const DROPBOX_APP_SECRET = (Deno.env.get("DROPBOX_APP_SECRET") || "").trim();

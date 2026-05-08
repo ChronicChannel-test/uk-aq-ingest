@@ -18,9 +18,21 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
-DEFAULT_JSON_ROOT = Path(
-    "/Users/mikehinford/Dropbox/Apps/github-uk-air-quality-networks/CIC-Test/uk_aq_stations"
-)
+def _default_json_root() -> Path:
+    dropbox_local_root = Path(os.path.expanduser(os.getenv("UK_AQ_DROPBOX_LOCAL_ROOT", "~/Dropbox")))
+    dropbox_root = (os.getenv("UK_AQ_DROPBOX_ROOT") or "LIVE").strip().strip("/")
+    if not dropbox_root:
+        dropbox_root = "LIVE"
+    return (
+        dropbox_local_root
+        / "Apps"
+        / "github-uk-air-quality-networks"
+        / dropbox_root
+        / "uk_aq_stations"
+    )
+
+
+DEFAULT_JSON_ROOT = _default_json_root()
 DEFAULT_AURN_DIR = Path("network_info/AURN")
 DEFAULT_OUTPUT_CSV = Path("plans/uk_aq_station_duplicate_candidates_long.csv")
 
