@@ -331,6 +331,7 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
   - `request_budget_limited` means the ingest was constrained by the local per-run request budget/gap guard (our budget), not OpenAQ API rate-limit headers.
   - OpenAQ API rate-limit-driven stops are surfaced as `remaining_low`, `rate_limit_429`, or `rate_limit_guard`.
   - Shared-budget stops are surfaced as `shared_budget_minute_limit` / `shared_budget_hour_limit` (or RPC error variants when reservation fails).
+  - Shared-budget minute/hour stops append structured `openaq_shared_budget_blocked` entries to the run response `warnings` array and normal Dropbox log; they do not create `error_logs` rows or Dropbox `/error_log/` files by themselves.
   - Cloud Run wrapper enforces an hourly OpenAQ request budget using recent `uk_aq_ingest_runs.response_payload.requests_total`; when exhausted before ingest starts, the wrapper records `run_status=skipped` with `run_message=Skipped - Hourly Limit` and defers next run to reset/fallback.
   - In Cloud Run status mapping, `run_status=skipped` is reserved for station-eligibility skips and hourly-cap skips; non-hourly rate-limit/request-budget stops are recorded as `run_status=partial`.
   - Tracks per-station scheduling in `uk_aq_raw.openaq_station_checkpoints` (next due, last observed, sample arrays, last polled). `last_polled_at` only updates for stations where at least one OpenAQ request is issued in the run. When fewer than 10 interval/lag samples exist, `next_due_at` is set to `now() + 5 minutes`. Otherwise it uses the minimum interval (capped at 1 hour) plus lag selected by `OPENAQ_LAG_STAT` (`min` default, `median`, `p25`). If no observations are returned and `next_due_at` is null, it is set to `now() + 5 minutes`. For gap-mode stations with no new observations, `next_due_at` is set to `last_observed_at + min(observ_interval_samples)` capped at `+1 hour` (fallback `+1 hour` when samples are empty).
@@ -346,7 +347,7 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
   - Stops issuing new requests when rate-limit remaining drops below the threshold (default 5), on HTTP 429, on OpenAQ HTTP 401/403, or when the per-run request budget is exhausted.
   - Response metadata includes `rate_limit_reset` and `rate_limit_reset_at` so Cloud Run scheduling can defer next run until reset when throttled; if no reset is present, Cloud Run falls back to `OPENAQ_RATE_LIMIT_FALLBACK_SECONDS` (default 300s).
   - Response metadata also includes shared-budget telemetry and reset hints (`shared_budget_*`) so Cloud Run can defer retries to the true shared-budget reset time.
-  - Cloud Run auth safety guard can auto-disable OpenAQ polling (`connectors.poll_enabled=false`) on OpenAQ auth 401/403 and clears queued OpenAQ self-tasks to avoid retry loops.
+  - Cloud Run auth safety guard can auto-disable OpenAQ polling (`connectors.poll_enabled=false`) on OpenAQ auth 401/403, writes an explicit `openaq_polling_auto_disabled` failure, and clears queued OpenAQ self-tasks to avoid retry loops.
 - Logs:
   - Filename prefixes are runtime-specific via `OPENAQ_DROPBOX_UPLOAD_SOURCE`:
     - Edge runtime (default): `uk_aq_log_edge_openaq_`, `uk_aq_raw_edge_openaq_`, `uk_aq_error_edge_openaq_`.

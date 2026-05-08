@@ -125,9 +125,8 @@ const OPENAQ_TASK_INVOKER_SERVICE_ACCOUNT = (
 ).trim();
 const OPENAQ_CURRENT_TASK_NAME =
   (Deno.env.get("OPENAQ_CURRENT_TASK_NAME") || "").trim() || null;
-const OPENAQ_INGEST_SCRIPT_PATH =
-  (Deno.env.get("OPENAQ_INGEST_SCRIPT_PATH") ||
-    "/app/runtime/ingest_openaq/index.ts").trim();
+const OPENAQ_INGEST_SCRIPT_PATH = (Deno.env.get("OPENAQ_INGEST_SCRIPT_PATH") ||
+  "/app/runtime/ingest_openaq/index.ts").trim();
 
 const SUPABASE_URL = requiredEnv("SUPABASE_URL");
 const SUPABASE_PRIVILEGED_KEY = requiredEnvAny(["SB_SECRET_KEY"]);
@@ -145,14 +144,14 @@ const DROPBOX_REFRESH_TOKEN = (Deno.env.get("DROPBOX_REFRESH_TOKEN") || "")
   .trim();
 const DROPBOX_ERROR_ALLOWED_SUPABASE_URL = (
   Deno.env.get("OPENAQ_ERROR_DROPBOX_ALLOWED_SUPABASE_URL") ??
-  Deno.env.get("OPENAQ_RAW_DROPBOX_ALLOWED_SUPABASE_URL") ??
-  Deno.env.get("UK_AIR_ERROR_DROPBOX_ALLOWED_SUPABASE_URL") ??
-  Deno.env.get("UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL") ??
-  ""
+    Deno.env.get("OPENAQ_RAW_DROPBOX_ALLOWED_SUPABASE_URL") ??
+    Deno.env.get("UK_AIR_ERROR_DROPBOX_ALLOWED_SUPABASE_URL") ??
+    Deno.env.get("UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL") ??
+    ""
 ).trim();
 const DROPBOX_ERROR_FOLDER = (
   Deno.env.get("OPENAQ_ERROR_DROPBOX_FOLDER") ??
-  "/error_log"
+    "/error_log"
 ).trim();
 
 type IngestResponse = {
@@ -620,7 +619,7 @@ async function buildIngestPayload(
   const tieredLimit = Math.max(0, batchLimit - staleLimit);
   const tier1RetrySeconds =
     toPositiveIntegerOrNull(payload.tier1_retry_seconds) ??
-    DEFAULT_TIER1_RETRY_SECONDS;
+      DEFAULT_TIER1_RETRY_SECONDS;
   const stationRows = await loadStationRefs({
     tieredLimit,
     staleLimit,
@@ -667,19 +666,21 @@ function deriveRunSummary(ingestResponse: IngestResponse): RunSummary {
   const partial = payload?.partial === true;
   const stoppedReason =
     toStringOrNull(payload?.stopped_reason)?.toLowerCase() ??
-    null;
+      null;
   const rateLimitStopReason = toStringOrNull(payload?.rate_limit_stop_reason)
     ?.toLowerCase() ?? null;
   const hourlyRateLimitGuard = stoppedReason === "hourly_rate_limit_guard" ||
     rateLimitStopReason === "hourly_rate_limit_guard";
-  const rateLimitStop = (
-    stoppedReason === "remaining_low" ||
+  const rateLimitStop = stoppedReason === "remaining_low" ||
     stoppedReason === "rate_limit_429" ||
     stoppedReason === "rate_limit_guard" ||
+    stoppedReason === "shared_budget_minute_limit" ||
+    stoppedReason === "shared_budget_hour_limit" ||
     rateLimitStopReason === "remaining_low" ||
     rateLimitStopReason === "rate_limit_429" ||
-    rateLimitStopReason === "rate_limit_guard"
-  );
+    rateLimitStopReason === "rate_limit_guard" ||
+    rateLimitStopReason === "shared_budget_minute_limit" ||
+    rateLimitStopReason === "shared_budget_hour_limit";
   const requestsTotal = toIntegerOrNull(payload?.requests_total);
   const maxRequestsPerRun = toIntegerOrNull(payload?.max_requests_per_run);
   const gapRequestsSkippedBudget = toIntegerOrNull(
@@ -787,6 +788,13 @@ const STORED_RESPONSE_PAYLOAD_KEYS = [
   "observs_rows_prepared",
   "observs_rows_deduped_prewrite",
   "series_polled",
+  "warnings",
+  "event",
+  "severity",
+  "reason",
+  "poll_enabled",
+  "scheduler_backend",
+  "self_reschedule_suppressed",
 ] as const;
 
 function compactRunResponsePayload(
@@ -1086,7 +1094,9 @@ async function insertRunRow(
 async function insertErrorLog(
   connectorId: number,
   ingestResponse: IngestResponse,
-): Promise<{ errorId: string; createdAtIso: string; row: Record<string, unknown> }> {
+): Promise<
+  { errorId: string; createdAtIso: string; row: Record<string, unknown> }
+> {
   const errorId = crypto.randomUUID();
   const createdAtIso = new Date().toISOString();
   const entry = {
@@ -1357,10 +1367,10 @@ function computeNextCheckTime(
   const minDelaySeconds = failure
     ? OPENAQ_FAILURE_RETRY_SECONDS
     : runStatus === "partial"
-      ? OPENAQ_NEXT_CHECK_PARTIAL_MIN_SECONDS
-      : runStatus === "skipped"
-        ? OPENAQ_NEXT_CHECK_SKIPPED_MIN_SECONDS
-        : OPENAQ_NEXT_CHECK_MIN_SECONDS;
+    ? OPENAQ_NEXT_CHECK_PARTIAL_MIN_SECONDS
+    : runStatus === "skipped"
+    ? OPENAQ_NEXT_CHECK_SKIPPED_MIN_SECONDS
+    : OPENAQ_NEXT_CHECK_MIN_SECONDS;
   const minDelayMs = minDelaySeconds * 1000;
   let notBeforeMs = now.getTime() + minDelayMs;
   if (rateLimitResetAt) {
@@ -1398,7 +1408,9 @@ function isCurrentOpenaqTaskName(taskName: string): boolean {
   }
   if (OPENAQ_CURRENT_TASK_NAME.includes("/tasks/")) {
     const currentTaskId = OPENAQ_CURRENT_TASK_NAME.split("/tasks/").pop();
-    return Boolean(currentTaskId && taskName.endsWith(`/tasks/${currentTaskId}`));
+    return Boolean(
+      currentTaskId && taskName.endsWith(`/tasks/${currentTaskId}`),
+    );
   }
   return taskName.endsWith(`/tasks/${OPENAQ_CURRENT_TASK_NAME}`);
 }
@@ -1827,8 +1839,8 @@ function deriveRateLimitResetAt(
     const resetMs = numericReset > 1e12
       ? numericReset
       : numericReset > 1e9
-        ? numericReset * 1000
-        : nowMs + Math.max(0, numericReset * 1000);
+      ? numericReset * 1000
+      : nowMs + Math.max(0, numericReset * 1000);
     return new Date(resetMs).toISOString();
   }
   return new Date(
@@ -1881,6 +1893,37 @@ async function main(): Promise<void> {
   const connector = await loadConnector();
   const eligibility = evaluateEligibility(connector, now);
   if (!eligibility.eligible) {
+    const connectorId = toIntegerOrNull(connector?.id);
+    if (eligibility.reason === "poll_disabled" && connectorId !== null) {
+      await recordSkippedRun(
+        connectorId,
+        runStartedAtIso,
+        "poll_disabled",
+        {
+          event: "openaq_polling_disabled",
+          severity: "warning",
+          reason: "poll_disabled",
+          connector_code: CONNECTOR_CODE,
+          connector_id: connectorId,
+          poll_enabled: false,
+          scheduler_backend: toStringOrNull(connector?.scheduler_backend) ||
+            SCHEDULER_BACKEND_SUPABASE_FUNCTION,
+          warnings: [
+            {
+              event: "openaq_polling_disabled",
+              severity: "warning",
+              connector_code: CONNECTOR_CODE,
+              connector_id: connectorId,
+              poll_enabled: false,
+              scheduler_backend: toStringOrNull(connector?.scheduler_backend) ||
+                SCHEDULER_BACKEND_SUPABASE_FUNCTION,
+              reason: "poll_disabled",
+              occurred_at: runStartedAtIso,
+            },
+          ],
+        },
+      );
+    }
     logSummary("skipped", {
       reason: eligibility.reason,
       trigger_mode: OPENAQ_TRIGGER_MODE,
@@ -2101,7 +2144,8 @@ async function main(): Promise<void> {
 
     summary = deriveRunSummary(ingestResponse);
     runStatus = summary.runStatus;
-    runFailed = !ingestResponse.ok || runStatus === "failed" || runStatus === "error";
+    runFailed = !ingestResponse.ok || runStatus === "failed" ||
+      runStatus === "error";
 
     const runEndedAtIso = new Date().toISOString();
     if (connectorId === null) {
@@ -2121,17 +2165,27 @@ async function main(): Promise<void> {
       suppressScheduling = true;
       suppressSchedulingReason = `auth_safety_${authReason}`;
       runStatus = "failed";
-      runFailed = false;
+      runFailed = true;
       summary = {
         runStatus: "failed",
         runMessage: `OpenAQ polling auto-disabled (${authReason})`,
         payload: {
           ...(summary.payload ?? {}),
+          event: "openaq_polling_auto_disabled",
+          severity: "error",
           run_status: "failed",
           run_message: `OpenAQ polling auto-disabled (${authReason})`,
+          reason: "openaq_auth_401_or_403",
+          poll_enabled: false,
+          self_reschedule_suppressed: true,
           stopped_reason: authReason,
           rate_limit_stop_reason: authReason,
         },
+      };
+      ingestResponse = {
+        ...ingestResponse,
+        body: summary.payload,
+        raw: JSON.stringify(summary.payload),
       };
       await disableConnectorPollingForAuthStop(
         connectorId,
@@ -2162,7 +2216,9 @@ async function main(): Promise<void> {
 
     if (suppressScheduling) {
       try {
-        await clearPendingOpenaqTasks(suppressSchedulingReason ?? "auth_safety");
+        await clearPendingOpenaqTasks(
+          suppressSchedulingReason ?? "auth_safety",
+        );
       } catch (error) {
         logSummary("task_clear_failed", {
           reason: suppressSchedulingReason ?? "auth_safety",
@@ -2219,8 +2275,12 @@ async function main(): Promise<void> {
       stopped_reason: toStringOrNull(summary.payload?.stopped_reason),
       shared_budget_enabled: summary.payload?.shared_budget_enabled === true,
       shared_budget_key: toStringOrNull(summary.payload?.shared_budget_key),
-      shared_budget_caller: toStringOrNull(summary.payload?.shared_budget_caller),
-      shared_budget_reason: toStringOrNull(summary.payload?.shared_budget_reason),
+      shared_budget_caller: toStringOrNull(
+        summary.payload?.shared_budget_caller,
+      ),
+      shared_budget_reason: toStringOrNull(
+        summary.payload?.shared_budget_reason,
+      ),
       shared_budget_granted: summary.payload?.shared_budget_granted === true,
       shared_budget_minute_limit: toIntegerOrNull(
         summary.payload?.shared_budget_minute_limit,

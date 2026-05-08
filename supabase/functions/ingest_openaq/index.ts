@@ -50,6 +50,13 @@ type ErrorLogEntry = {
   connector_id?: string | number | null;
 };
 
+type RunWarningEntry = Record<string, unknown> & {
+  type: string;
+  reason: string | null;
+  message: string;
+  occurred_at: string;
+};
+
 type DropboxConfig = {
   appKey: string;
   appSecret: string;
@@ -348,11 +355,17 @@ const sharedBudgetState: {
   caller: OPENAQ_SHARED_BUDGET_CALLER,
   minuteLimit: Math.max(
     1,
-    positiveInt(OPENAQ_SHARED_BUDGET_MINUTE_LIMIT, DEFAULT_SHARED_BUDGET_MINUTE_LIMIT),
+    positiveInt(
+      OPENAQ_SHARED_BUDGET_MINUTE_LIMIT,
+      DEFAULT_SHARED_BUDGET_MINUTE_LIMIT,
+    ),
   ),
   hourLimit: Math.max(
     1,
-    positiveInt(OPENAQ_SHARED_BUDGET_HOUR_LIMIT, DEFAULT_SHARED_BUDGET_HOUR_LIMIT),
+    positiveInt(
+      OPENAQ_SHARED_BUDGET_HOUR_LIMIT,
+      DEFAULT_SHARED_BUDGET_HOUR_LIMIT,
+    ),
   ),
   granted: null,
   reason: null,
@@ -1457,6 +1470,29 @@ function sharedBudgetResponseFields(): Record<string, unknown> {
   };
 }
 
+function isSharedBudgetLimitReason(reason: string | null): boolean {
+  return reason === "shared_budget_minute_limit" ||
+    reason === "shared_budget_hour_limit";
+}
+
+function buildSharedBudgetWarning(
+  context: Record<string, unknown>,
+  connectorId: string | number | null,
+): RunWarningEntry {
+  return {
+    type: "openaq_shared_budget_blocked",
+    reason: rateLimitState.stopReason,
+    message: "OpenAQ shared budget blocked request",
+    connector_id: connectorId,
+    shared_budget_key: sharedBudgetState.key,
+    shared_budget_caller: sharedBudgetState.caller,
+    retry_after_seconds: sharedBudgetState.retryAfterSeconds,
+    occurred_at: new Date().toISOString(),
+    ...sharedBudgetResponseFields(),
+    ...context,
+  };
+}
+
 async function reserveSharedOpenaqBudget(
   tokens: number,
   rawRecorder?: RawRecorder | null,
@@ -1551,7 +1587,7 @@ async function openaqRequest(
       rateLimitState.stop = true;
       rateLimitState.stopReason = "max_requests_per_run";
       throw new Error(
-          `OpenAQ request budget exceeded (${requestBudgetState.maxPerRun}); skipped ${path}`,
+        `OpenAQ request budget exceeded (${requestBudgetState.maxPerRun}); skipped ${path}`,
       );
     }
 
@@ -2228,7 +2264,9 @@ async function upsertPhenomena(
   if (!sourceLabels.length) {
     return {};
   }
-  const { data } = await rpcRequest<Array<{ id: number; source_label?: string; eionet_uri?: string }>>(
+  const { data } = await rpcRequest<
+    Array<{ id: number; source_label?: string; eionet_uri?: string }>
+  >(
     "uk_aq_rpc_phenomena_ids",
     {
       connector_id: Number(connectorId),
@@ -2570,6 +2608,7 @@ serve(async (req) => {
   const shouldStop = () => runtimeDeadlineReached() || rateLimitState.stop;
   let timeBudgetHit = false;
   const logLines: string[] = [];
+  const runWarnings: RunWarningEntry[] = [];
   errorLogLines = [];
   const logLine = (
     level: string,
@@ -2776,6 +2815,40 @@ serve(async (req) => {
     try {
       locations = await listLocations(bbox, rawRecorder);
     } catch (err) {
+      if (isSharedBudgetLimitReason(rateLimitState.stopReason)) {
+        const warning = buildSharedBudgetWarning(
+          { phase: "location_fetch", error: String(err) },
+          connector.id,
+        );
+        runWarnings.push(warning);
+        logLine("WARN", "OpenAQ location fetch failed", warning);
+        return jsonResponse({
+          connector_code: connectorCode,
+          stations_requested: stationsRequested,
+          stations_selected: stationRefs.length,
+          stations_polled: 0,
+          stations_updated: 0,
+          timeseries_updated: 0,
+          observations_upserted: 0,
+          observations_rows_input: 0,
+          observations_rows_prepared: 0,
+          observations_rows_deduped_prewrite: 0,
+          observs_rows_prepared: 0,
+          observs_rows_deduped_prewrite: 0,
+          series_polled: 0,
+          window_hours: windowHours,
+          station_fetch_enabled: locationsFetched,
+          partial: true,
+          stopped_reason: rateLimitState.stopReason,
+          rate_limit_stop: true,
+          rate_limit_stop_reason: rateLimitState.stopReason,
+          requests_total: requestBudgetState.total,
+          max_requests_per_run: requestBudgetState.maxPerRun,
+          dry_run: dryRun,
+          warnings: runWarnings,
+          ...sharedBudgetResponseFields(),
+        });
+      }
       await logError({
         severity: "error",
         message: "OpenAQ location fetch failed",
@@ -3164,6 +3237,7 @@ serve(async (req) => {
       gap_requests_skipped_budget: 0,
       gap_zero_yield_timeseries: 0,
       dry_run: dryRun,
+      warnings: runWarnings,
       ...sharedBudgetResponseFields(),
     });
   }
@@ -3361,12 +3435,26 @@ serve(async (req) => {
             0,
             requestBudgetState.total - requestsBeforeGapQuery,
           );
-          await logError({
-            severity: "warn",
-            message: "OpenAQ hourly measurements fetch failed",
-            connector_id: connector.id,
-            context: { timeseries_ref: timeseriesRef, error: String(err) },
-          });
+          const warningContext = {
+            station_id: stationId,
+            timeseries_ref: timeseriesRef,
+            error: String(err),
+          };
+          if (isSharedBudgetLimitReason(rateLimitState.stopReason)) {
+            const warning = buildSharedBudgetWarning(
+              warningContext,
+              connector.id,
+            );
+            runWarnings.push(warning);
+            logLine("WARN", "OpenAQ hourly measurements fetch failed", warning);
+          } else {
+            await logError({
+              severity: "warn",
+              message: "OpenAQ hourly measurements fetch failed",
+              connector_id: connector.id,
+              context: warningContext,
+            });
+          }
           if (rateLimitState.stop) {
             return;
           }
@@ -3497,12 +3585,23 @@ serve(async (req) => {
       }
       latest = await listLatestForLocation(locationId, rawRecorder);
     } catch (err) {
-      await logError({
-        severity: "warn",
-        message: "OpenAQ latest fetch failed",
-        connector_id: connector.id,
-        context: { location_id: locationId, error: String(err) },
-      });
+      const warningContext = {
+        station_id: stationId,
+        location_id: locationId,
+        error: String(err),
+      };
+      if (isSharedBudgetLimitReason(rateLimitState.stopReason)) {
+        const warning = buildSharedBudgetWarning(warningContext, connector.id);
+        runWarnings.push(warning);
+        logLine("WARN", "OpenAQ latest fetch failed", warning);
+      } else {
+        await logError({
+          severity: "warn",
+          message: "OpenAQ latest fetch failed",
+          connector_id: connector.id,
+          context: warningContext,
+        });
+      }
       return;
     }
     for (const record of latest) {
@@ -4154,6 +4253,7 @@ serve(async (req) => {
     shared_budget_hour_used_after: sharedBudgetState.hourUsedAfter,
     shared_budget_hour_remaining: sharedBudgetState.hourRemaining,
     shared_budget_retry_after_seconds: sharedBudgetState.retryAfterSeconds,
+    warnings: runWarnings,
   });
 
   logLine("INFO", "OpenAQ rate limit summary", {
@@ -4284,6 +4384,7 @@ serve(async (req) => {
     gap_requests_skipped_budget: requestBudgetState.gapSkippedBudgetRequests,
     gap_zero_yield_timeseries: requestBudgetState.gapZeroYieldTimeseries,
     dry_run: dryRun,
+    warnings: runWarnings,
     ...sharedBudgetResponseFields(),
   });
 });

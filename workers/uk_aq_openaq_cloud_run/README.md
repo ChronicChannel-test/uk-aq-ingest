@@ -22,12 +22,16 @@ This Cloud Run service runs OpenAQ ingest in Google Cloud using the existing
 Dropbox behavior in Cloud Run:
 - Wrapper-inserted direct failure `error_logs` rows are mirrored into `/error_log/YYYY-MM-DD/` and patch `error_logs.dropbox_path` when Dropbox error logging is enabled.
 - Existing OpenAQ log/raw uploads remain controlled by the ingest runtime.
+- Shared-budget throttles (`shared_budget_minute_limit` / `shared_budget_hour_limit`) are protective stops, not direct failures. They are persisted in the current `uk_aq_ingest_runs.response_payload.warnings` array and normal OpenAQ log, and are not inserted into `error_logs` or mirrored to `/error_log/YYYY-MM-DD/`.
 
 If no station refs are due, run is recorded as `skipped` (`no_station_refs`) and
 the worker only schedules the next check task.
 If station refs are selected but do not meet minimum station thresholds
 (`OPENAQ_MIN_GAP_STATIONS`, default `1`; `OPENAQ_MIN_NON_GAP_STATIONS`, default
 `10`), ingest returns `skipped` with `stations_polled=0`.
+If OpenAQ polling is disabled (`poll_enabled=false`), the worker records a
+`skipped` no-op run with an `openaq_polling_disabled` warning so the stopped
+state is visible without using the failure log path.
 
 ## Triggering model
 

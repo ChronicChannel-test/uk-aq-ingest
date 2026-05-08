@@ -15,6 +15,7 @@ The worker:
 4. Runs OpenAQ ingest once with scoped `station_refs`.
 5. Writes run summary to `connectors`, `uk_aq_ingest_runs`, and `error_logs` on failures.
    - When Dropbox error logging is enabled, the wrapper mirrors that inserted failure row into `/error_log/YYYY-MM-DD/` and patches `error_logs.dropbox_path`.
+   - Shared-budget throttles (`shared_budget_minute_limit` / `shared_budget_hour_limit`) are recorded in the same run's `response_payload.warnings` and normal log, not in `error_logs` or `/error_log/YYYY-MM-DD/`.
 6. Schedules the next run using Cloud Tasks based on earliest checkpoint due time.
 7. Publishes history rows using shared history mode (`OBSERVS_WRITE_MODE`).
 8. Enforces an hourly OpenAQ request budget (`OPENAQ_MAX_REQUESTS_PER_HOUR`) from recent `uk_aq_ingest_runs.response_payload.requests_total`; when exhausted before ingest starts, run rows are recorded as `run_status=skipped` and `run_message=Skipped - Hourly Limit`.
@@ -26,7 +27,7 @@ Run-summary metric note:
   `stations_selected`, `stations_updated`, `stations`.
 - `uk_aq_ingest_runs.response_payload` stores a compact subset of OpenAQ ingest
   response fields for run diagnostics (partial/stop reasons, rate-limit summary,
-  request-budget stats, shared-budget token telemetry, and selected/polled station counts).
+  request-budget stats, shared-budget token telemetry, structured warnings, and selected/polled station counts).
 - `request_budget_limited` indicates local request-budget/gap-guard limiting
   (our configured per-run budget), not an OpenAQ API rate-limit stop.
 - Cloud Run status mapping is strict:
@@ -36,6 +37,8 @@ Run-summary metric note:
   stations do not meet `OPENAQ_MIN_GAP_STATIONS`/`OPENAQ_MIN_NON_GAP_STATIONS`
   thresholds), the worker writes `run_status` as `skipped` and preserves
   `stations_polled=0` in the run payload.
+- When `poll_enabled=false`, the worker records a skipped no-op run with an
+  `openaq_polling_disabled` warning in the normal run payload.
 
 ## Trigger Model (Option 2)
 
@@ -75,7 +78,7 @@ Delay floors are outcome-aware:
 - `OPENAQ_NEXT_CHECK_PARTIAL_MIN_SECONDS` for partial runs.
 - `OPENAQ_NEXT_CHECK_SKIPPED_MIN_SECONDS` for skipped runs.
 Auth safety guard:
-- With `OPENAQ_AUTH_SAFETY_DISABLE_POLLING=true`, any OpenAQ `auth_401` or `auth_403` stop disables `connectors.poll_enabled`, records `run_status=failed`, skips rescheduling, and clears queued OpenAQ self-tasks.
+- With `OPENAQ_AUTH_SAFETY_DISABLE_POLLING=true`, any OpenAQ `auth_401` or `auth_403` stop disables `connectors.poll_enabled`, records `run_status=failed` with `openaq_polling_auto_disabled`, writes the normal failure/error log, skips rescheduling, and clears queued OpenAQ self-tasks.
 
 ## Required Config
 
