@@ -120,7 +120,7 @@ Request body options (JSON):
 - `connector_id` (optional; defaults to the `uk_air_sos` connector)
 - `window_hours` (optional; defaults to `connectors.poll_window_hours` or 6)
 - `pollutants` (optional; array or comma-separated list)
-- `timeseries_ids` (optional; array or comma-separated list of timeseries_ref or internal id)
+- `timeseries_ids` (optional; array or comma-separated list of internal `timeseries.id` values only)
 - `timeseries_limit` (optional; integer)
 
 When `connector_id` is provided, the function uses `connectors.service_url` from the database.

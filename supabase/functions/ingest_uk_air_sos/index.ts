@@ -273,7 +273,7 @@ serve(async (req) => {
   let requestedWindowHours: number | undefined;
   let requestedPollutants: string[] | undefined;
   let requestedLimit: number | undefined;
-  let requestedSeries: string[] | undefined;
+  let requestedTimeseriesIds: number[] | undefined;
   const runStartedAt = Date.now();
   const maxRuntimeSeconds = Number.isFinite(UK_AIR_SOS_MAX_RUNTIME_SECONDS)
     ? Math.max(30, UK_AIR_SOS_MAX_RUNTIME_SECONDS)
@@ -295,7 +295,17 @@ serve(async (req) => {
       requestedWindowHours = asNumber(payload?.window_hours, undefined);
       requestedPollutants = parseList(payload?.pollutants);
       requestedLimit = asNumber(payload?.timeseries_limit, undefined);
-      requestedSeries = parseList(payload?.timeseries_ids);
+      const requestedTimeseriesTokens = parseList(payload?.timeseries_ids);
+      requestedTimeseriesIds = parsePositiveIntList(payload?.timeseries_ids);
+      if (
+        requestedTimeseriesTokens?.length &&
+        (!requestedTimeseriesIds || requestedTimeseriesIds.length < requestedTimeseriesTokens.length)
+      ) {
+        log.warn("Ignored non-numeric timeseries_ids tokens.", {
+          requested_tokens: requestedTimeseriesTokens.length,
+          accepted_ids: requestedTimeseriesIds?.length ?? 0,
+        });
+      }
 
       log.info("Poll request", {
         connector_id: requestedConnectorId ?? null,
@@ -303,7 +313,7 @@ serve(async (req) => {
         connector_label: requestedConnectorLabel,
         window_hours: requestedWindowHours ?? null,
         pollutants: requestedPollutants?.length ?? null,
-        timeseries_ids: requestedSeries?.length ?? null,
+        timeseries_ids: requestedTimeseriesIds?.length ?? null,
         timeseries_limit: requestedLimit ?? null,
       });
 
@@ -390,14 +400,9 @@ serve(async (req) => {
         const windowStart = new Date(now.getTime() - pollWindow * 60 * 60 * 1000);
 
         let series = await loadTimeseries(connector.id);
-        if (requestedSeries?.length) {
-          const requestedSet = new Set(requestedSeries.map((value) => value.toLowerCase()));
-          series = series.filter((row) => {
-            const idMatch = row.id && requestedSet.has(String(row.id).toLowerCase());
-            const sourceMatch = row.timeseries_ref
-              && requestedSet.has(String(row.timeseries_ref).toLowerCase());
-            return idMatch || sourceMatch;
-          });
+        if (requestedTimeseriesIds?.length) {
+          const requestedSet = new Set(requestedTimeseriesIds);
+          series = series.filter((row) => requestedSet.has(row.id));
         }
 
         if (requestedPollutants?.length) {
@@ -415,7 +420,7 @@ serve(async (req) => {
         }
 
         if (shouldPoll) {
-          const checkpointCandidates = requestedSeries?.length ? series.slice() : [];
+          const checkpointCandidates = requestedTimeseriesIds?.length ? series.slice() : [];
           const beforeRecencyFilter = series.length;
           const withRecentLastValue = series.filter((row) => {
             if (!row.last_value_at) {
@@ -471,7 +476,11 @@ serve(async (req) => {
           }
 
           let staleRecoveryApplied = false;
-          if (requestedSeries?.length && series.length === 0 && staleLastValueCandidates.length > 0) {
+          if (
+            requestedTimeseriesIds?.length &&
+            series.length === 0 &&
+            staleLastValueCandidates.length > 0
+          ) {
             const staleFallbackTake = typeof effectiveLimit === "number" && effectiveLimit > 0
               ? Math.max(1, effectiveLimit)
               : staleLastValueCandidates.length;
@@ -858,6 +867,21 @@ function parseList(value: unknown): string[] | undefined {
     return parts.length ? parts : undefined;
   }
   return undefined;
+}
+
+function parsePositiveIntList(value: unknown): number[] | undefined {
+  const tokens = parseList(value);
+  if (!tokens?.length) {
+    return undefined;
+  }
+  const parsed = tokens
+    .map((token) => Number(token))
+    .filter((candidate) => Number.isFinite(candidate) && candidate > 0)
+    .map((candidate) => Math.trunc(candidate));
+  if (!parsed.length) {
+    return undefined;
+  }
+  return Array.from(new Set(parsed));
 }
 
 function clampPositiveInt(value: number, fallback: number): number {
