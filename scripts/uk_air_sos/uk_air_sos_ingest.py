@@ -1181,9 +1181,9 @@ class SupabaseWriter:
             }
             # Avoid clobbering existing values when source metadata omits scalar fields.
             if first_value_at is not None:
-                row["first_value_at"] = first_value_at
+                row["first_value_at"] = first_value_at.isoformat()
             if last_value_at is not None:
-                row["last_value_at"] = last_value_at
+                row["last_value_at"] = last_value_at.isoformat()
             if last_value is not None:
                 row["last_value"] = last_value
             rows.append(row)
