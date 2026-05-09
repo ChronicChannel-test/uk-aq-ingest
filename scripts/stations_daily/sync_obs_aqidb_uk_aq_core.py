@@ -938,12 +938,8 @@ def main() -> int:
     caller_prefix_raw = (os.getenv("SYNC_CALLER_PREFIX") or "stations_daily_sync_core").strip().lower()
     caller_prefix = re.sub(r"[^a-z0-9_]+", "_", caller_prefix_raw).strip("_") or "stations_daily_sync_core"
 
-    schema_sql_path = Path(required_env("UK_AQ_INGEST_CORE_SCHEMA_SQL_PATH"))
-    if not schema_sql_path.exists():
-        raise SyncError(
-            f"Configured schema SQL file does not exist: {schema_sql_path} "
-            "(set UK_AQ_INGEST_CORE_SCHEMA_SQL_PATH per environment)."
-        )
+    schema_sql_path_raw = (os.getenv("UK_AQ_INGEST_CORE_SCHEMA_SQL_PATH") or "").strip()
+    schema_sql_path = Path(schema_sql_path_raw) if schema_sql_path_raw else Path("__unset__")
 
     src_client = PostgrestClient(
         base_url=src_url,
@@ -961,7 +957,7 @@ def main() -> int:
     source_columns, source_pk, source_meta_mode = load_source_metadata(
         schema_sql_path=schema_sql_path,
         tables=PRIMARY_TABLES,
-        allow_fallback=False,
+        allow_fallback=True,
     )
     print(f"Loaded source schema metadata via: {source_meta_mode}")
 

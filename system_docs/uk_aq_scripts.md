@@ -367,7 +367,8 @@ Behavior:
 - Upserts destination rows by table primary key and hard-deletes destination rows whose PKs no longer exist in ingest.
 - Also syncs FK dependency tables (`observed_properties`, `categories`, `offerings`, `features`, `procedures`) in dependency-safe order so mirrored rows can insert/delete cleanly.
 - Validates destination schema against source metadata (column order/name/type/nullability/default + PK) before any write.
-  Source metadata is parsed from the schema SQL path provided by `UK_AQ_INGEST_CORE_SCHEMA_SQL_PATH` (required).
+  Source metadata is parsed from the schema SQL path provided by `UK_AQ_INGEST_CORE_SCHEMA_SQL_PATH` when present.
+  If the file is unavailable or cannot be parsed, the script falls back to embedded static metadata.
 - Fails fast (non-zero exit) on schema mismatch or sync errors.
 
 Environment:
@@ -375,7 +376,7 @@ Environment:
 - `SRC_SECRET_KEY`
 - `DST_SUPABASE_URL`
 - `DST_SECRET_KEY`
-- `UK_AQ_INGEST_CORE_SCHEMA_SQL_PATH` (required absolute/relative path to source `uk_aq_core_schema.sql`; set per TEST/LIVE environment)
+- `UK_AQ_INGEST_CORE_SCHEMA_SQL_PATH` (optional absolute/relative path to source `uk_aq_core_schema.sql`; when omitted, the script skips file-parse and uses embedded static metadata fallback)
 
 Notes:
 - Destination metadata is read via `uk_aq_public.uk_aq_rpc_info_schema_columns` and `uk_aq_public.uk_aq_rpc_info_schema_primary_keys`.
