@@ -392,10 +392,17 @@ class SupabaseWriter:
         self.raw = schemas.raw
 
     def upsert_connectors(self, services: Iterable[Dict[str, Any]]) -> Optional[int]:
+        existing_connector_id = self.get_connector_id()
         services_list = [svc for svc in services if isinstance(svc, dict)]
         primary = _select_primary_service(services_list)
         if primary is None or primary.get("id") is None:
-            return None
+            if existing_connector_id is not None:
+                LOG.warning(
+                    "UK-AIR SOS services payload missing a usable primary service; "
+                    "reusing existing connector id=%s.",
+                    existing_connector_id,
+                )
+            return existing_connector_id
         existing = (
             self.core.table("connectors")
             .select("id,poll_enabled")
@@ -424,7 +431,7 @@ class SupabaseWriter:
             }
         ]
         self.core.table("connectors").upsert(payload, on_conflict="connector_code").execute()
-        return self.get_connector_id()
+        return self.get_connector_id() or existing_connector_id
 
     def get_connector_id(self) -> Optional[int]:
         resp = (
@@ -1552,86 +1559,92 @@ def main() -> None:
                 flagged = writer.flag_placeholder_stations(connector_id, placeholder_refs)
                 if flagged:
                     LOG.info("Flagged %s placeholder station_metadata rows.", flagged)
-        inserted = writer.upsert_stations(
-            filtered,
-            connector_id,
-            run_at,
-            station_service_ref_map=station_service_ref_map,
-            default_service_ref=default_service_ref,
-        )
-        LOG.info("Upserted %s stations into Supabase.", inserted)
-        backfilled = writer.backfill_station_names([connector_id])
-        if backfilled:
-            LOG.info("Backfilled station_name for %s stations.", backfilled)
+        if not filtered:
+            LOG.warning(
+                "No non-placeholder UK-AIR SOS stations available; skipping station upsert, "
+                "metadata enrichment, and mark_removed safeguards for this run."
+            )
         else:
-            LOG.info("No station_name backfill needed.")
-        enrichment = apply_station_enrichment(
-            writer,
-            filtered,
-            connector_id,
-            station_service_ref_map=station_service_ref_map,
-            default_service_ref=default_service_ref,
-            update_station_type=not args.skip_station_type_backfill,
-            skip_metadata=args.skip_station_metadata,
-            skip_memberships=args.skip_network_memberships,
-        )
-        if not args.skip_station_type_backfill:
-            LOG.info("Backfilled station_type for %s stations.", enrichment["station_type_updates"])
-        if not args.skip_station_metadata:
-            LOG.info("Upserted station_metadata for %s stations.", enrichment["metadata_updates"])
-        if not args.skip_network_memberships:
-            LOG.info(
-                "Upserted %s station_network_memberships rows.",
-                enrichment["membership_rows"],
+            inserted = writer.upsert_stations(
+                filtered,
+                connector_id,
+                run_at,
+                station_service_ref_map=station_service_ref_map,
+                default_service_ref=default_service_ref,
             )
-        if enrichment["missing_station"]:
-            LOG.warning(
-                "Station enrichment skipped %s stations missing in DB.",
-                enrichment["missing_station"],
+            LOG.info("Upserted %s stations into Supabase.", inserted)
+            backfilled = writer.backfill_station_names([connector_id])
+            if backfilled:
+                LOG.info("Backfilled station_name for %s stations.", backfilled)
+            else:
+                LOG.info("No station_name backfill needed.")
+            enrichment = apply_station_enrichment(
+                writer,
+                filtered,
+                connector_id,
+                station_service_ref_map=station_service_ref_map,
+                default_service_ref=default_service_ref,
+                update_station_type=not args.skip_station_type_backfill,
+                skip_metadata=args.skip_station_metadata,
+                skip_memberships=args.skip_network_memberships,
             )
-        if enrichment["ambiguous_station"]:
-            LOG.warning(
-                "Station enrichment skipped %s stations with ambiguous service_ref.",
-                enrichment["ambiguous_station"],
-            )
-        writer.mark_removed(run_at, [connector_id])
+            if not args.skip_station_type_backfill:
+                LOG.info("Backfilled station_type for %s stations.", enrichment["station_type_updates"])
+            if not args.skip_station_metadata:
+                LOG.info("Upserted station_metadata for %s stations.", enrichment["metadata_updates"])
+            if not args.skip_network_memberships:
+                LOG.info(
+                    "Upserted %s station_network_memberships rows.",
+                    enrichment["membership_rows"],
+                )
+            if enrichment["missing_station"]:
+                LOG.warning(
+                    "Station enrichment skipped %s stations missing in DB.",
+                    enrichment["missing_station"],
+                )
+            if enrichment["ambiguous_station"]:
+                LOG.warning(
+                    "Station enrichment skipped %s stations with ambiguous service_ref.",
+                    enrichment["ambiguous_station"],
+                )
+            writer.mark_removed(run_at, [connector_id])
 
-        if not args.skip_metadata:
-            station_ids = [
-                s.get("id") or (s.get("properties") or {}).get("id")
-                for s in filtered
-                if s.get("id") or (s.get("properties") or {}).get("id")
-            ]
-            phenomena: Dict[str, Dict[str, Any]] = {}
-            procedures: Dict[str, Dict[str, Any]] = {}
-            offerings: Dict[str, Dict[str, Any]] = {}
-            for chunk in _chunked(station_ids, args.metadata_batch_size):
-                series = client.timeseries(chunk, service_ref=default_service_ref)
-                for ts in series:
-                    _collect_reference(phenomena, ts.get("phenomenon"))
-                    _collect_reference(procedures, ts.get("procedure"))
-                    _collect_reference(offerings, ts.get("offering"))
-            if phenomena:
-                LOG.info("Upserting phenomena: %s", len(phenomena))
-                writer.upsert_phenomena(phenomena.values(), connector_id)
-            if procedures:
-                LOG.info("Upserting procedures: %s", len(procedures))
-                writer.upsert_reference_table(
-                    "procedures",
-                    "procedure_ref",
-                    procedures.values(),
-                    connector_id,
-                    default_service_ref,
-                )
-            if offerings:
-                LOG.info("Upserting offerings: %s", len(offerings))
-                writer.upsert_reference_table(
-                    "offerings",
-                    "offering_ref",
-                    offerings.values(),
-                    connector_id,
-                    default_service_ref,
-                )
+            if not args.skip_metadata:
+                station_ids = [
+                    s.get("id") or (s.get("properties") or {}).get("id")
+                    for s in filtered
+                    if s.get("id") or (s.get("properties") or {}).get("id")
+                ]
+                phenomena: Dict[str, Dict[str, Any]] = {}
+                procedures: Dict[str, Dict[str, Any]] = {}
+                offerings: Dict[str, Dict[str, Any]] = {}
+                for chunk in _chunked(station_ids, args.metadata_batch_size):
+                    series = client.timeseries(chunk, service_ref=default_service_ref)
+                    for ts in series:
+                        _collect_reference(phenomena, ts.get("phenomenon"))
+                        _collect_reference(procedures, ts.get("procedure"))
+                        _collect_reference(offerings, ts.get("offering"))
+                if phenomena:
+                    LOG.info("Upserting phenomena: %s", len(phenomena))
+                    writer.upsert_phenomena(phenomena.values(), connector_id)
+                if procedures:
+                    LOG.info("Upserting procedures: %s", len(procedures))
+                    writer.upsert_reference_table(
+                        "procedures",
+                        "procedure_ref",
+                        procedures.values(),
+                        connector_id,
+                        default_service_ref,
+                    )
+                if offerings:
+                    LOG.info("Upserting offerings: %s", len(offerings))
+                    writer.upsert_reference_table(
+                        "offerings",
+                        "offering_ref",
+                        offerings.values(),
+                        connector_id,
+                        default_service_ref,
+                    )
 
     if args.check_timeseries_links:
         if writer is None:

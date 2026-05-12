@@ -1036,6 +1036,8 @@ python3 scripts/uk_air_sos/uk_air_sos_list_stations.py --check-timeseries-links 
 
 Notes:
 - Connector upserts preserve existing `poll_enabled`; new connectors default to `poll_enabled=false`.
+- If SOS returns no usable `/services` payload, the script reuses the existing `uk_air_sos` connector id instead of failing connector resolution.
+- If SOS returns zero non-placeholder stations, Supabase station writes are skipped for that run (including `mark_removed`) to avoid false removals during upstream outages.
 
 Default outputs:
 - `uk_air_sos_stations.json`

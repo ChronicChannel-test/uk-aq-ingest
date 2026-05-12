@@ -308,7 +308,11 @@ jobs:
           echo "Leaving OpenAQ polling unchanged (workflow did not pause it)."
 
       - name: Guard OpenAQ pause path requires sync and resume
-        if: always() && steps.pause_openaq_polling.outputs.connector_found == '1' && steps.pause_openaq_polling.outputs.poll_was_enabled == '1'
+        if: >
+          always() &&
+          job.status == 'success' &&
+          steps.pause_openaq_polling.outputs.connector_found == '1' &&
+          steps.pause_openaq_polling.outputs.poll_was_enabled == '1'
         run: |
           echo "sync_openaq_stations conclusion: ${{ steps.sync_openaq_stations.conclusion }}"
           echo "resume_openaq_polling conclusion: ${{ steps.resume_openaq_polling.conclusion }}"
