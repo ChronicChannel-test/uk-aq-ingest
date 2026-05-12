@@ -51,6 +51,11 @@ const DEFAULT_CONNECTOR_CODE = "uk_air_sos";
 const DEFAULT_WINDOW_HOURS = 6;
 const DEFAULT_MAX_RUNTIME_SECONDS = 120;
 const DEFAULT_TIMEOUT_MS = 30_000;
+const MIN_FETCH_TIMEOUT_MS = 4_000;
+const FETCH_RETRY_ATTEMPTS = 3;
+const FETCH_RETRY_BACKOFF_BASE_MS = 1_000;
+const FETCH_RETRY_BACKOFF_MAX_MS = 30_000;
+const RETRYABLE_FETCH_STATUSES = new Set([429, 500, 502, 503, 504]);
 const DEFAULT_BOOTSTRAP_NULL_LAST_VALUE_BATCH = 50;
 const DEFAULT_OBSERVS_BUFFER_FLUSH_ROWS = 5000;
 const PAGE_SIZE = 1000;
@@ -263,6 +268,7 @@ serve(async (req) => {
   let status = 200;
   let polled = 0;
   let observationsUpserted = 0;
+  let gateway502Failures = 0;
   let skippedNoLastValueAt = 0;
   let skippedStaleLastValueAt = 0;
   let responsePayload: Record<string, unknown> = {};
@@ -420,6 +426,47 @@ serve(async (req) => {
         }
 
         if (shouldPoll) {
+          const probe = await probeUkAirSosUpstream(baseUrl, rawRecorder, runtimeDeadline);
+          if (!probe.ok) {
+            shouldPoll = false;
+            const upstreamStatus = probe.status;
+            const retryableStatus = upstreamStatus !== null &&
+              RETRYABLE_FETCH_STATUSES.has(upstreamStatus);
+            errors.push(`upstream_probe_failed:${upstreamStatus ?? "unknown"}`);
+            log.warn("UK-AIR SOS upstream probe failed; skipping poll.", {
+              connector_id: connector.id,
+              upstream_status: upstreamStatus,
+              upstream_error: probe.error,
+            });
+            await errorLogger.logError({
+              source: "edge",
+              severity: "error",
+              message: "UK-AIR SOS upstream probe failed; skipping poll.",
+              context: {
+                connector_id: connector.id,
+                upstream_status: upstreamStatus,
+                upstream_error: probe.error,
+              },
+              connector_code: connector.connector_code ?? requestedConnectorCode ?? UK_AIR_SOS_CONNECTOR_CODE,
+              connector_id: connector.id,
+            });
+            status = upstreamStatus ?? (retryableStatus ? 503 : 500);
+            responsePayload = {
+              status: "upstream_unavailable",
+              run_message: upstreamStatus === 502
+                ? "HTTP 502 Gateway Failure"
+                : "Upstream unavailable",
+              connector_id: connector.id,
+              series_polled: 0,
+              observations_upserted: 0,
+              errors,
+              upstream_status: upstreamStatus,
+              upstream_error: probe.error,
+            };
+          }
+        }
+
+        if (shouldPoll) {
           const checkpointCandidates = requestedTimeseriesIds?.length ? series.slice() : [];
           const beforeRecencyFilter = series.length;
           const withRecentLastValue = series.filter((row) => {
@@ -532,6 +579,7 @@ serve(async (req) => {
                 `/timeseries/${encodeURIComponent(sourceId)}/getData`,
                 { timespan, format: "tvp" },
                 rawRecorder,
+                { deadlineMs: runtimeDeadline },
               );
               const points = parseDatapoints(data?.values, row.id);
               if (points.length) {
@@ -595,6 +643,9 @@ serve(async (req) => {
               polled += 1;
             } catch (err) {
               const message = err instanceof Error ? err.message : String(err);
+              if (extractHttpStatus(err) === 502) {
+                gateway502Failures += 1;
+              }
               errors.push(`${row.id}: upsert_failed`);
               console.warn(`Poll failed for ${row.id}: ${message}`);
               await errorLogger.logError({
@@ -653,9 +704,13 @@ serve(async (req) => {
             });
           }
 
-          status = errors.length ? 207 : 200;
+          const hardGateway502Failure = gateway502Failures > 0 && polled === 0;
+          status = hardGateway502Failure ? 502 : errors.length ? 207 : 200;
           responsePayload = {
-            status: "ok",
+            status: hardGateway502Failure ? "gateway_failure" : "ok",
+            run_message: hardGateway502Failure
+              ? "HTTP 502 Gateway Failure"
+              : null,
             connector_id: connector.id,
             series_polled: polled,
             observations_upserted: observationsUpserted,
@@ -663,6 +718,7 @@ serve(async (req) => {
             observs_receipts_upserted: observsReceiptsUpserted,
             observs_enqueued: observsEnqueued,
             observs_flushes: observsFlushes,
+            http_502_failures: gateway502Failures,
             errors,
             partial: timeBudgetHit,
             stopped_reason: timeBudgetHit ? "runtime_budget_exceeded" : null,
@@ -773,6 +829,11 @@ type RawRecorder = {
   ) => void;
 };
 
+type FetchJsonOptions = {
+  attempts?: number;
+  deadlineMs?: number;
+};
+
 function createLogBuffer(): LogBuffer {
   const lines: string[] = [];
   const push = (level: string, message: string, context?: Record<string, unknown>) => {
@@ -836,6 +897,31 @@ function createRawRecorder(): RawRecorder {
   };
   write({ type: "meta", created_at: new Date().toISOString() });
   return recorder;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function extractHttpStatus(error: unknown): number | null {
+  const match = errorMessage(error).match(/\bHTTP\s+(\d{3})\b/);
+  if (!match) {
+    return null;
+  }
+  const parsed = Number(match[1]);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function isRetryableFetchFailure(error: unknown): boolean {
+  if (error instanceof DOMException && error.name === "AbortError") {
+    return true;
+  }
+  const status = extractHttpStatus(error);
+  return status !== null && RETRYABLE_FETCH_STATUSES.has(status);
 }
 
 function asString(value: unknown): string | undefined {
@@ -1671,6 +1757,7 @@ async function fetchJson(
   path: string,
   params: Record<string, string>,
   recorder?: RawRecorder | null,
+  options?: FetchJsonOptions,
 ): Promise<any> {
   const url = new URL(`${baseUrl.replace(/\/$/, "")}/${path.replace(/^\//, "")}`);
   for (const [key, value] of Object.entries(params)) {
@@ -1678,23 +1765,79 @@ async function fetchJson(
       url.searchParams.set(key, String(value));
     }
   }
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
+  const attempts = clampPositiveInt(options?.attempts ?? FETCH_RETRY_ATTEMPTS, FETCH_RETRY_ATTEMPTS);
+  const deadlineMs = options?.deadlineMs;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const remainingBudgetMs = deadlineMs == null
+      ? Number.POSITIVE_INFINITY
+      : deadlineMs - Date.now();
+    if (remainingBudgetMs <= MIN_FETCH_TIMEOUT_MS) {
+      throw new Error("Runtime budget exhausted before UK-AIR SOS fetch completed.");
+    }
+    const timeoutMs = Number.isFinite(remainingBudgetMs)
+      ? Math.max(MIN_FETCH_TIMEOUT_MS, Math.min(DEFAULT_TIMEOUT_MS, remainingBudgetMs - 250))
+      : DEFAULT_TIMEOUT_MS;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const resp = await fetch(url.toString(), { signal: controller.signal });
+      const contentType = resp.headers.get("content-type") || "";
+      const payload = contentType.includes("application/json")
+        ? await resp.json()
+        : await resp.text();
+      if (recorder) {
+        recorder.recordResponse(path, params, resp.status, payload);
+      }
+      if (!resp.ok) {
+        throw new Error(`HTTP ${resp.status} ${resp.statusText}`);
+      }
+      return payload;
+    } catch (err) {
+      const shouldRetry = attempt < attempts && isRetryableFetchFailure(err);
+      if (!shouldRetry) {
+        throw err;
+      }
+      const retryDelayMs = Math.min(
+        FETCH_RETRY_BACKOFF_MAX_MS,
+        FETCH_RETRY_BACKOFF_BASE_MS * (2 ** (attempt - 1)),
+      );
+      const remainingAfterCatchMs = deadlineMs == null
+        ? Number.POSITIVE_INFINITY
+        : deadlineMs - Date.now();
+      if (remainingAfterCatchMs <= retryDelayMs + MIN_FETCH_TIMEOUT_MS) {
+        throw err;
+      }
+      if (recorder) {
+        recorder.recordEvent("retry", {
+          path,
+          params,
+          attempt,
+          delay_ms: retryDelayMs,
+          reason: errorMessage(err),
+        });
+      }
+      await sleep(retryDelayMs);
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+  throw new Error(`UK-AIR SOS fetch exhausted retries for ${path}.`);
+}
+
+async function probeUkAirSosUpstream(
+  baseUrl: string,
+  recorder: RawRecorder | null | undefined,
+  runtimeDeadline: number,
+): Promise<{ ok: true; status: 200; error: null } | { ok: false; status: number | null; error: string }> {
   try {
-    const resp = await fetch(url.toString(), { signal: controller.signal });
-    const contentType = resp.headers.get("content-type") || "";
-    const payload = contentType.includes("application/json")
-      ? await resp.json()
-      : await resp.text();
-    if (recorder) {
-      recorder.recordResponse(path, params, resp.status, payload);
-    }
-    if (!resp.ok) {
-      throw new Error(`HTTP ${resp.status} ${resp.statusText}`);
-    }
-    return payload;
-  } finally {
-    clearTimeout(timeout);
+    await fetchJson(baseUrl, "/services", {}, recorder, { attempts: 2, deadlineMs: runtimeDeadline });
+    return { ok: true, status: 200, error: null };
+  } catch (err) {
+    return {
+      ok: false,
+      status: extractHttpStatus(err),
+      error: errorMessage(err),
+    };
   }
 }
 

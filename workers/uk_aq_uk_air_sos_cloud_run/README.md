@@ -12,6 +12,7 @@ This Cloud Run service runs UK-AIR SOS ingest in Google Cloud using the existing
 5. Records run status in `connectors` + `uk_aq_ingest_runs` (+ `error_logs` on failure).
 6. Updates `uk_aq_raw.uk_air_sos_station_checkpoints` after successful/partial runs.
 7. Writes observs via shared observs client mode (`OBSERVS_WRITE_MODE`, workflow default `pubsub_only`).
+8. Probes UK-AIR SOS upstream availability before per-timeseries polling; when upstream is unavailable (for example HTTP 502), the run exits early with a failed HTTP status instead of logging hundreds of per-timeseries failures.
 
 Dropbox behavior in Cloud Run:
 - Wrapper-inserted direct failure `error_logs` rows are mirrored into `/error_log/YYYY-MM-DD/` and patch `error_logs.dropbox_path` when Dropbox error logging is enabled.
