@@ -467,20 +467,11 @@ async function fetchTimeseriesRowsStitched(
     now,
   }: StitchedFetchOptions,
 ): Promise<StitchedFetchResult> {
-  const localBoundary = new Date(
-    now.getTime() - OBSAQIDB_SOURCE_OF_TRUTH_HOURS * HOUR_MS,
-  );
   const ingestBoundary = new Date(
     now.getTime() - INGEST_SOURCE_OF_TRUTH_HOURS * HOUR_MS,
   );
   const historyStart = requestStart;
-  const historyEnd = requestEnd.getTime() < localBoundary.getTime()
-    ? requestEnd
-    : localBoundary;
-  const obsAqidbStart = requestStart.getTime() > localBoundary.getTime()
-    ? requestStart
-    : localBoundary;
-  const obsAqidbEnd = requestEnd.getTime() < ingestBoundary.getTime()
+  const historyEnd = requestEnd.getTime() < ingestBoundary.getTime()
     ? requestEnd
     : ingestBoundary;
   const ingestStart = requestStart.getTime() > ingestBoundary.getTime()
@@ -488,14 +479,11 @@ async function fetchTimeseriesRowsStitched(
     : ingestBoundary;
   const ingestEnd = requestEnd.getTime() < now.getTime() ? requestEnd : now;
   const hasHistoryWindow = historyEnd.getTime() > historyStart.getTime();
-  const hasObsAqidbWindow = obsAqidbEnd.getTime() > obsAqidbStart.getTime();
   const hasIngestWindow = ingestEnd.getTime() > ingestStart.getTime();
   const sinceMs = since ? Date.parse(since) : Number.NaN;
   const hasSince = Number.isFinite(sinceMs);
   const shouldFetchHistory = hasHistoryWindow &&
     (!hasSince || sinceMs < historyEnd.getTime());
-  const shouldFetchObsAqidbRows = hasObsAqidbWindow &&
-    (!hasSince || sinceMs < obsAqidbEnd.getTime());
   const shouldFetchIngestRows = hasIngestWindow &&
     (!hasSince || sinceMs < ingestEnd.getTime());
 
@@ -503,7 +491,7 @@ async function fetchTimeseriesRowsStitched(
     ? selectIngestWindowLabel(ingestStart, now)
     : "12h";
   const ingestLimit = shouldFetchIngestRows
-    ? (shouldFetchHistory || shouldFetchObsAqidbRows ? null : limit)
+    ? (shouldFetchHistory ? null : limit)
     : 1;
   const ingestSince = shouldFetchIngestRows ? since : null;
   const { data, error } = await callTimeseriesRpc({
@@ -531,80 +519,17 @@ async function fetchTimeseriesRowsStitched(
     : [];
 
   let connectorId: number | null = null;
-  if (shouldFetchHistory || shouldFetchObsAqidbRows) {
+  if (shouldFetchHistory) {
     connectorId = await resolveTimeseriesConnectorId(timeseriesId);
   }
 
-  let obsAqidbRows: TimeseriesRow[] = [];
-  if (shouldFetchObsAqidbRows) {
-    if (connectorId !== null) {
-      try {
-        obsAqidbRows = await callObservsRecentWindow({
-          timeseriesId,
-          connectorId,
-          startUtc: obsAqidbStart.toISOString(),
-          endUtc: obsAqidbEnd.toISOString(),
-          since,
-          limit: shouldFetchHistory || shouldFetchIngestRows ? null : limit,
-        });
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        console.warn("uk_aq_timeseries obs_aqidb recent fetch fallback", {
-          timeseries_id: timeseriesId,
-          connector_id: connectorId,
-          message,
-        });
-        try {
-          obsAqidbRows = await callIngestFallbackWindow({
-            timeseriesId,
-            start: obsAqidbStart,
-            end: obsAqidbEnd,
-            now,
-            since,
-          });
-        } catch (fallbackError) {
-          const fallbackMessage = fallbackError instanceof Error
-            ? fallbackError.message
-            : String(fallbackError);
-          console.warn("uk_aq_timeseries ingest fallback fetch failed", {
-            timeseries_id: timeseriesId,
-            message: fallbackMessage,
-          });
-        }
-      }
-    } else {
-      console.warn(
-        "uk_aq_timeseries recent obs_aqidb fetch skipped: connector unresolved",
-        {
-          timeseries_id: timeseriesId,
-        },
-      );
-      try {
-        obsAqidbRows = await callIngestFallbackWindow({
-          timeseriesId,
-          start: obsAqidbStart,
-          end: obsAqidbEnd,
-          now,
-          since,
-        });
-      } catch (fallbackError) {
-        const fallbackMessage = fallbackError instanceof Error
-          ? fallbackError.message
-          : String(fallbackError);
-        console.warn("uk_aq_timeseries ingest fallback fetch failed", {
-          timeseries_id: timeseriesId,
-          message: fallbackMessage,
-        });
-      }
-    }
-  }
-
   let historyRows: TimeseriesRow[] = [];
+  let obsAqidbRows: TimeseriesRow[] = [];
   let didLoadHistoryRows = false;
   if (shouldFetchHistory) {
+    const historyStartUtc = historyStart.toISOString();
+    const historyEndUtc = historyEnd.toISOString();
     if (connectorId !== null) {
-      const historyStartUtc = historyStart.toISOString();
-      const historyEndUtc = historyEnd.toISOString();
       try {
         const historyWindow = await callObservsHistoryWindow({
           timeseriesId,
@@ -664,20 +589,66 @@ async function fetchTimeseriesRowsStitched(
           });
         }
       }
+
+      if (!didLoadHistoryRows) {
+        try {
+          obsAqidbRows = await callObservsRecentWindow({
+            timeseriesId,
+            connectorId,
+            startUtc: historyStartUtc,
+            endUtc: historyEndUtc,
+            since,
+            limit: shouldFetchIngestRows ? null : limit,
+          });
+          didLoadHistoryRows = true;
+          console.info("uk_aq_timeseries history fallback succeeded via obs_aqidb", {
+            timeseries_id: timeseriesId,
+            connector_id: connectorId,
+            fallback_rows: obsAqidbRows.length,
+          });
+        } catch (fallbackError) {
+          const fallbackMessage = fallbackError instanceof Error
+            ? fallbackError.message
+            : String(fallbackError);
+          console.warn("uk_aq_timeseries obs_aqidb history fallback failed", {
+            timeseries_id: timeseriesId,
+            connector_id: connectorId,
+            message: fallbackMessage,
+          });
+        }
+      }
     } else {
       console.warn(
-        "uk_aq_timeseries history fetch skipped: connector unresolved",
+        "uk_aq_timeseries history fetch skipped: connector unresolved; trying ingest fallback",
         {
           timeseries_id: timeseriesId,
         },
       );
+      try {
+        historyRows = await callIngestFallbackWindow({
+          timeseriesId,
+          start: historyStart,
+          end: historyEnd,
+          now,
+          since,
+        });
+        didLoadHistoryRows = true;
+      } catch (fallbackError) {
+        const fallbackMessage = fallbackError instanceof Error
+          ? fallbackError.message
+          : String(fallbackError);
+        console.warn("uk_aq_timeseries ingest history fallback failed", {
+          timeseries_id: timeseriesId,
+          message: fallbackMessage,
+        });
+      }
     }
   }
 
   const source: StitchedFetchResult["source"] =
-    didLoadHistoryRows && (shouldFetchObsAqidbRows || shouldFetchIngestRows)
+    didLoadHistoryRows && shouldFetchIngestRows
       ? "recent_history_stitched"
-      : didLoadHistoryRows
+    : didLoadHistoryRows
       ? "history_only"
       : "recent_only";
 
