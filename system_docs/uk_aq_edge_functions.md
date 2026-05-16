@@ -249,7 +249,7 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
   - Daily full-catalog UK-AIR discovery reconciles timeseries lifecycle: rows missing for 2 consecutive runs get `timeseries.ended_at`; reappearing rows are auto-reactivated.
   - Logs cron secret mismatch diagnostics (presence/length only) when authorization fails.
   - Skips timeseries with missing `last_value_at` or `last_value_at` older than the poll window.
-  - When `timeseries_ids` are explicitly scoped (Cloud Run path) and recency filtering would otherwise yield zero work, it falls back to polling stale `last_value_at` rows for that scoped set to recover after pauses.
+  - When `timeseries_ids` are explicitly scoped (Cloud Run path), stale `last_value_at` rows are used to fill remaining batch budget after recency filtering; if recency filtering yields zero work, stale rows are used for the whole scoped batch. This prevents mixed-pollutant starvation after SOS outages.
   - Handles UK-AIR nested value shapes for freshness updates (for example `lastValue: { timestamp, value }`) when deriving `timeseries.last_value` / `timeseries.last_value_at`.
   - Enforces a runtime budget and will return partial progress with `partial=true` when exceeded.
   - Dedupes observations by `observed_at` per timeseries before upsert to avoid duplicate conflict errors.

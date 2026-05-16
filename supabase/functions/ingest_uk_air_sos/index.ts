@@ -523,20 +523,35 @@ serve(async (req) => {
           }
 
           let staleRecoveryApplied = false;
-          if (
-            requestedTimeseriesIds?.length &&
-            series.length === 0 &&
-            staleLastValueCandidates.length > 0
-          ) {
-            const staleFallbackTake = typeof effectiveLimit === "number" && effectiveLimit > 0
-              ? Math.max(1, effectiveLimit)
-              : staleLastValueCandidates.length;
-            series = takeCircular(
-              staleLastValueCandidates,
-              nowBucket * Math.max(1, staleFallbackTake),
-              staleFallbackTake,
-            );
-            staleRecoveryApplied = true;
+          let staleRecoverySelected = 0;
+          if (requestedTimeseriesIds?.length && staleLastValueCandidates.length > 0) {
+            if (typeof effectiveLimit === "number" && effectiveLimit > 0) {
+              const remainingBudget = Math.max(0, effectiveLimit - series.length);
+              if (remainingBudget > 0) {
+                const selectedIds = new Set(series.map((row) => row.id));
+                const stalePool = staleLastValueCandidates.filter((row) =>
+                  !selectedIds.has(row.id)
+                );
+                const staleFill = takeCircular(
+                  stalePool,
+                  nowBucket * Math.max(1, remainingBudget),
+                  remainingBudget,
+                );
+                if (staleFill.length > 0) {
+                  series = series.concat(staleFill);
+                  staleRecoveryApplied = true;
+                  staleRecoverySelected = staleFill.length;
+                }
+              }
+            } else if (series.length === 0) {
+              series = takeCircular(
+                staleLastValueCandidates,
+                nowBucket * Math.max(1, staleLastValueCandidates.length),
+                staleLastValueCandidates.length,
+              );
+              staleRecoveryApplied = true;
+              staleRecoverySelected = series.length;
+            }
           }
 
           if (beforeRecencyFilter !== series.length || bootstrapRows.length > 0 || staleRecoveryApplied) {
@@ -550,7 +565,7 @@ serve(async (req) => {
               bootstrap_null_last_value_selected: bootstrapRows.length,
               stale_last_value_candidates: staleLastValueCandidates.length,
               stale_recovery_applied: staleRecoveryApplied,
-              stale_recovery_selected: staleRecoveryApplied ? series.length : 0,
+              stale_recovery_selected: staleRecoverySelected,
               window_hours: pollWindow,
             });
           }
