@@ -1973,38 +1973,32 @@ function logEmptySeries(seriesId: number | undefined, sample: unknown, reason: s
 
 async function upsertLastValue(
   seriesId: number,
-  data: Record<string, unknown>,
+  _data: Record<string, unknown>,
   points: Array<{ observed_at: string; value: number | null }>,
   errorLogger: { logError: (entry: ErrorLogEntry) => Promise<void> },
   connectorId: string | null,
   connectorCode: string | null,
 ): Promise<void> {
-  const lastValueFromPayload = toNumber(data?.lastValue);
-  const lastValueTimestamp = data?.lastValueTimestamp;
+  // Integrity rule: `timeseries.last_value_at` / `last_value` must only ever
+  // be advanced from an actual observation row that this run inserted (or at
+  // minimum, parsed from the SOS time-series response). Earlier versions
+  // fell back to the SOS API metadata fields `data.lastValueTimestamp` /
+  // `data.lastValue` when no points were returned in the requested window —
+  // those fields reflect what the SOS source *thinks* its latest value is,
+  // not what's actually in our `observations` table. That mismatch poisoned
+  // the dashboard (showed PM2.5 as fresh when no observation existed) and
+  // the Cloud Run station scheduler (selector and checkpoint logic both read
+  // `last_value_at`). We now write only when a real `lastPoint` exists.
   const lastPoint = points.length ? points[points.length - 1] : null;
-  let lastValueAt: string | null = null;
-  if (lastPoint?.observed_at) {
-    lastValueAt = lastPoint.observed_at;
-  } else if (typeof lastValueTimestamp === "string") {
-    const parsed = new Date(lastValueTimestamp);
-    if (!Number.isNaN(parsed.getTime())) {
-      lastValueAt = parsed.toISOString();
-    }
-  } else if (typeof lastValueTimestamp === "number") {
-    lastValueAt = new Date(lastValueTimestamp).toISOString();
-  }
-
-  const resolvedLastValue = lastPoint ? lastPoint.value ?? null : lastValueFromPayload;
-
-  if (!lastValueAt && resolvedLastValue === null) {
+  if (!lastPoint || !lastPoint.observed_at) {
     return;
   }
-  const payload: Record<string, unknown> = {};
-  if (lastValueAt) {
-    payload.last_value_at = lastValueAt;
-  }
-  if (resolvedLastValue !== null) {
-    payload.last_value = resolvedLastValue;
+
+  const payload: Record<string, unknown> = {
+    last_value_at: lastPoint.observed_at,
+  };
+  if (lastPoint.value !== null && lastPoint.value !== undefined) {
+    payload.last_value = lastPoint.value;
   }
   const { error } = await postgrestRequest(
     "PATCH",
