@@ -447,6 +447,9 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
 - Memberships are returned as-is (no filtering by network membership).
 - Egress observability: sampled success responses plus all `304`/`4xx`/`5xx`
   are recorded via `_shared/egress_metrics.ts` (console logs + DB metrics RPC).
+  PostgREST RPC calls are tagged with window-specific caller labels:
+  `uk_aq_latest.window_3h`, `uk_aq_latest.window_6h`, `uk_aq_latest.window_1d`,
+  `uk_aq_latest.window_7d`, `uk_aq_latest.window_all`.
 - `display_name` logic:
   - Uses `connectors.station_display_name_template` if present, with tokens `{station_name}`, `{station_label}`, `{station_ref}`.
   - Fallback is always `{station_name} - {station_ref}` (or `station_label` if `station_name` is missing).

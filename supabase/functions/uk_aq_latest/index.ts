@@ -32,11 +32,14 @@ const REST_BASE_URL = SUPABASE_URL
   ? `${SUPABASE_URL.replace(/\/$/, "")}/rest/v1`
   : "";
 
-function postgrestHeaders(schema = UK_AQ_CORE_SCHEMA): Record<string, string> {
+function postgrestHeaders(
+  schema = UK_AQ_CORE_SCHEMA,
+  callerTag = "uk_aq_latest",
+): Record<string, string> {
   const headers: Record<string, string> = {
     apikey: SUPABASE_PRIVILEGED_KEY,
     "Content-Type": "application/json",
-    "x-ukaq-egress-caller": "uk_aq_latest",
+    "x-ukaq-egress-caller": callerTag,
   };
   if (schema && schema !== "public") {
     headers["Accept-Profile"] = schema;
@@ -51,6 +54,7 @@ async function postgrestRequest<T>(
   params?: Record<string, string>,
   schema?: string,
   body?: unknown,
+  callerTag?: string,
 ): Promise<{ data: T | null; error: { message: string } | null }> {
   if (!REST_BASE_URL || !SUPABASE_PRIVILEGED_KEY) {
     return { data: null, error: { message: "Missing SUPABASE_URL or SB_SECRET_KEY." } };
@@ -63,7 +67,7 @@ async function postgrestRequest<T>(
   }
   const resp = await fetch(url.toString(), {
     method,
-    headers: postgrestHeaders(schema),
+    headers: postgrestHeaders(schema, callerTag),
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const contentType = resp.headers.get("content-type") ?? "";
@@ -263,6 +267,7 @@ async function loadLatest(
     LoadOptions,
 ) {
   const pollutantKey = normalizePollutant(pollutant);
+  const callerTag = latestWindowCallerTag(windowLabel);
   const { data, error } = await callLatestRpc({
     region,
     pconCode,
@@ -274,6 +279,7 @@ async function loadLatest(
     since,
     sinceId,
     useLimitOne: false,
+    callerTag,
   });
   if (error) {
     throw new Error(error.message);
@@ -370,6 +376,7 @@ type LatestRpcCallOptions = {
   since: string | null;
   sinceId: number | null;
   useLimitOne: boolean;
+  callerTag?: string;
 };
 
 async function callLatestRpc(options: LatestRpcCallOptions) {
@@ -384,6 +391,7 @@ async function callLatestRpc(options: LatestRpcCallOptions) {
     since,
     sinceId,
     useLimitOne,
+    callerTag,
   } = options;
   const limitRows = useLimitOne ? 1 : limit;
   const cursorBody = {
@@ -403,6 +411,7 @@ async function callLatestRpc(options: LatestRpcCallOptions) {
     undefined,
     UK_AQ_PUBLIC_SCHEMA,
     cursorBody,
+    callerTag,
   );
   if (!cursorAttempt.error) {
     return cursorAttempt;
@@ -425,7 +434,12 @@ async function callLatestRpc(options: LatestRpcCallOptions) {
       limit_rows: limitRows,
       since_ts: since,
     },
+    callerTag,
   );
+}
+
+function latestWindowCallerTag(windowLabel: string): string {
+  return `uk_aq_latest.window_${windowLabel}`;
 }
 
 function looksLikeCursorSignatureMismatch(message: string): boolean {
@@ -453,6 +467,7 @@ async function hasLatestDelta(
     return true;
   }
   const pollutantKey = normalizePollutant(pollutant);
+  const callerTag = latestWindowCallerTag(windowLabel);
   const { data, error } = await callLatestRpc({
     region,
     pconCode,
@@ -464,6 +479,7 @@ async function hasLatestDelta(
     since,
     sinceId,
     useLimitOne: true,
+    callerTag,
   });
   if (error) {
     throw new Error(error.message);
