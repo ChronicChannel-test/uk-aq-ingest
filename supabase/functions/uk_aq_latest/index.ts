@@ -118,6 +118,7 @@ serve(async (req) => {
   const connectorId = normalizeText(url.searchParams.get("connector_id"));
   const pollutant = normalizePollutant(url.searchParams.get("pollutant"));
   const windowLabel = normalizeWindow(url.searchParams.get("window"));
+  const caller = normalizeCallerTag(url.searchParams.get("caller"));
   const limit = parseLimit(url.searchParams.get("limit"), DEFAULT_LIMIT);
   const rawSince = url.searchParams.get("since");
   const since = rawSince === null ? null : normalizeTimestamp(rawSince);
@@ -146,6 +147,7 @@ serve(async (req) => {
     has_pcon_code: Boolean(pconCode),
     has_station_like: Boolean(stationLike),
     has_connector_id: Boolean(connectorId),
+    caller: caller ?? "none",
     pollutant: pollutant ?? null,
     window: windowLabel,
     limit,
@@ -496,6 +498,14 @@ function normalizePollutant(value: string | null): string | null {
     return "o3";
   }
   return normalized.toLowerCase();
+}
+
+function normalizeCallerTag(value: string | null): string | null {
+  const normalized = normalizeText(value)?.toLowerCase().replace(/[^a-z0-9._-]/g, "_");
+  if (!normalized) {
+    return null;
+  }
+  return normalized.slice(0, 64);
 }
 
 function normalizeWindow(value: string | null): string {

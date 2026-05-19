@@ -126,8 +126,8 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
 ### uk_aq_sync_openaq_from_live
 - Purpose: keep test OpenAQ data current from LIVE without any test-side OpenAQ API calls.
 - Triggered by:
-  - Supabase `pg_cron` jobs in ingest DB (`uk_aq_openaq_live_sync_observations_15m`, `uk_aq_openaq_live_sync_core_6h`) via `uk_aq_ops.uk_aq_openaq_live_sync_schedule_invoke`.
-  - Manual POST invocation for one-time cutover/reseed (`mode=reseed`).
+  - Currently disabled by default via `UK_AQ_OPENAQ_LIVE_SYNC_ENABLED=false`.
+  - Manual POST invocation only when re-enabled.
 - Scheduler Vault secrets:
   - `UK_AQ_OPENAQ_MIRROR_FUNCTION_URL` (full `/functions/v1/uk_aq_sync_openaq_from_live` URL)
   - `UK_AQ_OPENAQ_MIRROR_AUTH_TOKEN` (Bearer token value)
@@ -158,6 +158,7 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
     - `Authorization: Bearer <UK_AQ_OPENAQ_MIRROR_AUTH_TOKEN>` (when configured)
     - `X-Cron-Secret` must match `SB_UK_AQ_CRON_SECRET` (when configured)
 - Runtime env:
+  - Enable flag: `UK_AQ_OPENAQ_LIVE_SYNC_ENABLED` (default `false`; returns HTTP 503 `status=disabled` when false)
   - Source LIVE credentials: `OPENAQ_LIVE_SOURCE_SUPABASE_URL`, `OPENAQ_LIVE_SOURCE_SB_SECRET_KEY`
   - Auth token: `UK_AQ_OPENAQ_MIRROR_AUTH_TOKEN`
   - Tuning: `OPENAQ_MIRROR_*` (page size, overlap, lookback, chunk size, lock lease)
@@ -437,7 +438,7 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
 - Triggered by: Web requests (read-only, no writes).
 - Auth mode: deployed with `verify_jwt=false` plus required header `X-UK-AQ-Upstream-Auth` (shared secret checked in-function).
 - Returns: flattened latest rows optimized for map clients: `id`, `last_value`, `last_value_at`, `display_name`, `connector_code`, `connector_label`, `station_id`, `station_ref`, `station_label`, `station_name`, `pcon_code`, `la_code`, `station_network_memberships`, `phenomenon_label`, `pollutant_label`, `observed_property_code`, `uom_display`.
-- Params: `region`, `station_like`, `pollutant`, `connector_id`, `limit`, `pcon_code`, `window` (`3h|6h|1d|7d|all`, default `all`).
+- Params: `region`, `station_like`, `pollutant`, `connector_id`, `limit`, `pcon_code`, `window` (`3h|6h|1d|7d|all`, default `all`), optional `caller` tag (for egress attribution telemetry).
 - Notes:
   - The edge response intentionally omits nested `station` / `connector` / `phenomenon` objects to reduce payload size.
   - `window` is applied server-side using `last_value_at`; `all` disables time filtering.

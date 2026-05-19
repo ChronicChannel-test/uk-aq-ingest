@@ -176,6 +176,10 @@ const MIRROR_AUTH_TOKEN = (Deno.env.get("UK_AQ_OPENAQ_MIRROR_AUTH_TOKEN") ?? "")
   .trim();
 const SB_UK_AQ_CRON_SECRET = (Deno.env.get("SB_UK_AQ_CRON_SECRET") ?? "")
   .trim();
+const OPENAQ_LIVE_SYNC_ENABLED = parseBoolean(
+  Deno.env.get("UK_AQ_OPENAQ_LIVE_SYNC_ENABLED"),
+  false,
+);
 
 const OBS_AQIDB_SUPABASE_URL = (Deno.env.get("OBS_AQIDB_SUPABASE_URL") ?? "")
   .trim();
@@ -1520,6 +1524,13 @@ serve(async (req: Request): Promise<Response> => {
 
   if (req.method !== "POST") {
     return jsonResponse({ error: "Method not allowed. Use POST." }, 405);
+  }
+
+  if (!OPENAQ_LIVE_SYNC_ENABLED) {
+    return jsonResponse({
+      status: "disabled",
+      reason: "UK_AQ_OPENAQ_LIVE_SYNC_ENABLED is false",
+    }, 503);
   }
 
   try {
