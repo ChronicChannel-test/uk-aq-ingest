@@ -1493,6 +1493,19 @@ function buildSharedBudgetWarning(
   };
 }
 
+function shouldTreatAsSharedBudgetWarning(error: unknown): boolean {
+  if (isSharedBudgetLimitReason(rateLimitState.stopReason)) {
+    return true;
+  }
+  const sharedReason = String(sharedBudgetState.reason ?? "").trim()
+    .toLowerCase();
+  if (sharedReason === "minute_limit" || sharedReason === "hour_limit") {
+    return true;
+  }
+  const errorMessage = String(error ?? "").toLowerCase();
+  return errorMessage.includes("shared budget blocked request");
+}
+
 async function reserveSharedOpenaqBudget(
   tokens: number,
   rawRecorder?: RawRecorder | null,
@@ -3440,7 +3453,7 @@ serve(async (req) => {
             timeseries_ref: timeseriesRef,
             error: String(err),
           };
-          if (isSharedBudgetLimitReason(rateLimitState.stopReason)) {
+          if (shouldTreatAsSharedBudgetWarning(err)) {
             const warning = buildSharedBudgetWarning(
               warningContext,
               connector.id,
@@ -3590,7 +3603,7 @@ serve(async (req) => {
         location_id: locationId,
         error: String(err),
       };
-      if (isSharedBudgetLimitReason(rateLimitState.stopReason)) {
+      if (shouldTreatAsSharedBudgetWarning(err)) {
         const warning = buildSharedBudgetWarning(warningContext, connector.id);
         runWarnings.push(warning);
         logLine("WARN", "OpenAQ latest fetch failed", warning);

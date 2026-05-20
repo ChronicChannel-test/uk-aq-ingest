@@ -65,6 +65,7 @@ This network uses OpenAQ's API to pull UK monitoring locations and latest values
 ## Dropbox logging (optional)
 - When Dropbox credentials and the OpenAQ allowlist env are set, `ingest_openaq` uploads:
   - Logs to `/connectors/openaq/log/YYYY-MM-DD/` with runtime-aware prefix `uk_aq_log_<edge|cloud_run>_openaq_`.
+- Shared-budget limit warnings (`shared_budget_minute_limit` / `shared_budget_hour_limit`) are retained in the normal OpenAQ connector log and are not mirrored to `/error_log/YYYY-MM-DD/`.
   - Raw payload ZIPs to `/connectors/openaq/raw_data/YYYY-MM-DD/` with runtime-aware prefix `uk_aq_raw_<edge|cloud_run>_openaq_`.
 - Enable with `OPENAQ_RAW_DROPBOX_ALLOWED_SUPABASE_URL` (or the shared `UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL`).
 - Runtime source is controlled by `OPENAQ_DROPBOX_UPLOAD_SOURCE` (defaults to `edge`; OpenAQ Cloud Run deploy sets `cloud_run`).
