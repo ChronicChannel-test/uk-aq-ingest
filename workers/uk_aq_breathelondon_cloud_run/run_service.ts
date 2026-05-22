@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 
 const PORT = Number(Deno.env.get("PORT") || "8080");
 const RUN_JOB_SCRIPT = "/app/workers/uk_aq_breathelondon_cloud_run/run_job.ts";
+const INGEST_SCRIPT_PATH = "/app/runtime/ingest_breathelondon/index.ts";
 const ALLOWED_TRIGGER_MODES = new Set(["safety", "task", "manual"]);
 const CHILD_TIMEOUT_MS = 14 * 60 * 1000;
 const CHILD_SHUTDOWN_GRACE_MS = 10 * 1000;
@@ -36,6 +37,33 @@ type ConnectorState = {
   last_run_end: unknown;
   last_run_status: unknown;
 };
+
+async function cleanupStaleIngestProcesses(stage: string): Promise<void> {
+  // Timeouts can leave a grandchild ingest process alive in the container.
+  // Best-effort cleanup avoids port 8000 conflicts on the next run.
+  const command = new Deno.Command("sh", {
+    args: [
+      "-lc",
+      `pkill -f '${INGEST_SCRIPT_PATH.replace(/'/g, "'\\''")}' >/dev/null 2>&1 || true`,
+    ],
+    stdout: "null",
+    stderr: "null",
+  });
+  try {
+    await command.output();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(
+      JSON.stringify({
+        ts: new Date().toISOString(),
+        service: "uk_aq_breathelondon_cloud_run",
+        message: "stale_process_cleanup_failed",
+        stage,
+        error: message,
+      }),
+    );
+  }
+}
 
 function resolveTriggerMode(req: Request, body: unknown): string {
   const url = new URL(req.url);
@@ -350,9 +378,14 @@ serve(async (req: Request) => {
   const currentTaskName =
     (req.headers.get("x-cloudtasks-taskname") || "").trim() || null;
 
+  await cleanupStaleIngestProcesses("pre_run");
+
   inFlight = true;
   try {
     const result = await runJob(triggerMode, currentTaskName);
+    if (result.timedOut) {
+      await cleanupStaleIngestProcesses("post_timeout");
+    }
     if (result.timedOut) {
       try {
         await recoverTimedOutConnectorState(result.timeoutSeconds ?? 0);
