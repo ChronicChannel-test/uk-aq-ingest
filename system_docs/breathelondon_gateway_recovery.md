@@ -2,40 +2,90 @@
 
 Operational playbook for recovering Breathe London ingest after an upstream outage.
 
-See also: [breathelondon.md](breathelondon.md).
+See also: [breathelondon.md](breathelondon.md), [uk_aq_edge_functions.md](uk_aq_edge_functions.md).
 
-> **Status: not yet written.**
->
-> This is a placeholder. Fill in from real incident experience when one occurs. Breathe London uses a key-protected Communities API, so failure modes include both upstream outages and credential issues.
+## When to use this doc
 
-## What likely differs from SOS
+- Breathe London ingest was paused/stalled during upstream instability.
+- API is now healthy, but station scheduling is not recovering as expected.
+- You need a clean checkpoint restart for Breathe London only.
+
+## Standard recovery sequence
+
+### 1) Confirm API + key are valid
+
+```bash
+curl -fsS "https://api.breathelondon-communities.org/api/ListSensors?key=$BREATHELONDON_API_KEY" | head -c 200
+```
+
+If this is 401/403, fix credentials first. That is not a checkpoint-recovery case.
+
+### 2) Reset Breathe London station checkpoints
+
+NOTE: FIRST INGEST RUN OF BREATHELONDON CAN TAKE A LONG TIME. 8 MINS HAS BEEN SEEN.
+
+```sql
+begin;
+
+-- Reset Breathe London station checkpoints so due-state is recalculated cleanly.
+with bl as (
+  select id from uk_aq_core.connectors where connector_code = 'breathelondon'
+),
+station_truth as (
+  select ts.station_id, max(ts.last_value_at) as max_last_value_at
+  from uk_aq_core.timeseries ts
+  join bl on bl.id = ts.connector_id
+  where ts.station_id is not null
+  group by ts.station_id
+)
+update uk_aq_raw.breathelondon_station_checkpoints sc
+set next_due_at        = now(),
+    last_polled_at     = null,
+    ingest_lag_samples = '{}'::int[],
+    last_observed_at   = station_truth.max_last_value_at,
+    updated_at         = now()
+from station_truth
+where sc.station_id = station_truth.station_id;
+
+commit;
+```
+
+### 3) Verify due-state and freshness
+
+```sql
+select count(*) as station_due_now
+from uk_aq_raw.breathelondon_station_checkpoints
+where next_due_at <= now();
+
+select
+  ph.pollutant_key,
+  count(*) filter (where ts.last_value_at > now() - interval '3 hours') as fresh,
+  count(*) as total
+from uk_aq_core.timeseries ts
+join uk_aq_core.phenomena ph on ph.id = ts.phenomenon_id
+join uk_aq_core.connectors c on c.id = ts.connector_id
+where c.connector_code = 'breathelondon'
+  and ts.ended_at is null
+group by ph.pollutant_key
+order by fresh desc;
+```
+
+### 4) Resume and observe
+
+- Resume the Breathe London scheduler/worker.
+- Confirm `last_polled_at` starts moving and stale rows reduce over the next runs.
+
+## Notes vs SOS
 
 | Aspect | SOS | Breathe London |
 |---|---|---|
 | Upstream "gateway" | DEFRA SOS REST API (open) | `api.breathelondon-communities.org` (API-key gated) |
 | Outage type 1 | SOS gateway 5xx | API 5xx / timeout |
-| Outage type 2 | (rare) catalog returns partial | `ListSensors` response missing previously-listed sites |
-| Outage type 3 | n/a | **API key invalid / revoked / rotated** — symptom looks like a 4xx storm not a 5xx |
-| Catalog reconciler with auto-end-date | Yes (`UK_AIR_TIMESERIES_END_MISSING_RUNS = 2`) | **Verify** — believed not to use the same lifecycle |
-| Identity model | DEFRA station IDs | `SiteCode` (community-supplied, can churn) |
-| Backfill path | None | **Verify** — depends on whether the BL API exposes historical sensor data |
+| Outage type 2 | (rare) catalog returns partial | `ListSensors` missing previously-listed sites |
+| Outage type 3 | n/a | API key invalid/revoked/rotated (4xx storm) |
+| Cadence state | station/timeseries checkpoints | station checkpoints (`uk_aq_raw.breathelondon_station_checkpoints`) |
 
-## Until this is written, when a Breathe London outage happens
+## Known constraints
 
-1. **Distinguish gateway-down from auth failure first.** Try the keyed endpoint with curl:
-
-   ```bash
-   curl -fsS "https://api.breathelondon-communities.org/api/ListSensors?key=$BREATHELONDON_API_KEY" | head -c 200
-   ```
-
-   A 401/403 means the key (in Supabase secrets or your local `.env`) needs attention — NOT a recovery scenario.
-2. If genuinely a 5xx outage:
-   - Note which env was paused vs polling
-   - Check the `error_logs` for the BreatheLondon connector for the symptom pattern
-3. Compare against the SOS playbook ([`uk_air_sos_gateway_recovery.md`](uk_air_sos_gateway_recovery.md)) for structurally-equivalent steps (freshness verification, post-recovery noise cleanup) — but **do not** copy SOS-specific SQLs verbatim until the BL lifecycle behaviour is verified
-4. Document the actual recovery here
-
-## Known constraints to be aware of
-
-- API key is per-request; key rotation in Supabase secrets requires worker redeploy or restart, depending on how the key is read
-- BreatheLondon community sites can be added/removed by site operators; some churn is expected in steady state
+- API key rotation in Supabase secrets requires deploy/restart to guarantee runtime pickup.
+- Site churn exists in the upstream feed; not every station disappearance is a system outage.

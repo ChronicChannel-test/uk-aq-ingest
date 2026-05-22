@@ -391,7 +391,7 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
   - Response includes `series_polled` (timeseries with last-value updates during the run).
   - Runtime budget behavior:
     - Edge runtime (`BREATHELONDON_DROPBOX_UPLOAD_SOURCE=edge`): budget enabled; returns partial progress with `partial=true` when exceeded.
-    - Cloud Run runtime (`BREATHELONDON_DROPBOX_UPLOAD_SOURCE=cloud_run`): budget disabled by default (run length controlled by Cloud Run task timeout).
+    - Cloud Run runtime (`BREATHELONDON_DROPBOX_UPLOAD_SOURCE=cloud_run`): inner ingest budget disabled by default, but the Cloud Run wrapper enforces a 14-minute child-process timeout so the service releases its in-process run lock before the default 15-minute Cloud Run request timeout.
     - Override with `BREATHELONDON_ENFORCE_RUNTIME_BUDGET=true|false`.
   - History dual-write rows are buffered and flushed in batches to reduce History RPC request count (`HISTORY_BUFFER_FLUSH_ROWS`, default `5000`).
     - This applies to both Edge and Cloud Run because Cloud Run reuses `ingest_breathelondon/index.ts`.

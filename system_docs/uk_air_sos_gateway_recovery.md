@@ -61,7 +61,7 @@ station_truth as (
   where ts.station_id is not null
   group by ts.station_id
 )
-update uk_aq_core.uk_air_sos_station_checkpoints sc
+update uk_aq_raw.uk_air_sos_station_checkpoints sc
 set next_due_at        = now(),
     last_polled_at     = null,
     ingest_lag_samples = '{}'::int[],

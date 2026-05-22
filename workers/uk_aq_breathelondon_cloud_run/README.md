@@ -32,6 +32,7 @@ Dropbox behavior in Cloud Run:
 - File prefixes are `uk_aq_log_cloud_run_*` and `uk_aq_raw_cloud_run_*`.
 - Runtime budget in `ingest_breathelondon` is disabled by default in Cloud Run (`BREATHELONDON_DROPBOX_UPLOAD_SOURCE=cloud_run`).
   - Set `BREATHELONDON_ENFORCE_RUNTIME_BUDGET=true` to re-enable the edge-style cutoff.
+- The Cloud Run wrapper still enforces a hard child-process timeout at 14 minutes, one minute before the default 15-minute Cloud Run service timeout. On timeout it terminates the child process, returns HTTP 504 with `timed_out=true`, and clears the in-process run lock so the next scheduled request is not blocked indefinitely.
 
 ## Build and push
 

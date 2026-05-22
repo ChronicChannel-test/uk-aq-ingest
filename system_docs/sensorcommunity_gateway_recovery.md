@@ -4,37 +4,78 @@ Operational playbook for recovering Sensor.Community ingest after an upstream ou
 
 See also: [sensorcommunity.md](sensorcommunity.md), [uk_aq_sensorcommunity_cloud_run.md](uk_aq_sensorcommunity_cloud_run.md).
 
-> **Status: not yet written.**
->
-> This is a placeholder. Fill in from real incident experience when one occurs. Sensor.Community uses an HTTP filter endpoint + a daily/monthly archive, so the failure modes and recovery levers differ from UK-AIR SOS.
+## Key difference from OpenAQ/Breathe London
 
-## What likely differs from SOS
+Sensor.Community Cloud Run does not use a per-station checkpoint table.  
+Cadence is driven from `uk_aq_core.connectors` (`last_run_start` / `last_polled_at` + `poll_interval_minutes`).
+
+## When to use this doc
+
+- Sensor.Community API was unstable and ingest paused/stalled.
+- API is healthy again but the connector is not running when expected.
+- You need to force immediate eligibility for the next run.
+
+## Standard recovery sequence
+
+### 1) Confirm upstream is back
+
+```bash
+curl -fsS "https://data.sensor.community/airrohr/v1/filter/country=GB" | head -c 200
+```
+
+### 2) Reset Sensor.Community connector cadence anchors
+
+```sql
+begin;
+
+-- Clear cadence anchors so the next run is treated as first-run due.
+update uk_aq_core.connectors c
+set last_polled_at  = null,
+    last_run_start  = null,
+    last_run_end    = null,
+    last_run_status = null,
+    last_run_message = null
+where c.connector_code = 'sensorcommunity';
+
+commit;
+```
+
+### 3) Verify connector due-state inputs
+
+```sql
+select
+  connector_code,
+  poll_enabled,
+  scheduler_backend,
+  poll_interval_minutes,
+  last_polled_at,
+  last_run_start,
+  last_run_end,
+  last_run_status
+from uk_aq_core.connectors
+where connector_code = 'sensorcommunity';
+```
+
+Expected for recovery:
+- `poll_enabled = true`
+- `scheduler_backend = 'google_cloud_run'` (for Cloud Run path)
+- cadence anchors (`last_polled_at`, `last_run_start`) are null immediately after reset
+
+### 4) Resume and observe
+
+- Resume Cloud Scheduler / worker.
+- Confirm connector run fields begin updating again (`last_run_start`, `last_run_end`, then `last_polled_at`).
+- Confirm timeseries freshness starts recovering.
+
+## Notes vs SOS
 
 | Aspect | SOS | Sensor.Community |
 |---|---|---|
-| Upstream "gateway" | DEFRA SOS REST API | `data.sensor.community/airrohr/v1/filter/country=GB` + `archive.sensor.community/YYYY-MM-DD/` |
-| Outage type 1 | SOS gateway 5xx | Filter endpoint 5xx / timeout |
-| Outage type 2 | (rare) catalog returns partial | Archive day folder missing / partial |
-| Catalog reconciler with auto-end-date | Yes (`UK_AIR_TIMESERIES_END_MISSING_RUNS = 2`) | **Verify** — believed not to use the same lifecycle |
-| Identity model | DEFRA station IDs | Sensor IDs (community-supplied; can churn as devices come/go) |
-| Backfill path | None (no historical archive) | Yes — `sensor.community` daily archive, used by integrity job |
-| Rate limiting | Light | User-Agent identification required (`SCOMM_USER_AGENT`) |
+| Upstream | DEFRA SOS REST API | `data.sensor.community/airrohr/v1/filter/country=GB` |
+| Recovery lever | station checkpoint reset + catalog checks | connector cadence-anchor reset |
+| Historical backfill | limited in SOS path | archive reconcile exists in ops tooling |
 
-The community-sensor identity model means churn is **expected** — sensors come online, go offline, get renumbered. A 24h gap for a single sensor is normal; it's only a system-level recovery scenario if many sensors stop reporting simultaneously.
+## Known constraints
 
-## Until this is written, when a Sensor.Community outage happens
-
-1. Confirm which Sensor.Community endpoint failed:
-   - Filter endpoint (`data.sensor.community/airrohr/v1/filter/country=GB`)
-   - Archive (`archive.sensor.community/YYYY-MM-DD/...`)
-2. Confirm `SCOMM_USER_AGENT` is set — Sensor.Community has historically silently dropped requests without a recognisable UA
-3. Note which env was paused vs polling
-4. Check the Sensor.Community section of the integrity job for existing archive-reconcile tooling — see [`scripts/backup_r2/uk_aq_sensorcommunity_archive_reconcile.mjs`](../../uk-aq-ops/scripts/backup_r2/uk_aq_sensorcommunity_archive_reconcile.mjs)
-5. Compare against the SOS playbook ([`uk_air_sos_gateway_recovery.md`](uk_air_sos_gateway_recovery.md)) for structurally-equivalent steps (freshness verification, post-recovery noise cleanup)
-6. Document the actual recovery here
-
-## Known constraints to be aware of
-
-- Community sensors churn naturally — don't treat individual sensor disappearance as a system fault
-- The Sensor.Community archive is on a different host (`archive.sensor.community`) from the live filter (`data.sensor.community`); an outage on one doesn't necessarily imply the other
-- The archive reconcile tooling exists specifically for filling gaps from the daily archive — use it before manual SQL
+- `SCOMM_USER_AGENT` must be set correctly for reliable upstream behavior.
+- Community sensor churn is normal; evaluate outage at network level, not single-sensor level.

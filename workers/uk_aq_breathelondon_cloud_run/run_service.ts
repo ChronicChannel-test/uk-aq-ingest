@@ -3,8 +3,18 @@ import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 const PORT = Number(Deno.env.get("PORT") || "8080");
 const RUN_JOB_SCRIPT = "/app/workers/uk_aq_breathelondon_cloud_run/run_job.ts";
 const ALLOWED_TRIGGER_MODES = new Set(["safety", "task", "manual"]);
+const CHILD_TIMEOUT_MS = 14 * 60 * 1000;
+const CHILD_SHUTDOWN_GRACE_MS = 10 * 1000;
 
 let inFlight = false;
+
+type RunJobResult = {
+  success: boolean;
+  code: number;
+  signal: string | null;
+  timedOut: boolean;
+  timeoutSeconds?: number;
+};
 
 function resolveTriggerMode(req: Request, body: unknown): string {
   const url = new URL(req.url);
@@ -36,7 +46,7 @@ function resolveTriggerMode(req: Request, body: unknown): string {
 async function runJob(
   triggerMode: string,
   currentTaskName: string | null,
-): Promise<Deno.CommandStatus> {
+): Promise<RunJobResult> {
   const childEnv: Record<string, string> = {
     ...Deno.env.toObject(),
     BREATHELONDON_TRIGGER_MODE: triggerMode,
@@ -58,7 +68,62 @@ async function runJob(
     stdout: "inherit",
     stderr: "inherit",
   }).spawn();
-  return await child.status;
+  const statusPromise = child.status;
+  let timeout: number | undefined;
+  const timeoutPromise = new Promise<"timeout">((resolve) => {
+    timeout = setTimeout(() => resolve("timeout"), CHILD_TIMEOUT_MS);
+  });
+  const result = await Promise.race([statusPromise, timeoutPromise]);
+  if (timeout !== undefined) {
+    clearTimeout(timeout);
+  }
+  if (result !== "timeout") {
+    return {
+      success: result.success,
+      code: result.code,
+      signal: result.signal,
+      timedOut: false,
+    };
+  }
+
+  console.error(
+    JSON.stringify({
+      ts: new Date().toISOString(),
+      service: "uk_aq_breathelondon_cloud_run",
+      message: "child_timeout",
+      timeout_seconds: Math.trunc(CHILD_TIMEOUT_MS / 1000),
+      trigger_mode: triggerMode,
+      current_task_name: currentTaskName,
+    }),
+  );
+  try {
+    child.kill("SIGTERM");
+  } catch {
+    // Child may already have exited between timeout and termination.
+  }
+  const terminated = await Promise.race([
+    statusPromise.then((status) => ({ status })),
+    new Promise<"grace_timeout">((resolve) =>
+      setTimeout(() => resolve("grace_timeout"), CHILD_SHUTDOWN_GRACE_MS)
+    ),
+  ]);
+  if (terminated === "grace_timeout") {
+    try {
+      child.kill("SIGKILL");
+    } catch {
+      // Ignore; statusPromise below will settle if the process is already gone.
+    }
+  }
+  const status = terminated === "grace_timeout"
+    ? await statusPromise
+    : terminated.status;
+  return {
+    success: false,
+    code: status.code,
+    signal: status.signal,
+    timedOut: true,
+    timeoutSeconds: Math.trunc(CHILD_TIMEOUT_MS / 1000),
+  };
 }
 
 serve(async (req: Request) => {
@@ -102,16 +167,19 @@ serve(async (req: Request) => {
 
   inFlight = true;
   try {
-    const status = await runJob(triggerMode, currentTaskName);
+    const result = await runJob(triggerMode, currentTaskName);
     return new Response(
       JSON.stringify({
-        ok: status.success,
+        ok: result.success,
         trigger_mode: triggerMode,
         current_task_name: currentTaskName,
-        code: status.code,
+        code: result.code,
+        signal: result.signal,
+        timed_out: result.timedOut,
+        timeout_seconds: result.timeoutSeconds ?? null,
       }),
       {
-        status: status.success ? 200 : 500,
+        status: result.timedOut ? 504 : result.success ? 200 : 500,
         headers: { "content-type": "application/json" },
       },
     );
