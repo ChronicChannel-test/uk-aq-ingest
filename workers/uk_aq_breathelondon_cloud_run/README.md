@@ -80,5 +80,7 @@ gcloud run deploy uk-aq-breathelondon-ingest \
 - `SB_UK_AQ_CRON_SECRET`
 - `BREATHELONDON_REQUEST_PAYLOAD` (JSON object overrides; dynamic connector-derived station/window/batch still apply)
 - `BREATHELONDON_ENFORCE_RUNTIME_BUDGET` (optional; defaults to `false` in Cloud Run)
+- `BREATHELONDON_IN_FLIGHT_TIMEOUT_MINUTES` (default `14`)
+- `BREATHELONDON_CLAIM_TIMEOUT_MINUTES` (default `14`)
 - `BREATHELONDON_LOCAL_PORT` (default `8000`; local ingest server port, separate from Cloud Run `PORT`)
 - `BREATHELONDON_INGEST_SCRIPT_PATH` (default `/app/runtime/ingest_breathelondon/index.ts`)
