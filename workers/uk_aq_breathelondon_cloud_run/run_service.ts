@@ -69,6 +69,9 @@ async function runJob(
     stderr: "inherit",
   }).spawn();
   const statusPromise = child.status;
+  statusPromise.catch(() => {
+    // Avoid an unhandled rejection if the child exits after the timeout path returns.
+  });
   let timeout: number | undefined;
   const timeoutPromise = new Promise<"timeout">((resolve) => {
     timeout = setTimeout(() => resolve("timeout"), CHILD_TIMEOUT_MS);
@@ -113,10 +116,15 @@ async function runJob(
     } catch {
       // Ignore; statusPromise below will settle if the process is already gone.
     }
+    return {
+      success: false,
+      code: -1,
+      signal: "SIGKILL",
+      timedOut: true,
+      timeoutSeconds: Math.trunc(CHILD_TIMEOUT_MS / 1000),
+    };
   }
-  const status = terminated === "grace_timeout"
-    ? await statusPromise
-    : terminated.status;
+  const status = terminated.status;
   return {
     success: false,
     code: status.code,
