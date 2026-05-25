@@ -52,6 +52,8 @@
 - Whenever a new environment variable is added to any repo, add a corresponding row to the master CSV at `CIC-test-uk-aq-ops/env-vars-master.csv`. Place it in the correct section, fill in the env var name, default value, and which services require it (GitHub/Supabase/Cloudflare/GCP). Leave the Test Value and Live Value columns blank — the user maintains those.
 - Whenever a new env var is added/removed/renamed in ingest workflows or scripts, also update `config/uk_aq_github_env_targets.csv` in this repo so GitHub variable/secret targeting stays correct.
 - Keep `scripts/uk_aq_sync_github_secrets.sh` in sync with the target map and env set; update the script when env handling rules or target behavior changes.
+- This repo has an env sync script: `scripts/uk_aq_sync_github_secrets.sh`.
+- The script syncs `.env` keys to GitHub and packages `.env.supabase` into GitHub secret `SUPABASE_SECRETS_ENV`; the Supabase edge deploy workflow applies that payload via `supabase secrets set`.
 
 ## Documentation
 - Add a script note to `system_docs/uk_aq_scripts.md` when new scripts are added.
@@ -71,6 +73,11 @@
 ## Planning Requests
 - When proposing plans, offer more than one option when possible, list pros/cons for each, and recommend which to pick with a brief rationale.
 - For every plan, explicitly assess both egress impact and database-size impact. Include those impacts in each option's pros/cons, and use them directly in the recommendation so tradeoffs are clear before implementation.
+
+## Implementation Reporting
+- When changing code, schema, workflows, or config, always include clear implementation steps in the response.
+- Implementation steps must state what changed, which files were changed, and any required apply/deploy/run commands.
+- If no code changes were made, state that explicitly.
 
 ## Website Polling Policy
 - Never suggest reducing website polling frequency below 1 minute.
@@ -94,3 +101,6 @@
 - HistoryDB must preserve raw observation granularity at all times; do not propose aggregation/downsampling/rollups as the default storage strategy.
 - Do not suggest rollups, downsampling, or any aggregation-based size reduction unless the user explicitly asks for aggregation.
 - If aggregation is explicitly requested, state clearly that it reduces query granularity and keep raw-history preservation options separate.
+
+## Search Tool Preference
+- Prefer `grep` for text search and file discovery; do not use `rg` unless explicitly requested.

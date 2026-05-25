@@ -44,11 +44,11 @@ Cloud Run deploy idempotency:
 - Deployed functions: `ingest_uk_air_sos`, `ingest_breathelondon`, `ingest_sensorcommunity`,
   `uk_aq_dispatch_polls`, `uk_aq_latest`,
   `uk_aq_stations_chart`, `uk_aq_la_hex`, `uk_aq_pcon_hex`,
-  `uk_aq_stations`, `uk_aq_timeseries`, `uk_aq_sync_openaq_from_live`.
+  `uk_aq_stations`, `uk_aq_timeseries`.
 - Secrets: `SUPABASE_PROJECT_REF`, `SB_PUBLISHABLE_DEFAULT_KEY`, `SUPABASE_ACCESS_TOKEN`,
   `SUPABASE_SECRETS_ENV` (newline-delimited env file contents).
 - Public read functions are deployed with `--no-verify-jwt` in workflow to keep website/cache access JWT-free:
-  `uk_aq_latest`, `uk_aq_stations_chart`, `uk_aq_la_hex`, `uk_aq_pcon_hex`, `uk_aq_stations`, `uk_aq_timeseries`, `uk_aq_sync_openaq_from_live`.
+  `uk_aq_latest`, `uk_aq_stations_chart`, `uk_aq_la_hex`, `uk_aq_pcon_hex`, `uk_aq_stations`, `uk_aq_timeseries`.
 - Supabase secret names cannot start with `SUPABASE_`. Use `SB_` (or another prefix) in
   `SUPABASE_SECRETS_ENV`.
 
