@@ -158,49 +158,57 @@ Environment:
 ### `scripts/gcp/uk_aq_secret_upsert_if_changed.sh`
 Purpose:
 - Upsert one GCP Secret Manager secret from stdin.
-- Add a new secret version only when the value hash changed.
-- Store a content-hash label on the secret to support safe no-plaintext comparisons.
+- Compare against the latest enabled secret version and avoid creating a new version when unchanged.
+- When changed, create a new version and destroy older active versions so one active version remains.
+- Detect Cloud Run secret refs pinned to numeric versions and update them to `latest` before cleanup (apply mode).
 
 Common commands:
 ```bash
 printf '%s' "$SB_SECRET_KEY" | \
   scripts/gcp/uk_aq_secret_upsert_if_changed.sh \
     --project "$GCP_PROJECT_ID" \
+    --region "$GCP_REGION" \
     --secret "SB_SECRET_KEY" \
-    --required 1
+    --required 1 \
+    --apply
 
 printf '%s' "$OPENAQ_API_KEY" | \
   scripts/gcp/uk_aq_secret_upsert_if_changed.sh \
     --project "$GCP_PROJECT_ID" \
+    --region "$GCP_REGION" \
     --secret "OPENAQ_API_KEY" \
-    --required 1 \
-    --dry-run
+    --required 1
 ```
 
 Notes:
-- Does not fetch secret plaintext from Secret Manager.
-- `--dry-run` prints planned create/update/skip actions.
+- Default mode is dry-run; use `--apply` for real changes.
+- Secret payload values are never printed.
+- Reports, per secret: changed/unchanged, whether a new version will be created, old versions planned for destroy, and active-version count after completion.
+- Apply mode fails safe if the current enabled version cannot be accessed for comparison.
 
-### `scripts/gcp/uk_aq_secret_manager_prune_versions.sh`
+### `scripts/gcp/uk_aq_cleanup_secret_versions.sh`
 Purpose:
-- Reduce Secret Manager version storage by destroying older versions per secret.
-- Keep the newest `N` versions (`N=1` for current cost-control policy).
+- Cleanup utility to keep exactly one active Secret Manager version per secret.
+- Dry-run by default, with optional apply mode.
+- Checks Cloud Run secret references and skips pinned numeric-version cases unless pin-fix is explicitly enabled.
 
 Common commands:
 ```bash
-scripts/gcp/uk_aq_secret_manager_prune_versions.sh \
+scripts/gcp/uk_aq_cleanup_secret_versions.sh \
   --project "$GCP_PROJECT_ID" \
-  --keep 1 \
-  --dry-run
+  --region "$GCP_REGION"
 
-scripts/gcp/uk_aq_secret_manager_prune_versions.sh \
+scripts/gcp/uk_aq_cleanup_secret_versions.sh \
   --project "$GCP_PROJECT_ID" \
-  --keep 1
+  --region "$GCP_REGION" \
+  --fix-cloud-run-pins 1 \
+  --apply
 ```
 
 Notes:
-- Works across all secrets by default, or one secret via repeated `--secret`.
-- `--dry-run` prints planned destroys without changing versions.
+- Works across all secrets by default, or one secret at a time via repeated `--secret`.
+- In apply mode, destroys older active versions and verifies one active version remains.
+- Destroyed versions cannot be restored from GCP.
 
 ### `scripts/gcp_billing_export_check.sh`
 Purpose:
