@@ -219,7 +219,7 @@ Notes:
 - Reports `PASS` only when billing export tables are present.
 - If a dataset exists but no export tables are present yet, reports `FAIL` with a startup-delay warning.
 
-### `../CIC-test-uk-aq Operations/CIC-test-uk-aq-ops/scripts/backup_r2/uk_aq_build_r2_history_index.mjs`
+### `../CIC-test-uk-aq-Operations/CIC-test-uk-aq-ops/scripts/backup_r2/uk_aq_build_r2_history_index.mjs`
 Purpose:
 - Rebuild the derived R2 history index manifests used by the history-days API fast path:
   - `history/_index/observations_latest.json`
@@ -229,8 +229,8 @@ Purpose:
 
 Common commands:
 ```bash
-node ../CIC-test-uk-aq\ Operations/CIC-test-uk-aq-ops/scripts/backup_r2/uk_aq_build_r2_history_index.mjs
-node ../CIC-test-uk-aq\ Operations/CIC-test-uk-aq-ops/scripts/backup_r2/uk_aq_build_r2_history_index.mjs --domain observations
+node ../CIC-test-uk-aq-Operations/CIC-test-uk-aq-ops/scripts/backup_r2/uk_aq_build_r2_history_index.mjs
+node ../CIC-test-uk-aq-Operations/CIC-test-uk-aq-ops/scripts/backup_r2/uk_aq_build_r2_history_index.mjs --domain observations
 ```
 
 Notes:
@@ -238,16 +238,16 @@ Notes:
 - It is called automatically after successful non-dry local monthly `source_to_r2` runs.
 - The daily ingestdb prune service also rebuilds the same index files after successful non-dry Phase B history export.
 
-### `../CIC-test-uk-aq Operations/CIC-test-uk-aq-ops/scripts/backup_r2/uk_aq_cleanup_sos_empty_mirror_files.mjs`
+### `../CIC-test-uk-aq-Operations/CIC-test-uk-aq-ops/scripts/backup_r2/uk_aq_cleanup_sos_empty_mirror_files.mjs`
 Purpose:
 - Clean up legacy UK-AIR SOS mirror files that only contain exact empty payloads such as `{"values":[]}`.
 - Migrate those known-empty timeseries/day combinations into the newer per-day `_no_data_timeseries.json` manifest format.
 
 Common commands:
 ```bash
-node ../CIC-test-uk-aq\ Operations/CIC-test-uk-aq-ops/scripts/backup_r2/uk_aq_cleanup_sos_empty_mirror_files.mjs
-node ../CIC-test-uk-aq\ Operations/CIC-test-uk-aq-ops/scripts/backup_r2/uk_aq_cleanup_sos_empty_mirror_files.mjs --apply
-node ../CIC-test-uk-aq\ Operations/CIC-test-uk-aq-ops/scripts/backup_r2/uk_aq_cleanup_sos_empty_mirror_files.mjs --apply --day 2025-01-15
+node ../CIC-test-uk-aq-Operations/CIC-test-uk-aq-ops/scripts/backup_r2/uk_aq_cleanup_sos_empty_mirror_files.mjs
+node ../CIC-test-uk-aq-Operations/CIC-test-uk-aq-ops/scripts/backup_r2/uk_aq_cleanup_sos_empty_mirror_files.mjs --apply
+node ../CIC-test-uk-aq-Operations/CIC-test-uk-aq-ops/scripts/backup_r2/uk_aq_cleanup_sos_empty_mirror_files.mjs --apply --day 2025-01-15
 ```
 
 Notes:

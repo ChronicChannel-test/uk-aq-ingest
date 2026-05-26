@@ -75,7 +75,7 @@ Dropbox/logging (used by multiple ingests):
 - System docs: `system_docs/`
 - Naming conventions: `AGENTS.md`
 - Schema repo (sibling): `../CIC-Test-UK-AQ-Schema/CIC-test-uk-aq-schema`
-- Ops repo (sibling): `../CIC-test-uk-aq Operations/CIC-test-uk-aq-ops`
+- Ops repo (sibling): `../CIC-test-uk-aq-Operations/CIC-test-uk-aq-ops`
 
 ## WORKING STYLE (IMPORTANT)
 
