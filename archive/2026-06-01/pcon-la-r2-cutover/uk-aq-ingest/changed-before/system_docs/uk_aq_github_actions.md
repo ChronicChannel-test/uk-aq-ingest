@@ -132,7 +132,7 @@ UK_AQ_EDGE_UPSTREAM_SECRET=...
   - `Sync OpenAQ stations` runs only when `poll_was_enabled=1`.
   - `Resume OpenAQ polling` runs only when `poll_was_enabled=1` (so polling stays off when intentionally off).
   - Workflow logs explicit skip/unchanged messages when OpenAQ was already off.
-- Script: `python3 scripts/uk_aq_refresh_station_geo_r2.py` (refresh PCON/LA codes from the PCON/LA R2 shard lookup).
+- Script: `python3 scripts/uk_aq_refresh_station_geo_aiven.py` (refresh PCON/LA codes from Aiven).
 - Export: `python3 scripts/uk_aq_export_stations_dropbox.py` (uploads `uk_aq_stations_<timestamp>.json`).
 - Final mirror step: `python3 scripts/stations_daily/sync_obs_aqidb_uk_aq_core.py`.
   - Mirrors `uk_aq_core.connectors`, `uk_aq_core.phenomena`, `uk_aq_core.stations`, `uk_aq_core.timeseries`.
@@ -145,10 +145,9 @@ UK_AQ_EDGE_UPSTREAM_SECRET=...
 - Secrets: `SUPABASE_URL`, `SB_SECRET_KEY`, `UK_AIR_SOS_BASE_URL`,
   `BREATHELONDON_API_KEY`, `BREATHELONDON_BASE_URL` (optional), `DROPBOX_APP_KEY`,
   `DROPBOX_APP_SECRET`, `DROPBOX_REFRESH_TOKEN`, `UK_AQ_DROPBOX_ROOT`, `UK_AQ_STATIONS_DROPBOX_DIR`,
-  `UK_AQ_DOMAIN_CLOUDFLARE_API_TOKEN`, `OBS_AQIDB_SECRET_KEY`.
+  `PCON_AIVEN_PG_DSN`, `OBS_AQIDB_SECRET_KEY`.
 - Vars: `OBS_AQIDB_SUPABASE_URL`.
-- Vars: `UK_AQ_DOMAIN_CLOUDFLARE_ACCOUNT_ID`, `UK_AQ_GEO_R2_BUCKET` (optional; defaults to `uk-aq-pcon-la-lookup`),
-  `UK_AQ_GEO_R2_PREFIX` (optional; defaults to `v1`).
+- Vars: `PCON_VERSION`, `LA_VERSION` (optional; defaults to latest in Aiven).
 - Agg Daily bootstrap SQL (run once on empty Obs AQI DB before enabling mirror step):
   - `CIC-test-uk-aq-schema/schemas/obs_aqi_db/uk_aq_obs_aqi_db_schema.sql`
   - This file creates `uk_aq_core` mirrored table structures plus required metadata/mirror RPCs in `uk_aq_public`.

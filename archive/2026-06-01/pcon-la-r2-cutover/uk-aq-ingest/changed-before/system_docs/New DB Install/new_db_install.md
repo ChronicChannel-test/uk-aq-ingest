@@ -79,13 +79,13 @@ Run these in order before expecting Sensor.Community to appear on the hex map.
 2. Upsert Sensor.Community stations + connector row:
    - `python3 scripts/sensorcommunity/sensorcommunity_list_stations.py --to-supabase`
 3. Assign PCON/LA codes to stations (required for map inclusion):
-   - `python3 scripts/uk_aq_refresh_station_geo_r2.py`
+   - `python3 scripts/uk_aq_refresh_station_geo_aiven.py`
 4. Run Sensor.Community ingest to populate timeseries/observations:
    - `python3 scripts/sensorcommunity/sensorcommunity_ingest.py --refresh-recent`
 5. Backfill Sensor.Community timeseries phenomena:
    - `python3 scripts/sensorcommunity/sensorcommunity_backfill_timeseries_phenomena.py`
 6. Run station geo refresh again to catch any newly inserted stations:
-   - `python3 scripts/uk_aq_refresh_station_geo_r2.py`
+   - `python3 scripts/uk_aq_refresh_station_geo_aiven.py`
 
 Notes:
 

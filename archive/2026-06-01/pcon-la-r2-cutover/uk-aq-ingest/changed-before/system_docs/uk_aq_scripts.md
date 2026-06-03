@@ -721,31 +721,28 @@ Environment:
 - `CUTOFF_DAYS` (optional; default 14)
 - `BATCH_SIZE` (optional; default 50,000)
 
-### `scripts/uk_aq_refresh_station_geo_r2.py`
+### `scripts/uk_aq_refresh_station_geo_aiven.py`
 Purpose:
-- Look up PCON + LA codes from the PCON/LA R2 shard lookup and update missing values in `stations`.
+- Look up PCON + LA codes in an Aiven PostGIS DB and update missing values in `stations`.
 
 Common commands:
 ```
-python3 scripts/uk_aq_refresh_station_geo_r2.py
-python3 scripts/uk_aq_refresh_station_geo_r2.py --page-size 200 --dry-run
+python3 scripts/uk_aq_refresh_station_geo_aiven.py
+python3 scripts/uk_aq_refresh_station_geo_aiven.py --page-size 200 --dry-run
 ```
 
 Key flags:
 - `--page-size` Supabase page size (default: 500).
 - `--limit` max stations to process (default: 0 = no limit).
 - `--sleep-seconds` sleep between updates (default: 0).
-- `--bucket` override the R2 bucket name.
-- `--prefix` override the R2 prefix root.
 - `--dry-run` log updates without writing.
 
 Environment:
 - `SUPABASE_URL`
 - `SB_SECRET_KEY`
-- `UK_AQ_DOMAIN_CLOUDFLARE_ACCOUNT_ID`
-- `UK_AQ_DOMAIN_CLOUDFLARE_API_TOKEN`
-- `UK_AQ_GEO_R2_BUCKET` (optional; defaults to `uk-aq-pcon-la-lookup`)
-- `UK_AQ_GEO_R2_PREFIX` (optional; defaults to `v1`)
+- `PCON_AIVEN_PG_DSN`
+- `PCON_VERSION` (optional; defaults to latest in Aiven)
+- `LA_VERSION` (optional; defaults to latest in Aiven)
 
 ### `scripts/uk_aq_resolve_dropbox_geojson.py`
 Purpose:

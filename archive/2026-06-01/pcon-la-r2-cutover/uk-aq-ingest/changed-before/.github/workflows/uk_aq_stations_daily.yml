@@ -365,14 +365,13 @@ jobs:
         run: |
           python3 scripts/sensorcommunity/sensorcommunity_backfill_timeseries_phenomena.py
 
-      - name: Refresh station PCON/LA from R2 shards
+      - name: Refresh station PCON/LA from Aiven
         env:
           SUPABASE_URL: ${{ vars.SUPABASE_URL }}
           SB_SECRET_KEY: ${{ secrets.SB_SECRET_KEY }}
-          UK_AQ_DOMAIN_CLOUDFLARE_ACCOUNT_ID: ${{ vars.UK_AQ_DOMAIN_CLOUDFLARE_ACCOUNT_ID }}
-          UK_AQ_DOMAIN_CLOUDFLARE_API_TOKEN: ${{ secrets.UK_AQ_DOMAIN_CLOUDFLARE_API_TOKEN }}
+          PCON_AIVEN_PG_DSN: ${{ secrets.PCON_AIVEN_PG_DSN }}
         run: |
-          python3 scripts/uk_aq_refresh_station_geo_r2.py
+          python3 scripts/uk_aq_refresh_station_geo_aiven.py
 
       - name: Check null station_name
         id: check_null_station_name
