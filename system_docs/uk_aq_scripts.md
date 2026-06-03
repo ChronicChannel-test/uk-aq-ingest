@@ -365,6 +365,8 @@ Behavior:
   - `uk_aq_rpc_core_table_select`
   - `uk_aq_rpc_core_table_upsert`
   - `uk_aq_rpc_core_table_delete_keys`
+- Retries transient REST/network failures per page using exponential backoff with jitter:
+  `SSLError`, `ConnectionError`, `Timeout`, HTTP `429`, and HTTP `5xx`.
 - Runs a pre-sync timeseries alignment check keyed by `(connector_id, service_ref, timeseries_ref)`:
   - prints per-connector row-count/hash summary (`key_only_hash`, `key_plus_id_hash`) for source vs destination
   - reports key-only gaps (`missing_in_destination`, `extra_in_destination`) and ID mismatches

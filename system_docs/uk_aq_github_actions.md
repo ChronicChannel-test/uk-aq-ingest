@@ -141,6 +141,7 @@ UK_AQ_EDGE_UPSTREAM_SECRET=...
   - For timeseries keys that exist in both DBs with different IDs, remaps source upsert PKs to existing destination IDs to avoid unique-key collision failures in daily runs.
   - Sync mode: upsert by PK plus hard-delete missing PKs in destination.
   - Pre-write guard: destination schema must match source metadata (columns/defaults/nullability/order + PK), or workflow fails.
+  - Retries transient REST/network failures per page with exponential backoff and a 90-minute job timeout backstop.
 - Optional: Sensor.Community discovery step (disabled by default).
 - Secrets: `SUPABASE_URL`, `SB_SECRET_KEY`, `UK_AIR_SOS_BASE_URL`,
   `BREATHELONDON_API_KEY`, `BREATHELONDON_BASE_URL` (optional), `DROPBOX_APP_KEY`,

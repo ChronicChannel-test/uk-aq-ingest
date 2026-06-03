@@ -21,8 +21,10 @@ import difflib
 import hashlib
 import json
 import os
+import random
 import re
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
@@ -64,6 +66,19 @@ PUBLIC_SCHEMA = "uk_aq_public"
 
 PAGE_SIZE = 1000
 UPSERT_BATCH_SIZE = 500
+
+RETRY_MAX_ATTEMPTS = 5
+RETRY_INITIAL_DELAY_SECONDS = 1.0
+RETRY_MULTIPLIER = 2.0
+RETRY_MAX_DELAY_SECONDS = 30.0
+RETRY_JITTER_FRACTION = 0.25
+RETRYABLE_HTTP_STATUS_CODES = {429, 500, 502, 503, 504}
+RETRYABLE_REQUEST_EXCEPTIONS = (
+    requests.exceptions.ConnectionError,
+    requests.exceptions.ChunkedEncodingError,
+    requests.exceptions.SSLError,
+    requests.exceptions.Timeout,
+)
 
 COLUMNS_RPC = "uk_aq_rpc_info_schema_columns"
 PK_RPC = "uk_aq_rpc_info_schema_primary_keys"
@@ -436,6 +451,30 @@ def is_missing_rpc_error(message: str) -> bool:
     return "PGRST202" in message or "Could not find the function" in message
 
 
+def request_context_label(path: str, params: Optional[Dict[str, str]] = None) -> str:
+    pieces = [f"path={path}"]
+    if params:
+        rendered = ",".join(f"{key}={params[key]}" for key in sorted(params))
+        if rendered:
+            pieces.append(f"params={rendered}")
+    return " ".join(pieces)
+
+
+def is_retryable_request_exception(exc: BaseException) -> bool:
+    return isinstance(exc, RETRYABLE_REQUEST_EXCEPTIONS)
+
+
+def retry_sleep_seconds(attempt_number: int) -> float:
+    base_delay = RETRY_INITIAL_DELAY_SECONDS * (RETRY_MULTIPLIER ** max(attempt_number - 1, 0))
+    base_delay = min(RETRY_MAX_DELAY_SECONDS, base_delay)
+    jitter = random.uniform(0.0, base_delay * RETRY_JITTER_FRACTION)
+    return min(RETRY_MAX_DELAY_SECONDS, base_delay + jitter)
+
+
+def format_retry_prefix(method: str, path: str, params: Optional[Dict[str, str]] = None) -> str:
+    return f"PostgREST method={method.upper()} {request_context_label(path, params)}"
+
+
 class PostgrestClient:
     def __init__(
         self,
@@ -476,16 +515,40 @@ class PostgrestClient:
         timeout: int = 60,
     ) -> Any:
         url = f"{self.base_url}{path}"
-        response = requests.request(
-            method=method,
-            url=url,
-            headers=self._headers(profile, extra_headers),
-            params=params,
-            json=payload,
-            timeout=timeout,
-        )
+        request_label = format_retry_prefix(method, path, params)
 
-        if not response.ok:
+        for attempt in range(1, RETRY_MAX_ATTEMPTS + 1):
+            try:
+                response = requests.request(
+                    method=method,
+                    url=url,
+                    headers=self._headers(profile, extra_headers),
+                    params=params,
+                    json=payload,
+                    timeout=timeout,
+                )
+            except requests.RequestException as exc:
+                if not is_retryable_request_exception(exc):
+                    raise SyncError(f"{request_label} failed: {exc}") from exc
+                if attempt >= RETRY_MAX_ATTEMPTS:
+                    raise SyncError(
+                        f"{request_label} failed after {RETRY_MAX_ATTEMPTS} attempts: {exc}"
+                    ) from exc
+                sleep_seconds = retry_sleep_seconds(attempt)
+                print(
+                    f"RETRY {request_label} attempt={attempt}/{RETRY_MAX_ATTEMPTS} "
+                    f"error={exc.__class__.__name__}: {exc} sleep_seconds={sleep_seconds:.1f}",
+                    file=sys.stderr,
+                    flush=True,
+                )
+                time.sleep(sleep_seconds)
+                continue
+
+            if response.ok:
+                if response.status_code == 204 or not response.text.strip():
+                    return []
+                return response.json()
+
             body = response.text.strip()
             # Supabase/PostgREST returns 406 PGRST106 when schema is not exposed.
             if response.status_code == 406 and "PGRST106" in body and f"Invalid schema: {CORE_SCHEMA}" in body:
@@ -494,13 +557,25 @@ class PostgrestClient:
                     f"{self.project_label}. Add '{CORE_SCHEMA}' to Supabase API "
                     "Exposed schemas for that project, or use uk_aq_public mirror RPCs."
                 )
+            if response.status_code in RETRYABLE_HTTP_STATUS_CODES:
+                if attempt >= RETRY_MAX_ATTEMPTS:
+                    raise SyncError(
+                        f"{request_label} failed after {RETRY_MAX_ATTEMPTS} attempts "
+                        f"({response.status_code}): {body or response.reason}"
+                    )
+                sleep_seconds = retry_sleep_seconds(attempt)
+                print(
+                    f"RETRY {request_label} attempt={attempt}/{RETRY_MAX_ATTEMPTS} "
+                    f"status={response.status_code} reason={response.reason} "
+                    f"sleep_seconds={sleep_seconds:.1f}",
+                    file=sys.stderr,
+                    flush=True,
+                )
+                time.sleep(sleep_seconds)
+                continue
             raise SyncError(
                 f"PostgREST {method} {path} failed ({response.status_code}): {body or response.reason}"
             )
-
-        if response.status_code == 204 or not response.text.strip():
-            return []
-        return response.json()
 
     def fetch_all_rows(
         self,
@@ -523,7 +598,12 @@ class PostgrestClient:
             if order:
                 params["order"] = order
 
-            batch = self.request_json("GET", f"/rest/v1/{table}", profile=profile, params=params)
+            batch = self.request_json(
+                "GET",
+                f"/rest/v1/{table}",
+                profile=profile,
+                params=params,
+            )
             if not isinstance(batch, list):
                 raise SyncError(f"Expected list response for {table}, got: {type(batch).__name__}")
 

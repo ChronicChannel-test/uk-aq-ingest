@@ -18,6 +18,7 @@ concurrency:
 jobs:
   sync-stations:
     runs-on: ubuntu-latest
+    timeout-minutes: 90
     env:
       UK_AIR_SOS_CONNECTOR_CODE: uk_air_sos
       SCOMM_CONNECTOR_CODE: sensorcommunity
