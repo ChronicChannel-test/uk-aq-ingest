@@ -27,8 +27,8 @@ const WINDOW_HOURS: Record<NamedWindowLabel, number> = {
 const MAX_WINDOW_DAYS = parsePositiveInteger(
   Deno.env.get("UK_AQ_TIMESERIES_MAX_WINDOW_DAYS"),
 ) ?? 366;
-const DEFAULT_OBSAQIDB_SOURCE_OF_TRUTH_HOURS = 24 * 7;
-const OBSAQIDB_SOURCE_OF_TRUTH_HOURS = Math.max(
+const DEFAULT_HISTORY_SOURCE_OF_TRUTH_HOURS = 24 * 7;
+const MAX_HISTORY_SOURCE_OF_TRUTH_HOURS = Math.max(
   1,
   Math.min(
     24 * 45,
@@ -36,13 +36,13 @@ const OBSAQIDB_SOURCE_OF_TRUTH_HOURS = Math.max(
       Deno.env.get("UK_AQ_TIMESERIES_OBSAQIDB_SOURCE_OF_TRUTH_HOURS"),
     ) ?? parsePositiveInteger(
       Deno.env.get("UK_AQ_TIMESERIES_RECENT_SOURCE_OF_TRUTH_HOURS"),
-    ) ?? DEFAULT_OBSAQIDB_SOURCE_OF_TRUTH_HOURS,
+    ) ?? DEFAULT_HISTORY_SOURCE_OF_TRUTH_HOURS,
   ),
 );
 const INGEST_SOURCE_OF_TRUTH_HOURS = Math.max(
   1,
   Math.min(
-    OBSAQIDB_SOURCE_OF_TRUTH_HOURS,
+    MAX_HISTORY_SOURCE_OF_TRUTH_HOURS,
     parsePositiveInteger(
       Deno.env.get("UK_AQ_TIMESERIES_INGEST_SOURCE_OF_TRUTH_HOURS"),
     ) ?? 24,
@@ -54,15 +54,10 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ??
   "";
 const SB_SECRET_KEY = Deno.env.get("SB_SECRET_KEY") ?? "";
 const SUPABASE_PRIVILEGED_KEY = SB_SECRET_KEY;
-const OBS_AQIDB_SUPABASE_URL = (
-  Deno.env.get("OBS_AQIDB_SUPABASE_URL") ?? ""
-).trim();
-const OBS_AQIDB_SECRET_KEY = (Deno.env.get("OBS_AQIDB_SECRET_KEY") ?? "").trim();
 const EDGE_UPSTREAM_SECRET = Deno.env.get("UK_AQ_EDGE_UPSTREAM_SECRET") ?? "";
 const OBSERVS_HISTORY_R2_API_URL = String(
   Deno.env.get("UK_AQ_OBSERVS_HISTORY_R2_API_URL") ?? "",
 ).trim();
-const OBS_AQIDB_TIMESERIES_WINDOW_RPC = "uk_aq_rpc_observs_timeseries_window";
 const OBSERVS_HISTORY_R2_API_TIMEOUT_MS = Math.max(
   2000,
   Math.min(
@@ -93,8 +88,6 @@ const OBSERVS_HISTORY_R2_CHUNK_MAX_RETRIES = Math.max(
 const UK_AQ_CORE_SCHEMA = Deno.env.get("UK_AQ_CORE_SCHEMA") ??
   "uk_aq_core";
 const UK_AQ_PUBLIC_SCHEMA = Deno.env.get("UK_AQ_PUBLIC_SCHEMA") ??
-  "uk_aq_public";
-const OBS_AQIDB_RPC_SCHEMA = Deno.env.get("OBS_AQIDB_RPC_SCHEMA") ??
   "uk_aq_public";
 
 const CORS_HEADERS = {
@@ -524,7 +517,6 @@ async function fetchTimeseriesRowsStitched(
   }
 
   let historyRows: TimeseriesRow[] = [];
-  let obsAqidbRows: TimeseriesRow[] = [];
   let didLoadHistoryRows = false;
   if (shouldFetchHistory) {
     const historyStartUtc = historyStart.toISOString();
@@ -589,33 +581,6 @@ async function fetchTimeseriesRowsStitched(
         }
       }
 
-      if (!didLoadHistoryRows) {
-        try {
-          obsAqidbRows = await callObservsRecentWindow({
-            timeseriesId,
-            connectorId,
-            startUtc: historyStartUtc,
-            endUtc: historyEndUtc,
-            since,
-            limit: shouldFetchIngestRows ? null : limit,
-          });
-          didLoadHistoryRows = obsAqidbRows.length > 0;
-          console.info("uk_aq_timeseries history fallback succeeded via obs_aqidb", {
-            timeseries_id: timeseriesId,
-            connector_id: connectorId,
-            fallback_rows: obsAqidbRows.length,
-          });
-        } catch (fallbackError) {
-          const fallbackMessage = fallbackError instanceof Error
-            ? fallbackError.message
-            : String(fallbackError);
-          console.warn("uk_aq_timeseries obs_aqidb history fallback failed", {
-            timeseries_id: timeseriesId,
-            connector_id: connectorId,
-            message: fallbackMessage,
-          });
-        }
-      }
     } else {
       console.warn(
         "uk_aq_timeseries history fetch skipped: connector unresolved; trying ingest fallback",
@@ -655,7 +620,6 @@ async function fetchTimeseriesRowsStitched(
     guideline,
     rows: finalizeStitchedRows(
       historyRows,
-      obsAqidbRows,
       ingestRows,
       since,
       limit,
@@ -833,48 +797,6 @@ async function callIngestFallbackWindow(
   );
 }
 
-async function callObservsRecentWindow(
-  {
-    timeseriesId,
-    connectorId,
-    startUtc,
-    endUtc,
-    since,
-    limit,
-  }: ObservsHistoryWindowCallOptions,
-): Promise<TimeseriesRow[]> {
-  if (!OBS_AQIDB_SUPABASE_URL || !OBS_AQIDB_SECRET_KEY) {
-    throw new Error(
-      "Missing OBS_AQIDB_SUPABASE_URL or OBS_AQIDB_SECRET_KEY.",
-    );
-  }
-
-  const obsAqidbRestBaseUrl = `${OBS_AQIDB_SUPABASE_URL.replace(/\/$/, "")}/rest/v1`;
-  const response = await postgrestRequest<ObservsRecentWindowRow[]>(
-    "POST",
-    `rpc/${OBS_AQIDB_TIMESERIES_WINDOW_RPC}`,
-    undefined,
-    OBS_AQIDB_RPC_SCHEMA,
-    {
-      p_connector_id: connectorId,
-      p_timeseries_id: timeseriesId,
-      p_start_utc: startUtc,
-      p_end_utc: endUtc,
-      p_since_ts: since,
-      p_limit: limit,
-    },
-    {
-      baseUrl: obsAqidbRestBaseUrl,
-      apiKey: OBS_AQIDB_SECRET_KEY,
-      caller: "uk_aq_timeseries_obs_aqidb_recent",
-    },
-  );
-  if (response.error) {
-    throw new Error(response.error.message);
-  }
-  return normalizeTimeseriesRows(Array.isArray(response.data) ? response.data : []);
-}
-
 async function callObservsHistoryWindowChunked(
   {
     timeseriesId,
@@ -1041,7 +963,6 @@ function shouldRetryHistoryChunked(
 
 function finalizeStitchedRows(
   historyRows: TimeseriesRow[],
-  obsAqidbRows: TimeseriesRow[],
   ingestRows: TimeseriesRow[],
   since: string | null,
   limit: number | null,
@@ -1049,7 +970,7 @@ function finalizeStitchedRows(
   requestEnd: Date,
 ): TimeseriesRow[] {
   return filterRowsToWindow(
-    mergeRowsPreferNewestSource(historyRows, obsAqidbRows, ingestRows),
+    mergeRowsPreferNewestSource(historyRows, ingestRows),
     requestStart,
     requestEnd,
     since,
@@ -1059,14 +980,10 @@ function finalizeStitchedRows(
 
 function mergeRowsPreferNewestSource(
   historyRows: TimeseriesRow[],
-  obsAqidbRows: TimeseriesRow[],
   ingestRows: TimeseriesRow[],
 ): TimeseriesRow[] {
   const byObservedAt = new Map<string, TimeseriesRow>();
-  // Prefer the repair fallback first, then R2 history, then the freshest ingest window.
-  for (const row of obsAqidbRows) {
-    byObservedAt.set(row.observed_at, row);
-  }
+  // Prefer R2 history first, then the freshest ingest window.
   for (const row of historyRows) {
     byObservedAt.set(row.observed_at, row);
   }
