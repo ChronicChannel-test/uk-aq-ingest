@@ -540,7 +540,7 @@ async function fetchTimeseriesRowsStitched(
           limit,
         });
         historyRows = historyWindow.rows;
-        didLoadHistoryRows = true;
+        didLoadHistoryRows = historyWindow.rows.length > 0;
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         if (
@@ -556,8 +556,7 @@ async function fetchTimeseriesRowsStitched(
               limit,
             });
             historyRows = historyWindow.rows;
-            didLoadHistoryRows = historyWindow.rows.length > 0 ||
-              historyWindow.failedChunkCount === 0;
+            didLoadHistoryRows = historyWindow.rows.length > 0;
             console.info(
               "uk_aq_timeseries history fetch recovered via chunked retry",
               {
@@ -600,7 +599,7 @@ async function fetchTimeseriesRowsStitched(
             since,
             limit: shouldFetchIngestRows ? null : limit,
           });
-          didLoadHistoryRows = true;
+          didLoadHistoryRows = obsAqidbRows.length > 0;
           console.info("uk_aq_timeseries history fallback succeeded via obs_aqidb", {
             timeseries_id: timeseriesId,
             connector_id: connectorId,
@@ -632,7 +631,7 @@ async function fetchTimeseriesRowsStitched(
           now,
           since,
         });
-        didLoadHistoryRows = true;
+        didLoadHistoryRows = historyRows.length > 0;
       } catch (fallbackError) {
         const fallbackMessage = fallbackError instanceof Error
           ? fallbackError.message
@@ -1064,13 +1063,13 @@ function mergeRowsPreferNewestSource(
   ingestRows: TimeseriesRow[],
 ): TimeseriesRow[] {
   const byObservedAt = new Map<string, TimeseriesRow>();
-  for (const row of historyRows) {
-    byObservedAt.set(row.observed_at, row);
-  }
+  // Prefer the repair fallback first, then R2 history, then the freshest ingest window.
   for (const row of obsAqidbRows) {
     byObservedAt.set(row.observed_at, row);
   }
-  // Ingest is freshest source and overwrites overlapping timestamps.
+  for (const row of historyRows) {
+    byObservedAt.set(row.observed_at, row);
+  }
   for (const row of ingestRows) {
     byObservedAt.set(row.observed_at, row);
   }

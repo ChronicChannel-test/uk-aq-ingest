@@ -490,27 +490,25 @@ curl "https://YOUR_PROJECT.supabase.co/functions/v1/uk_aq_latest?region=London&p
   - plus optional `guideline` (AQG_2021 24h) if found
 - Notes: when `limit` is omitted, all rows in the requested window are returned (no default cap).
 - Read path:
-  - request interval is split twice by default:
-    - newest `24` hours from ingestdb (configurable via `UK_AQ_TIMESERIES_INGEST_SOURCE_OF_TRUTH_HOURS`, default `24`)
-    - next `6` days from obs_aqidb inside the local `7`-day window (outer boundary configurable via `UK_AQ_TIMESERIES_OBSAQIDB_SOURCE_OF_TRUTH_HOURS`, default `168`)
-    - older overlap from the Observs History R2 API worker (`UK_AQ_OBSERVS_HISTORY_R2_API_URL`) using committed manifests only
-  - obs_aqidb middle overlap is read via `uk_aq_public.uk_aq_rpc_observs_timeseries_window`.
+  - request interval is split by the ingest retention boundary:
+    - newest `INGEST_SOURCE_OF_TRUTH_HOURS` from ingestdb (configurable via `UK_AQ_TIMESERIES_INGEST_SOURCE_OF_TRUTH_HOURS`, default `24`)
+    - older history from the Observs History R2 API worker (`UK_AQ_OBSERVS_HISTORY_R2_API_URL`) using committed manifests only
   - edge resolves `connector_id` from ingest `uk_aq_core.timeseries` and sends `timeseries_id + connector_id + start_utc/end_utc` to the worker.
-  - ingest RPC `uk_aq_timeseries_rpc` is called for guideline metadata and for the freshest local window.
-  - if obs_aqidb middle-window reads fail or connector lookup is unavailable, edge retries that middle window against ingest RPC so the endpoint still returns whatever ingestdb coverage is available.
+  - ingest RPC `uk_aq_timeseries_rpc` is called for guideline metadata plus the freshest local window.
+  - if the history fetch fails, edge retries that historical window against obs_aqidb via `uk_aq_public.uk_aq_rpc_observs_timeseries_window` so the endpoint can still return repaired coverage.
   - when a wide history-window request fails with upstream `5xx`/timeout, edge retries in smaller history chunks (`UK_AQ_OBSERVS_HISTORY_R2_CHUNK_DAYS`, default `7`) with per-chunk retries (`UK_AQ_OBSERVS_HISTORY_R2_CHUNK_MAX_RETRIES`, default `4`) before falling back.
   - there is no direct `uk_aq_observs` table fallback in this endpoint; recent obs_aqidb reads go through the service-role RPC above.
-  - if obs_aqidb recent fetch, connector lookup, or history fetch fails, endpoint logs a warning and degrades to the best available local/history coverage instead of returning `500`.
-  - rows are merged on `observed_at` with precedence `R2 history < obs_aqidb < ingestdb`.
+  - if connector lookup or history fetch fails, endpoint logs a warning and degrades to the best available local/history coverage instead of returning `500`.
+  - rows are merged on `observed_at` with precedence `obs_aqidb < R2 history < ingestdb`.
 - Request flow (exact):
   1. Website calls Cloudflare cache proxy route `/api/aq/timeseries` (cache worker code/deploy is owned by `uk-aq-ops`).
   2. Cache proxy maps that route to one upstream edge function: `uk_aq_timeseries`.
   3. `uk_aq_timeseries` calls ingest PostgREST (`SUPABASE_URL/rest/v1`).
-  4. Edge function calls ingest `uk_aq_timeseries_rpc` for guideline metadata plus the newest local window, calls obs_aqidb `uk_aq_rpc_observs_timeseries_window` for the middle local window, and calls the Observs History R2 API worker for older overlap.
+  4. Edge function calls ingest `uk_aq_timeseries_rpc` for guideline metadata plus the newest local window, calls the Observs History R2 API worker for older history, and uses obs_aqidb `uk_aq_rpc_observs_timeseries_window` only as a repair fallback when the history fetch does not return rows.
   5. Edge function merges rows, returns one payload to Cloudflare, Cloudflare returns one payload to website.
 - Important architecture note:
   - Cloudflare worker does not directly call DB or R2 history workers.
-  - Cloudflare calls one edge function (`uk_aq_timeseries`), then edge performs ingest RPC reads, obs_aqidb recent-window RPC reads, and R2 history API reads.
+  - Cloudflare calls one edge function (`uk_aq_timeseries`), then edge performs ingest RPC reads, optional obs_aqidb repair RPC reads, and R2 history API reads.
   - Missing/misconfigured obs_aqidb or history worker settings no longer hard-fail the endpoint; responses degrade to whatever recent/history coverage is still available.
 - Conditional requests: supports `If-None-Match`; returns `304 Not Modified` with `ETag` when payload is unchanged.
 - Cache-Control: success responses use `public, max-age=60, s-maxage=300, stale-while-revalidate=300, stale-if-error=86400`; errors use `no-store`.
@@ -583,14 +581,14 @@ Optional:
 - `UK_AQ_CORE_SCHEMA` (defaults to `uk_aq_core`; used for PostgREST profile headers)
 - `UK_AQ_RAW_SCHEMA` (defaults to `uk_aq_raw`; used for raw tables like `error_logs` and checkpoint tables)
 - `OBS_AQIDB_RPC_SCHEMA` (optional; default `uk_aq_public`; schema used by obs_aqidb RPC paths)
-- `OBS_AQIDB_SUPABASE_URL` (required for `uk_aq_timeseries` recent-window obs_aqidb reads)
-- `OBS_AQIDB_SECRET_KEY` (required for `uk_aq_timeseries` recent-window obs_aqidb reads)
+- `OBS_AQIDB_SUPABASE_URL` (required for `uk_aq_timeseries` obs_aqidb repair reads)
+- `OBS_AQIDB_SECRET_KEY` (required for `uk_aq_timeseries` obs_aqidb repair reads)
 - `UK_AQ_OBSERVS_HISTORY_R2_API_URL` (required for older-window `uk_aq_timeseries` reads; Observs History R2 worker URL)
 - `UK_AQ_OBSERVS_HISTORY_R2_API_TIMEOUT_MS` (optional; default `10000`; timeout for edge-to-R2-history API requests)
 - `UK_AQ_OBSERVS_HISTORY_R2_CHUNK_DAYS` (optional; default `7`; history retry chunk size for `uk_aq_timeseries` when large-window history reads return upstream `5xx`/timeout)
 - `UK_AQ_OBSERVS_HISTORY_R2_CHUNK_MAX_RETRIES` (optional; default `4`; per-chunk retry attempts during history chunk fallback in `uk_aq_timeseries`)
 - `UK_AQ_TIMESERIES_INGEST_SOURCE_OF_TRUTH_HOURS` (optional; default `24`; freshest local observations window served from ingestdb)
-- `UK_AQ_TIMESERIES_OBSAQIDB_SOURCE_OF_TRUTH_HOURS` (optional; default `168`; outer local observations window boundary before R2 fallback; the gap between this and the ingest-hours setting is served from obs_aqidb)
+- `UK_AQ_TIMESERIES_OBSAQIDB_SOURCE_OF_TRUTH_HOURS` (optional; default `168`; legacy cap that keeps the ingest freshness window within the broader obs_aqidb/R2 repair envelope)
 - `UK_AQ_TIMESERIES_RECENT_SOURCE_OF_TRUTH_HOURS` (optional legacy alias for `UK_AQ_TIMESERIES_OBSAQIDB_SOURCE_OF_TRUTH_HOURS`; kept for backward compatibility)
 - `OBSERVS_OUTBOX_CLOUD_RUN_MAX_BATCHES` (optional; defaults to `30`; Cloud Run outbox batches per run)
 - `OBSERVS_OUTBOX_CLOUD_RUN_CLAIM_BATCH_LIMIT` (optional; defaults to `20`; outbox claim size per batch in Cloud Run)
