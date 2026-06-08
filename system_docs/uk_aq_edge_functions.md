@@ -490,24 +490,26 @@ curl "https://YOUR_PROJECT.supabase.co/functions/v1/uk_aq_latest?region=London&p
   - plus optional `guideline` (AQG_2021 24h) if found
 - Notes: when `limit` is omitted, all rows in the requested window are returned (no default cap).
 - Read path:
-  - request interval is split by the ingest retention boundary:
-    - newest `INGESTDB_RETENTION_DAYS` days from ingestdb (default `5`; current TEST config is `4`)
-    - older history from the Observs History R2 API worker (`UK_AQ_OBSERVS_HISTORY_R2_API_URL`) using committed manifests only
+  - request interval is split by `INGESTDB_RETENTION_DAYS` into three source zones:
+    - retention range (`now - INGESTDB_RETENTION_DAYS` to now): ingestdb only
+    - one-day overlap (`now - (INGESTDB_RETENTION_DAYS + 1 day)` to retention start): R2 preferred, ingestdb fills only observation hours missing from R2
+    - historical range (older than the one-day overlap): Observs History R2 API worker only
   - edge resolves `connector_id` from ingest `uk_aq_core.timeseries` and sends `timeseries_id + connector_id + start_utc/end_utc` to the worker.
-  - ingest RPC `uk_aq_timeseries_rpc` is called for guideline metadata plus the freshest local window.
-  - when a wide history-window request fails with upstream `5xx`/timeout, edge retries in smaller history chunks (`UK_AQ_OBSERVS_HISTORY_R2_CHUNK_DAYS`, default `7`) with per-chunk retries (`UK_AQ_OBSERVS_HISTORY_R2_CHUNK_MAX_RETRIES`, default `4`) before falling back.
-  - if connector lookup or any historical source fetch fails, endpoint logs a warning and degrades to the best available local/history coverage instead of returning `500`.
-  - rows are merged on `observed_at` with precedence `R2 history < ingestdb`.
+  - ingest RPC `uk_aq_timeseries_rpc` is called only when the requested interval includes the retention range or one-day overlap.
+  - when a wide history-window request fails with upstream `5xx`/timeout, edge retries in smaller history chunks (`UK_AQ_OBSERVS_HISTORY_R2_CHUNK_DAYS`, default `7`) with per-chunk retries (`UK_AQ_OBSERVS_HISTORY_R2_CHUNK_MAX_RETRIES`, default `4`).
+  - historical ranges do not fall back to ingestdb. Connector lookup or historical R2 failures mark the response as incomplete (`response_complete=false`, `has_gap=true`) instead of silently filling old history from ingestdb.
+  - rows are merged on `observed_at` with R2 history preferred over ingestdb when both sources contain the same timestamp.
+  - response metadata includes `overlap_start_utc`, `retention_start_utc`, source-window coverage, R2 partial reasons, and overlap ingest fill counts.
 - Request flow (exact):
   1. Website calls Cloudflare cache proxy route `/api/aq/timeseries` (cache worker code/deploy is owned by `uk-aq-ops`).
   2. Cache proxy maps that route to one upstream edge function: `uk_aq_timeseries`.
   3. `uk_aq_timeseries` calls ingest PostgREST (`SUPABASE_URL/rest/v1`).
-  4. Edge function calls ingest `uk_aq_timeseries_rpc` for guideline metadata plus the newest local window, and calls the Observs History R2 API worker for older history.
+  4. Edge function calls ingest `uk_aq_timeseries_rpc` only for retention/overlap windows, and calls the Observs History R2 API worker for historical/overlap history.
   5. Edge function merges rows, returns one payload to Cloudflare, Cloudflare returns one payload to website.
 - Important architecture note:
   - Cloudflare worker does not directly call DB or R2 history workers.
   - Cloudflare calls one edge function (`uk_aq_timeseries`), then edge performs ingest RPC reads and R2 history API reads.
-  - Missing/misconfigured history worker settings no longer hard-fail the endpoint; responses degrade to whatever recent/history coverage is still available.
+  - Missing/misconfigured history worker settings no longer hard-fail the endpoint, but historical coverage is reported as partial rather than being filled from ingestdb.
 - Conditional requests: supports `If-None-Match`; returns `304 Not Modified` with `ETag` when payload is unchanged.
 - Cache-Control: success responses use `public, max-age=60, s-maxage=300, stale-while-revalidate=300, stale-if-error=86400`; errors use `no-store`.
 - Egress observability: sampled success responses plus all `304`/`4xx`/`5xx`
@@ -582,7 +584,7 @@ Optional:
 - `UK_AQ_OBSERVS_HISTORY_R2_API_TIMEOUT_MS` (optional; default `10000`; timeout for edge-to-R2-history API requests)
 - `UK_AQ_OBSERVS_HISTORY_R2_CHUNK_DAYS` (optional; default `7`; history retry chunk size for `uk_aq_timeseries` when large-window history reads return upstream `5xx`/timeout)
 - `UK_AQ_OBSERVS_HISTORY_R2_CHUNK_MAX_RETRIES` (optional; default `4`; per-chunk retry attempts during history chunk fallback in `uk_aq_timeseries`)
-- `INGESTDB_RETENTION_DAYS` (optional; default `5`; single retention split source for the freshest local observations window served from ingestdb)
+- `INGESTDB_RETENTION_DAYS` (optional; default `5`; single split source for retention range plus one-day overlap; current TEST config is `4`)
 - `OBSERVS_OUTBOX_CLOUD_RUN_MAX_BATCHES` (optional; defaults to `30`; Cloud Run outbox batches per run)
 - `OBSERVS_OUTBOX_CLOUD_RUN_CLAIM_BATCH_LIMIT` (optional; defaults to `20`; outbox claim size per batch in Cloud Run)
 - `OBSERVS_OUTBOX_CLOUD_RUN_BUDGET_SECONDS` (optional; defaults to `540`; Cloud Run runtime budget)
