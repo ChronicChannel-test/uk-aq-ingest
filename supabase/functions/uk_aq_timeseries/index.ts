@@ -540,10 +540,7 @@ async function fetchTimeseriesRowsStitched(
     )
     : [];
 
-  let connectorId: number | null = null;
-  if (shouldFetchHistory) {
-    connectorId = await resolveTimeseriesConnectorId(timeseriesId);
-  }
+  const connectorId = await resolveTimeseriesConnectorId(timeseriesId);
 
   let historyRows: TimeseriesRow[] = [];
   let didLoadHistoryRows = false;
