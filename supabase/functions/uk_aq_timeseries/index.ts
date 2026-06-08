@@ -27,27 +27,17 @@ const WINDOW_HOURS: Record<NamedWindowLabel, number> = {
 const MAX_WINDOW_DAYS = parsePositiveInteger(
   Deno.env.get("UK_AQ_TIMESERIES_MAX_WINDOW_DAYS"),
 ) ?? 366;
-const DEFAULT_HISTORY_SOURCE_OF_TRUTH_HOURS = 24 * 7;
-const MAX_HISTORY_SOURCE_OF_TRUTH_HOURS = Math.max(
+const DEFAULT_INGESTDB_RETENTION_DAYS = 5;
+const MAX_INGESTDB_RETENTION_DAYS = 3650;
+const INGESTDB_RETENTION_DAYS = Math.max(
   1,
   Math.min(
-    24 * 45,
-    parsePositiveInteger(
-      Deno.env.get("UK_AQ_TIMESERIES_OBSAQIDB_SOURCE_OF_TRUTH_HOURS"),
-    ) ?? parsePositiveInteger(
-      Deno.env.get("UK_AQ_TIMESERIES_RECENT_SOURCE_OF_TRUTH_HOURS"),
-    ) ?? DEFAULT_HISTORY_SOURCE_OF_TRUTH_HOURS,
+    MAX_INGESTDB_RETENTION_DAYS,
+    parsePositiveInteger(Deno.env.get("INGESTDB_RETENTION_DAYS")) ??
+      DEFAULT_INGESTDB_RETENTION_DAYS,
   ),
 );
-const INGEST_SOURCE_OF_TRUTH_HOURS = Math.max(
-  1,
-  Math.min(
-    MAX_HISTORY_SOURCE_OF_TRUTH_HOURS,
-    parsePositiveInteger(
-      Deno.env.get("UK_AQ_TIMESERIES_INGEST_SOURCE_OF_TRUTH_HOURS"),
-    ) ?? 24,
-  ),
-);
+const INGEST_SOURCE_OF_TRUTH_HOURS = INGESTDB_RETENTION_DAYS * 24;
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ??
   Deno.env.get("SB_SUPABASE_URL") ??
@@ -320,7 +310,17 @@ serve(async (req) => {
       columns,
       count: rows.length,
       source: stitched.source,
+      response_complete: stitched.meta.response_complete,
+      source_split_boundary_utc: stitched.meta.source_split_boundary_utc,
       guideline: stitched.guideline,
+      meta: {
+        ...stitched.meta,
+        row_count: rows.length,
+        query_from_utc: range.start.toISOString(),
+        query_to_utc: range.end.toISOString(),
+        window: range.windowLabel,
+        window_mode: range.mode,
+      },
       data: shapeTimeseriesData(rows, format),
     };
     const etag = await createWeakEtag({
@@ -381,6 +381,24 @@ type StitchedFetchResult = {
   guideline: unknown;
   rows: TimeseriesRow[];
   source: "recent_only" | "history_only" | "recent_history_stitched";
+  meta: {
+    source_mode: "recent_only" | "history_only" | "recent_history_stitched";
+    source_split_boundary_utc: string;
+    ingest_retention_days: number;
+    source_of_truth_days: number;
+    source_of_truth_hours: number;
+    response_complete: boolean;
+    has_gap: boolean;
+    r2_coverage_end: string | null;
+    ingest_tail_start: string | null;
+    row_count: number;
+    r2_row_count: number;
+    ingest_row_count: number;
+    deduped_row_count: number;
+    r2_errors: string[];
+    ingest_errors: string[];
+    coverage: Record<string, unknown>;
+  };
 };
 
 type TimeseriesConnectorRow = {
@@ -479,6 +497,14 @@ async function fetchTimeseriesRowsStitched(
     (!hasSince || sinceMs < historyEnd.getTime());
   const shouldFetchIngestRows = hasIngestWindow &&
     (!hasSince || sinceMs < ingestEnd.getTime());
+  const sourceSplitBoundaryUtc = ingestBoundary.toISOString();
+  const historyErrors: string[] = [];
+  const ingestErrors: string[] = [];
+  let historyStatus = shouldFetchHistory ? "pending" : "not_requested";
+  let ingestStatus = shouldFetchIngestRows ? "pending" : "not_requested";
+  let historyChunkCount: number | null = null;
+  let historyFailedChunkCount: number | null = null;
+  let usedIngestHistoryFallback = false;
 
   const ingestWindowLabel = shouldFetchIngestRows
     ? selectIngestWindowLabel(ingestStart, now)
@@ -494,8 +520,11 @@ async function fetchTimeseriesRowsStitched(
     since: ingestSince,
   });
   if (error) {
+    ingestStatus = "error";
+    ingestErrors.push(error.message);
     throw new Error(error.message);
   }
+  ingestStatus = shouldFetchIngestRows ? "ingestdb_complete" : "guideline_only";
 
   const ingestRow = Array.isArray(data) && data.length > 0 ? data[0] : null;
   const guideline = ingestRow?.guideline ?? null;
@@ -533,8 +562,10 @@ async function fetchTimeseriesRowsStitched(
         });
         historyRows = historyWindow.rows;
         didLoadHistoryRows = historyWindow.rows.length > 0;
+        historyStatus = "r2_complete";
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
+        historyErrors.push(message);
         if (
           shouldRetryHistoryChunked(message, historyStartUtc, historyEndUtc)
         ) {
@@ -549,6 +580,9 @@ async function fetchTimeseriesRowsStitched(
             });
             historyRows = historyWindow.rows;
             didLoadHistoryRows = historyWindow.rows.length > 0;
+            historyStatus = "r2_chunked_complete";
+            historyChunkCount = historyWindow.chunkCount;
+            historyFailedChunkCount = historyWindow.failedChunkCount;
             console.info(
               "uk_aq_timeseries history fetch recovered via chunked retry",
               {
@@ -564,6 +598,8 @@ async function fetchTimeseriesRowsStitched(
             const chunkedMessage = chunkedError instanceof Error
               ? chunkedError.message
               : String(chunkedError);
+            historyErrors.push(chunkedMessage);
+            historyStatus = "r2_error";
             console.warn("uk_aq_timeseries history fetch fallback", {
               timeseries_id: timeseriesId,
               connector_id: connectorId,
@@ -573,6 +609,7 @@ async function fetchTimeseriesRowsStitched(
             });
           }
         } else {
+          historyStatus = "r2_error";
           console.warn("uk_aq_timeseries history fetch fallback", {
             timeseries_id: timeseriesId,
             connector_id: connectorId,
@@ -597,10 +634,14 @@ async function fetchTimeseriesRowsStitched(
           since,
         });
         didLoadHistoryRows = historyRows.length > 0;
+        usedIngestHistoryFallback = true;
+        historyStatus = "connector_unresolved_ingest_fallback";
       } catch (fallbackError) {
         const fallbackMessage = fallbackError instanceof Error
           ? fallbackError.message
           : String(fallbackError);
+        historyErrors.push(fallbackMessage);
+        historyStatus = "connector_unresolved_fallback_error";
         console.warn("uk_aq_timeseries ingest history fallback failed", {
           timeseries_id: timeseriesId,
           message: fallbackMessage,
@@ -615,18 +656,57 @@ async function fetchTimeseriesRowsStitched(
     : didLoadHistoryRows
       ? "history_only"
       : "recent_only";
+  const mergedRows = finalizeStitchedRows(
+    historyRows,
+    ingestRows,
+    since,
+    limit,
+    requestStart,
+    requestEnd,
+  );
+  const responseComplete = (!shouldFetchHistory || historyStatus === "r2_complete" || historyStatus === "r2_chunked_complete")
+    && (historyFailedChunkCount === null || historyFailedChunkCount === 0)
+    && (!shouldFetchIngestRows || ingestStatus === "ingestdb_complete")
+    && !usedIngestHistoryFallback;
 
   return {
     guideline,
-    rows: finalizeStitchedRows(
-      historyRows,
-      ingestRows,
-      since,
-      limit,
-      requestStart,
-      requestEnd,
-    ),
+    rows: mergedRows,
     source,
+    meta: {
+      source_mode: source,
+      source_split_boundary_utc: sourceSplitBoundaryUtc,
+      ingest_retention_days: INGESTDB_RETENTION_DAYS,
+      source_of_truth_days: INGESTDB_RETENTION_DAYS,
+      source_of_truth_hours: INGEST_SOURCE_OF_TRUTH_HOURS,
+      response_complete: responseComplete,
+      has_gap: !responseComplete,
+      r2_coverage_end: shouldFetchHistory ? historyEnd.toISOString() : null,
+      ingest_tail_start: shouldFetchIngestRows ? ingestStart.toISOString() : null,
+      row_count: mergedRows.length,
+      r2_row_count: historyRows.length,
+      ingest_row_count: ingestRows.length,
+      deduped_row_count: mergedRows.length,
+      r2_errors: historyErrors,
+      ingest_errors: ingestErrors,
+      coverage: {
+        ingest_retention_days: INGESTDB_RETENTION_DAYS,
+        source_of_truth_hours: INGEST_SOURCE_OF_TRUTH_HOURS,
+        source_split_boundary_utc: sourceSplitBoundaryUtc,
+        history_window_from_utc: hasHistoryWindow ? historyStart.toISOString() : null,
+        history_window_to_utc: hasHistoryWindow ? historyEnd.toISOString() : null,
+        ingest_window_from_utc: hasIngestWindow ? ingestStart.toISOString() : null,
+        ingest_window_to_utc: hasIngestWindow ? ingestEnd.toISOString() : null,
+        should_fetch_history: shouldFetchHistory,
+        should_fetch_ingest: shouldFetchIngestRows,
+        history_status: historyStatus,
+        ingest_status: ingestStatus,
+        connector_id: connectorId,
+        used_ingest_history_fallback: usedIngestHistoryFallback,
+        history_chunk_count: historyChunkCount,
+        history_failed_chunk_count: historyFailedChunkCount,
+      },
+    },
   };
 }
 

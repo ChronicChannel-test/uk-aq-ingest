@@ -491,7 +491,7 @@ curl "https://YOUR_PROJECT.supabase.co/functions/v1/uk_aq_latest?region=London&p
 - Notes: when `limit` is omitted, all rows in the requested window are returned (no default cap).
 - Read path:
   - request interval is split by the ingest retention boundary:
-    - newest `INGEST_SOURCE_OF_TRUTH_HOURS` from ingestdb (configurable via `UK_AQ_TIMESERIES_INGEST_SOURCE_OF_TRUTH_HOURS`, default `24`)
+    - newest `INGESTDB_RETENTION_DAYS` days from ingestdb (default `5`; current TEST config is `4`)
     - older history from the Observs History R2 API worker (`UK_AQ_OBSERVS_HISTORY_R2_API_URL`) using committed manifests only
   - edge resolves `connector_id` from ingest `uk_aq_core.timeseries` and sends `timeseries_id + connector_id + start_utc/end_utc` to the worker.
   - ingest RPC `uk_aq_timeseries_rpc` is called for guideline metadata plus the freshest local window.
@@ -582,9 +582,7 @@ Optional:
 - `UK_AQ_OBSERVS_HISTORY_R2_API_TIMEOUT_MS` (optional; default `10000`; timeout for edge-to-R2-history API requests)
 - `UK_AQ_OBSERVS_HISTORY_R2_CHUNK_DAYS` (optional; default `7`; history retry chunk size for `uk_aq_timeseries` when large-window history reads return upstream `5xx`/timeout)
 - `UK_AQ_OBSERVS_HISTORY_R2_CHUNK_MAX_RETRIES` (optional; default `4`; per-chunk retry attempts during history chunk fallback in `uk_aq_timeseries`)
-- `UK_AQ_TIMESERIES_INGEST_SOURCE_OF_TRUTH_HOURS` (optional; default `24`; freshest local observations window served from ingestdb)
-- `UK_AQ_TIMESERIES_OBSAQIDB_SOURCE_OF_TRUTH_HOURS` (optional; default `168`; legacy cap for the maximum stitched historical range)
-- `UK_AQ_TIMESERIES_RECENT_SOURCE_OF_TRUTH_HOURS` (optional legacy alias for `UK_AQ_TIMESERIES_OBSAQIDB_SOURCE_OF_TRUTH_HOURS`; kept for backward compatibility)
+- `INGESTDB_RETENTION_DAYS` (optional; default `5`; single retention split source for the freshest local observations window served from ingestdb)
 - `OBSERVS_OUTBOX_CLOUD_RUN_MAX_BATCHES` (optional; defaults to `30`; Cloud Run outbox batches per run)
 - `OBSERVS_OUTBOX_CLOUD_RUN_CLAIM_BATCH_LIMIT` (optional; defaults to `20`; outbox claim size per batch in Cloud Run)
 - `OBSERVS_OUTBOX_CLOUD_RUN_BUDGET_SECONDS` (optional; defaults to `540`; Cloud Run runtime budget)
