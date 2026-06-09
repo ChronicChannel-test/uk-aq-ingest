@@ -75,6 +75,9 @@ const OBSERVS_HISTORY_R2_CHUNK_MAX_RETRIES = Math.max(
     ) ?? 4,
   ),
 );
+const OBSERVS_HISTORY_R2_REQUEST_MAX_ATTEMPTS = 3;
+const OBSERVS_HISTORY_R2_REQUEST_RETRY_BASE_MS = 500;
+const OBSERVS_HISTORY_R2_REQUEST_RETRY_CAP_MS = 3000;
 const UK_AQ_CORE_SCHEMA = Deno.env.get("UK_AQ_CORE_SCHEMA") ??
   "uk_aq_core";
 const UK_AQ_PUBLIC_SCHEMA = Deno.env.get("UK_AQ_PUBLIC_SCHEMA") ??
@@ -950,6 +953,26 @@ function selectIngestWindowLabel(start: Date, now: Date): IngestWindowLabel {
   return "30d";
 }
 
+function sleepMs(delayMs: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, Math.max(0, delayMs)));
+}
+
+function getObservsHistoryRetryDelayMs(attempt: number): number {
+  const delayMs = OBSERVS_HISTORY_R2_REQUEST_RETRY_BASE_MS *
+    (2 ** Math.max(0, attempt - 1));
+  return Math.min(delayMs, OBSERVS_HISTORY_R2_REQUEST_RETRY_CAP_MS);
+}
+
+function shouldRetryObservsHistoryRequest(message: string): boolean {
+  const normalized = String(message || "").toLowerCase();
+  return normalized.includes("response failed (5") ||
+    normalized.includes("response failed (429") ||
+    normalized.includes("error_code\":1102") ||
+    normalized.includes("worker exceeded resource limits") ||
+    normalized.includes("timed out") ||
+    normalized.includes("request failed");
+}
+
 async function resolveTimeseriesConnectorId(
   timeseriesId: number,
 ): Promise<number | null> {
@@ -1001,79 +1024,109 @@ async function callObservsHistoryWindow(
     throw new Error("Missing UK_AQ_EDGE_UPSTREAM_SECRET.");
   }
 
-  const endpoint = new URL(OBSERVS_HISTORY_R2_API_URL);
-  if (!endpoint.pathname || endpoint.pathname === "/") {
-    endpoint.pathname = "/v1/observations";
-  }
-  endpoint.searchParams.set("timeseries_id", String(timeseriesId));
-  endpoint.searchParams.set("connector_id", String(connectorId));
-  endpoint.searchParams.set("start_utc", startUtc);
-  endpoint.searchParams.set("end_utc", endUtc);
-  if (since) {
-    endpoint.searchParams.set("since_utc", since);
-  }
-  if (limit !== null) {
-    endpoint.searchParams.set("limit", String(Math.max(1, limit)));
-  }
-
-  const controller = new AbortController();
-  const timeoutId = setTimeout(
-    () => controller.abort(),
-    OBSERVS_HISTORY_R2_API_TIMEOUT_MS,
-  );
-  let response: Response;
-  try {
-    response = await fetch(endpoint.toString(), {
-      method: "GET",
-      headers: {
-        Accept: "application/json",
-        "x-uk-aq-upstream-auth": EDGE_UPSTREAM_SECRET,
-        "x-ukaq-egress-caller": "uk_aq_timeseries_history_r2",
-      },
-      signal: controller.signal,
-    });
-  } catch (error) {
-    if (error instanceof DOMException && error.name === "AbortError") {
-      throw new Error("observs history R2 request timed out");
+  let lastMessage = "observs history R2 request failed";
+  for (
+    let attempt = 1;
+    attempt <= OBSERVS_HISTORY_R2_REQUEST_MAX_ATTEMPTS;
+    attempt += 1
+  ) {
+    const endpoint = new URL(OBSERVS_HISTORY_R2_API_URL);
+    if (!endpoint.pathname || endpoint.pathname === "/") {
+      endpoint.pathname = "/v1/observations";
     }
-    throw new Error(`observs history R2 request failed: ${String(error)}`);
-  } finally {
-    clearTimeout(timeoutId);
-  }
+    endpoint.searchParams.set("timeseries_id", String(timeseriesId));
+    endpoint.searchParams.set("connector_id", String(connectorId));
+    endpoint.searchParams.set("start_utc", startUtc);
+    endpoint.searchParams.set("end_utc", endUtc);
+    if (since) {
+      endpoint.searchParams.set("since_utc", since);
+    }
+    if (limit !== null) {
+      endpoint.searchParams.set("limit", String(Math.max(1, limit)));
+    }
 
-  const payloadText = await response.text();
-  let payload: ObservsHistoryApiPayload | null = null;
-  try {
-    payload = payloadText ? JSON.parse(payloadText) : null;
-  } catch (_error) {
-    payload = null;
-  }
-  if (!response.ok) {
-    const message = payload?.error || payloadText || `HTTP ${response.status}`;
-    throw new Error(
-      `observs history R2 response failed (${response.status}): ${
+    const controller = new AbortController();
+    const timeoutId = setTimeout(
+      () => controller.abort(),
+      OBSERVS_HISTORY_R2_API_TIMEOUT_MS,
+    );
+    let response: Response;
+    try {
+      response = await fetch(endpoint.toString(), {
+        method: "GET",
+        headers: {
+          Accept: "application/json",
+          "x-uk-aq-upstream-auth": EDGE_UPSTREAM_SECRET,
+          "x-ukaq-egress-caller": "uk_aq_timeseries_history_r2",
+        },
+        signal: controller.signal,
+      });
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        lastMessage = "observs history R2 request timed out";
+      } else {
+        lastMessage = `observs history R2 request failed: ${String(error)}`;
+      }
+      clearTimeout(timeoutId);
+      if (
+        attempt >= OBSERVS_HISTORY_R2_REQUEST_MAX_ATTEMPTS ||
+        !shouldRetryObservsHistoryRequest(lastMessage)
+      ) {
+        throw new Error(lastMessage);
+      }
+      await sleepMs(getObservsHistoryRetryDelayMs(attempt));
+      continue;
+    } finally {
+      clearTimeout(timeoutId);
+    }
+
+    const payloadText = await response.text();
+    let payload: ObservsHistoryApiPayload | null = null;
+    try {
+      payload = payloadText ? JSON.parse(payloadText) : null;
+    } catch (_error) {
+      payload = null;
+    }
+    if (!response.ok) {
+      const message = payload?.error || payloadText || `HTTP ${response.status}`;
+      lastMessage = `observs history R2 response failed (${response.status}): ${
         String(message)
-      }`,
-    );
-  }
-  if (payload && payload.ok === false) {
-    throw new Error(
-      `observs history R2 returned error: ${
+      }`;
+      if (
+        attempt >= OBSERVS_HISTORY_R2_REQUEST_MAX_ATTEMPTS ||
+        !shouldRetryObservsHistoryRequest(lastMessage)
+      ) {
+        throw new Error(lastMessage);
+      }
+      await sleepMs(getObservsHistoryRetryDelayMs(attempt));
+      continue;
+    }
+    if (payload && payload.ok === false) {
+      lastMessage = `observs history R2 returned error: ${
         String(payload.error || "unknown")
-      }`,
-    );
+      }`;
+      if (
+        attempt >= OBSERVS_HISTORY_R2_REQUEST_MAX_ATTEMPTS ||
+        !shouldRetryObservsHistoryRequest(lastMessage)
+      ) {
+        throw new Error(lastMessage);
+      }
+      await sleepMs(getObservsHistoryRetryDelayMs(attempt));
+      continue;
+    }
+    const completeness = summarizeObservsHistoryPayloadCompleteness(payload);
+    return {
+      rows: normalizeTimeseriesRows(
+        Array.isArray(payload?.rows) ? payload.rows : [],
+      ),
+      responseComplete: completeness.responseComplete,
+      hasGap: completeness.hasGap,
+      coverage: completeness.coverage,
+      partialReasons: completeness.partialReasons,
+      rowCount: completeness.rowCount,
+    };
   }
-  const completeness = summarizeObservsHistoryPayloadCompleteness(payload);
-  return {
-    rows: normalizeTimeseriesRows(
-      Array.isArray(payload?.rows) ? payload.rows : [],
-    ),
-    responseComplete: completeness.responseComplete,
-    hasGap: completeness.hasGap,
-    coverage: completeness.coverage,
-    partialReasons: completeness.partialReasons,
-    rowCount: completeness.rowCount,
-  };
+  throw new Error(lastMessage);
 }
 
 async function callObservsHistoryWindowChunked(
@@ -1283,12 +1336,15 @@ function shouldRetryHistoryChunked(
   const spanMs = Date.parse(endUtc) - Date.parse(startUtc);
   if (
     !Number.isFinite(spanMs) ||
-    spanMs <= OBSERVS_HISTORY_R2_CHUNK_DAYS * DAY_MS
+    spanMs <= DAY_MS
   ) {
     return false;
   }
   const normalized = String(message || "").toLowerCase();
   return normalized.includes("response failed (5") ||
+    normalized.includes("response failed (429") ||
+    normalized.includes("error_code\":1102") ||
+    normalized.includes("worker exceeded resource limits") ||
     normalized.includes("timed out") ||
     normalized.includes("request failed");
 }
