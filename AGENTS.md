@@ -1,7 +1,8 @@
 # Agent Notes
 
 ## Main Repo
-- `CIC-test-uk-aq-ingest` is the main repo for this project and the default starting point for cross-repo work.
+- `CIC-test-uk-aq-ops` is the main repo for this project and the default starting point for cross-repo work.
+- Ops repo path: `/Users/mikehinford/Dropbox/Projects/CIC Website/CIC Air Quality Networks/CIC-test-uk-aq-Operations/CIC-test-uk-aq-ops`.
 - When working on mirrored CIC-Test scripts, treat the edited copy in the current CIC-Test repo as the source of truth and keep the sibling CIC-Test repo copy in sync.
 - Do not inspect or modify any `LIVE` repo unless the user explicitly asks.
 
