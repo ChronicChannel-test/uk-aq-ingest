@@ -192,3 +192,42 @@ def test_fetch_all_rows_retries_middle_page_and_continues(monkeypatch: pytest.Mo
     assert calls[1]["params"]["offset"] == "2"
     assert calls[2]["params"]["offset"] == "2"
     assert calls[3]["params"]["offset"] == "4"
+
+
+def test_verify_observed_properties_id_alignment_allows_missing_and_extra() -> None:
+    class FakeClient:
+        def __init__(self, rows):
+            self.rows = rows
+
+        def fetch_all_rows(self, *args, **kwargs):
+            return self.rows
+
+        def fetch_core_rows_via_rpc(self, *args, **kwargs):
+            return self.rows
+
+    src = FakeClient([
+        {"id": 17, "code": "oc6h4ch32"},
+        {"id": 18, "code": "no2"},
+    ])
+    dst = FakeClient([
+        {"id": 17, "code": "oc6h4ch32"},
+        {"id": 19, "code": "pm10"},
+    ])
+
+    sync_mod.verify_observed_properties_id_alignment(src_client=src, dst_client=dst)
+
+
+def test_verify_observed_properties_id_alignment_blocks_shared_code_id_mismatch() -> None:
+    class SourceClient:
+        def fetch_all_rows(self, *args, **kwargs):
+            return [{"id": 17, "code": "oc6h4ch32"}]
+
+    class DestinationClient:
+        def fetch_core_rows_via_rpc(self, *args, **kwargs):
+            return [{"id": 16, "code": "oc6h4ch32"}]
+
+    with pytest.raises(sync_mod.SyncError, match="Observed properties ID alignment check failed"):
+        sync_mod.verify_observed_properties_id_alignment(
+            src_client=SourceClient(),
+            dst_client=DestinationClient(),
+        )
