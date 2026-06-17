@@ -87,11 +87,11 @@ begin
         v_code, v_source_id, v_target_code;
     end if;
 
-    update uk_aq_core.observed_properties
+    update uk_aq_core.observed_properties as op
     set code = v_code || '__stale_obs_aqidb_id_' || v_destination_id::text,
         updated_at = now()
-    where id = v_destination_id
-      and code = v_code;
+    where op.id = v_destination_id
+      and op.code = v_code;
 
     if v_target_code is null then
       insert into uk_aq_core.observed_properties (
@@ -113,13 +113,13 @@ begin
         nullif(src_row->>'updated_at', '')::timestamptz
       );
     else
-      update uk_aq_core.observed_properties
+      update uk_aq_core.observed_properties as op
       set display_name = src_row->>'display_name',
           domain = src_row->>'domain',
           canonical_uom = src_row->>'canonical_uom',
           updated_at = coalesce(nullif(src_row->>'updated_at', '')::timestamptz, now())
-      where id = v_source_id
-        and code = v_code;
+      where op.id = v_source_id
+        and op.code = v_code;
     end if;
 
     v_fk_rewrites := '{}'::jsonb;
@@ -155,9 +155,9 @@ begin
       );
     end loop;
 
-    delete from uk_aq_core.observed_properties
-    where id = v_destination_id
-      and code = v_code || '__stale_obs_aqidb_id_' || v_destination_id::text;
+    delete from uk_aq_core.observed_properties as op
+    where op.id = v_destination_id
+      and op.code = v_code || '__stale_obs_aqidb_id_' || v_destination_id::text;
     get diagnostics v_stale_rows_deleted = row_count;
 
     for fk_rec in
@@ -213,7 +213,7 @@ begin
 
   perform setval(
     pg_get_serial_sequence('uk_aq_core.observed_properties', 'id'),
-    greatest(coalesce((select max(id) from uk_aq_core.observed_properties), 1), 1),
+    greatest(coalesce((select max(op.id) from uk_aq_core.observed_properties as op), 1), 1),
     true
   );
 end;

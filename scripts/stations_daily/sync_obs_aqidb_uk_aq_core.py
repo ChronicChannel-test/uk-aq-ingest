@@ -807,21 +807,33 @@ def build_meta_maps(
     return columns_by_table, ordered_pk
 
 
+def schema_column_key(column: ColumnMeta) -> Tuple[str, str]:
+    return (column.table_name, column.column_name)
+
+
+def schema_column_signature(column: ColumnMeta) -> Dict[str, Any]:
+    normalized = column.normalized()
+    return {
+        "table": normalized.table_name,
+        "column_name": normalized.column_name,
+        "udt_name": normalized.udt_name,
+        "is_nullable": normalized.is_nullable,
+        "column_default": normalized.column_default,
+    }
+
+
 def format_column_lines(columns: Sequence[ColumnMeta]) -> List[str]:
     return [
-        json.dumps(
-            {
-                "table": c.table_name,
-                "ordinal_position": c.ordinal_position,
-                "column_name": c.column_name,
-                "udt_name": c.udt_name,
-                "is_nullable": c.is_nullable,
-                "column_default": normalize_default(c.column_default),
-            },
-            sort_keys=True,
-        )
-        for c in columns
+        json.dumps(schema_column_signature(c), sort_keys=True)
+        for c in sorted(columns, key=schema_column_key)
     ]
+
+
+def explicit_select_columns(columns_by_table: Dict[str, List[ColumnMeta]], table: str) -> List[str]:
+    columns = columns_by_table.get(table, [])
+    if not columns:
+        raise SyncError(f"{table}: no columns available for explicit select")
+    return [c.column_name for c in sorted(columns, key=lambda c: c.ordinal_position)]
 
 
 def verify_schema_matches(
@@ -844,9 +856,18 @@ def verify_schema_matches(
             errors.append(f"{table}: destination columns missing")
             continue
 
-        src_lines = format_column_lines(src_cols)
-        dst_lines = format_column_lines(dst_cols)
-        if src_lines != dst_lines:
+        src_by_name = {c.column_name: c for c in src_cols}
+        dst_by_name = {c.column_name: c for c in dst_cols}
+        missing_in_dest = sorted(set(src_by_name) - set(dst_by_name))
+        extra_in_dest = sorted(set(dst_by_name) - set(src_by_name))
+        mismatched_columns = [
+            name
+            for name in sorted(set(src_by_name) & set(dst_by_name))
+            if schema_column_signature(src_by_name[name]) != schema_column_signature(dst_by_name[name])
+        ]
+        if missing_in_dest or extra_in_dest or mismatched_columns:
+            src_lines = format_column_lines(src_cols)
+            dst_lines = format_column_lines(dst_cols)
             diff = "\n".join(
                 difflib.unified_diff(
                     src_lines,
@@ -856,7 +877,14 @@ def verify_schema_matches(
                     lineterm="",
                 )
             )
-            errors.append(f"{table}: column definition mismatch\n{diff}")
+            details = []
+            if missing_in_dest:
+                details.append(f"missing_in_destination={missing_in_dest}")
+            if extra_in_dest:
+                details.append(f"extra_in_destination={extra_in_dest}")
+            if mismatched_columns:
+                details.append(f"mismatched_columns={mismatched_columns}")
+            errors.append(f"{table}: column definition mismatch ({'; '.join(details)})\n{diff}")
 
         src_pk = source_pk_by_table.get(table, [])
         dst_pk = dest_pk_by_table.get(table, [])
@@ -1221,10 +1249,11 @@ def main() -> int:
 
         order_expr = ",".join(f"{col}.asc" for col in pk_columns)
 
+        source_select_columns = explicit_select_columns(dest_columns, table)
         source_rows = src_client.fetch_all_rows(
             table,
             profile=CORE_SCHEMA,
-            select="*",
+            select=",".join(source_select_columns),
             order=order_expr,
         )
 

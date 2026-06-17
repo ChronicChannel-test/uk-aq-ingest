@@ -294,3 +294,112 @@ def test_repair_observed_properties_id_alignment_refuses_remaining_ambiguous_mis
 
     with pytest.raises(sync_mod.SyncError, match="mismatches remain"):
         sync_mod.repair_observed_properties_id_alignment(src_client=SourceClient(), dst_client=DestinationClient())
+
+
+def col(
+    table: str,
+    name: str,
+    udt: str = "text",
+    nullable: str = "YES",
+    default: Any = None,
+    ordinal: int = 1,
+) -> sync_mod.ColumnMeta:
+    return sync_mod.ColumnMeta(
+        table_name=table,
+        column_name=name,
+        udt_name=udt,
+        is_nullable=nullable,
+        column_default=default,
+        ordinal_position=ordinal,
+    )
+
+
+def verify_single_table(source_cols, dest_cols) -> None:
+    sync_mod.verify_schema_matches(
+        source_columns_by_table={"timeseries": source_cols},
+        source_pk_by_table={"timeseries": ["id"]},
+        dest_columns_by_table={"timeseries": dest_cols},
+        dest_pk_by_table={"timeseries": ["id"]},
+        tables=["timeseries"],
+    )
+
+
+def test_verify_schema_matches_ignores_physical_column_order() -> None:
+    source_cols = [
+        col("timeseries", "id", "int4", "NO", None, 1),
+        col("timeseries", "last_catalog_seen_at", "timestamptz", "YES", None, 2),
+        col("timeseries", "catalog_missing_runs", "int4", "NO", "0", 3),
+        col("timeseries", "ended_at", "timestamptz", "YES", None, 4),
+        col("timeseries", "created_at", "timestamptz", "YES", "now()", 5),
+        col("timeseries", "updated_at", "timestamptz", "YES", "now()", 6),
+    ]
+    dest_cols = [
+        col("timeseries", "id", "int4", "NO", None, 1),
+        col("timeseries", "created_at", "timestamptz", "YES", "now()", 2),
+        col("timeseries", "updated_at", "timestamptz", "YES", "now()", 3),
+        col("timeseries", "last_catalog_seen_at", "timestamptz", "YES", None, 4),
+        col("timeseries", "catalog_missing_runs", "int4", "NO", "0", 5),
+        col("timeseries", "ended_at", "timestamptz", "YES", None, 6),
+    ]
+
+    verify_single_table(source_cols, dest_cols)
+
+
+@pytest.mark.parametrize(
+    "dest_cols,match_text",
+    [
+        ([col("timeseries", "id", "int4", "NO", None, 1)], "missing_in_destination"),
+        (
+            [
+                col("timeseries", "id", "int4", "NO", None, 1),
+                col("timeseries", "label", "text", "YES", None, 2),
+                col("timeseries", "extra_col", "text", "YES", None, 3),
+            ],
+            "extra_in_destination",
+        ),
+        (
+            [
+                col("timeseries", "id", "int8", "NO", None, 1),
+                col("timeseries", "label", "text", "YES", None, 2),
+            ],
+            "mismatched_columns",
+        ),
+        (
+            [
+                col("timeseries", "id", "int4", "YES", None, 1),
+                col("timeseries", "label", "text", "YES", None, 2),
+            ],
+            "mismatched_columns",
+        ),
+        (
+            [
+                col("timeseries", "id", "int4", "NO", "0", 1),
+                col("timeseries", "label", "text", "YES", None, 2),
+            ],
+            "mismatched_columns",
+        ),
+    ],
+)
+def test_verify_schema_matches_still_blocks_real_schema_differences(dest_cols, match_text: str) -> None:
+    source_cols = [
+        col("timeseries", "id", "int4", "NO", None, 1),
+        col("timeseries", "label", "text", "YES", None, 2),
+    ]
+
+    with pytest.raises(sync_mod.SyncError, match=match_text):
+        verify_single_table(source_cols, dest_cols)
+
+
+def test_observed_properties_repair_rpc_qualifies_observed_property_columns() -> None:
+    from pathlib import Path
+
+    sql_path = Path("supabase/sql/20260617_observed_properties_id_drift_repair_rpc.sql")
+    sql_text = sql_path.read_text(encoding="utf-8")
+
+    assert "update uk_aq_core.observed_properties as op" in sql_text
+    assert "delete from uk_aq_core.observed_properties as op" in sql_text
+    assert "where op.id = v_destination_id" in sql_text
+    assert "and op.code = v_code" in sql_text
+    assert "where id = v_destination_id" not in sql_text
+    assert "and code = v_code" not in sql_text
+    assert "select max(op.id) from uk_aq_core.observed_properties as op" in sql_text
