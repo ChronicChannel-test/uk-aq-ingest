@@ -540,6 +540,7 @@ jobs:
           DST_SECRET_KEY: ${{ secrets.OBS_AQIDB_SECRET_KEY }}
           SYNC_TARGET_LABEL: obs_aqidb
           SYNC_CALLER_PREFIX: stations_daily_sync_obs_aqidb
+          OBS_AQIDB_REPAIR_OBSERVED_PROPERTY_IDS: ${{ vars.OBS_AQIDB_REPAIR_OBSERVED_PROPERTY_IDS }}
         run: |
           python3 scripts/stations_daily/sync_obs_aqidb_uk_aq_core.py
 
