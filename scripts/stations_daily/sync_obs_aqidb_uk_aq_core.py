@@ -85,6 +85,8 @@ PK_RPC = "uk_aq_rpc_info_schema_primary_keys"
 CORE_SELECT_RPC = "uk_aq_rpc_core_table_select"
 CORE_UPSERT_RPC = "uk_aq_rpc_core_table_upsert"
 CORE_DELETE_KEYS_RPC = "uk_aq_rpc_core_table_delete_keys"
+REPAIR_OBSERVED_PROPERTIES_RPC = "uk_aq_rpc_repair_observed_property_id_drift"
+REPAIR_OBSERVED_PROPERTIES_ENV = "OBS_AQIDB_REPAIR_OBSERVED_PROPERTY_IDS"
 
 # Static source metadata fallback copied from ingest uk_aq_core DDL
 # (`schemas/ingest_db/uk_aq_core_schema.sql`) for the four mirrored tables.
@@ -183,6 +185,14 @@ STATIC_SOURCE_TABLE_META: Dict[str, Dict[str, Any]] = {
 
 class SyncError(RuntimeError):
     """Fatal sync error."""
+
+
+@dataclass(frozen=True)
+class ObservedPropertyIdMismatch:
+    code: str
+    source_id: int
+    destination_id: int
+    source_row: Dict[str, Any]
 
 
 @dataclass(frozen=True)
@@ -888,15 +898,15 @@ def observed_property_key(row: Dict[str, Any]) -> str:
     return code
 
 
-def verify_observed_properties_id_alignment(
+def collect_observed_properties_id_alignment(
     *,
     src_client: PostgrestClient,
     dst_client: PostgrestClient,
-) -> None:
+) -> List[ObservedPropertyIdMismatch]:
     src_rows = src_client.fetch_all_rows(
         "observed_properties",
         profile=CORE_SCHEMA,
-        select="id,code,display_name,domain,canonical_uom",
+        select="id,code,display_name,domain,canonical_uom,created_at,updated_at",
         order="code.asc",
     )
     dst_rows = dst_client.fetch_core_rows_via_rpc(
@@ -905,22 +915,24 @@ def verify_observed_properties_id_alignment(
         order_columns=["code"],
     )
 
-    src_by_code = {observed_property_key(row): as_int(row.get("id"), context="source observed_properties.id") for row in src_rows}
-    dst_by_code = {observed_property_key(row): as_int(row.get("id"), context="destination observed_properties.id") for row in dst_rows}
+    src_by_code = {observed_property_key(row): row for row in src_rows}
+    dst_by_code = {observed_property_key(row): row for row in dst_rows}
 
     missing_in_dst: List[Tuple[str, int]] = []
     extra_in_dst: List[Tuple[str, int]] = []
-    id_mismatches: List[Tuple[str, int, int]] = []
+    id_mismatches: List[ObservedPropertyIdMismatch] = []
 
     for code in sorted(set(src_by_code) | set(dst_by_code)):
-        src_id = src_by_code.get(code)
-        dst_id = dst_by_code.get(code)
+        src_row = src_by_code.get(code)
+        dst_row = dst_by_code.get(code)
+        src_id = as_int(src_row.get("id"), context="source observed_properties.id") if src_row else None
+        dst_id = as_int(dst_row.get("id"), context="destination observed_properties.id") if dst_row else None
         if src_id is None and dst_id is not None:
             extra_in_dst.append((code, dst_id))
         elif dst_id is None and src_id is not None:
             missing_in_dst.append((code, src_id))
         elif src_id is not None and dst_id is not None and src_id != dst_id:
-            id_mismatches.append((code, src_id, dst_id))
+            id_mismatches.append(ObservedPropertyIdMismatch(code, src_id, dst_id, src_row or {}))
 
     print(
         "Observed properties pre-sync alignment summary: "
@@ -928,19 +940,74 @@ def verify_observed_properties_id_alignment(
         f"extra_in_destination={len(extra_in_dst)}"
     )
 
-    for code, src_id, dst_id in id_mismatches[:100]:
+    for mismatch in id_mismatches[:100]:
         print(
             "OBSERVED_PROPERTY_ID_MISMATCH "
-            f"code={code} source_id={src_id} destination_id={dst_id}"
+            f"code={mismatch.code} source_id={mismatch.source_id} destination_id={mismatch.destination_id}"
         )
 
+    return id_mismatches
+
+
+def verify_observed_properties_id_alignment(
+    *,
+    src_client: PostgrestClient,
+    dst_client: PostgrestClient,
+) -> None:
+    id_mismatches = collect_observed_properties_id_alignment(src_client=src_client, dst_client=dst_client)
     if id_mismatches:
         raise SyncError(
             "Observed properties ID alignment check failed: destination rows share source natural keys "
             "but have different IDs. This mirror sync preserves source database IDs, so these rows must "
-            "be reconciled before upsert. Apply the focused ObsAQIDB repair SQL patch for the reported "
-            "codes, then re-run this core sync."
+            f"be reconciled before upsert. To run the guarded generic repair once, set {REPAIR_OBSERVED_PROPERTIES_ENV}=1 "
+            "and re-run this core sync; it will re-check alignment after repair before continuing."
         )
+
+
+def repair_observed_properties_id_alignment(
+    *,
+    src_client: PostgrestClient,
+    dst_client: PostgrestClient,
+) -> None:
+    id_mismatches = collect_observed_properties_id_alignment(src_client=src_client, dst_client=dst_client)
+    if not id_mismatches:
+        return
+
+    print("Observed properties repair mode enabled; proposed changes:")
+    repairs = []
+    for mismatch in id_mismatches:
+        print(
+            "OBSERVED_PROPERTY_ID_REPAIR_PROPOSED "
+            f"code={mismatch.code} rewire_phenomena_observed_property_id={mismatch.destination_id}->{mismatch.source_id} "
+            f"remove_stale_destination_id={mismatch.destination_id}"
+        )
+        repairs.append(
+            {
+                "code": mismatch.code,
+                "source_id": mismatch.source_id,
+                "destination_id": mismatch.destination_id,
+                "source_row": mismatch.source_row,
+            }
+        )
+
+    try:
+        payload = dst_client.rpc(
+            REPAIR_OBSERVED_PROPERTIES_RPC,
+            profile=PUBLIC_SCHEMA,
+            args={"p_repairs": repairs},
+        )
+    except SyncError as exc:
+        if is_missing_rpc_error(str(exc)):
+            raise SyncError(
+                f"Destination repair RPC is missing. Apply supabase/sql/20260617_observed_properties_id_drift_repair_rpc.sql "
+                f"to ObsAQIDB, then re-run with {REPAIR_OBSERVED_PROPERTIES_ENV}=1."
+            ) from exc
+        raise
+    print(f"Observed properties repair RPC result: {json.dumps(payload, sort_keys=True)}")
+
+    remaining = collect_observed_properties_id_alignment(src_client=src_client, dst_client=dst_client)
+    if remaining:
+        raise SyncError("Observed properties ID repair ran, but mismatches remain; refusing to continue sync.")
 
 def timeseries_key(row: Dict[str, Any]) -> Tuple[int, str, str]:
     return (
@@ -1137,7 +1204,10 @@ def main() -> int:
     )
 
     print("Schema verification passed for all primary sync tables.")
-    verify_observed_properties_id_alignment(src_client=src_client, dst_client=dst_client)
+    if (os.getenv(REPAIR_OBSERVED_PROPERTIES_ENV) or "").strip().lower() in {"1", "true", "yes", "on"}:
+        repair_observed_properties_id_alignment(src_client=src_client, dst_client=dst_client)
+    else:
+        verify_observed_properties_id_alignment(src_client=src_client, dst_client=dst_client)
     verify_timeseries_id_alignment(src_client=src_client, dst_client=dst_client)
 
     table_stats: Dict[str, Dict[str, Any]] = {}
