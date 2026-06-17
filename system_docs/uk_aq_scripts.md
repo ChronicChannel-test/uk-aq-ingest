@@ -352,7 +352,7 @@ Dropbox checkpoint local path resolution (for monthly bar second-line status):
 
 ### `scripts/stations_daily/sync_obs_aqidb_uk_aq_core.py`
 Purpose:
-- Mirror `uk_aq_core` reference tables from ingest DB into Obs AQI DB as an exact PK set match.
+- Mirror `uk_aq_core` reference tables from ingest DB into Obs AQI DB as an exact, ID-preserving PK set match. The sync preserves ingest numeric IDs for core reference tables rather than remapping natural keys, because downstream rows reference those numeric IDs through FKs such as `phenomena.observed_property_id` and `timeseries.phenomenon_id`.
 - Sync scope is limited to:
   - `uk_aq_core.connectors`
   - `uk_aq_core.phenomena`
@@ -370,7 +370,9 @@ Behavior:
 - Runs a pre-sync timeseries alignment check keyed by `(connector_id, service_ref, timeseries_ref)`:
   - prints per-connector row-count/hash summary (`key_only_hash`, `key_plus_id_hash`) for source vs destination
   - reports key-only gaps (`missing_in_destination`, `extra_in_destination`) and ID mismatches
-- If any key-set mismatch or ID mismatch is detected, sync fails fast (no remap is applied).
+- If any key-set mismatch or ID mismatch is detected, sync fails fast by default (no remap is applied).
+- Runs a pre-sync observed-properties alignment check keyed by `code`; by default it reports `OBSERVED_PROPERTY_ID_MISMATCH` rows and exits before writes if the same code exists in source and destination under different IDs.
+- Optional observed-properties ID repair mode: set `OBS_AQIDB_REPAIR_OBSERVED_PROPERTY_IDS=1` for a one-off run after applying `supabase/sql/20260617_observed_properties_id_drift_repair_rpc.sql` to ObsAQIDB. The script prints proposed `observed_properties` repairs, calls `uk_aq_rpc_repair_observed_property_id_drift`, discovers every destination FK referencing `uk_aq_core.observed_properties(id)` and rewires those dependent rows from stale destination IDs to source IDs, removes stale duplicate rows, advances the identity sequence, and then re-runs the alignment check before normal sync continues. The SQL RPC refuses ambiguous repairs, including cases where the target source ID is already occupied by a different code or where any dependent FK rows would remain on the stale ID.
 - Repair path for ID drift:
   - `python3 scripts/stations_daily/uk_aq_repair_obs_aqidb_timeseries_ids.py` (dry-run)
   - `python3 scripts/stations_daily/uk_aq_repair_obs_aqidb_timeseries_ids.py --apply` (repair)
@@ -387,6 +389,7 @@ Environment:
 - `DST_SUPABASE_URL`
 - `DST_SECRET_KEY`
 - `UK_AQ_INGEST_CORE_SCHEMA_SQL_PATH` (optional absolute/relative path to source `uk_aq_core_schema.sql`; when omitted, the script skips file-parse and uses embedded static metadata fallback)
+- `OBS_AQIDB_REPAIR_OBSERVED_PROPERTY_IDS` (optional; default unset/false. Set to `1` for a single guarded repair run for observed-properties ID drift, then unset before the next normal scheduled sync.)
 
 Notes:
 - Destination metadata is read via `uk_aq_public.uk_aq_rpc_info_schema_columns` and `uk_aq_public.uk_aq_rpc_info_schema_primary_keys`.

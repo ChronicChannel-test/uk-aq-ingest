@@ -231,3 +231,66 @@ def test_verify_observed_properties_id_alignment_blocks_shared_code_id_mismatch(
             src_client=SourceClient(),
             dst_client=DestinationClient(),
         )
+
+
+def test_repair_observed_properties_id_alignment_rewires_wrong_destination_id() -> None:
+    class SourceClient:
+        def fetch_all_rows(self, *args, **kwargs):
+            return [
+                {
+                    "id": 42,
+                    "code": "124c6h3ch33",
+                    "display_name": "1,2,4-trimethylbenzene",
+                    "domain": "aq",
+                    "canonical_uom": None,
+                    "created_at": "2026-06-09T00:00:00+00:00",
+                    "updated_at": "2026-06-09T00:00:00+00:00",
+                }
+            ]
+
+    class DestinationClient:
+        def __init__(self):
+            self.observed = [{"id": 41, "code": "124c6h3ch33"}]
+            self.phenomena = [{"id": 100, "observed_property_id": 41}]
+            self.rpc_calls = []
+
+        def fetch_core_rows_via_rpc(self, *args, **kwargs):
+            return list(self.observed)
+
+        def rpc(self, name, *, profile, args):
+            self.rpc_calls.append({"name": name, "profile": profile, "args": args})
+            assert name == sync_mod.REPAIR_OBSERVED_PROPERTIES_RPC
+            repair = args["p_repairs"][0]
+            assert repair["code"] == "124c6h3ch33"
+            assert repair["source_id"] == 42
+            assert repair["destination_id"] == 41
+            self.observed = [{"id": 42, "code": "124c6h3ch33"}]
+            for row in self.phenomena:
+                if row["observed_property_id"] == 41:
+                    row["observed_property_id"] = 42
+            return [{"code": "124c6h3ch33", "source_id": 42, "destination_id": 41, "dependent_rewrites": {"uk_aq_core.phenomena.observed_property_id": 1}, "stale_rows_deleted": 1}]
+
+    dst = DestinationClient()
+    sync_mod.repair_observed_properties_id_alignment(src_client=SourceClient(), dst_client=dst)
+
+    assert dst.rpc_calls
+    assert dst.observed == [{"id": 42, "code": "124c6h3ch33"}]
+    assert dst.phenomena == [{"id": 100, "observed_property_id": 42}]
+
+
+def test_repair_observed_properties_id_alignment_refuses_remaining_ambiguous_mismatch() -> None:
+    class SourceClient:
+        def fetch_all_rows(self, *args, **kwargs):
+            return [{"id": 42, "code": "124c6h3ch33", "display_name": "x", "domain": "aq", "canonical_uom": None}]
+
+    class DestinationClient:
+        def fetch_core_rows_via_rpc(self, *args, **kwargs):
+            # Simulates the SQL RPC refusing an ambiguous case (source ID already used by another code)
+            # or otherwise leaving the mismatch unresolved.
+            return [{"id": 41, "code": "124c6h3ch33"}, {"id": 42, "code": "different_code"}]
+
+        def rpc(self, name, *, profile, args):
+            return []
+
+    with pytest.raises(sync_mod.SyncError, match="mismatches remain"):
+        sync_mod.repair_observed_properties_id_alignment(src_client=SourceClient(), dst_client=DestinationClient())
