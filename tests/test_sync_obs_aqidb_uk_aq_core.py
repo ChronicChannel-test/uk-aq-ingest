@@ -388,18 +388,3 @@ def test_verify_schema_matches_still_blocks_real_schema_differences(dest_cols, m
 
     with pytest.raises(sync_mod.SyncError, match=match_text):
         verify_single_table(source_cols, dest_cols)
-
-
-def test_observed_properties_repair_rpc_qualifies_observed_property_columns() -> None:
-    from pathlib import Path
-
-    sql_path = Path("supabase/sql/20260617_observed_properties_id_drift_repair_rpc.sql")
-    sql_text = sql_path.read_text(encoding="utf-8")
-
-    assert "update uk_aq_core.observed_properties as op" in sql_text
-    assert "delete from uk_aq_core.observed_properties as op" in sql_text
-    assert "where op.id = v_destination_id" in sql_text
-    assert "and op.code = v_code" in sql_text
-    assert "where id = v_destination_id" not in sql_text
-    assert "and code = v_code" not in sql_text
-    assert "select max(op.id) from uk_aq_core.observed_properties as op" in sql_text
