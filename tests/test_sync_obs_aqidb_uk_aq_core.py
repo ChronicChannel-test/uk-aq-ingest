@@ -268,7 +268,7 @@ def test_repair_observed_properties_id_alignment_rewires_wrong_destination_id() 
             for row in self.phenomena:
                 if row["observed_property_id"] == 41:
                     row["observed_property_id"] = 42
-            return [{"code": "124c6h3ch33", "source_id": 42, "destination_id": 41, "phenomena_rewired": 1, "stale_rows_deleted": 1}]
+            return [{"code": "124c6h3ch33", "source_id": 42, "destination_id": 41, "dependent_rewrites": {"uk_aq_core.phenomena.observed_property_id": 1}, "stale_rows_deleted": 1}]
 
     dst = DestinationClient()
     sync_mod.repair_observed_properties_id_alignment(src_client=SourceClient(), dst_client=dst)

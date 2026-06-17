@@ -978,7 +978,7 @@ def repair_observed_properties_id_alignment(
     for mismatch in id_mismatches:
         print(
             "OBSERVED_PROPERTY_ID_REPAIR_PROPOSED "
-            f"code={mismatch.code} rewire_phenomena_observed_property_id={mismatch.destination_id}->{mismatch.source_id} "
+            f"code={mismatch.code} rewire_destination_observed_property_fks={mismatch.destination_id}->{mismatch.source_id} "
             f"remove_stale_destination_id={mismatch.destination_id}"
         )
         repairs.append(
