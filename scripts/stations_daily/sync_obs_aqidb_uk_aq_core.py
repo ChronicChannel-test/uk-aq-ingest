@@ -881,6 +881,67 @@ def build_connector_code_map(rows: Sequence[Dict[str, Any]]) -> Dict[int, str]:
     return out
 
 
+def observed_property_key(row: Dict[str, Any]) -> str:
+    code = str(row.get("code") or "").strip()
+    if not code:
+        raise SyncError(f"observed_properties row is missing code: {json.dumps(row, sort_keys=True)}")
+    return code
+
+
+def verify_observed_properties_id_alignment(
+    *,
+    src_client: PostgrestClient,
+    dst_client: PostgrestClient,
+) -> None:
+    src_rows = src_client.fetch_all_rows(
+        "observed_properties",
+        profile=CORE_SCHEMA,
+        select="id,code,display_name,domain,canonical_uom",
+        order="code.asc",
+    )
+    dst_rows = dst_client.fetch_core_rows_via_rpc(
+        "observed_properties",
+        select_columns=["id", "code", "display_name", "domain", "canonical_uom"],
+        order_columns=["code"],
+    )
+
+    src_by_code = {observed_property_key(row): as_int(row.get("id"), context="source observed_properties.id") for row in src_rows}
+    dst_by_code = {observed_property_key(row): as_int(row.get("id"), context="destination observed_properties.id") for row in dst_rows}
+
+    missing_in_dst: List[Tuple[str, int]] = []
+    extra_in_dst: List[Tuple[str, int]] = []
+    id_mismatches: List[Tuple[str, int, int]] = []
+
+    for code in sorted(set(src_by_code) | set(dst_by_code)):
+        src_id = src_by_code.get(code)
+        dst_id = dst_by_code.get(code)
+        if src_id is None and dst_id is not None:
+            extra_in_dst.append((code, dst_id))
+        elif dst_id is None and src_id is not None:
+            missing_in_dst.append((code, src_id))
+        elif src_id is not None and dst_id is not None and src_id != dst_id:
+            id_mismatches.append((code, src_id, dst_id))
+
+    print(
+        "Observed properties pre-sync alignment summary: "
+        f"id_mismatch={len(id_mismatches)} missing_in_destination={len(missing_in_dst)} "
+        f"extra_in_destination={len(extra_in_dst)}"
+    )
+
+    for code, src_id, dst_id in id_mismatches[:100]:
+        print(
+            "OBSERVED_PROPERTY_ID_MISMATCH "
+            f"code={code} source_id={src_id} destination_id={dst_id}"
+        )
+
+    if id_mismatches:
+        raise SyncError(
+            "Observed properties ID alignment check failed: destination rows share source natural keys "
+            "but have different IDs. This mirror sync preserves source database IDs, so these rows must "
+            "be reconciled before upsert. Apply the focused ObsAQIDB repair SQL patch for the reported "
+            "codes, then re-run this core sync."
+        )
+
 def timeseries_key(row: Dict[str, Any]) -> Tuple[int, str, str]:
     return (
         as_int(row.get("connector_id"), context="timeseries.connector_id"),
@@ -1076,6 +1137,7 @@ def main() -> int:
     )
 
     print("Schema verification passed for all primary sync tables.")
+    verify_observed_properties_id_alignment(src_client=src_client, dst_client=dst_client)
     verify_timeseries_id_alignment(src_client=src_client, dst_client=dst_client)
 
     table_stats: Dict[str, Dict[str, Any]] = {}
