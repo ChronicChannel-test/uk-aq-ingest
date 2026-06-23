@@ -77,7 +77,7 @@ Verification:
 
 ```sql
 select count(*) as due_now
-from uk_aq_core.uk_air_sos_station_checkpoints
+from uk_aq_raw.uk_air_sos_station_checkpoints
 where next_due_at <= now();
 ```
 
