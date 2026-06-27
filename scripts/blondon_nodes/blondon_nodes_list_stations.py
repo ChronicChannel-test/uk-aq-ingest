@@ -220,7 +220,7 @@ class SupabaseWriter:
         payload = [row for row in rows if row.get("station_ref")]
         if not payload:
             return 0
-        self.core.table("stations").upsert(payload, on_conflict="connector_id,service_ref,station_ref").execute()
+        self.core.table("stations").upsert(payload, on_conflict="connector_id,station_ref").execute()
         return len(payload)
 
     def fetch_station_ids_by_ref(self, connector_id: int, station_refs: Iterable[str]) -> Dict[str, int]:
