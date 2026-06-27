@@ -4,46 +4,51 @@ import {
   uploadErrorLogJsonToDropbox,
 } from "../shared/dropbox_error_log.ts";
 
-const CONNECTOR_CODE =
-  (Deno.env.get("BREATHELONDON_CONNECTOR_CODE") || "breathelondon").trim();
+const CONNECTOR_CODE_ERROR =
+  "Use connector_code=blondon_communities for Breathe London Communities. network_code/service_ref may remain breathelondon.";
+const CONNECTOR_CODE = resolveCommunitiesConnectorCode(
+  Deno.env.get("BLONDON_COMMUNITIES_CONNECTOR_CODE"),
+);
+const SERVICE_REF =
+  (Deno.env.get("BLONDON_COMMUNITIES_SERVICE_REF") || "breathelondon").trim();
 const SCHEDULER_BACKEND_SUPABASE_FUNCTION = "supabase_function";
 const SCHEDULER_BACKEND_GOOGLE_CLOUD_RUN = "google_cloud_run";
 const RUN_TIMEOUT_MINUTES_DEFAULT = 14;
 const DEFAULT_INTERVAL_MINUTES = parsePositiveInt(
-  Deno.env.get("BREATHELONDON_DEFAULT_INTERVAL_MINUTES"),
+  Deno.env.get("BLONDON_COMMUNITIES_DEFAULT_INTERVAL_MINUTES"),
   60,
 );
 const IN_FLIGHT_TIMEOUT_MINUTES = parsePositiveInt(
-  Deno.env.get("BREATHELONDON_IN_FLIGHT_TIMEOUT_MINUTES"),
+  Deno.env.get("BLONDON_COMMUNITIES_IN_FLIGHT_TIMEOUT_MINUTES"),
   RUN_TIMEOUT_MINUTES_DEFAULT,
 );
 const CLAIM_TIMEOUT_MINUTES = parsePositiveInt(
-  Deno.env.get("BREATHELONDON_CLAIM_TIMEOUT_MINUTES"),
+  Deno.env.get("BLONDON_COMMUNITIES_CLAIM_TIMEOUT_MINUTES"),
   RUN_TIMEOUT_MINUTES_DEFAULT,
 );
 const DEFAULT_WINDOW_HOURS = parsePositiveInt(
-  Deno.env.get("BREATHELONDON_DEFAULT_WINDOW_HOURS"),
+  Deno.env.get("BLONDON_COMMUNITIES_DEFAULT_WINDOW_HOURS"),
   6,
 );
 const DEFAULT_BATCH_LIMIT = parsePositiveInt(
-  Deno.env.get("BREATHELONDON_DEFAULT_BATCH_LIMIT"),
+  Deno.env.get("BLONDON_COMMUNITIES_DEFAULT_BATCH_LIMIT"),
   10,
 );
 const DEFAULT_STALE_LIMIT = parsePositiveInt(
-  Deno.env.get("BREATHELONDON_STALE_LIMIT"),
+  Deno.env.get("BLONDON_COMMUNITIES_STALE_LIMIT"),
   4,
 );
 const PORT = parsePositiveInt(
-  Deno.env.get("BREATHELONDON_LOCAL_PORT") || Deno.env.get("PORT"),
+  Deno.env.get("BLONDON_COMMUNITIES_LOCAL_PORT") || Deno.env.get("PORT"),
   8000,
 );
-const REQUEST_PAYLOAD_RAW = (Deno.env.get("BREATHELONDON_REQUEST_PAYLOAD") ||
+const REQUEST_PAYLOAD_RAW = (Deno.env.get("BLONDON_COMMUNITIES_REQUEST_PAYLOAD") ||
   "{}").trim();
 const REQUEST_PAYLOAD_OVERRIDES = parseRequestPayload(REQUEST_PAYLOAD_RAW);
 const CRON_SECRET = (Deno.env.get("SB_UK_AQ_CRON_SECRET") || "").trim();
-const BREATHELONDON_INGEST_SCRIPT_PATH =
-  (Deno.env.get("BREATHELONDON_INGEST_SCRIPT_PATH") ||
-    "/app/runtime/ingest_breathelondon/index.ts").trim();
+const BLONDON_COMMUNITIES_INGEST_SCRIPT_PATH =
+  (Deno.env.get("BLONDON_COMMUNITIES_INGEST_SCRIPT_PATH") ||
+    "/app/runtime/ingest_blondon_communities/index.ts").trim();
 
 const SUPABASE_URL = requiredEnv("SUPABASE_URL");
 const SUPABASE_PRIVILEGED_KEY = requiredEnvAny(["SB_SECRET_KEY"]);
@@ -60,14 +65,14 @@ const DROPBOX_APP_SECRET = (Deno.env.get("DROPBOX_APP_SECRET") || "").trim();
 const DROPBOX_REFRESH_TOKEN = (Deno.env.get("DROPBOX_REFRESH_TOKEN") || "")
   .trim();
 const DROPBOX_ERROR_ALLOWED_SUPABASE_URL = (
-  Deno.env.get("BREATHELONDON_ERROR_DROPBOX_ALLOWED_SUPABASE_URL") ??
+  Deno.env.get("BLONDON_COMMUNITIES_ERROR_DROPBOX_ALLOWED_SUPABASE_URL") ??
   Deno.env.get("UK_AIR_ERROR_DROPBOX_ALLOWED_SUPABASE_URL") ??
-  Deno.env.get("BREATHELONDON_RAW_DROPBOX_ALLOWED_SUPABASE_URL") ??
+  Deno.env.get("BLONDON_COMMUNITIES_RAW_DROPBOX_ALLOWED_SUPABASE_URL") ??
   Deno.env.get("UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL") ??
   ""
 ).trim();
 const DROPBOX_ERROR_FOLDER = (
-  Deno.env.get("BREATHELONDON_ERROR_DROPBOX_FOLDER") ??
+  Deno.env.get("BLONDON_COMMUNITIES_ERROR_DROPBOX_FOLDER") ??
   Deno.env.get("UK_AIR_ERROR_DROPBOX_FOLDER") ??
   "/error_log"
 ).trim();
@@ -105,6 +110,14 @@ function requiredEnv(name: string): string {
     throw new Error(`Missing required environment variable: ${name}`);
   }
   return value;
+}
+
+function resolveCommunitiesConnectorCode(raw: unknown): string {
+  const value = typeof raw === "string" ? raw.trim() : "";
+  if (value && value !== "blondon_communities") {
+    throw new Error(CONNECTOR_CODE_ERROR);
+  }
+  return "blondon_communities";
 }
 
 function requiredEnvAny(names: string[]): string {
@@ -146,11 +159,11 @@ function parseRequestPayload(raw: string): Record<string, unknown> {
   try {
     parsed = JSON.parse(raw);
   } catch (_error) {
-    throw new Error("BREATHELONDON_REQUEST_PAYLOAD must be valid JSON.");
+    throw new Error("BLONDON_COMMUNITIES_REQUEST_PAYLOAD must be valid JSON.");
   }
   const payload = toObject(parsed);
   if (!payload) {
-    throw new Error("BREATHELONDON_REQUEST_PAYLOAD must be a JSON object.");
+    throw new Error("BLONDON_COMMUNITIES_REQUEST_PAYLOAD must be a JSON object.");
   }
   return payload;
 }
@@ -354,7 +367,7 @@ async function loadStationRefs(params: {
   }
   const response = await postgrestRequest(
     "POST",
-    "rpc/breathelondon_select_station_refs",
+    "rpc/blondon_communities_select_station_refs",
     {
       body,
       schema: UK_AQ_CORE_SCHEMA,
@@ -384,9 +397,10 @@ async function buildIngestPayload(
   const payload: Record<string, unknown> = {
     ...REQUEST_PAYLOAD_OVERRIDES,
   };
-  const connectorCode = toStringOrNull(payload.connector_code) ||
-    CONNECTOR_CODE;
-  const serviceRef = toStringOrNull(payload.service_ref) || connectorCode;
+  const connectorCode = resolveCommunitiesConnectorCode(
+    payload.connector_code ?? CONNECTOR_CODE,
+  );
+  const serviceRef = toStringOrNull(payload.service_ref) || SERVICE_REF;
   const batchLimit = getBatchLimit(connector);
   const windowHours = getWindowHours(connector);
   const staleLimit = toPositiveIntegerOrNull(payload.stale_limit) ??
@@ -429,10 +443,11 @@ function deriveRunSummary(ingestResponse: IngestResponse): {
   let runMessage = toStringOrNull(payload?.run_message);
   if (!runMessage) {
     if (ingestResponse.ok) {
-      runMessage = "ingest_breathelondon completed via google_cloud_run";
+      runMessage =
+        "ingest_blondon_communities completed via google_cloud_run";
     } else {
       runMessage =
-        `ingest_breathelondon failed with status ${ingestResponse.status}`;
+        `ingest_blondon_communities failed with status ${ingestResponse.status}`;
     }
   }
 
@@ -630,7 +645,7 @@ async function insertErrorLog(
     created_at: createdAtIso,
     source: "cloud_run",
     severity: "error",
-    message: "ingest_breathelondon dispatch failed",
+    message: "ingest_blondon_communities dispatch failed",
     stack: null,
     context: {
       connector_code: CONNECTOR_CODE,
@@ -846,11 +861,11 @@ async function main(): Promise<void> {
       "--allow-net",
       "--allow-read",
       "--allow-write",
-      BREATHELONDON_INGEST_SCRIPT_PATH,
+      BLONDON_COMMUNITIES_INGEST_SCRIPT_PATH,
     ],
     env: {
       ...Deno.env.toObject(),
-      BREATHELONDON_DROPBOX_UPLOAD_SOURCE: "cloud_run",
+      BLONDON_COMMUNITIES_DROPBOX_UPLOAD_SOURCE: "cloud_run",
     },
     stdout: "inherit",
     stderr: "inherit",
@@ -936,7 +951,7 @@ async function main(): Promise<void> {
         });
       }
       throw new Error(
-        `ingest_breathelondon failed (${ingestResponse.status}): ${ingestResponse.raw}`,
+        `ingest_blondon_communities failed (${ingestResponse.status}): ${ingestResponse.raw}`,
       );
     }
 

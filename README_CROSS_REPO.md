@@ -32,7 +32,7 @@ Common / core:
 
 Source-specific (used by connectors / edge functions):
 - `OPENAQ_API_KEY`, `OPENAQ_BASE_URL`
-- `BREATHELONDON_API_KEY`, `BREATHELONDON_BASE_URL`
+- `BLONDON_COMMUNITIES_API_KEY`, `BLONDON_COMMUNITIES_BASE_URL`
 - `LAQN_BASE_URL`
 - `UK_AIR_SOS_BASE_URL`, `UK_AIR_SOS_SERVICE_LABEL`
 - `SCOMM_BASE_URL`
@@ -55,7 +55,8 @@ Dropbox/logging (used by multiple ingests):
 - **Supabase config**: `supabase/config.toml`.
 
 ## Conventions
-- Connector codes / service refs: `openaq`, `uk_air_sos`, `breathelondon`, `erg_laqn`, `sensorcommunity`.
+- Connector codes: `openaq`, `uk_air_sos`, `blondon_communities`, `erg_laqn`, `sensorcommunity`.
+- Breathe London public network code and shared service ref: `breathelondon`.
 - Database schema namespaces: `uk_aq_core`, `uk_aq_raw`, `uk_aq_public` (defined in schema repo).
 - Edge functions are named `ingest_*` for data ingestion and `uk_aq_*` for API endpoints.
 - Naming conventions live in `AGENTS.md` (source of truth). Highlights:

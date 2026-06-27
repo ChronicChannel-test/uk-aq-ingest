@@ -1,9 +1,7 @@
 -- Helper RPCs for the dispatcher (no pg_cron schedules).
 -- Functions live in uk_aq_core and read uk_aq_raw checkpoints.
 
-drop function if exists uk_aq_core.breathelondon_select_station_refs(integer, boolean);
-
-create or replace function uk_aq_core.breathelondon_select_station_refs(
+create or replace function uk_aq_core.blondon_communities_select_station_refs(
   batch_limit integer default 10,
   stale_limit integer default 4
 )
@@ -17,7 +15,7 @@ declare
 begin
   select id into v_connector_id
   from connectors
-  where connector_code = 'breathelondon'
+  where connector_code = 'blondon_communities'
   limit 1;
 
   if v_connector_id is null then
@@ -42,7 +40,7 @@ begin
       coalesce(bsc.last_observed_at, lo.last_observed_at) as last_observed_at,
       coalesce(bsc.next_due_at, now()) as due_at
     from stations stn
-    left join breathelondon_station_checkpoints bsc
+    left join blondon_communities_station_checkpoints bsc
       on bsc.station_id = stn.id
     left join latest_obs lo
       on lo.station_id = stn.id

@@ -262,7 +262,7 @@ jobs:
         env:
           SUPABASE_URL: ${{ vars.SUPABASE_URL }}
           SB_SECRET_KEY: ${{ secrets.SB_SECRET_KEY }}
-          BREATHELONDON_API_KEY: ${{ secrets.BREATHELONDON_API_KEY }}
+          BLONDON_COMMUNITIES_API_KEY: ${{ secrets.BLONDON_COMMUNITIES_API_KEY }}
         run: |
           python3 scripts/breathelondon/breathelondon_list_stations.py --to-supabase
 

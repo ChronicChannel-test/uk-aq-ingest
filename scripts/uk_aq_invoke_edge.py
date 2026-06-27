@@ -3,9 +3,9 @@
 Invoke Supabase Edge Functions for UK AQ.
 
 Examples:
-  python3 scripts/uk_aq_invoke_edge.py --function ingest_breathelondon --connector-code breathelondon
+  python3 scripts/uk_aq_invoke_edge.py --function ingest_breathelondon --connector-code blondon_communities
   python3 scripts/uk_aq_invoke_edge.py --function ingest_sensorcommunity --connector-code sensorcommunity --payload '{"dry_run":true}'
-  python3 scripts/uk_aq_invoke_edge.py --function uk_aq_latest --connector-code breathelondon --method GET --params '{"limit":5}'
+  python3 scripts/uk_aq_invoke_edge.py --function uk_aq_latest --connector-code blondon_communities --method GET --params '{"limit":5}'
 """
 
 import argparse

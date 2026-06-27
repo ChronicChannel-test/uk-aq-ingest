@@ -20,7 +20,7 @@ Cloud Run deploy idempotency:
 - Deploy updates use `--set-secrets` to replace secret bindings, which removes
   stale bindings from prior revisions.
 - Ingest Cloud Run service deploy workflows (`uk_aq_openaq_cloud_run_deploy.yml`,
-  `uk_aq_breathelondon_cloud_run_deploy.yml`,
+  `uk_aq_blondon_communities_cloud_run_deploy.yml`,
   `uk_aq_uk_air_sos_cloud_run_deploy.yml`,
   `uk_aq_scomm_cloud_run_deploy.yml`) now bind optional secrets only when
   their corresponding values are configured for that deploy (and only bind
@@ -115,11 +115,11 @@ UK_AQ_EDGE_UPSTREAM_SECRET=...
 - Secrets: `SUPABASE_URL`, `SB_SECRET_KEY`, `DROPBOX_APP_KEY`,
   `DROPBOX_APP_SECRET`, `DROPBOX_REFRESH_TOKEN`.
 
-### `uk_aq_breathelondon_batch.yml`
+### `uk_aq_blondon_communities_batch.yml`
 - Schedule: manual only (cron handles production batch polling).
 - Purpose: batch station refs and invoke `ingest_breathelondon` per chunk for manual runs.
-- Script: `python3 scripts/breathelondon/breathelondon_batch.py --connector-code breathelondon --batch-size 10 --active-only --skip-stations`.
-- Order: `breathelondon_station_checkpoints.last_polled_at` asc (nulls first), then `next_due_at` asc.
+- Script: `python3 scripts/breathelondon/breathelondon_batch.py --connector-code blondon_communities --service-ref breathelondon --batch-size 10 --active-only --skip-stations`.
+- Order: `blondon_communities_station_checkpoints.last_polled_at` asc (nulls first), then `next_due_at` asc.
 - Secrets: `SUPABASE_URL`, `SB_SECRET_KEY`, `SB_PUBLISHABLE_DEFAULT_KEY`, `SB_UK_AQ_CRON_SECRET`.
 
 ### `uk_aq_stations_daily.yml`
@@ -144,7 +144,7 @@ UK_AQ_EDGE_UPSTREAM_SECRET=...
   - Retries transient REST/network failures per page with exponential backoff and a 90-minute job timeout backstop.
 - Optional: Sensor.Community discovery step (disabled by default).
 - Secrets: `SUPABASE_URL`, `SB_SECRET_KEY`, `UK_AIR_SOS_BASE_URL`,
-  `BREATHELONDON_API_KEY`, `BREATHELONDON_BASE_URL` (optional), `DROPBOX_APP_KEY`,
+  `BLONDON_COMMUNITIES_API_KEY`, `BLONDON_COMMUNITIES_BASE_URL` (optional), `DROPBOX_APP_KEY`,
   `DROPBOX_APP_SECRET`, `DROPBOX_REFRESH_TOKEN`, `UK_AQ_DROPBOX_ROOT`, `UK_AQ_STATIONS_DROPBOX_DIR`,
   `UK_AQ_DOMAIN_CLOUDFLARE_API_TOKEN`, `OBS_AQIDB_SECRET_KEY`.
 - Vars: `OBS_AQIDB_SUPABASE_URL`.
@@ -249,25 +249,25 @@ UK_AQ_EDGE_UPSTREAM_SECRET=...
   - Scheduler controls: `GCP_DB_SIZE_LOGGER_SCHEDULER_*`
   - RPC/config controls: `UK_AQ_DB_SIZE_RPC`, `UK_AQ_DB_SIZE_UPSERT_RPC`, `UK_AQ_DB_SIZE_CLEANUP_RPC`, `UK_AQ_DB_SIZE_RETENTION_DAYS`, `UK_AQ_DB_SIZE_RPC_RETRIES`, `UK_AQ_INGEST_DB_LABEL`, `UK_AQ_OBS_AQIDB_DB_LABEL`
 
-### `uk_aq_breathelondon_cloud_run_deploy.yml`
-- Trigger: push to `main` affecting `workers/uk_aq_breathelondon_cloud_run/**` or Breathe London ingest runtime files, or manual dispatch.
-- Purpose: deploy the Breathe London Cloud Run service + optional Cloud Scheduler trigger.
-- Default service name: `uk-aq-breathelondon-ingest`.
-- Worker: `workers/uk_aq_breathelondon_cloud_run`.
+### `uk_aq_blondon_communities_cloud_run_deploy.yml`
+- Trigger: push to `main` affecting `workers/uk_aq_blondon_communities_cloud_run/**` or Breathe London Communities ingest runtime files, or manual dispatch.
+- Purpose: deploy the Breathe London Communities Cloud Run service + optional Cloud Scheduler trigger.
+- Default service name: `uk-aq-blondon-communities-ingest`.
+- Worker: `workers/uk_aq_blondon_communities_cloud_run`.
 - Scheduler:
   - Uses Google Cloud Scheduler -> Cloud Run Service URL with OIDC auth.
-  - Frequency is configurable (`GCP_BREATHELONDON_SCHEDULER_CRON`), while effective poll cadence still comes from connector interval checks in the worker.
+  - Frequency is configurable (`GCP_BLONDON_COMMUNITIES_SCHEDULER_CRON`), while effective poll cadence still comes from connector interval checks in the worker.
 - Required secrets/vars:
   - `GCP_PROJECT_ID`, Google auth secrets (`GCP_WORKLOAD_IDENTITY_PROVIDER` + `GCP_SERVICE_ACCOUNT` or `GCP_SA_KEY`)
-  - `GCP_BREATHELONDON_SERVICE_ACCOUNT` (or legacy `GCP_BREATHELONDON_JOB_SERVICE_ACCOUNT`)
+  - `GCP_BLONDON_COMMUNITIES_SERVICE_ACCOUNT` (or legacy `GCP_BLONDON_COMMUNITIES_JOB_SERVICE_ACCOUNT`)
   - `SUPABASE_URL`, `SB_SECRET_KEY` (required by workflow)
-  - `BREATHELONDON_API_KEY`
+  - `BLONDON_COMMUNITIES_API_KEY`
 - Optional:
   - `OBS_AQIDB_SUPABASE_URL`, `OBS_AQIDB_SECRET_KEY` (required only for `OBSERVS_WRITE_MODE=direct`; not injected for `pubsub_only`/`outbox_only`)
-  - `BREATHELONDON_OBSERVS_WRITE_MODE` (workflow default `pubsub_only`)
+  - `BLONDON_COMMUNITIES_OBSERVS_WRITE_MODE` (workflow default `pubsub_only`)
   - `GCP_OBSERVS_PUBSUB_TOPIC`, `OBSERVS_PUBSUB_PUBLISH_BATCH_SIZE`
   - `SB_UK_AQ_CRON_SECRET`
-  - Dropbox secrets (`DROPBOX_*`) and raw-upload allowlist env (`BREATHELONDON_RAW_DROPBOX_ALLOWED_SUPABASE_URL` or legacy `UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL`)
+  - Dropbox secrets (`DROPBOX_*`) and raw-upload allowlist env (`BLONDON_COMMUNITIES_RAW_DROPBOX_ALLOWED_SUPABASE_URL` or legacy `UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL`)
 
 ### `uk_aq_uk_air_sos_cloud_run_deploy.yml`
 - Trigger: push to `main` affecting `workers/uk_aq_uk_air_sos_cloud_run/**` or SOS ingest runtime files, or manual dispatch.

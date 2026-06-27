@@ -143,7 +143,7 @@ Use dedicated service accounts (not default compute SAs) for deploy and runtime.
    - Required roles/bindings:
      - Secret Manager access to runtime secrets (`roles/secretmanager.secretAccessor`).
 
-5. Breathe London runtime SA (`GCP_BREATHELONDON_JOB_SERVICE_ACCOUNT`, e.g. `uk-aq-breathelondon-job@...`)
+5. Breathe London Communities runtime SA (`GCP_BLONDON_COMMUNITIES_JOB_SERVICE_ACCOUNT`, currently `uk-aq-breathelondon-job@...`; the variable name identifies the Communities connector)
    - Required roles/bindings:
      - Secret Manager access to runtime secrets (`roles/secretmanager.secretAccessor`).
 

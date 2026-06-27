@@ -3,12 +3,12 @@ FROM denoland/deno:2.1.4
 WORKDIR /app
 
 # Cloud Run service runner
-COPY workers/uk_aq_breathelondon_cloud_run/run_job.ts /app/workers/uk_aq_breathelondon_cloud_run/run_job.ts
-COPY workers/uk_aq_breathelondon_cloud_run/run_service.ts /app/workers/uk_aq_breathelondon_cloud_run/run_service.ts
+COPY workers/uk_aq_blondon_communities_cloud_run/run_job.ts /app/workers/uk_aq_blondon_communities_cloud_run/run_job.ts
+COPY workers/uk_aq_blondon_communities_cloud_run/run_service.ts /app/workers/uk_aq_blondon_communities_cloud_run/run_service.ts
 COPY workers/shared/dropbox_error_log.ts /app/workers/shared/dropbox_error_log.ts
 
 # Reuse existing BL ingest implementation + shared helpers.
-COPY supabase/functions/ingest_breathelondon/index.ts /app/runtime/ingest_breathelondon/index.ts
+COPY supabase/functions/ingest_breathelondon/index.ts /app/runtime/ingest_blondon_communities/index.ts
 COPY supabase/functions/_shared/cache.ts /app/runtime/_shared/cache.ts
 COPY supabase/functions/_shared/fetch_egress_patch.ts /app/runtime/_shared/fetch_egress_patch.ts
 COPY supabase/functions/_shared/egress_metrics.ts /app/runtime/_shared/egress_metrics.ts
@@ -17,6 +17,6 @@ COPY supabase/functions/_shared/fetch_egress_patch.ts /app/supabase/functions/_s
 COPY supabase/functions/_shared/egress_metrics.ts /app/supabase/functions/_shared/egress_metrics.ts
 
 ENV PORT=8000
-ENV BREATHELONDON_LOCAL_PORT=8000
+ENV BLONDON_COMMUNITIES_LOCAL_PORT=8000
 
-CMD ["deno", "run", "--allow-env", "--allow-net", "--allow-read", "--allow-write", "--allow-run", "/app/workers/uk_aq_breathelondon_cloud_run/run_service.ts"]
+CMD ["deno", "run", "--allow-env", "--allow-net", "--allow-read", "--allow-write", "--allow-run", "/app/workers/uk_aq_blondon_communities_cloud_run/run_service.ts"]

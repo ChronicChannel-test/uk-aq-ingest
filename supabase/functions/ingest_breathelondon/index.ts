@@ -89,7 +89,8 @@ type RawRecorder = {
 };
 
 const DEFAULT_BASE_URL = "https://api.breathelondon-communities.org/api";
-const DEFAULT_CONNECTOR_CODE = "breathelondon";
+const DEFAULT_CONNECTOR_CODE = "blondon_communities";
+const DEFAULT_SERVICE_REF = "breathelondon";
 const DEFAULT_SERVICE_LABEL = "Breathe London";
 const DEFAULT_USER_AGENT = "uk-air-quality-networks";
 const DEFAULT_INITIAL_DAYS = 7;
@@ -150,30 +151,39 @@ const UK_AQ_CORE_SCHEMA = Deno.env.get("UK_AQ_CORE_SCHEMA")
 const UK_AQ_RAW_SCHEMA = Deno.env.get("UK_AQ_RAW_SCHEMA")
   ?? "uk_aq_raw";
 
-const BREATHELONDON_API_KEY = Deno.env.get("BREATHELONDON_API_KEY") ?? "";
-const BREATHELONDON_BASE_URL = (Deno.env.get("BREATHELONDON_BASE_URL") ?? DEFAULT_BASE_URL)
+const BLONDON_COMMUNITIES_API_KEY = Deno.env.get("BLONDON_COMMUNITIES_API_KEY") ?? "";
+const BLONDON_COMMUNITIES_BASE_URL = (Deno.env.get("BLONDON_COMMUNITIES_BASE_URL") ?? DEFAULT_BASE_URL)
   .replace(/\/$/, "");
-const BREATHELONDON_CONNECTOR_CODE = Deno.env.get("BREATHELONDON_CONNECTOR_CODE")
-  ?? Deno.env.get("BREATHELONDON_CONNECTOR_REF")
-  ?? Deno.env.get("BREATHELONDON_SERVICE_REF")
-  ?? DEFAULT_CONNECTOR_CODE;
-const BREATHELONDON_SERVICE_REF = Deno.env.get("BREATHELONDON_SERVICE_REF")
-  ?? BREATHELONDON_CONNECTOR_CODE;
-const BREATHELONDON_SERVICE_LABEL = Deno.env.get("BREATHELONDON_SERVICE_LABEL")
-  ?? DEFAULT_SERVICE_LABEL;
-const BREATHELONDON_USER_AGENT = Deno.env.get("BREATHELONDON_USER_AGENT")
-  ?? DEFAULT_USER_AGENT;
-const BREATHELONDON_MAX_RUNTIME_SECONDS = Number(
-  Deno.env.get("BREATHELONDON_MAX_RUNTIME_SECONDS") ?? DEFAULT_MAX_RUNTIME_SECONDS,
+const CONNECTOR_CODE_ERROR =
+  "Use connector_code=blondon_communities for Breathe London Communities. network_code/service_ref may remain breathelondon.";
+const BLONDON_COMMUNITIES_CONNECTOR_CODE = resolveCommunitiesConnectorCode(
+  Deno.env.get("BLONDON_COMMUNITIES_CONNECTOR_CODE"),
 );
+const BLONDON_COMMUNITIES_SERVICE_REF = Deno.env.get("BLONDON_COMMUNITIES_SERVICE_REF")
+  ?? DEFAULT_SERVICE_REF;
+const BLONDON_COMMUNITIES_SERVICE_LABEL = Deno.env.get("BLONDON_COMMUNITIES_SERVICE_LABEL")
+  ?? DEFAULT_SERVICE_LABEL;
+const BLONDON_COMMUNITIES_USER_AGENT = Deno.env.get("BLONDON_COMMUNITIES_USER_AGENT")
+  ?? DEFAULT_USER_AGENT;
+const BLONDON_COMMUNITIES_MAX_RUNTIME_SECONDS = Number(
+  Deno.env.get("BLONDON_COMMUNITIES_MAX_RUNTIME_SECONDS") ?? DEFAULT_MAX_RUNTIME_SECONDS,
+);
+
+function resolveCommunitiesConnectorCode(raw: unknown): string {
+  const value = typeof raw === "string" ? raw.trim() : "";
+  if (value && value !== DEFAULT_CONNECTOR_CODE) {
+    throw new Error(CONNECTOR_CODE_ERROR);
+  }
+  return DEFAULT_CONNECTOR_CODE;
+}
 const SB_UK_AQ_CRON_SECRET = Deno.env.get("SB_UK_AQ_CRON_SECRET") ?? "";
 const DROPBOX_APP_KEY = Deno.env.get("DROPBOX_APP_KEY") ?? "";
 const DROPBOX_APP_SECRET = Deno.env.get("DROPBOX_APP_SECRET") ?? "";
 const DROPBOX_REFRESH_TOKEN = Deno.env.get("DROPBOX_REFRESH_TOKEN") ?? "";
-const DROPBOX_ALLOWED_SUPABASE_URL = Deno.env.get("BREATHELONDON_RAW_DROPBOX_ALLOWED_SUPABASE_URL")
+const DROPBOX_ALLOWED_SUPABASE_URL = Deno.env.get("BLONDON_COMMUNITIES_RAW_DROPBOX_ALLOWED_SUPABASE_URL")
   ?? Deno.env.get("UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL")
   ?? "";
-const DROPBOX_ERROR_ALLOWED_SUPABASE_URL = Deno.env.get("BREATHELONDON_ERROR_DROPBOX_ALLOWED_SUPABASE_URL")
+const DROPBOX_ERROR_ALLOWED_SUPABASE_URL = Deno.env.get("BLONDON_COMMUNITIES_ERROR_DROPBOX_ALLOWED_SUPABASE_URL")
   ?? Deno.env.get("UK_AIR_ERROR_DROPBOX_ALLOWED_SUPABASE_URL")
   ?? "";
 const DROPBOX_ROOT_FOLDER = (() => {
@@ -181,23 +191,23 @@ const DROPBOX_ROOT_FOLDER = (() => {
   return normalizeDropboxPath(raw);
 })();
 
-const DROPBOX_LOG_FOLDER = dropboxWithRoot("/connectors/breathelondon/log");
-const DROPBOX_RAW_FOLDER = dropboxWithRoot("/connectors/breathelondon/raw_data");
+const DROPBOX_LOG_FOLDER = dropboxWithRoot("/connectors/blondon_communities/log");
+const DROPBOX_RAW_FOLDER = dropboxWithRoot("/connectors/blondon_communities/raw_data");
 const DROPBOX_ERROR_FOLDER = dropboxWithRoot(
-  Deno.env.get("BREATHELONDON_ERROR_DROPBOX_FOLDER")
+  Deno.env.get("BLONDON_COMMUNITIES_ERROR_DROPBOX_FOLDER")
     ?? Deno.env.get("UK_AIR_ERROR_DROPBOX_FOLDER")
     ?? "error_log",
 );
 const DROPBOX_TOKEN_URL = "https://api.dropbox.com/oauth2/token";
 const DROPBOX_UPLOAD_URL = "https://content.dropboxapi.com/2/files/upload";
 const DROPBOX_UPLOAD_SOURCE = (() => {
-  const value = (Deno.env.get("BREATHELONDON_DROPBOX_UPLOAD_SOURCE") ?? "edge")
+  const value = (Deno.env.get("BLONDON_COMMUNITIES_DROPBOX_UPLOAD_SOURCE") ?? "edge")
     .trim()
     .toLowerCase();
   return value === "cloud_run" ? "cloud_run" : "edge";
 })();
-const BREATHELONDON_ENFORCE_RUNTIME_BUDGET = (() => {
-  const configured = asBoolean(Deno.env.get("BREATHELONDON_ENFORCE_RUNTIME_BUDGET"));
+const BLONDON_COMMUNITIES_ENFORCE_RUNTIME_BUDGET = (() => {
+  const configured = asBoolean(Deno.env.get("BLONDON_COMMUNITIES_ENFORCE_RUNTIME_BUDGET"));
   if (configured !== undefined) {
     return configured;
   }
@@ -212,7 +222,7 @@ function postgrestHeaders(prefer?: string, schema = UK_AQ_CORE_SCHEMA): Record<s
   const headers: Record<string, string> = {
     apikey: SUPABASE_PRIVILEGED_KEY,
     "Content-Type": "application/json",
-    "x-ukaq-egress-caller": "ingest_breathelondon",
+    "x-ukaq-egress-caller": "ingest_blondon_communities",
   };
   if (prefer) {
     headers.Prefer = prefer;
@@ -594,7 +604,7 @@ async function listSensors(
 ): Promise<Record<string, unknown>[]> {
   const url = new URL(`${baseUrl}/ListSensors`);
   url.searchParams.set("key", apiKey);
-  const payload = await fetchJson(url.toString(), { "User-Agent": BREATHELONDON_USER_AGENT }, rawRecorder);
+  const payload = await fetchJson(url.toString(), { "User-Agent": BLONDON_COMMUNITIES_USER_AGENT }, rawRecorder);
   return normalizeListSensors(payload);
 }
 
@@ -613,7 +623,7 @@ async function getClarityData(
     `${baseUrl}/getClarityData/${siteCode}/${species}/${start}/${end}/Hourly`,
   );
   url.searchParams.set("key", apiKey);
-  return await fetchJson(url.toString(), { "User-Agent": BREATHELONDON_USER_AGENT }, rawRecorder);
+  return await fetchJson(url.toString(), { "User-Agent": BLONDON_COMMUNITIES_USER_AGENT }, rawRecorder);
 }
 
 async function loadConnector(
@@ -950,7 +960,7 @@ async function fetchStationCheckpoints(
     const chunk = stationIds.slice(idx, idx + 200).map(String);
     const { data } = await postgrestRequest<Array<Record<string, unknown>>>(
       "GET",
-      "breathelondon_station_checkpoints",
+      "blondon_communities_station_checkpoints",
       {
         select: "station_id,next_due_at,last_observed_at,ingest_lag_samples,last_polled_at",
         station_id: postgrestIn(chunk),
@@ -976,7 +986,7 @@ async function upsertStationCheckpoints(rows: Record<string, unknown>[]): Promis
   }
   await postgrestRequest(
     "POST",
-    "breathelondon_station_checkpoints",
+    "blondon_communities_station_checkpoints",
     { on_conflict: "station_id" },
     rows,
     "resolution=merge-duplicates,return=minimal",
@@ -1289,7 +1299,7 @@ function buildDropboxDiagnostics(): DropboxDiagnostics {
 function normalizeConnectorPrefix(connectorCode: string | null): string {
   const cleaned = (connectorCode ?? "").trim().toLowerCase();
   const normalized = cleaned.replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
-  return normalized || "breathelondon";
+  return normalized || "blondon_communities";
 }
 
 function buildDropboxLogPath(
@@ -1660,7 +1670,7 @@ function createErrorLogger(config: DropboxConfig | null, enabled: boolean) {
         const dropboxPath = buildDropboxErrorPath(
           errorId,
           createdAt,
-          entry.connector_code ?? BREATHELONDON_CONNECTOR_CODE,
+          entry.connector_code ?? BLONDON_COMMUNITIES_CONNECTOR_CODE,
         );
         const payload = {
           ...row,
@@ -1717,7 +1727,7 @@ function summarizeStationRefs(refs: string[]): { count: number; refs: string[]; 
 }
 
 serve(async (req) => {
-  console.log("ingest_breathelondon request", {
+  console.log("ingest_blondon_communities request", {
     method: req.method,
     cron_auth_configured: Boolean(SB_UK_AQ_CRON_SECRET),
   });
@@ -1763,33 +1773,35 @@ serve(async (req) => {
   let observsRowsPrepared = 0;
   let observsRowsDedupedPrewrite = 0;
   const runStartedAt = Date.now();
-  const maxRuntimeSeconds = Number.isFinite(BREATHELONDON_MAX_RUNTIME_SECONDS)
-    ? Math.max(30, BREATHELONDON_MAX_RUNTIME_SECONDS)
+  const maxRuntimeSeconds = Number.isFinite(BLONDON_COMMUNITIES_MAX_RUNTIME_SECONDS)
+    ? Math.max(30, BLONDON_COMMUNITIES_MAX_RUNTIME_SECONDS)
     : DEFAULT_MAX_RUNTIME_SECONDS;
-  const runtimeDeadline = BREATHELONDON_ENFORCE_RUNTIME_BUDGET
+  const runtimeDeadline = BLONDON_COMMUNITIES_ENFORCE_RUNTIME_BUDGET
     ? runStartedAt + maxRuntimeSeconds * 1000
     : Number.POSITIVE_INFINITY;
   const shouldStop = () =>
-    BREATHELONDON_ENFORCE_RUNTIME_BUDGET && Date.now() >= runtimeDeadline;
+    BLONDON_COMMUNITIES_ENFORCE_RUNTIME_BUDGET && Date.now() >= runtimeDeadline;
 
   try {
     if (!SUPABASE_URL || !SUPABASE_PRIVILEGED_KEY) {
       status = 500;
       responsePayload = { error: "Missing SUPABASE_URL or SB_SECRET_KEY." };
       log.error("Missing Supabase configuration.");
-    } else if (!BREATHELONDON_API_KEY) {
+    } else if (!BLONDON_COMMUNITIES_API_KEY) {
       status = 500;
-      responsePayload = { error: "Missing BREATHELONDON_API_KEY." };
+      responsePayload = { error: "Missing BLONDON_COMMUNITIES_API_KEY." };
       log.error("Missing Breathe London API key.");
     } else {
       const payload = await req.json().catch(() => ({}));
       const request = payload as PollRequest;
 
       const connectorId = asString(request.connector_id);
-      const connectorCode = asString(request.connector_code) ?? BREATHELONDON_CONNECTOR_CODE;
-      const connectorLabel = asString(request.connector_label) ?? BREATHELONDON_SERVICE_LABEL;
-      const serviceRef = asString(request.service_ref) ?? BREATHELONDON_SERVICE_REF;
-      const baseUrl = asString(request.base_url) ?? BREATHELONDON_BASE_URL;
+      const connectorCode = resolveCommunitiesConnectorCode(
+        asString(request.connector_code) ?? BLONDON_COMMUNITIES_CONNECTOR_CODE,
+      );
+      const connectorLabel = asString(request.connector_label) ?? BLONDON_COMMUNITIES_SERVICE_LABEL;
+      const serviceRef = asString(request.service_ref) ?? BLONDON_COMMUNITIES_SERVICE_REF;
+      const baseUrl = asString(request.base_url) ?? BLONDON_COMMUNITIES_BASE_URL;
       const speciesList = parseSpeciesList(request.species ?? "IPM25,INO2");
       const stationRefs = parseStationRefs(request.station_refs ?? []);
       const stationRefLookup = new Set(
@@ -1814,7 +1826,7 @@ serve(async (req) => {
       const dryRun = asBoolean(request.dry_run, false) ?? false;
       stationFetchEnabled = !skipStations;
       debug = asBoolean(request.debug, false) ?? false;
-      const apiKey = asString(request.api_key) ?? BREATHELONDON_API_KEY;
+      const apiKey = asString(request.api_key) ?? BLONDON_COMMUNITIES_API_KEY;
       const startDateOverride = parseStartDate(asString(request.start_date));
 
       log.info("Poll request", {
@@ -1831,8 +1843,8 @@ serve(async (req) => {
         initial_days: initialDays,
         start_date: startDateOverride ? startDateOverride.toISOString() : null,
         dry_run: dryRun,
-        runtime_budget_enabled: BREATHELONDON_ENFORCE_RUNTIME_BUDGET,
-        max_runtime_seconds: BREATHELONDON_ENFORCE_RUNTIME_BUDGET ? maxRuntimeSeconds : null,
+        runtime_budget_enabled: BLONDON_COMMUNITIES_ENFORCE_RUNTIME_BUDGET,
+        max_runtime_seconds: BLONDON_COMMUNITIES_ENFORCE_RUNTIME_BUDGET ? maxRuntimeSeconds : null,
         debug,
       });
       if (!dropboxConfig && dropboxDiagnostics.reason) {
@@ -2377,7 +2389,7 @@ serve(async (req) => {
       context: {
         error: message,
       },
-      connector_code: connector?.connector_code ?? BREATHELONDON_CONNECTOR_CODE,
+      connector_code: connector?.connector_code ?? BLONDON_COMMUNITIES_CONNECTOR_CODE,
       connector_id: connector?.id ?? null,
     });
   }
@@ -2410,7 +2422,7 @@ serve(async (req) => {
       severity: "warn",
       message: "Breathe London ingest warnings.",
       context: { warnings: errors },
-      connector_code: connector?.connector_code ?? BREATHELONDON_CONNECTOR_CODE,
+      connector_code: connector?.connector_code ?? BLONDON_COMMUNITIES_CONNECTOR_CODE,
       connector_id: connector?.id ?? null,
     });
   }
@@ -2431,14 +2443,14 @@ serve(async (req) => {
           error: err instanceof Error ? err.message : String(err),
           dropbox: dropboxDiagnostics,
         },
-        connector_code: resolvedConnectorCode ?? BREATHELONDON_CONNECTOR_CODE,
+        connector_code: resolvedConnectorCode ?? BLONDON_COMMUNITIES_CONNECTOR_CODE,
         connector_id: connector?.id ?? null,
       });
     }
     if (accessToken) {
       const rawConnectorCode = resolvedConnectorCode
         ?? connector?.connector_code
-        ?? BREATHELONDON_CONNECTOR_CODE;
+        ?? BLONDON_COMMUNITIES_CONNECTOR_CODE;
       const connectorId = connector?.id ?? null;
       accessToken = await uploadDropboxLog(
         accessToken,

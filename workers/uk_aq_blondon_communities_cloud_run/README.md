@@ -1,6 +1,6 @@
-# uk_aq Breathe London Cloud Run service
+# UK AQ Breathe London Communities Cloud Run service
 
-This Cloud Run service runs Breathe London ingest in Google Cloud using the
+This Cloud Run service runs Breathe London Communities ingest in Google Cloud using the
 existing `supabase/functions/ingest_breathelondon/index.ts` logic.
 
 It keeps behavior aligned with the Edge function path:
@@ -17,7 +17,7 @@ It keeps behavior aligned with the Edge function path:
 1. Service wrapper (`run_service.ts`) invokes the worker (`run_job.ts`) per POST.
 2. Worker starts the BL ingest handler locally inside the container.
 3. Worker builds payload from connector settings (`poll_window_hours`, `poll_timeseries_batch_size`)
-   plus fresh station refs from `uk_aq_core.breathelondon_select_station_refs`.
+   plus fresh station refs from `uk_aq_core.blondon_communities_select_station_refs`.
 4. Worker sends one local POST request (with `x-cron-secret` when configured).
 5. Worker parses response and writes run telemetry into main DB.
 6. Worker exits non-zero if ingest failed.
@@ -27,11 +27,11 @@ and no local ingest call is made.
 
 Dropbox behavior in Cloud Run:
 - Log uploads are always attempted when Dropbox credentials are present.
-- Raw uploads are gated by `BREATHELONDON_RAW_DROPBOX_ALLOWED_SUPABASE_URL` (or `UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL`) matching `SUPABASE_URL`.
+- Raw uploads are gated by `BLONDON_COMMUNITIES_RAW_DROPBOX_ALLOWED_SUPABASE_URL` (or `UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL`) matching `SUPABASE_URL`.
 - Wrapper-inserted direct failure `error_logs` rows are mirrored into `/error_log/YYYY-MM-DD/` and patch `error_logs.dropbox_path` when Dropbox error logging is enabled.
 - File prefixes are `uk_aq_log_cloud_run_*` and `uk_aq_raw_cloud_run_*`.
-- Runtime budget in `ingest_breathelondon` is disabled by default in Cloud Run (`BREATHELONDON_DROPBOX_UPLOAD_SOURCE=cloud_run`).
-  - Set `BREATHELONDON_ENFORCE_RUNTIME_BUDGET=true` to re-enable the edge-style cutoff.
+- Runtime budget in `ingest_breathelondon` is disabled by default in Cloud Run (`BLONDON_COMMUNITIES_DROPBOX_UPLOAD_SOURCE=cloud_run`).
+  - Set `BLONDON_COMMUNITIES_ENFORCE_RUNTIME_BUDGET=true` to re-enable the edge-style cutoff.
 - The Cloud Run wrapper still enforces a hard child-process timeout at 14 minutes, one minute before the default 15-minute Cloud Run service timeout. On timeout it terminates the child process, returns HTTP 504 with `timed_out=true`, and clears the in-process run lock so the next scheduled request is not blocked indefinitely.
 
 ## Build and push
@@ -40,16 +40,16 @@ Dropbox behavior in Cloud Run:
 PROJECT_ID="your-project-id"
 REGION="europe-west2"
 REPO="uk-aq"
-IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}/uk-aq-breathelondon:latest"
+IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}/uk-aq-blondon-communities:latest"
 
-docker build -f workers/uk_aq_breathelondon_cloud_run/Dockerfile -t "${IMAGE}" .
+docker build -f workers/uk_aq_blondon_communities_cloud_run/Dockerfile -t "${IMAGE}" .
 docker push "${IMAGE}"
 ```
 
 ## Cloud Run service deploy
 
 ```bash
-gcloud run deploy uk-aq-breathelondon-ingest \
+gcloud run deploy uk-aq-blondon-communities-ingest \
   --region europe-west2 \
   --image "${IMAGE}" \
   --cpu 0.25 \
@@ -65,7 +65,7 @@ gcloud run deploy uk-aq-breathelondon-ingest \
 
 - `SUPABASE_URL`
 - `SB_SECRET_KEY`
-- `BREATHELONDON_API_KEY`
+- `BLONDON_COMMUNITIES_API_KEY`
 
 ## Optional but recommended
 
@@ -76,11 +76,16 @@ gcloud run deploy uk-aq-breathelondon-ingest \
 - `DROPBOX_APP_KEY`
 - `DROPBOX_APP_SECRET`
 - `DROPBOX_REFRESH_TOKEN`
-- `BREATHELONDON_RAW_DROPBOX_ALLOWED_SUPABASE_URL` or `UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL` (raw upload gate only)
+- `BLONDON_COMMUNITIES_RAW_DROPBOX_ALLOWED_SUPABASE_URL` or `UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL` (raw upload gate only)
 - `SB_UK_AQ_CRON_SECRET`
-- `BREATHELONDON_REQUEST_PAYLOAD` (JSON object overrides; dynamic connector-derived station/window/batch still apply)
-- `BREATHELONDON_ENFORCE_RUNTIME_BUDGET` (optional; defaults to `false` in Cloud Run)
-- `BREATHELONDON_IN_FLIGHT_TIMEOUT_MINUTES` (default `14`)
-- `BREATHELONDON_CLAIM_TIMEOUT_MINUTES` (default `14`)
-- `BREATHELONDON_LOCAL_PORT` (default `8000`; local ingest server port, separate from Cloud Run `PORT`)
-- `BREATHELONDON_INGEST_SCRIPT_PATH` (default `/app/runtime/ingest_breathelondon/index.ts`)
+- `BLONDON_COMMUNITIES_REQUEST_PAYLOAD` (JSON object overrides; dynamic connector-derived station/window/batch still apply)
+- `BLONDON_COMMUNITIES_ENFORCE_RUNTIME_BUDGET` (optional; defaults to `false` in Cloud Run)
+- `BLONDON_COMMUNITIES_IN_FLIGHT_TIMEOUT_MINUTES` (default `14`)
+- `BLONDON_COMMUNITIES_CLAIM_TIMEOUT_MINUTES` (default `14`)
+- `BLONDON_COMMUNITIES_LOCAL_PORT` (default `8000`; local ingest server port, separate from Cloud Run `PORT`)
+- `BLONDON_COMMUNITIES_CONNECTOR_CODE` (default `blondon_communities`)
+- `BLONDON_COMMUNITIES_SERVICE_REF` (default `breathelondon`; shared Breathe London service family)
+- `BLONDON_COMMUNITIES_INGEST_SCRIPT_PATH` (default `/app/runtime/ingest_blondon_communities/index.ts`)
+
+Any supplied connector code other than `blondon_communities` is rejected. In
+particular, the old connector code `breathelondon` is not accepted as an alias.

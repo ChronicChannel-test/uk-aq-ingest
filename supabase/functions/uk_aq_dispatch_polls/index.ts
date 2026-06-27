@@ -108,7 +108,7 @@ const REST_BASE_URL = SUPABASE_URL
 const TARGET_CONNECTORS = [
   "uk_air_sos",
   "sensorcommunity",
-  "breathelondon",
+  "blondon_communities",
   "erg_laqn",
   "openaq",
 ];
@@ -117,27 +117,27 @@ const SCHEDULER_BACKEND_GOOGLE_CLOUD_RUN = "google_cloud_run";
 const GOOGLE_CLOUD_RUN_CONNECTOR_ALLOWLIST = new Set([
   "uk_air_sos",
   "sensorcommunity",
-  "breathelondon",
+  "blondon_communities",
   "openaq",
 ]);
 
 const DEFAULT_INTERVAL_MINUTES: Record<string, number> = {
   uk_air_sos: 60,
   sensorcommunity: 15,
-  breathelondon: 60,
+  blondon_communities: 60,
   erg_laqn: 60,
   openaq: 60,
 };
 
 const DEFAULT_WINDOW_HOURS: Record<string, number> = {
   uk_air_sos: 6,
-  breathelondon: 6,
+  blondon_communities: 6,
   erg_laqn: 24,
   openaq: 6,
 };
 
 const DEFAULT_BATCH_LIMIT: Record<string, number> = {
-  breathelondon: 10,
+  blondon_communities: 10,
   erg_laqn: 10,
   openaq: 56,
 };
@@ -2006,16 +2006,16 @@ serve(async (req) => {
           response_status: resp.status,
           detail: resp.ok ? "dispatched" : "dispatch_failed",
         });
-      } else if (connectorCode === "breathelondon") {
+      } else if (connectorCode === "blondon_communities") {
         const batchLimit = getBatchLimit(connector, connectorCode);
         const stationRefs = await loadStationRefs(
-          "breathelondon_select_station_refs",
+          "blondon_communities_select_station_refs",
           {
             batchLimit,
             staleLimit: 4,
           },
         );
-        console.log("breathelondon_station_refs", {
+        console.log("blondon_communities_station_refs", {
           count: stationRefs.length,
           batch_limit: batchLimit,
         });
@@ -2034,7 +2034,7 @@ serve(async (req) => {
             "ingest_breathelondon",
             {
               connector_code: connectorCode,
-              service_ref: connectorCode,
+              service_ref: "breathelondon",
               station_refs: stationRefs,
               skip_stations: true,
               active_only: false,
@@ -2049,7 +2049,7 @@ serve(async (req) => {
             runMessage = `HTTP ${resp.status}`;
             await logError({
               severity: "error",
-              message: "ingest_breathelondon dispatch failed",
+              message: "ingest_blondon_communities dispatch failed",
               connector_id: connector?.id ?? null,
               context: {
                 connector_code: connectorCode,

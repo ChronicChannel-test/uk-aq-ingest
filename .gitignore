@@ -29,5 +29,6 @@ plans/uk_aq_station_duplicate_candidates_stations.csv
 system_docs.zip
 *.env
 workers/uk_aq_breathelondon_cloud_run.zip
+workers/uk_aq_blondon_communities_cloud_run.zip
 supabase/functions/ingest_breathelondon/index.ts.zip
 *.bak

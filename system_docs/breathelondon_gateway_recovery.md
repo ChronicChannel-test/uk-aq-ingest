@@ -15,7 +15,7 @@ See also: [breathelondon.md](breathelondon.md), [uk_aq_edge_functions.md](uk_aq_
 ### 1) Confirm API + key are valid
 
 ```bash
-curl -fsS "https://api.breathelondon-communities.org/api/ListSensors?key=$BREATHELONDON_API_KEY" | head -c 200
+curl -fsS "https://api.breathelondon-communities.org/api/ListSensors?key=$BLONDON_COMMUNITIES_API_KEY" | head -c 200
 ```
 
 If this is 401/403, fix credentials first. That is not a checkpoint-recovery case.
@@ -29,7 +29,7 @@ begin;
 
 -- Reset Breathe London station checkpoints so due-state is recalculated cleanly.
 with bl as (
-  select id from uk_aq_core.connectors where connector_code = 'breathelondon'
+  select id from uk_aq_core.connectors where connector_code = 'blondon_communities'
 ),
 station_truth as (
   select ts.station_id, max(ts.last_value_at) as max_last_value_at
@@ -38,7 +38,7 @@ station_truth as (
   where ts.station_id is not null
   group by ts.station_id
 )
-update uk_aq_raw.breathelondon_station_checkpoints sc
+update uk_aq_raw.blondon_communities_station_checkpoints sc
 set next_due_at        = now(),
     last_polled_at     = null,
     ingest_lag_samples = '{}'::int[],
@@ -54,7 +54,7 @@ commit;
 
 ```sql
 select count(*) as station_due_now
-from uk_aq_raw.breathelondon_station_checkpoints
+from uk_aq_raw.blondon_communities_station_checkpoints
 where next_due_at <= now();
 
 select
@@ -64,7 +64,7 @@ select
 from uk_aq_core.timeseries ts
 join uk_aq_core.phenomena ph on ph.id = ts.phenomenon_id
 join uk_aq_core.connectors c on c.id = ts.connector_id
-where c.connector_code = 'breathelondon'
+where c.connector_code = 'blondon_communities'
   and ts.ended_at is null
 group by ph.pollutant_key
 order by fresh desc;
@@ -83,7 +83,7 @@ order by fresh desc;
 | Outage type 1 | SOS gateway 5xx | API 5xx / timeout |
 | Outage type 2 | (rare) catalog returns partial | `ListSensors` missing previously-listed sites |
 | Outage type 3 | n/a | API key invalid/revoked/rotated (4xx storm) |
-| Cadence state | station/timeseries checkpoints | station checkpoints (`uk_aq_raw.breathelondon_station_checkpoints`) |
+| Cadence state | station/timeseries checkpoints | station checkpoints (`uk_aq_raw.blondon_communities_station_checkpoints`) |
 
 ## Known constraints
 

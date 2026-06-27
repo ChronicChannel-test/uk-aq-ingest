@@ -1285,7 +1285,7 @@ Environment:
 ### `scripts/breathelondon/breathelondon_ingest.py`
 Purpose:
 - Ingest Breathe London Communities observations using staged checkpoints in Supabase.
-- Pulls IPM25 and INO2 data per site and stores checkpoints in `breathelondon_timeseries_checkpoints`.
+- Pulls IPM25 and INO2 data per site and stores checkpoints in `blondon_communities_timeseries_checkpoints`.
 
 Common commands:
 ```
@@ -1299,13 +1299,13 @@ python3 scripts/breathelondon/breathelondon_ingest.py --skip-stations --recent-s
 ```
 
 Environment:
-- `BREATHELONDON_API_KEY`
+- `BLONDON_COMMUNITIES_API_KEY`
 - `SUPABASE_URL`
 - `SB_SECRET_KEY`
-- `BREATHELONDON_BASE_URL` (optional override)
-- `BREATHELONDON_CONNECTOR_CODE` / `BREATHELONDON_SERVICE_REF` (optional override)
-- `BREATHELONDON_SERVICE_LABEL` (optional override)
-- `BREATHELONDON_USER_AGENT` (optional override)
+- `BLONDON_COMMUNITIES_BASE_URL` (optional override)
+- `BLONDON_COMMUNITIES_CONNECTOR_CODE` / `BLONDON_COMMUNITIES_SERVICE_REF` (optional override)
+- `BLONDON_COMMUNITIES_SERVICE_LABEL` (optional override)
+- `BLONDON_COMMUNITIES_USER_AGENT` (optional override)
 
 Notes:
 - `--skip-stations` skips `ListSensors` and loads station refs from Supabase instead.
@@ -1322,7 +1322,7 @@ Purpose:
 
 Common commands:
 ```
-python3 scripts/breathelondon/breathelondon_batch.py --connector-code breathelondon --batch-size 10 --active-only --skip-stations
+python3 scripts/breathelondon/breathelondon_batch.py --connector-code blondon_communities --service-ref breathelondon --batch-size 10 --active-only --skip-stations
 ```
 
 Environment:
@@ -1330,13 +1330,13 @@ Environment:
 - `SB_SECRET_KEY`
 - `SB_PUBLISHABLE_DEFAULT_KEY`
 - `SB_UK_AQ_CRON_SECRET` (optional)
-- `BREATHELONDON_CONNECTOR_CODE` (optional override)
-- `BREATHELONDON_SERVICE_REF` (optional override)
+- `BLONDON_COMMUNITIES_CONNECTOR_CODE` (optional override)
+- `BLONDON_COMMUNITIES_SERVICE_REF` (optional override)
 
 Notes:
 - `--active-only` honors `station_metadata.attributes.enabled` or `station_metadata.attributes.site_active`.
 - `--skip-stations` avoids `ListSensors` and uses the Supabase station list instead.
-- Stations are ordered by `breathelondon_station_checkpoints.last_polled_at` (nulls first), then `next_due_at`.
+- Stations are ordered by `blondon_communities_station_checkpoints.last_polled_at` (nulls first), then `next_due_at`.
 
 ### `scripts/breathelondon/breathelondon_list_stations.py`
 Purpose:
@@ -1350,13 +1350,13 @@ python3 scripts/breathelondon/breathelondon_list_stations.py --to-supabase
 ```
 
 Environment:
-- `BREATHELONDON_API_KEY`
+- `BLONDON_COMMUNITIES_API_KEY`
 - `SUPABASE_URL` (required for `--to-supabase`)
 - `SB_SECRET_KEY` (required for `--to-supabase`)
-- `BREATHELONDON_BASE_URL` (optional override)
-- `BREATHELONDON_CONNECTOR_CODE` / `BREATHELONDON_SERVICE_REF` (optional override)
-- `BREATHELONDON_SERVICE_LABEL` (optional override)
-- `BREATHELONDON_USER_AGENT` (optional override)
+- `BLONDON_COMMUNITIES_BASE_URL` (optional override)
+- `BLONDON_COMMUNITIES_CONNECTOR_CODE` / `BLONDON_COMMUNITIES_SERVICE_REF` (optional override)
+- `BLONDON_COMMUNITIES_SERVICE_LABEL` (optional override)
+- `BLONDON_COMMUNITIES_USER_AGENT` (optional override)
 
 Notes:
 - Connector upserts preserve existing `poll_enabled`; new connectors default to `poll_enabled=false`.
@@ -1367,9 +1367,9 @@ Purpose:
 
 Common commands:
 ```
-python3 scripts/uk_aq_invoke_edge.py --function ingest_breathelondon --connector-code breathelondon
+python3 scripts/uk_aq_invoke_edge.py --function ingest_breathelondon --connector-code blondon_communities
 python3 scripts/uk_aq_invoke_edge.py --function ingest_sensorcommunity --connector-code sensorcommunity --payload '{"dry_run":true}'
-python3 scripts/uk_aq_invoke_edge.py --function uk_aq_latest --connector-code breathelondon --method GET --params '{"limit":5}'
+python3 scripts/uk_aq_invoke_edge.py --function uk_aq_latest --connector-code blondon_communities --method GET --params '{"limit":5}'
 ```
 
 Environment:

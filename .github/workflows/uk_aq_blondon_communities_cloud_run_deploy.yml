@@ -1,22 +1,22 @@
-name: Deploy Breathe London Cloud Run Service
+name: Deploy Breathe London Communities Cloud Run Service
 
 on:
   push:
     branches:
       - main
     paths:
-      - "workers/uk_aq_breathelondon_cloud_run/**"
+      - "workers/uk_aq_blondon_communities_cloud_run/**"
       - "supabase/functions/ingest_breathelondon/**"
       - "supabase/functions/_shared/cache.ts"
       - "supabase/functions/_shared/fetch_egress_patch.ts"
       - "supabase/functions/_shared/egress_metrics.ts"
       - "supabase/functions/_shared/observs_client.ts"
       - "scripts/gcp/**"
-      - ".github/workflows/uk_aq_breathelondon_cloud_run_deploy.yml"
+      - ".github/workflows/uk_aq_blondon_communities_cloud_run_deploy.yml"
   workflow_dispatch:
 
 jobs:
-  deploy-breathelondon-service:
+  deploy-blondon-communities-service:
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -25,55 +25,55 @@ jobs:
       PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
       REGION: ${{ vars.GCP_REGION || 'europe-west2' }}
       REPO: ${{ vars.GCP_ARTIFACT_REPO || 'uk-aq' }}
-      SERVICE_NAME: ${{ vars.GCP_BREATHELONDON_SERVICE_NAME || vars.GCP_BREATHELONDON_JOB_NAME || 'uk-aq-breathelondon-ingest' }}
-      BREATHELONDON_SERVICE_ACCOUNT: ${{ vars.GCP_BREATHELONDON_SERVICE_ACCOUNT || vars.GCP_BREATHELONDON_JOB_SERVICE_ACCOUNT || '' }}
-      RESOURCE_LABEL: uk-aq-breathelondon-ingest-service
-      SERVICE_TIMEOUT_SECONDS: ${{ vars.GCP_BREATHELONDON_SERVICE_TIMEOUT_SECONDS || vars.GCP_BREATHELONDON_JOB_TIMEOUT_SECONDS || '900' }}
-      SERVICE_CPU: ${{ vars.GCP_BREATHELONDON_SERVICE_CPU || '0.25' }}
-      SERVICE_MEMORY: ${{ vars.GCP_BREATHELONDON_SERVICE_MEMORY || '256Mi' }}
-      SERVICE_CONCURRENCY: ${{ vars.GCP_BREATHELONDON_SERVICE_CONCURRENCY || '1' }}
-      SERVICE_MAX_INSTANCES: ${{ vars.GCP_BREATHELONDON_SERVICE_MAX_INSTANCES || '1' }}
-      SERVICE_MIN_INSTANCES: ${{ vars.GCP_BREATHELONDON_SERVICE_MIN_INSTANCES || '0' }}
-      SCHEDULER_ENABLED: ${{ vars.GCP_BREATHELONDON_SCHEDULER_ENABLED || 'true' }}
-      SCHEDULER_JOB_NAME: ${{ vars.GCP_BREATHELONDON_SCHEDULER_JOB_NAME || 'uk-aq-breathelondon-trigger' }}
-      SCHEDULER_CRON: ${{ vars.GCP_BREATHELONDON_SCHEDULER_CRON || '05,30,55 * * * *' }}
-      SCHEDULER_TIMEZONE: ${{ vars.GCP_BREATHELONDON_SCHEDULER_TIMEZONE || 'Etc/UTC' }}
-      SCHEDULER_MAX_RETRY_ATTEMPTS: ${{ vars.GCP_BREATHELONDON_SCHEDULER_MAX_RETRY_ATTEMPTS || '0' }}
-      SCHEDULER_ATTEMPT_DEADLINE: ${{ vars.GCP_BREATHELONDON_SCHEDULER_ATTEMPT_DEADLINE || '900s' }}
-      SCHEDULER_SERVICE_ACCOUNT: ${{ vars.GCP_BREATHELONDON_SCHEDULER_SERVICE_ACCOUNT || '' }}
+      SERVICE_NAME: ${{ vars.GCP_BLONDON_COMMUNITIES_SERVICE_NAME || vars.GCP_BLONDON_COMMUNITIES_JOB_NAME || 'uk-aq-blondon-communities-ingest' }}
+      BLONDON_COMMUNITIES_SERVICE_ACCOUNT: ${{ vars.GCP_BLONDON_COMMUNITIES_SERVICE_ACCOUNT || vars.GCP_BLONDON_COMMUNITIES_JOB_SERVICE_ACCOUNT || '' }}
+      RESOURCE_LABEL: uk-aq-blondon-communities-ingest-service
+      SERVICE_TIMEOUT_SECONDS: ${{ vars.GCP_BLONDON_COMMUNITIES_SERVICE_TIMEOUT_SECONDS || vars.GCP_BLONDON_COMMUNITIES_JOB_TIMEOUT_SECONDS || '900' }}
+      SERVICE_CPU: ${{ vars.GCP_BLONDON_COMMUNITIES_SERVICE_CPU || '0.25' }}
+      SERVICE_MEMORY: ${{ vars.GCP_BLONDON_COMMUNITIES_SERVICE_MEMORY || '256Mi' }}
+      SERVICE_CONCURRENCY: ${{ vars.GCP_BLONDON_COMMUNITIES_SERVICE_CONCURRENCY || '1' }}
+      SERVICE_MAX_INSTANCES: ${{ vars.GCP_BLONDON_COMMUNITIES_SERVICE_MAX_INSTANCES || '1' }}
+      SERVICE_MIN_INSTANCES: ${{ vars.GCP_BLONDON_COMMUNITIES_SERVICE_MIN_INSTANCES || '0' }}
+      SCHEDULER_ENABLED: ${{ vars.GCP_BLONDON_COMMUNITIES_SCHEDULER_ENABLED || 'true' }}
+      SCHEDULER_JOB_NAME: ${{ vars.GCP_BLONDON_COMMUNITIES_SCHEDULER_JOB_NAME || 'uk-aq-blondon-communities-trigger' }}
+      SCHEDULER_CRON: ${{ vars.GCP_BLONDON_COMMUNITIES_SCHEDULER_CRON || '05,30,55 * * * *' }}
+      SCHEDULER_TIMEZONE: ${{ vars.GCP_BLONDON_COMMUNITIES_SCHEDULER_TIMEZONE || 'Etc/UTC' }}
+      SCHEDULER_MAX_RETRY_ATTEMPTS: ${{ vars.GCP_BLONDON_COMMUNITIES_SCHEDULER_MAX_RETRY_ATTEMPTS || '0' }}
+      SCHEDULER_ATTEMPT_DEADLINE: ${{ vars.GCP_BLONDON_COMMUNITIES_SCHEDULER_ATTEMPT_DEADLINE || '900s' }}
+      SCHEDULER_SERVICE_ACCOUNT: ${{ vars.GCP_BLONDON_COMMUNITIES_SCHEDULER_SERVICE_ACCOUNT || '' }}
       SUPABASE_URL: ${{ vars.SUPABASE_URL }}
       OBS_AQIDB_SUPABASE_URL: ${{ vars.OBS_AQIDB_SUPABASE_URL }}
       UK_AQ_CORE_SCHEMA: ${{ vars.UK_AQ_CORE_SCHEMA || 'uk_aq_core' }}
       UK_AQ_RAW_SCHEMA: ${{ vars.UK_AQ_RAW_SCHEMA || 'uk_aq_raw' }}
       OBS_AQIDB_RPC_SCHEMA: ${{ vars.OBS_AQIDB_RPC_SCHEMA || 'uk_aq_public' }}
-      OBSERVS_WRITE_MODE: ${{ vars.BREATHELONDON_OBSERVS_WRITE_MODE || vars.OBSERVS_WRITE_MODE || 'pubsub_only' }}
+      OBSERVS_WRITE_MODE: ${{ vars.BLONDON_COMMUNITIES_OBSERVS_WRITE_MODE || vars.OBSERVS_WRITE_MODE || 'pubsub_only' }}
       GCP_OBSERVS_PUBSUB_TOPIC: ${{ vars.GCP_OBSERVS_PUBSUB_TOPIC || 'uk-aq-observs-observations' }}
       OBSERVS_PUBSUB_PUBLISH_BATCH_SIZE: ${{ vars.OBSERVS_PUBSUB_PUBLISH_BATCH_SIZE || '500' }}
-      BREATHELONDON_BASE_URL: ${{ vars.BREATHELONDON_BASE_URL || 'https://api.breathelondon-communities.org/api' }}
-      BREATHELONDON_CONNECTOR_CODE: ${{ vars.BREATHELONDON_CONNECTOR_CODE || 'breathelondon' }}
-      BREATHELONDON_SERVICE_REF: ${{ vars.BREATHELONDON_SERVICE_REF || 'breathelondon' }}
-      BREATHELONDON_SERVICE_LABEL: ${{ vars.BREATHELONDON_SERVICE_LABEL || 'Breathe London' }}
-      BREATHELONDON_USER_AGENT: ${{ vars.BREATHELONDON_USER_AGENT || 'uk-air-quality-networks' }}
-      BREATHELONDON_MAX_RUNTIME_SECONDS: ${{ vars.BREATHELONDON_MAX_RUNTIME_SECONDS || '300' }}
-      BREATHELONDON_IN_FLIGHT_TIMEOUT_MINUTES: ${{ vars.BREATHELONDON_IN_FLIGHT_TIMEOUT_MINUTES || '14' }}
-      BREATHELONDON_CLAIM_TIMEOUT_MINUTES: ${{ vars.BREATHELONDON_CLAIM_TIMEOUT_MINUTES || '14' }}
-      BREATHELONDON_RAW_DROPBOX_ALLOWED_SUPABASE_URL: ${{ vars.BREATHELONDON_RAW_DROPBOX_ALLOWED_SUPABASE_URL || '' }}
+      BLONDON_COMMUNITIES_BASE_URL: ${{ vars.BLONDON_COMMUNITIES_BASE_URL || 'https://api.breathelondon-communities.org/api' }}
+      BLONDON_COMMUNITIES_CONNECTOR_CODE: ${{ vars.BLONDON_COMMUNITIES_CONNECTOR_CODE || 'blondon_communities' }}
+      BLONDON_COMMUNITIES_SERVICE_REF: ${{ vars.BLONDON_COMMUNITIES_SERVICE_REF || 'breathelondon' }}
+      BLONDON_COMMUNITIES_SERVICE_LABEL: ${{ vars.BLONDON_COMMUNITIES_SERVICE_LABEL || 'Breathe London' }}
+      BLONDON_COMMUNITIES_USER_AGENT: ${{ vars.BLONDON_COMMUNITIES_USER_AGENT || 'uk-air-quality-networks' }}
+      BLONDON_COMMUNITIES_MAX_RUNTIME_SECONDS: ${{ vars.BLONDON_COMMUNITIES_MAX_RUNTIME_SECONDS || '300' }}
+      BLONDON_COMMUNITIES_IN_FLIGHT_TIMEOUT_MINUTES: ${{ vars.BLONDON_COMMUNITIES_IN_FLIGHT_TIMEOUT_MINUTES || '14' }}
+      BLONDON_COMMUNITIES_CLAIM_TIMEOUT_MINUTES: ${{ vars.BLONDON_COMMUNITIES_CLAIM_TIMEOUT_MINUTES || '14' }}
+      BLONDON_COMMUNITIES_RAW_DROPBOX_ALLOWED_SUPABASE_URL: ${{ vars.BLONDON_COMMUNITIES_RAW_DROPBOX_ALLOWED_SUPABASE_URL || '' }}
       UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL: ${{ vars.UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL || '' }}
-      BREATHELONDON_ERROR_DROPBOX_ALLOWED_SUPABASE_URL: ${{ vars.BREATHELONDON_ERROR_DROPBOX_ALLOWED_SUPABASE_URL || '' }}
+      BLONDON_COMMUNITIES_ERROR_DROPBOX_ALLOWED_SUPABASE_URL: ${{ vars.BLONDON_COMMUNITIES_ERROR_DROPBOX_ALLOWED_SUPABASE_URL || '' }}
       UK_AIR_ERROR_DROPBOX_ALLOWED_SUPABASE_URL: ${{ vars.UK_AIR_ERROR_DROPBOX_ALLOWED_SUPABASE_URL || '' }}
       UK_AQ_DROPBOX_ROOT: ${{ vars.UK_AQ_DROPBOX_ROOT }}
-      BREATHELONDON_ERROR_DROPBOX_FOLDER: ${{ vars.BREATHELONDON_ERROR_DROPBOX_FOLDER || 'error_log' }}
+      BLONDON_COMMUNITIES_ERROR_DROPBOX_FOLDER: ${{ vars.BLONDON_COMMUNITIES_ERROR_DROPBOX_FOLDER || 'error_log' }}
       UK_AIR_ERROR_DROPBOX_FOLDER: ${{ vars.UK_AIR_ERROR_DROPBOX_FOLDER || 'error_log' }}
       SB_SECRET_KEY: ${{ secrets.SB_SECRET_KEY }}
       OBS_AQIDB_SECRET_KEY: ${{ secrets.OBS_AQIDB_SECRET_KEY }}
-      BREATHELONDON_API_KEY: ${{ secrets.BREATHELONDON_API_KEY }}
+      BLONDON_COMMUNITIES_API_KEY: ${{ secrets.BLONDON_COMMUNITIES_API_KEY }}
       SB_UK_AQ_CRON_SECRET: ${{ secrets.SB_UK_AQ_CRON_SECRET }}
       DROPBOX_APP_KEY: ${{ secrets.DROPBOX_APP_KEY }}
       DROPBOX_APP_SECRET: ${{ secrets.DROPBOX_APP_SECRET }}
       DROPBOX_REFRESH_TOKEN: ${{ secrets.DROPBOX_REFRESH_TOKEN }}
       SB_SECRET_KEY_SECRET_NAME: ${{ vars.SB_SECRET_KEY_SECRET_NAME || 'SB_SECRET_KEY' }}
       OBS_AQIDB_SECRET_KEY_SECRET_NAME: ${{ vars.OBS_AQIDB_SECRET_KEY_SECRET_NAME || 'OBS_AQIDB_SECRET_KEY' }}
-      BREATHELONDON_API_KEY_SECRET_NAME: ${{ vars.BREATHELONDON_API_KEY_SECRET_NAME || 'BREATHELONDON_API_KEY' }}
+      BLONDON_COMMUNITIES_API_KEY_SECRET_NAME: ${{ vars.BLONDON_COMMUNITIES_API_KEY_SECRET_NAME || 'BLONDON_COMMUNITIES_API_KEY' }}
       SB_UK_AQ_CRON_SECRET_SECRET_NAME: ${{ vars.SB_UK_AQ_CRON_SECRET_SECRET_NAME || 'SB_UK_AQ_CRON_SECRET' }}
       DROPBOX_APP_KEY_SECRET_NAME: ${{ vars.DROPBOX_APP_KEY_SECRET_NAME || 'DROPBOX_APP_KEY' }}
       DROPBOX_APP_SECRET_SECRET_NAME: ${{ vars.DROPBOX_APP_SECRET_SECRET_NAME || 'DROPBOX_APP_SECRET' }}
@@ -91,17 +91,21 @@ jobs:
             echo "Missing required secret: GCP_PROJECT_ID"
             exit 1
           fi
-          if [ -z "${BREATHELONDON_SERVICE_ACCOUNT:-}" ]; then
+          if [ -z "${BLONDON_COMMUNITIES_SERVICE_ACCOUNT:-}" ]; then
             echo "Missing required service account setting."
-            echo "Set repo variable: GCP_BREATHELONDON_SERVICE_ACCOUNT (or legacy GCP_BREATHELONDON_JOB_SERVICE_ACCOUNT)"
+            echo "Set repo variable: GCP_BLONDON_COMMUNITIES_SERVICE_ACCOUNT (or legacy GCP_BLONDON_COMMUNITIES_JOB_SERVICE_ACCOUNT)"
             exit 1
           fi
-          if [[ "${BREATHELONDON_SERVICE_ACCOUNT}" == *"-compute@developer.gserviceaccount.com" ]]; then
+          if [[ "${BLONDON_COMMUNITIES_SERVICE_ACCOUNT}" == *"-compute@developer.gserviceaccount.com" ]]; then
             echo "Invalid runtime service account: default compute service account is not allowed."
             exit 1
           fi
           if [ -z "${SUPABASE_URL:-}" ]; then
             echo "Missing required secret: SUPABASE_URL"
+            exit 1
+          fi
+          if [ "${BLONDON_COMMUNITIES_CONNECTOR_CODE}" != "blondon_communities" ]; then
+            echo "Use connector_code=blondon_communities for Breathe London Communities. network_code/service_ref may remain breathelondon."
             exit 1
           fi
           observs_mode="$(printf '%s' "${OBSERVS_WRITE_MODE:-}" | tr '[:upper:]' '[:lower:]')"
@@ -166,12 +170,12 @@ jobs:
         run: |
           gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
 
-      - name: Build and push Breathe London image
+      - name: Build and push Breathe London Communities image
         id: build
         run: |
-          IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}/uk-aq-breathelondon:${GITHUB_SHA::12}"
+          IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}/uk-aq-blondon-communities:${GITHUB_SHA::12}"
           echo "image=${IMAGE}" >> "${GITHUB_OUTPUT}"
-          docker build -f workers/uk_aq_breathelondon_cloud_run/Dockerfile -t "${IMAGE}" .
+          docker build -f workers/uk_aq_blondon_communities_cloud_run/Dockerfile -t "${IMAGE}" .
           docker push "${IMAGE}"
 
       - name: Ensure observs Pub/Sub topic + publisher IAM binding
@@ -192,7 +196,7 @@ jobs:
 
           gcloud pubsub topics add-iam-policy-binding "${GCP_OBSERVS_PUBSUB_TOPIC}" \
             --project "${PROJECT_ID}" \
-            --member "serviceAccount:${BREATHELONDON_SERVICE_ACCOUNT}" \
+            --member "serviceAccount:${BLONDON_COMMUNITIES_SERVICE_ACCOUNT}" \
             --role "roles/pubsub.publisher" >/dev/null
 
       - name: Sync GitHub secrets to GCP Secret Manager
@@ -227,7 +231,7 @@ jobs:
           }
 
           upsert_secret "${SB_SECRET_KEY_SECRET_NAME}" "${SB_SECRET_KEY}" 1
-          upsert_secret "${BREATHELONDON_API_KEY_SECRET_NAME}" "${BREATHELONDON_API_KEY}" 1
+          upsert_secret "${BLONDON_COMMUNITIES_API_KEY_SECRET_NAME}" "${BLONDON_COMMUNITIES_API_KEY}" 1
           upsert_secret "${SB_UK_AQ_CRON_SECRET_SECRET_NAME}" "${SB_UK_AQ_CRON_SECRET}" 0
           observs_mode="$(printf '%s' "${OBSERVS_WRITE_MODE:-}" | tr '[:upper:]' '[:lower:]')"
           if [ "${observs_mode}" = "direct" ]; then
@@ -292,22 +296,22 @@ jobs:
           add_env OBSERVS_WRITE_MODE
           add_env GCP_OBSERVS_PUBSUB_TOPIC
           add_env OBSERVS_PUBSUB_PUBLISH_BATCH_SIZE
-          add_env BREATHELONDON_BASE_URL
-          add_env BREATHELONDON_CONNECTOR_CODE
-          add_env BREATHELONDON_SERVICE_REF
-          add_env BREATHELONDON_SERVICE_LABEL
-          add_env BREATHELONDON_USER_AGENT
-          add_env BREATHELONDON_MAX_RUNTIME_SECONDS
-          add_env BREATHELONDON_IN_FLIGHT_TIMEOUT_MINUTES
-          add_env BREATHELONDON_CLAIM_TIMEOUT_MINUTES
-          add_env BREATHELONDON_RAW_DROPBOX_ALLOWED_SUPABASE_URL
+          add_env BLONDON_COMMUNITIES_BASE_URL
+          add_env BLONDON_COMMUNITIES_CONNECTOR_CODE
+          add_env BLONDON_COMMUNITIES_SERVICE_REF
+          add_env BLONDON_COMMUNITIES_SERVICE_LABEL
+          add_env BLONDON_COMMUNITIES_USER_AGENT
+          add_env BLONDON_COMMUNITIES_MAX_RUNTIME_SECONDS
+          add_env BLONDON_COMMUNITIES_IN_FLIGHT_TIMEOUT_MINUTES
+          add_env BLONDON_COMMUNITIES_CLAIM_TIMEOUT_MINUTES
+          add_env BLONDON_COMMUNITIES_RAW_DROPBOX_ALLOWED_SUPABASE_URL
           add_env UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL
-          add_env BREATHELONDON_ERROR_DROPBOX_ALLOWED_SUPABASE_URL
+          add_env BLONDON_COMMUNITIES_ERROR_DROPBOX_ALLOWED_SUPABASE_URL
           add_env UK_AIR_ERROR_DROPBOX_ALLOWED_SUPABASE_URL
           add_env UK_AQ_DROPBOX_ROOT
-          add_env BREATHELONDON_ERROR_DROPBOX_FOLDER
+          add_env BLONDON_COMMUNITIES_ERROR_DROPBOX_FOLDER
           add_env UK_AIR_ERROR_DROPBOX_FOLDER
-          env_updates+=("BREATHELONDON_LOCAL_PORT=8000")
+          env_updates+=("BLONDON_COMMUNITIES_LOCAL_PORT=8000")
           env_updates+=("GCP_PROJECT_ID=${PROJECT_ID}")
           if [ -n "${OBS_AQIDB_SUPABASE_URL:-}" ]; then
             add_env OBS_AQIDB_SUPABASE_URL
@@ -317,7 +321,7 @@ jobs:
           observs_mode="$(printf '%s' "${OBSERVS_WRITE_MODE:-}" | tr '[:upper:]' '[:lower:]')"
           secret_updates=()
           add_secret_binding "SB_SECRET_KEY" "${SB_SECRET_KEY_SECRET_NAME}" 1
-          add_secret_binding "BREATHELONDON_API_KEY" "${BREATHELONDON_API_KEY_SECRET_NAME}" 1
+          add_secret_binding "BLONDON_COMMUNITIES_API_KEY" "${BLONDON_COMMUNITIES_API_KEY_SECRET_NAME}" 1
           if [ -n "${SB_UK_AQ_CRON_SECRET:-}" ]; then
             add_secret_binding "SB_UK_AQ_CRON_SECRET" "${SB_UK_AQ_CRON_SECRET_SECRET_NAME}" 0
           fi
@@ -332,7 +336,7 @@ jobs:
             add_secret_binding "DROPBOX_REFRESH_TOKEN" "${DROPBOX_REFRESH_TOKEN_SECRET_NAME}" 0
           fi
 
-          env_file="${RUNNER_TEMP}/uk-aq-breathelondon-env.yaml"
+          env_file="${RUNNER_TEMP}/uk-aq-blondon-communities-env.yaml"
           : > "${env_file}"
           for kv in "${env_updates[@]}"; do
             key="${kv%%=*}"
@@ -355,7 +359,7 @@ jobs:
             gcloud run deploy "${SERVICE_NAME}"
             --region "${REGION}"
             --image "${{ steps.build.outputs.image }}"
-            --service-account "${BREATHELONDON_SERVICE_ACCOUNT}"
+            --service-account "${BLONDON_COMMUNITIES_SERVICE_ACCOUNT}"
             --timeout "${SERVICE_TIMEOUT_SECONDS}"
             --cpu "${SERVICE_CPU}"
             --memory "${SERVICE_MEMORY}"
@@ -407,7 +411,7 @@ jobs:
             exit 1
           fi
 
-          scheduler_sa="${SCHEDULER_SERVICE_ACCOUNT:-${BREATHELONDON_SERVICE_ACCOUNT}}"
+          scheduler_sa="${SCHEDULER_SERVICE_ACCOUNT:-${BLONDON_COMMUNITIES_SERVICE_ACCOUNT}}"
           service_uri="$(gcloud run services describe "${SERVICE_NAME}" --region "${REGION}" --format='value(status.url)')"
           scheduler_body='{"trigger_mode":"safety"}'
 

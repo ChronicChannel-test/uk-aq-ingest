@@ -4,7 +4,7 @@ Batch Breathe London ingest by station refs via the Supabase Edge Function.
 
 Example:
   python3 scripts/breathelondon/breathelondon_batch.py \
-    --connector-code breathelondon \
+    --connector-code blondon_communities \
     --batch-size 10 \
     --active-only
 """
@@ -37,13 +37,16 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Batch Breathe London ingest via Edge Function.")
     parser.add_argument(
         "--connector-code",
-        default=os.getenv("BREATHELONDON_CONNECTOR_CODE", "breathelondon"),
-        help="Connector code (default: breathelondon).",
+        default=os.getenv(
+            "BLONDON_COMMUNITIES_CONNECTOR_CODE",
+            "blondon_communities",
+        ),
+        help="Communities connector code (default: blondon_communities).",
     )
     parser.add_argument(
         "--service-ref",
-        default=os.getenv("BREATHELONDON_SERVICE_REF"),
-        help="Service ref override (default: connector code).",
+        default=os.getenv("BLONDON_COMMUNITIES_SERVICE_REF", "breathelondon"),
+        help="Service ref override (default: breathelondon).",
     )
     parser.add_argument(
         "--batch-size",
@@ -194,7 +197,7 @@ def _load_oldest_fetch_map(
         return fetch_map
     for chunk in _chunk(station_ids, 500):
         resp = (
-            client.table("breathelondon_station_checkpoints")
+            client.table("blondon_communities_station_checkpoints")
             .select("station_id,next_due_at,last_polled_at")
             .in_("station_id", list(chunk))
             .execute()
@@ -224,8 +227,13 @@ def main() -> int:
     if not publishable_key:
         raise SystemExit("SB_PUBLISHABLE_DEFAULT_KEY (or --publishable-key) is required.")
 
+    if args.connector_code != "blondon_communities":
+        raise SystemExit(
+            "Use connector_code=blondon_communities for Breathe London Communities. "
+            "network_code/service_ref may remain breathelondon."
+        )
     connector_code = args.connector_code
-    service_ref = args.service_ref or connector_code
+    service_ref = args.service_ref or "breathelondon"
     if args.batch_size <= 0:
         raise SystemExit("--batch-size must be greater than zero.")
 

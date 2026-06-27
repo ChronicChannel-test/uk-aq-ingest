@@ -1,13 +1,17 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 
 const PORT = Number(Deno.env.get("PORT") || "8080");
-const RUN_JOB_SCRIPT = "/app/workers/uk_aq_breathelondon_cloud_run/run_job.ts";
-const INGEST_SCRIPT_PATH = "/app/runtime/ingest_breathelondon/index.ts";
+const RUN_JOB_SCRIPT =
+  "/app/workers/uk_aq_blondon_communities_cloud_run/run_job.ts";
+const INGEST_SCRIPT_PATH = "/app/runtime/ingest_blondon_communities/index.ts";
 const ALLOWED_TRIGGER_MODES = new Set(["safety", "task", "manual"]);
 const CHILD_TIMEOUT_MS = 14 * 60 * 1000;
 const CHILD_SHUTDOWN_GRACE_MS = 10 * 1000;
-const CONNECTOR_CODE =
-  (Deno.env.get("BREATHELONDON_CONNECTOR_CODE") || "breathelondon").trim();
+const CONNECTOR_CODE_ERROR =
+  "Use connector_code=blondon_communities for Breathe London Communities. network_code/service_ref may remain breathelondon.";
+const CONNECTOR_CODE = resolveCommunitiesConnectorCode(
+  Deno.env.get("BLONDON_COMMUNITIES_CONNECTOR_CODE"),
+);
 const SUPABASE_URL = (Deno.env.get("SUPABASE_URL") || "").trim();
 const SUPABASE_PRIVILEGED_KEY = (Deno.env.get("SB_SECRET_KEY") || "").trim();
 const UK_AQ_CORE_SCHEMA = (Deno.env.get("UK_AQ_CORE_SCHEMA") || "uk_aq_core")
@@ -38,6 +42,14 @@ type ConnectorState = {
   last_run_status: unknown;
 };
 
+function resolveCommunitiesConnectorCode(raw: unknown): string {
+  const value = typeof raw === "string" ? raw.trim() : "";
+  if (value && value !== "blondon_communities") {
+    throw new Error(CONNECTOR_CODE_ERROR);
+  }
+  return "blondon_communities";
+}
+
 async function cleanupStaleIngestProcesses(stage: string): Promise<void> {
   // Timeouts can leave a grandchild ingest process alive in the container.
   // Best-effort cleanup avoids port 8000 conflicts on the next run.
@@ -56,7 +68,7 @@ async function cleanupStaleIngestProcesses(stage: string): Promise<void> {
     console.error(
       JSON.stringify({
         ts: new Date().toISOString(),
-        service: "uk_aq_breathelondon_cloud_run",
+        service: "uk_aq_blondon_communities_cloud_run",
         message: "stale_process_cleanup_failed",
         stage,
         error: message,
@@ -72,9 +84,10 @@ function resolveTriggerMode(req: Request, body: unknown): string {
     return queryMode;
   }
 
-  const headerMode = (req.headers.get("x-breathelondon-trigger-mode") || "")
-    .trim()
-    .toLowerCase();
+  const headerMode = (
+    req.headers.get("x-blondon-communities-trigger-mode") ||
+    ""
+  ).trim().toLowerCase();
   if (headerMode && ALLOWED_TRIGGER_MODES.has(headerMode)) {
     return headerMode;
   }
@@ -174,7 +187,7 @@ async function recoverTimedOutConnectorState(
     console.error(
       JSON.stringify({
         ts: new Date().toISOString(),
-        service: "uk_aq_breathelondon_cloud_run",
+        service: "uk_aq_blondon_communities_cloud_run",
         message: "timeout_recovery_skipped",
         reason: "missing_supabase_config",
       }),
@@ -254,10 +267,10 @@ async function runJob(
 ): Promise<RunJobResult> {
   const childEnv: Record<string, string> = {
     ...Deno.env.toObject(),
-    BREATHELONDON_TRIGGER_MODE: triggerMode,
+    BLONDON_COMMUNITIES_TRIGGER_MODE: triggerMode,
   };
   if (currentTaskName) {
-    childEnv.BREATHELONDON_CURRENT_TASK_NAME = currentTaskName;
+    childEnv.BLONDON_COMMUNITIES_CURRENT_TASK_NAME = currentTaskName;
   }
   const child = new Deno.Command("deno", {
     args: [
@@ -297,7 +310,7 @@ async function runJob(
   console.error(
     JSON.stringify({
       ts: new Date().toISOString(),
-      service: "uk_aq_breathelondon_cloud_run",
+      service: "uk_aq_blondon_communities_cloud_run",
       message: "child_timeout",
       timeout_seconds: Math.trunc(CHILD_TIMEOUT_MS / 1000),
       trigger_mode: triggerMode,
@@ -344,7 +357,7 @@ serve(async (req: Request) => {
     return new Response(
       JSON.stringify({
         ok: true,
-        service: "uk_aq_breathelondon_cloud_run",
+        service: "uk_aq_blondon_communities_cloud_run",
       }),
       {
         status: 200,
@@ -394,7 +407,7 @@ serve(async (req: Request) => {
         console.error(
           JSON.stringify({
             ts: new Date().toISOString(),
-            service: "uk_aq_breathelondon_cloud_run",
+            service: "uk_aq_blondon_communities_cloud_run",
             message: "timeout_recovery_failed",
             error: message,
           }),

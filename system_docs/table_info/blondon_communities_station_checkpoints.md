@@ -1,7 +1,7 @@
-# breathelondon_station_checkpoints
+# blondon_communities_station_checkpoints
 
 Purpose:
-- Stores per-station polling state for Breathe London scheduling.
+- Stores per-station polling state for Breathe London Communities scheduling.
 
 Columns:
 - `station_id`: PK, FK to `uk_aq_core.stations.id`.

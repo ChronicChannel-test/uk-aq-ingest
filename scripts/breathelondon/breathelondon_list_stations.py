@@ -36,7 +36,7 @@ from scripts.uk_aq_supabase import SupabaseSchemas, create_supabase_client
 load_dotenv()
 
 LOG = logging.getLogger("breathelondon_stations")
-DEFAULT_LOG_LEVEL = os.getenv("BREATHELONDON_LOG_LEVEL", "INFO").upper()
+DEFAULT_LOG_LEVEL = os.getenv("BLONDON_COMMUNITIES_LOG_LEVEL", "INFO").upper()
 logging.basicConfig(
     level=getattr(logging, DEFAULT_LOG_LEVEL, logging.INFO),
     format="%(asctime)s %(levelname)s %(message)s",
@@ -44,20 +44,25 @@ logging.basicConfig(
 logging.getLogger("httpx").setLevel(getattr(logging, DEFAULT_LOG_LEVEL, logging.INFO))
 logging.getLogger("postgrest").setLevel(getattr(logging, DEFAULT_LOG_LEVEL, logging.INFO))
 
-BREATHELONDON_BASE_URL = (
-    os.getenv("BREATHELONDON_BASE_URL") or "https://api.breathelondon-communities.org/api"
+BLONDON_COMMUNITIES_BASE_URL = (
+    os.getenv("BLONDON_COMMUNITIES_BASE_URL") or "https://api.breathelondon-communities.org/api"
 ).rstrip("/")
-BREATHELONDON_CONNECTOR_CODE = (
-    os.getenv("BREATHELONDON_CONNECTOR_CODE")
-    or os.getenv("BREATHELONDON_CONNECTOR_REF")
-    or os.getenv("BREATHELONDON_SERVICE_REF")
-    or "breathelondon"
+_CONFIGURED_CONNECTOR_CODE = (
+    os.getenv("BLONDON_COMMUNITIES_CONNECTOR_CODE")
+    or ""
+).strip()
+CONNECTOR_CODE_ERROR = (
+    "Use connector_code=blondon_communities for Breathe London Communities. "
+    "network_code/service_ref may remain breathelondon."
 )
-BREATHELONDON_SERVICE_REF = os.getenv("BREATHELONDON_SERVICE_REF") or BREATHELONDON_CONNECTOR_CODE
-BREATHELONDON_SERVICE_LABEL = (
-    os.getenv("BREATHELONDON_SERVICE_LABEL") or "Breathe London"
+if _CONFIGURED_CONNECTOR_CODE and _CONFIGURED_CONNECTOR_CODE != "blondon_communities":
+    raise RuntimeError(CONNECTOR_CODE_ERROR)
+BLONDON_COMMUNITIES_CONNECTOR_CODE = "blondon_communities"
+BLONDON_COMMUNITIES_SERVICE_REF = os.getenv("BLONDON_COMMUNITIES_SERVICE_REF") or "breathelondon"
+BLONDON_COMMUNITIES_SERVICE_LABEL = (
+    os.getenv("BLONDON_COMMUNITIES_SERVICE_LABEL") or "Breathe London"
 )
-BREATHELONDON_USER_AGENT = os.getenv("BREATHELONDON_USER_AGENT", "uk-air-quality-networks")
+BLONDON_COMMUNITIES_USER_AGENT = os.getenv("BLONDON_COMMUNITIES_USER_AGENT", "uk-air-quality-networks")
 
 
 UK_BBOX = {
@@ -82,10 +87,10 @@ def _clean_str(value: Any) -> Optional[str]:
 def load_api_key(explicit_key: Optional[str] = None) -> str:
     if explicit_key:
         return explicit_key
-    env_key = os.getenv("BREATHELONDON_API_KEY")
+    env_key = os.getenv("BLONDON_COMMUNITIES_API_KEY")
     if env_key:
         return env_key.strip()
-    raise RuntimeError("BREATHELONDON_API_KEY is required.")
+    raise RuntimeError("BLONDON_COMMUNITIES_API_KEY is required.")
 
 
 def _normalize_list_sensors(payload: Any) -> List[Dict[str, Any]]:
@@ -136,7 +141,7 @@ def normalize_station_payload(
 
     row = {
         "station_ref": site_code,
-        "service_ref": BREATHELONDON_SERVICE_REF,
+        "service_ref": BLONDON_COMMUNITIES_SERVICE_REF,
         "label": site_name or site_code or "Breathe London Station",
         "station_name": site_name,
         "station_type": _clean_str(station.get("SiteClassification")),
@@ -159,7 +164,7 @@ class BreatheLondonClient:
     def __init__(
         self,
         api_key: str,
-        base_url: str = BREATHELONDON_BASE_URL,
+        base_url: str = BLONDON_COMMUNITIES_BASE_URL,
         timeout: int = 60,
         retries: int = 3,
     ) -> None:
@@ -168,7 +173,7 @@ class BreatheLondonClient:
         self.timeout = timeout
         self.retries = retries
         self.session = requests.Session()
-        self.session.headers.update({"User-Agent": BREATHELONDON_USER_AGENT})
+        self.session.headers.update({"User-Agent": BLONDON_COMMUNITIES_USER_AGENT})
 
     def get(self, path: str, params: Optional[Dict[str, Any]] = None) -> Any:
         url = f"{self.base_url}/{path.lstrip('/')}"
@@ -219,7 +224,7 @@ class SupabaseWriter:
         existing = (
             self.core.table("connectors")
             .select("id,poll_enabled")
-            .eq("connector_code", BREATHELONDON_CONNECTOR_CODE)
+            .eq("connector_code", BLONDON_COMMUNITIES_CONNECTOR_CODE)
             .limit(1)
             .execute()
         )
@@ -233,10 +238,10 @@ class SupabaseWriter:
         )
         poll_enabled = bool(existing_row.get("poll_enabled")) if isinstance(existing_row, dict) else False
         payload = {
-            "connector_code": BREATHELONDON_CONNECTOR_CODE,
-            "label": BREATHELONDON_SERVICE_LABEL,
-            "display_name": BREATHELONDON_SERVICE_LABEL,
-            "service_url": BREATHELONDON_BASE_URL,
+            "connector_code": BLONDON_COMMUNITIES_CONNECTOR_CODE,
+            "label": BLONDON_COMMUNITIES_SERVICE_LABEL,
+            "display_name": BLONDON_COMMUNITIES_SERVICE_LABEL,
+            "service_url": BLONDON_COMMUNITIES_BASE_URL,
             "stations_bbox_supported": False,
             "timeseries_station_filter_supported": False,
             "poll_enabled": poll_enabled,
@@ -245,7 +250,7 @@ class SupabaseWriter:
         row = (
             self.core.table("connectors")
             .select("id")
-            .eq("connector_code", BREATHELONDON_CONNECTOR_CODE)
+            .eq("connector_code", BLONDON_COMMUNITIES_CONNECTOR_CODE)
             .single()
             .execute()
         )
@@ -258,7 +263,7 @@ class SupabaseWriter:
         resp = (
             self.core.table("connectors")
             .select("id")
-            .eq("connector_code", BREATHELONDON_CONNECTOR_CODE)
+            .eq("connector_code", BLONDON_COMMUNITIES_CONNECTOR_CODE)
             .limit(1)
             .execute()
         )
@@ -573,7 +578,7 @@ class SupabaseWriter:
         checkpoints: Dict[Tuple[int, str], Dict[str, Any]] = {}
         for chunk in chunked([str(val) for val in station_ids], 200):
             resp = (
-                self.raw.table("breathelondon_timeseries_checkpoints")
+                self.raw.table("blondon_communities_timeseries_checkpoints")
                 .select(
                     "station_id,species,timeseries_id,last_observed_at,last_polled_at,last_error"
                 )
@@ -595,7 +600,7 @@ class SupabaseWriter:
         payload = list(rows)
         if not payload:
             return 0
-        self.raw.table("breathelondon_timeseries_checkpoints").upsert(
+        self.raw.table("blondon_communities_timeseries_checkpoints").upsert(
             payload, on_conflict="station_id,species"
         ).execute()
         return len(payload)
@@ -667,7 +672,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--api-key",
-        help="API key override (otherwise uses BREATHELONDON_API_KEY).",
+        help="API key override (otherwise uses BLONDON_COMMUNITIES_API_KEY).",
     )
     parser.add_argument(
         "--to-supabase",
@@ -707,7 +712,7 @@ def main() -> int:
         LOG.info("Upserted %s stations.", upserted)
         if metadata_by_ref:
             id_map = writer.fetch_station_ids_by_ref(
-                connector_id, BREATHELONDON_SERVICE_REF, metadata_by_ref.keys()
+                connector_id, BLONDON_COMMUNITIES_SERVICE_REF, metadata_by_ref.keys()
             )
             attributes_by_station = {
                 id_map[ref]: attrs

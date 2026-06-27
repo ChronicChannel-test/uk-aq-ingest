@@ -66,7 +66,7 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
   - `uk_aq_core.uk_aq_dispatch_queue_enqueue`
   - `uk_aq_core.uk_aq_dispatch_queue_claim`
   - `uk_aq_core.uk_aq_dispatch_queue_resolve`
-- Station batch helpers: `breathelondon_select_station_refs`, `erg_laqn_select_station_refs` (defined in `supabase/uk_aq_polling_helpers.sql`)
+- Station batch helpers: `blondon_communities_select_station_refs`, `erg_laqn_select_station_refs` (defined in `supabase/uk_aq_polling_helpers.sql`)
 - Calls:
   - In `mode=run_queue` only:
   - `ingest_uk_air_sos` (`window_hours`)
@@ -107,7 +107,7 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
   - Worker sends `run_queue_claim_limit=1` with each `mode=run_queue` call to isolate each claim/call.
   - Worker fallback: if either queue-mode call fails, worker falls back to `mode=legacy` for that cron tick.
   - Disabled connectors are auto-resolved from queue in `mode=run_queue` (`queue_entry_disabled_connector`) so stale retries do not keep firing after `poll_enabled=false`.
-  - Connectors with `scheduler_backend='google_cloud_run'` are skipped in dispatcher selection and auto-resolved from queue in `mode=run_queue` (`queue_entry_external_scheduler`) for the Cloud Run allowlist connectors (`uk_air_sos`, `sensorcommunity`, `breathelondon`, `openaq`).
+  - Connectors with `scheduler_backend='google_cloud_run'` are skipped in dispatcher selection and auto-resolved from queue in `mode=run_queue` (`queue_entry_external_scheduler`) for the Cloud Run allowlist connectors (`uk_air_sos`, `sensorcommunity`, `blondon_communities`, `openaq`).
   - For `uk_air_sos` on the edge path (`scheduler_backend='supabase_function'`), dispatcher uses `poll_timeseries_batch_size` with `uk_air_sos_select_timeseries_ids` (`uk_air_sos_timeseries_checkpoints`) and passes `timeseries_ids`/`timeseries_limit`.
   - Uses `uk_aq_public.uk_aq_rpc_dispatch_claim` to atomically claim a connector slot before dispatch.
   - Updates `connectors.last_run_start`, `last_run_end`, `last_run_status`, `last_run_message`, and `last_polled_at` for each attempted dispatch.
@@ -325,23 +325,24 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
 - Purpose: Poll Breathe London Communities for hourly observations with checkpointing.
 - Triggered by:
   - `uk_aq_dispatch_polls` when `connectors.scheduler_backend='supabase_function'`.
-  - `workers/uk_aq_breathelondon_cloud_run` when `connectors.scheduler_backend='google_cloud_run'`.
+  - `workers/uk_aq_blondon_communities_cloud_run` when `connectors.scheduler_backend='google_cloud_run'`.
   - Helper RPCs live in `supabase/uk_aq_polling_helpers.sql`.
 - Writes:
   - `connectors` (last_polled_at updates), `stations`, `phenomena`, `timeseries`, `observations`
-  - `breathelondon_station_checkpoints` (per-station checkpoints)
+  - `blondon_communities_station_checkpoints` (per-station checkpoints)
 - Notes:
+  - Uses connector code `blondon_communities`; public network code and service ref remain `breathelondon`.
   - Requires an existing connector row; the ingest does not create connectors.
-  - Uses `BREATHELONDON_API_KEY` for every request.
+  - Uses `BLONDON_COMMUNITIES_API_KEY` for every request.
   - Supports `skip_stations` to avoid station upserts; when set, stations are loaded from Supabase instead of `ListSensors`.
   - Supports `active_only` to limit polling to stations marked `enabled` or `site_active` in metadata.
   - Supports `station_refs` to limit polling to a specific set of station refs.
-  - Phenomena upserts use `source_label` keys (for example `breathelondon:pm2.5`) and map to canonical observed-property codes/domains via `uk_aq_rpc_phenomena_upsert`.
-  - Uses `uk_aq_raw.breathelondon_station_checkpoints` for per-station scheduling (`next_due_at`, `ingest_lag_samples`).
-  - `breathelondon_select_station_refs` stale selection excludes future-due rows (`due_at > now()`).
+  - Phenomena upserts use shared source-service `source_label` keys (for example `breathelondon:pm2.5`) and map to canonical observed-property codes/domains via `uk_aq_rpc_phenomena_upsert`. These labels are not connector identity and intentionally remain stable.
+  - Uses `uk_aq_raw.blondon_communities_station_checkpoints` for per-station scheduling (`next_due_at`, `ingest_lag_samples`).
+  - `blondon_communities_select_station_refs` stale selection excludes future-due rows (`due_at > now()`).
   - Supports `debug=true` to include a debug block in the response (Dropbox config status, no secrets).
   - Response includes run-level `last_observed_at` (latest observed timestamp across the run scope) for ingest run feed reporting.
-  - Cloud Run runner derives `window_hours` from `connectors.poll_window_hours` and batch limit from `connectors.poll_timeseries_batch_size` (fallback defaults apply), then fetches due station refs via `breathelondon_select_station_refs`.
+  - Cloud Run runner derives `window_hours` from `connectors.poll_window_hours` and batch limit from `connectors.poll_timeseries_batch_size` (fallback defaults apply), then fetches due station refs via `blondon_communities_select_station_refs`.
   - Cloud Run runner marks run `skipped` with `no_station_refs` when no due refs are returned.
   - Cloud Run run-row writes preserve zero-valued metrics (`observations_upserted`, `timeseries_updated`, `series_polled`) as `0` instead of storing `null`.
   - Logs cron secret mismatch diagnostics (presence/length only) when authorization fails.
@@ -349,9 +350,9 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
   - Response includes `stations_requested`/`stations_selected` when station refs are supplied.
   - Response includes `series_polled` (timeseries with last-value updates during the run).
   - Runtime budget behavior:
-    - Edge runtime (`BREATHELONDON_DROPBOX_UPLOAD_SOURCE=edge`): budget enabled; returns partial progress with `partial=true` when exceeded.
-    - Cloud Run runtime (`BREATHELONDON_DROPBOX_UPLOAD_SOURCE=cloud_run`): inner ingest budget disabled by default, but the Cloud Run wrapper enforces a 14-minute child-process timeout so the service releases its in-process run lock before the default 15-minute Cloud Run request timeout.
-    - Override with `BREATHELONDON_ENFORCE_RUNTIME_BUDGET=true|false`.
+    - Edge runtime (`BLONDON_COMMUNITIES_DROPBOX_UPLOAD_SOURCE=edge`): budget enabled; returns partial progress with `partial=true` when exceeded.
+    - Cloud Run runtime (`BLONDON_COMMUNITIES_DROPBOX_UPLOAD_SOURCE=cloud_run`): inner ingest budget disabled by default, but the Cloud Run wrapper enforces a 14-minute child-process timeout so the service releases its in-process run lock before the default 15-minute Cloud Run request timeout.
+    - Override with `BLONDON_COMMUNITIES_ENFORCE_RUNTIME_BUDGET=true|false`.
   - History dual-write rows are buffered and flushed in batches to reduce History RPC request count (`HISTORY_BUFFER_FLUSH_ROWS`, default `5000`).
     - This applies to both Edge and Cloud Run because Cloud Run reuses `ingest_breathelondon/index.ts`.
   - Applies strict pre-write exact dedupe on `(connector_id, timeseries_id, observed_at, value, status)` before main observations upsert and before history write enqueue/publish.
@@ -359,8 +360,8 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
   - Response payload includes history write counters: `history_written`, `history_receipts_upserted`, `history_enqueued`, `history_flushes`.
   - Updates `connectors.last_polled_at` on successful non-dry runs.
 - Logs:
-  - Writes a log file to Dropbox `/connectors/breathelondon/log/YYYY-MM-DD/` when Dropbox credentials are configured.
-  - Raw payload uploads are gated by `BREATHELONDON_RAW_DROPBOX_ALLOWED_SUPABASE_URL` (or `UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL`) matching `SUPABASE_URL`.
+  - Writes a log file to Dropbox `/connectors/blondon_communities/log/YYYY-MM-DD/` when Dropbox credentials are configured.
+  - Raw payload uploads are gated by `BLONDON_COMMUNITIES_RAW_DROPBOX_ALLOWED_SUPABASE_URL` (or `UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL`) matching `SUPABASE_URL`.
   - Filename prefixes are runtime-specific: `uk_aq_*_edge_*` for edge runtime and `uk_aq_*_cloud_run_*` for Cloud Run runtime.
   - Writes errors to `error_logs` and `/error_log/YYYY-MM-DD/` when Dropbox error logging is configured.
   - Writes diagnostic entries to `error_logs` when Dropbox config is missing/mismatched or log/raw uploads fail.
@@ -561,7 +562,7 @@ Required:
 - `SUPABASE_URL`
 - `SB_SECRET_KEY` (preferred; fallback `SB_SECRET_KEY` during migration)
 - `UK_AQ_EDGE_UPSTREAM_SECRET` (required by AQ read endpoints; must match worker secret/header)
-- `BREATHELONDON_API_KEY` (required for `ingest_breathelondon`)
+- `BLONDON_COMMUNITIES_API_KEY` (required for `ingest_breathelondon`)
 
 Dropbox (raw/log/error uploads):
 - `DROPBOX_APP_KEY`
@@ -572,9 +573,9 @@ Dropbox folders:
   - `UK_AQ_DROPBOX_ROOT` (e.g., `/CIC-Test` or `/LIVE`)
 - `UK_AIR_RAW_DROPBOX_ALLOWED_SUPABASE_URL` (required to enable raw uploads)
 - `OPENAQ_RAW_DROPBOX_ALLOWED_SUPABASE_URL` (optional allowlist override for OpenAQ)
-- `BREATHELONDON_DROPBOX_ROOT` (optional override for Breathe London)
-- `BREATHELONDON_RAW_DROPBOX_ALLOWED_SUPABASE_URL` (optional allowlist override for Breathe London)
-- `BREATHELONDON_ERROR_DROPBOX_ALLOWED_SUPABASE_URL` (optional allowlist override for Breathe London error uploads)
+- `BLONDON_COMMUNITIES_DROPBOX_ROOT` (optional override for Breathe London)
+- `BLONDON_COMMUNITIES_RAW_DROPBOX_ALLOWED_SUPABASE_URL` (optional allowlist override for Breathe London)
+- `BLONDON_COMMUNITIES_ERROR_DROPBOX_ALLOWED_SUPABASE_URL` (optional allowlist override for Breathe London error uploads)
 - `SCOMM_DROPBOX_ROOT` (optional override for Sensor.Community)
 - `SCOMM_RAW_DROPBOX_ALLOWED_SUPABASE_URL` (optional allowlist override for Sensor.Community)
 
@@ -632,7 +633,7 @@ Optional:
 - `UK_AQ_EGRESS_MONITOR_RUNTIME_BUDGET_MS` (optional; defaults to `120000`; runtime budget for monitor pagination loop)
 - `UK_AQ_EGRESS_MONITOR_REQUEST_TIMEOUT_MS` (optional; defaults to `20000`; per-PostgREST request timeout during monitor pagination)
 - `UK_AIR_ERROR_DROPBOX_FOLDER` (defaults to `error_log`)
-- `BREATHELONDON_ERROR_DROPBOX_FOLDER` (optional override for Breathe London)
+- `BLONDON_COMMUNITIES_ERROR_DROPBOX_FOLDER` (optional override for Breathe London)
 - `SCOMM_ERROR_DROPBOX_FOLDER` (optional override for Sensor.Community)
 - `SCOMM_ERROR_DROPBOX_ALLOWED_SUPABASE_URL` (optional allowlist for Sensor.Community error uploads)
 - `SCOMM_INGEST_MET_FIELDS` (defaults to `false`; set `true` to ingest temperature/humidity/pressure)
@@ -668,12 +669,12 @@ Optional:
 - `OPENAQ_RATE_LIMIT_FALLBACK_SECONDS` (optional; Cloud Run wrapper default `300`; retry delay when rate-limit reset is unavailable)
 - `OPENAQ_AUTH_SAFETY_DISABLE_POLLING` (optional; Cloud Run wrapper default `true`; auto-disable OpenAQ connector polling on auth 401/403)
 - `CLEANAIRSURB_ST_ID` (optional; defaults to `189841`; OpenAQ debug station id used in ingest debug logs)
-- `BREATHELONDON_BASE_URL` (optional override for Breathe London API base URL)
-- `BREATHELONDON_CONNECTOR_CODE` / `BREATHELONDON_SERVICE_REF` (optional override)
-- `BREATHELONDON_SERVICE_LABEL` (optional override)
-- `BREATHELONDON_USER_AGENT` (optional override)
-- `BREATHELONDON_MAX_RUNTIME_SECONDS` (optional; defaults to 120; used when BL runtime budget is enabled)
-- `BREATHELONDON_ENFORCE_RUNTIME_BUDGET` (optional; defaults to `true` on edge and `false` on Cloud Run)
+- `BLONDON_COMMUNITIES_BASE_URL` (optional override for Breathe London API base URL)
+- `BLONDON_COMMUNITIES_CONNECTOR_CODE` / `BLONDON_COMMUNITIES_SERVICE_REF` (optional override)
+- `BLONDON_COMMUNITIES_SERVICE_LABEL` (optional override)
+- `BLONDON_COMMUNITIES_USER_AGENT` (optional override)
+- `BLONDON_COMMUNITIES_MAX_RUNTIME_SECONDS` (optional; defaults to 120; used when BL runtime budget is enabled)
+- `BLONDON_COMMUNITIES_ENFORCE_RUNTIME_BUDGET` (optional; defaults to `true` on edge and `false` on Cloud Run)
 - `LAQN_BASE_URL` (optional override for ERG LAQN API base URL)
 - `LAQN_CONNECTOR_CODE` / `LAQN_SERVICE_REF` (optional override)
 - `LAQN_CONNECTOR_LABEL` (optional override, `LAQN_SERVICE_LABEL` also accepted)

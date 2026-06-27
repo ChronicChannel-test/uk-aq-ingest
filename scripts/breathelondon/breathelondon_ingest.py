@@ -27,7 +27,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from scripts.breathelondon.breathelondon_list_stations import (
-    BREATHELONDON_SERVICE_REF,
+    BLONDON_COMMUNITIES_SERVICE_REF,
     BreatheLondonClient,
     SupabaseWriter,
     load_api_key,
@@ -37,7 +37,7 @@ from scripts.breathelondon.breathelondon_list_stations import (
 load_dotenv()
 
 LOG = logging.getLogger("breathelondon_ingest")
-DEFAULT_LOG_LEVEL = os.getenv("BREATHELONDON_LOG_LEVEL", "INFO").upper()
+DEFAULT_LOG_LEVEL = os.getenv("BLONDON_COMMUNITIES_LOG_LEVEL", "INFO").upper()
 logging.basicConfig(
     level=getattr(logging, DEFAULT_LOG_LEVEL, logging.INFO),
     format="%(asctime)s %(levelname)s %(message)s",
@@ -172,7 +172,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--api-key",
-        help="API key override (otherwise uses BREATHELONDON_API_KEY).",
+        help="API key override (otherwise uses BLONDON_COMMUNITIES_API_KEY).",
     )
     parser.add_argument(
         "--species",
@@ -268,7 +268,7 @@ def main() -> int:
             station_limit = args.limit or 5
             station_rows = writer.fetch_recent_stations(
                 connector_id,
-                BREATHELONDON_SERVICE_REF,
+                BLONDON_COMMUNITIES_SERVICE_REF,
                 station_limit,
             )
             LOG.info(
@@ -278,7 +278,7 @@ def main() -> int:
         else:
             station_rows = writer.fetch_stations(
                 connector_id,
-                BREATHELONDON_SERVICE_REF,
+                BLONDON_COMMUNITIES_SERVICE_REF,
                 args.limit,
             )
             LOG.info(
@@ -310,7 +310,7 @@ def main() -> int:
             LOG.info("Upserted %s stations.", upserted)
             if metadata_by_ref:
                 id_map = writer.fetch_station_ids_by_ref(
-                    connector_id, BREATHELONDON_SERVICE_REF, metadata_by_ref.keys()
+                    connector_id, BLONDON_COMMUNITIES_SERVICE_REF, metadata_by_ref.keys()
                 )
                 attributes_by_station = {
                     id_map[ref]: attrs
@@ -336,7 +336,7 @@ def main() -> int:
                 continue
     else:
         station_id_map = writer.fetch_station_ids_by_ref(
-            connector_id, BREATHELONDON_SERVICE_REF, [row["station_ref"] for row in station_rows]
+            connector_id, BLONDON_COMMUNITIES_SERVICE_REF, [row["station_ref"] for row in station_rows]
         )
     if not station_id_map:
         LOG.warning("No station ids resolved for Breathe London.")
@@ -375,7 +375,7 @@ def main() -> int:
                     "label": f"{station_name} {config['label']}",
                     "uom": config["uom"],
                     "station_id": station_id,
-                    "service_ref": BREATHELONDON_SERVICE_REF,
+                    "service_ref": BLONDON_COMMUNITIES_SERVICE_REF,
                     "connector_id": connector_id,
                     "phenomenon_id": phenomenon_ids.get(config["source_label"]),
                     "extras": {"site_code": station_ref, "species": species},
@@ -387,7 +387,7 @@ def main() -> int:
     if timeseries_output is not None:
         timeseries_output.extend(timeseries_rows)
     timeseries_id_map = writer.fetch_timeseries_ids(
-        connector_id, BREATHELONDON_SERVICE_REF, [row["timeseries_ref"] for row in timeseries_rows]
+        connector_id, BLONDON_COMMUNITIES_SERVICE_REF, [row["timeseries_ref"] for row in timeseries_rows]
     )
     station_ref_by_id = {station_id: ref for ref, station_id in station_id_map.items()}
 
