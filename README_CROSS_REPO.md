@@ -49,7 +49,7 @@ Dropbox/logging (used by multiple ingests):
 - Node keepalive: `npm run keepalive` (from `package.json`).
 
 ## Where to start
-- **Main scripts**: `scripts/uk_air_sos/`, `scripts/openaq/`, `scripts/breathelondon/`, `scripts/erg_laqn/`.
+- **Main scripts**: `scripts/uk_air_sos/`, `scripts/openaq/`, `scripts/blondon_communities/`, `scripts/blondon_nodes/`, `scripts/erg_laqn/`.
 - **Edge functions**: `supabase/functions/` (deploy from this repo).
 - **Gap logic docs**: `system_docs/openaq_gap_logic.md`.
 - **Supabase config**: `supabase/config.toml`.

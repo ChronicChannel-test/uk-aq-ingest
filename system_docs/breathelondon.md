@@ -29,7 +29,7 @@
 - `stations.label`: raw source label string.
 - `stations.station_name`: curated display-friendly name (may be null until set).
 - `stations.removed_at`: set when a station is deactivated/removed; `active_only` skips these.
-- `station_metadata.attributes.enabled` / `station_metadata.attributes.site_active`: source activity flags; `active_only` treats either truthy value as active.
+- `station_metadata.attributes.enabled` / `station_metadata.attributes.site_active`: source activity flags; `active_only` uses `stations.removed_at is null`; source active flags are not canonical.
 - `timeseries.timeseries_ref`: internal ref (`<station_ref>:<species>`).
 - `timeseries.last_value_at`: timestamp of the most recent observation stored for that timeseries.
 - Phenomenon source labels `breathelondon:pm2.5` and `breathelondon:no2` identify the shared source service and pollutant. They are not connector codes, so they remain stable across Communities and future Nodes connector implementations.
@@ -48,3 +48,12 @@
 
 ## Status
 - TODO: define ingest and station-listing workflows.
+
+
+## Breathe London Nodes stations
+
+- Nodes use connector code `blondon_nodes`; do not use `breathelondon` as a connector code or alias.
+- Nodes share service ref and public network code `breathelondon`, so the public network remains Breathe London.
+- Daily station sync runs `python3 scripts/blondon_nodes/blondon_nodes_list_stations.py --to-supabase`.
+- Nodes and Communities stations are kept as separate station rows. `InstallationCode` is stored in `station_initial_metadata.attributes` because it can later match the Communities `station_ref` using a `blondon_installation:` match key.
+- Nodes active/current status is canonical only when `stations.removed_at is null`.

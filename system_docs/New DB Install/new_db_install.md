@@ -63,7 +63,7 @@ Notes:
 Connector rows are created/updated by station list scripts. Run the relevant scripts to ensure connector rows exist before polling.
 
 1. `scripts/openaq/openaq_list_stations.py`
-2. `scripts/breathelondon/breathelondon_list_stations.py`
+2. `scripts/blondon_communities/blondon_communities_list_stations.py`
 3. `scripts/erg_laqn/erg_laqn_list_stations.py`
 4. `scripts/uk_air_sos/uk_air_sos_list_stations.py`
 5. `scripts/sensorcommunity/sensorcommunity_list_stations.py`

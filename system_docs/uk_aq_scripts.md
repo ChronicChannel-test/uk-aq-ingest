@@ -1282,20 +1282,20 @@ Environment:
 - `LAQN_BASE_URL` (optional; defaults to `https://api.erg.ic.ac.uk/AirQuality`)
 - `LAQN_USER_AGENT` (optional)
 
-### `scripts/breathelondon/breathelondon_ingest.py`
+### `scripts/blondon_communities/blondon_communities_ingest.py`
 Purpose:
 - Ingest Breathe London Communities observations using staged checkpoints in Supabase.
 - Pulls IPM25 and INO2 data per site and stores checkpoints in `blondon_communities_timeseries_checkpoints`.
 
 Common commands:
 ```
-python3 scripts/breathelondon/breathelondon_ingest.py
-python3 scripts/breathelondon/breathelondon_ingest.py --initial-days 30 --window-hours 12
-python3 scripts/breathelondon/breathelondon_ingest.py --limit 5 --dry-run
-python3 scripts/breathelondon/breathelondon_ingest.py --skip-stations --limit 5 --dry-run --window-hours 1
-python3 scripts/breathelondon/breathelondon_ingest.py --limit 5 --dry-run --output-timeseries network_info/breathelondon_timeseries.json --output-observations network_info/breathelondon_observations.json --output-checkpoints network_info/breathelondon_checkpoints.json
-python3 scripts/breathelondon/breathelondon_ingest.py --skip-stations --limit 5 --dry-run --ignore-checkpoints --start-date 2026-01-19T01:00:00Z --window-hours 12
-python3 scripts/breathelondon/breathelondon_ingest.py --skip-stations --recent-stations --limit 5 --dry-run
+python3 scripts/blondon_communities/blondon_communities_ingest.py
+python3 scripts/blondon_communities/blondon_communities_ingest.py --initial-days 30 --window-hours 12
+python3 scripts/blondon_communities/blondon_communities_ingest.py --limit 5 --dry-run
+python3 scripts/blondon_communities/blondon_communities_ingest.py --skip-stations --limit 5 --dry-run --window-hours 1
+python3 scripts/blondon_communities/blondon_communities_ingest.py --limit 5 --dry-run --output-timeseries network_info/breathelondon_timeseries.json --output-observations network_info/breathelondon_observations.json --output-checkpoints network_info/breathelondon_checkpoints.json
+python3 scripts/blondon_communities/blondon_communities_ingest.py --skip-stations --limit 5 --dry-run --ignore-checkpoints --start-date 2026-01-19T01:00:00Z --window-hours 12
+python3 scripts/blondon_communities/blondon_communities_ingest.py --skip-stations --recent-stations --limit 5 --dry-run
 ```
 
 Environment:
@@ -1315,14 +1315,14 @@ Notes:
 - `--recent-stations` picks stations with the most recent `timeseries.last_value_at` when used with `--skip-stations` (falls back to `observations` if needed).
 - Updates `connectors.last_polled_at` on successful non-dry runs.
 
-### `scripts/breathelondon/breathelondon_batch.py`
+### `scripts/blondon_communities/blondon_communities_batch.py`
 Purpose:
 - Batch station refs from Supabase and invoke `ingest_breathelondon` per chunk.
 - Used by GitHub Actions to avoid edge runtime limits.
 
 Common commands:
 ```
-python3 scripts/breathelondon/breathelondon_batch.py --connector-code blondon_communities --service-ref breathelondon --batch-size 10 --active-only --skip-stations
+python3 scripts/blondon_communities/blondon_communities_batch.py --connector-code blondon_communities --service-ref breathelondon --batch-size 10 --active-only --skip-stations
 ```
 
 Environment:
@@ -1334,19 +1334,19 @@ Environment:
 - `BLONDON_COMMUNITIES_SERVICE_REF` (optional override)
 
 Notes:
-- `--active-only` honors `station_metadata.attributes.enabled` or `station_metadata.attributes.site_active`.
+- `--active-only` honors `stations.removed_at is null`.
 - `--skip-stations` avoids `ListSensors` and uses the Supabase station list instead.
 - Stations are ordered by `blondon_communities_station_checkpoints.last_polled_at` (nulls first), then `next_due_at`.
 
-### `scripts/breathelondon/breathelondon_list_stations.py`
+### `scripts/blondon_communities/blondon_communities_list_stations.py`
 Purpose:
 - Fetch Breathe London station metadata and optionally upsert stations + metadata in Supabase.
 
 Common commands:
 ```
-python3 scripts/breathelondon/breathelondon_list_stations.py
-python3 scripts/breathelondon/breathelondon_list_stations.py --format csv --output uk_breathelondon_stations.csv
-python3 scripts/breathelondon/breathelondon_list_stations.py --to-supabase
+python3 scripts/blondon_communities/blondon_communities_list_stations.py
+python3 scripts/blondon_communities/blondon_communities_list_stations.py --format csv --output uk_breathelondon_stations.csv
+python3 scripts/blondon_communities/blondon_communities_list_stations.py --to-supabase
 ```
 
 Environment:
@@ -1360,6 +1360,30 @@ Environment:
 
 Notes:
 - Connector upserts preserve existing `poll_enabled`; new connectors default to `poll_enabled=false`.
+
+### `scripts/blondon_nodes/blondon_nodes_list_stations.py`
+
+- Fetches Breathe London Nodes station metadata from the Nodes `/ListSensors` API.
+- Maps Nodes rows to `stations` with connector `blondon_nodes`, service ref `breathelondon`, and the public Breathe London network.
+- Uses explicit `Latitude` and `Longitude` fields because sample `Location.geometry.coordinates` is latitude/longitude, not standard GeoJSON longitude/latitude.
+- Writes initial source attributes such as `InstallationCode`, `Facility`, `SponsorName`, `PowerTag`, and `SensorContract` to `station_initial_metadata` only for new metadata rows; normal refreshes do not update those rows.
+- Preserves `InstallationCode` for later matching to Communities station refs using a `blondon_installation:` match key.
+
+Examples:
+
+```bash
+python3 scripts/blondon_nodes/blondon_nodes_list_stations.py --dry-run
+python3 scripts/blondon_nodes/blondon_nodes_list_stations.py --input-json network_info/blondon_nodes/list_sensors_sample.json --dry-run
+python3 scripts/blondon_nodes/blondon_nodes_list_stations.py --to-supabase
+```
+
+Environment:
+
+- `BLONDON_NODES_API_KEY`
+- `BLONDON_NODES_BASE_URL` (optional, defaults to `https://breathe-london-7x54d7qf.ew.gateway.dev`)
+- `BLONDON_NODES_CONNECTOR_CODE` (optional, must be `blondon_nodes` when set)
+- `BLONDON_NODES_SERVICE_REF` (optional, defaults to `breathelondon`)
+- `BLONDON_NODES_SERVICE_LABEL` (optional, defaults to `Breathe London`)
 
 ### `scripts/uk_aq_invoke_edge.py`
 Purpose:

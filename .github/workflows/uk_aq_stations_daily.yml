@@ -258,13 +258,21 @@ jobs:
         run: |
           echo "Leaving UK-AIR SOS polling unchanged (workflow did not pause it)."
 
-      - name: Sync Breathe London stations
+      - name: Sync Breathe London Communities stations
         env:
           SUPABASE_URL: ${{ vars.SUPABASE_URL }}
           SB_SECRET_KEY: ${{ secrets.SB_SECRET_KEY }}
           BLONDON_COMMUNITIES_API_KEY: ${{ secrets.BLONDON_COMMUNITIES_API_KEY }}
         run: |
-          python3 scripts/breathelondon/breathelondon_list_stations.py --to-supabase
+          python3 scripts/blondon_communities/blondon_communities_list_stations.py --to-supabase
+
+      - name: Sync Breathe London Nodes stations
+        env:
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          SB_SECRET_KEY: ${{ secrets.SB_SECRET_KEY }}
+          BLONDON_NODES_API_KEY: ${{ secrets.BLONDON_NODES_API_KEY }}
+        run: |
+          python3 scripts/blondon_nodes/blondon_nodes_list_stations.py --to-supabase
 
       # Script needs updating before LAQN can start polling
       # - name: Sync LAQN stations

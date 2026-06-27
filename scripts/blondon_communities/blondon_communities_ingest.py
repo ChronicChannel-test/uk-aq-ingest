@@ -3,9 +3,9 @@
 Ingest Breathe London Communities observations with staged checkpoints.
 
 Examples:
-  python3 scripts/breathelondon/breathelondon_ingest.py
-  python3 scripts/breathelondon/breathelondon_ingest.py --initial-days 30 --window-hours 12
-  python3 scripts/breathelondon/breathelondon_ingest.py --limit 5 --dry-run
+  python3 scripts/blondon_communities/blondon_communities_ingest.py
+  python3 scripts/blondon_communities/blondon_communities_ingest.py --initial-days 30 --window-hours 12
+  python3 scripts/blondon_communities/blondon_communities_ingest.py --limit 5 --dry-run
 """
 
 import argparse
@@ -26,7 +26,7 @@ if PROJECT_ROOT.name == "scripts":
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from scripts.breathelondon.breathelondon_list_stations import (
+from scripts.blondon_communities.blondon_communities_list_stations import (
     BLONDON_COMMUNITIES_SERVICE_REF,
     BreatheLondonClient,
     SupabaseWriter,
@@ -36,7 +36,7 @@ from scripts.breathelondon.breathelondon_list_stations import (
 
 load_dotenv()
 
-LOG = logging.getLogger("breathelondon_ingest")
+LOG = logging.getLogger("blondon_communities_ingest")
 DEFAULT_LOG_LEVEL = os.getenv("BLONDON_COMMUNITIES_LOG_LEVEL", "INFO").upper()
 logging.basicConfig(
     level=getattr(logging, DEFAULT_LOG_LEVEL, logging.INFO),

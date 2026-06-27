@@ -3,9 +3,9 @@
 Fetch Breathe London Communities sensors and optionally upsert to Supabase.
 
 Examples:
-  python3 scripts/breathelondon/breathelondon_list_stations.py
-  python3 scripts/breathelondon/breathelondon_list_stations.py --format csv --output uk_breathelondon_stations.csv
-  python3 scripts/breathelondon/breathelondon_list_stations.py --to-supabase
+  python3 scripts/blondon_communities/blondon_communities_list_stations.py
+  python3 scripts/blondon_communities/blondon_communities_list_stations.py --format csv --output uk_blondon_communities_stations.csv
+  python3 scripts/blondon_communities/blondon_communities_list_stations.py --to-supabase
 """
 
 import argparse
@@ -35,7 +35,7 @@ from scripts.uk_aq_supabase import SupabaseSchemas, create_supabase_client
 
 load_dotenv()
 
-LOG = logging.getLogger("breathelondon_stations")
+LOG = logging.getLogger("blondon_communities_stations")
 DEFAULT_LOG_LEVEL = os.getenv("BLONDON_COMMUNITIES_LOG_LEVEL", "INFO").upper()
 logging.basicConfig(
     level=getattr(logging, DEFAULT_LOG_LEVEL, logging.INFO),
@@ -657,8 +657,8 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Fetch Breathe London sensors.")
     parser.add_argument(
         "--output",
-        default="breathelondon_stations.json",
-        help="Output file path (default: breathelondon_stations.json).",
+        default="blondon_communities_stations.json",
+        help="Output file path (default: blondon_communities_stations.json).",
     )
     parser.add_argument(
         "--format",
