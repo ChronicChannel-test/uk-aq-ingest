@@ -34,7 +34,7 @@ jobs:
           SB_PUBLISHABLE_DEFAULT_KEY: ${{ secrets.SB_PUBLISHABLE_DEFAULT_KEY }}
           SB_UK_AQ_CRON_SECRET: ${{ secrets.SB_UK_AQ_CRON_SECRET }}
         run: |
-          python3 scripts/breathelondon/breathelondon_batch.py \
+          python3 scripts/blondon_communities/blondon_communities_batch.py \
             --connector-code blondon_communities \
             --service-ref breathelondon \
             --batch-size 10 \

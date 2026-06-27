@@ -335,7 +335,7 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
   - Requires an existing connector row; the ingest does not create connectors.
   - Uses `BLONDON_COMMUNITIES_API_KEY` for every request.
   - Supports `skip_stations` to avoid station upserts; when set, stations are loaded from Supabase instead of `ListSensors`.
-  - Supports `active_only` to limit polling to stations marked `enabled` or `site_active` in metadata.
+  - Supports `active_only` to limit polling to stations where `stations.removed_at is null`.
   - Supports `station_refs` to limit polling to a specific set of station refs.
   - Phenomena upserts use shared source-service `source_label` keys (for example `breathelondon:pm2.5`) and map to canonical observed-property codes/domains via `uk_aq_rpc_phenomena_upsert`. These labels are not connector identity and intentionally remain stable.
   - Uses `uk_aq_raw.blondon_communities_station_checkpoints` for per-station scheduling (`next_due_at`, `ingest_lag_samples`).

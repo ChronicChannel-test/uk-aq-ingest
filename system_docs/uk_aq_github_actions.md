@@ -118,7 +118,7 @@ UK_AQ_EDGE_UPSTREAM_SECRET=...
 ### `uk_aq_blondon_communities_batch.yml`
 - Schedule: manual only (cron handles production batch polling).
 - Purpose: batch station refs and invoke `ingest_breathelondon` per chunk for manual runs.
-- Script: `python3 scripts/breathelondon/breathelondon_batch.py --connector-code blondon_communities --service-ref breathelondon --batch-size 10 --active-only --skip-stations`.
+- Script: `python3 scripts/blondon_communities/blondon_communities_batch.py --connector-code blondon_communities --service-ref breathelondon --batch-size 10 --active-only --skip-stations`.
 - Order: `blondon_communities_station_checkpoints.last_polled_at` asc (nulls first), then `next_due_at` asc.
 - Secrets: `SUPABASE_URL`, `SB_SECRET_KEY`, `SB_PUBLISHABLE_DEFAULT_KEY`, `SB_UK_AQ_CRON_SECRET`.
 
@@ -126,7 +126,7 @@ UK_AQ_EDGE_UPSTREAM_SECRET=...
 - Schedule: daily at 03:00 UTC.
 - Purpose: sync stations to Supabase (UK-AIR SOS + Breathe London) and export a combined stations snapshot to Dropbox.
 - Script: `python3 scripts/uk_air_sos/uk_air_sos_list_stations.py --to-supabase`.
-- Script: `python3 scripts/breathelondon/breathelondon_list_stations.py --to-supabase`.
+- Script: `python3 scripts/blondon_communities/blondon_communities_list_stations.py --to-supabase` and `python3 scripts/blondon_nodes/blondon_nodes_list_stations.py --to-supabase`.
 - OpenAQ station discovery guard:
   - `Pause OpenAQ polling` captures `connector_found` + `poll_was_enabled`.
   - `Sync OpenAQ stations` runs only when `poll_was_enabled=1`.

@@ -3,7 +3,7 @@
 Batch Breathe London ingest by station refs via the Supabase Edge Function.
 
 Example:
-  python3 scripts/breathelondon/breathelondon_batch.py \
+  python3 scripts/blondon_communities/blondon_communities_batch.py \
     --connector-code blondon_communities \
     --batch-size 10 \
     --active-only
@@ -57,7 +57,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--active-only",
         action="store_true",
-        help="Only include stations flagged enabled/site_active (default: false).",
+        help="Only include stations where stations.removed_at is null (default: false).",
     )
     parser.add_argument(
         "--skip-stations",
@@ -124,12 +124,7 @@ def _coerce_metadata_attrs(row: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _station_is_active(row: Dict[str, Any]) -> bool:
-    if row.get("removed_at"):
-        return False
-    attrs = _coerce_metadata_attrs(row)
-    enabled = str(attrs.get("enabled", "")).strip().lower()
-    site_active = str(attrs.get("site_active", "")).strip().lower()
-    return enabled in TRUTHY or site_active in TRUTHY
+    return not row.get("removed_at")
 
 
 def _parse_timestamp(value: Optional[str]) -> Optional[datetime]:
@@ -157,11 +152,7 @@ def _iter_station_rows(
     page_size: int = 1000,
 ) -> Iterable[Dict[str, Any]]:
     offset = 0
-    select = (
-        "id,station_ref,removed_at,station_metadata(attributes)"
-        if active_only
-        else "id,station_ref"
-    )
+    select = "id,station_ref,removed_at" if active_only else "id,station_ref"
     while True:
         resp = (
             client.table("stations")

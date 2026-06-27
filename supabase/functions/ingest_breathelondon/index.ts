@@ -697,7 +697,7 @@ async function fetchStationsFromDb(
       break;
     }
     const select = activeOnly
-      ? "id,station_ref,station_name,label,removed_at,station_metadata(attributes)"
+      ? "id,station_ref,station_name,label,removed_at"
       : "id,station_ref,station_name,label";
     const params: Record<string, string> = {
       select,
@@ -717,7 +717,6 @@ async function fetchStationsFromDb(
         station_name: string | null;
         label: string | null;
         removed_at?: string | null;
-        station_metadata?: { attributes?: Record<string, unknown> | null }[] | null;
       }>
     >(
       "GET",
@@ -731,20 +730,6 @@ async function fetchStationsFromDb(
     if (activeOnly) {
       for (const row of batch) {
         if (row.removed_at) {
-          continue;
-        }
-        const metadataRows = Array.isArray(row.station_metadata)
-          ? row.station_metadata
-          : [];
-        const anyActiveMetadata = metadataRows.some((metadataRow) => {
-          const attributes = metadataRow?.attributes ?? {};
-          const enabled = String(attributes?.enabled ?? "").toLowerCase();
-          const siteActive = String(attributes?.site_active ?? "").toLowerCase();
-          const enabledOk = ["y", "yes", "true", "1"].includes(enabled);
-          const activeOk = ["y", "yes", "true", "1"].includes(siteActive);
-          return enabledOk || activeOk;
-        });
-        if (!anyActiveMetadata) {
           continue;
         }
         rows.push({
