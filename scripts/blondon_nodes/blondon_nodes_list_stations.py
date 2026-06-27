@@ -62,6 +62,126 @@ BLONDON_NETWORK_CODE = "breathelondon"
 
 UK_BBOX = {"west": -11.0, "south": 49.0, "east": 2.0, "north": 61.0}
 
+SOURCE_HISTORY_KEYS = (
+    "SiteCode",
+    "SiteName",
+    "DeviceCode",
+    "InstallationCode",
+    "StartDate",
+    "EndDate",
+    "Latitude",
+    "Longitude",
+    "SensorContract",
+    "SponsorName",
+    "PowerTag",
+)
+
+
+def parse_source_datetime(value: Any) -> Optional[datetime]:
+    text = clean_str(value)
+    if not text:
+        return None
+    try:
+        return datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def source_history_entry(station: Dict[str, Any]) -> Dict[str, Any]:
+    return {key: station.get(key) for key in SOURCE_HISTORY_KEYS if key in station}
+
+
+def dedupe_nodes_sensors_by_site_code(
+    sensors: List[Dict[str, Any]],
+) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    grouped: Dict[str, List[Tuple[int, Dict[str, Any]]]] = {}
+    missing_site_code: List[Tuple[int, Dict[str, Any]]] = []
+    for idx, station in enumerate(sensors):
+        site_code = clean_str(station.get("SiteCode"))
+        if site_code:
+            grouped.setdefault(site_code, []).append((idx, station))
+        else:
+            missing_site_code.append((idx, station))
+
+    duplicate_site_codes = sorted(site_code for site_code, rows in grouped.items() if len(rows) > 1)
+    duplicate_current_site_codes = sorted(
+        site_code
+        for site_code, rows in grouped.items()
+        if sum(1 for _idx, row in rows if clean_str(row.get("EndDate")) is None) > 1
+    )
+
+    canonical_index_rows: List[Tuple[int, Dict[str, Any]]] = []
+    for site_code in sorted(grouped):
+        rows = grouped[site_code]
+        current_rows = [(idx, row) for idx, row in rows if clean_str(row.get("EndDate")) is None]
+        if current_rows:
+            candidate_rows = current_rows
+            date_key = "StartDate"
+        else:
+            candidate_rows = rows
+            date_key = "EndDate"
+
+        parsed_rows = [
+            (parse_source_datetime(row.get(date_key)), idx, row)
+            for idx, row in candidate_rows
+        ]
+        parseable_rows = [(dt, idx, row) for dt, idx, row in parsed_rows if dt is not None]
+        unparseable_rows = [(idx, row) for dt, idx, row in parsed_rows if dt is None]
+        if unparseable_rows and len(rows) > 1:
+            LOG.warning(
+                "Missing or unparseable %s values for duplicate Nodes SiteCode=%s; rows=%s",
+                date_key,
+                site_code,
+                [source_history_entry(row) for idx, row in unparseable_rows],
+            )
+        if parseable_rows:
+            _dt, canonical_idx, canonical_row = max(parseable_rows, key=lambda item: (item[0], -item[1]))
+        else:
+            canonical_idx, canonical_row = min(candidate_rows, key=lambda item: item[0])
+            if len(rows) > 1:
+                LOG.warning(
+                    "Unable to parse %s values for duplicate Nodes SiteCode=%s; using first deterministic row. rows=%s",
+                    date_key,
+                    site_code,
+                    [source_history_entry(row) for _idx, row in rows],
+                )
+
+        if len(rows) > 1:
+            canonical_copy = dict(canonical_row)
+            canonical_copy["source_history"] = [
+                source_history_entry(row)
+                for idx, row in rows
+                if idx != canonical_idx
+            ]
+            canonical_row = canonical_copy
+        canonical_index_rows.append((canonical_idx, canonical_row))
+
+    canonical_index_rows.extend(missing_site_code)
+    canonical_index_rows.sort(key=lambda item: item[0])
+    canonical_rows = [row for _idx, row in canonical_index_rows]
+
+    stats = {
+        "raw_nodes_sensors": len(sensors),
+        "unique_site_codes": len(grouped),
+        "duplicate_site_codes": len(duplicate_site_codes),
+        "canonical_rows": len(canonical_rows),
+        "duplicate_current_site_codes_count": len(duplicate_current_site_codes),
+        "duplicate_current_site_codes": duplicate_current_site_codes,
+    }
+    LOG.info(
+        "raw_nodes_sensors=%s unique_site_codes=%s duplicate_site_codes=%s canonical_rows=%s",
+        stats["raw_nodes_sensors"],
+        stats["unique_site_codes"],
+        stats["duplicate_site_codes"],
+        stats["canonical_rows"],
+    )
+    LOG.info(
+        "duplicate_current_site_codes_count=%s duplicate_current_site_codes=%s",
+        stats["duplicate_current_site_codes_count"],
+        ",".join(duplicate_current_site_codes) if duplicate_current_site_codes else "none",
+    )
+    return canonical_rows, stats
+
 
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
@@ -119,6 +239,9 @@ def initial_metadata_attributes(station: Dict[str, Any]) -> Dict[str, Any]:
     ):
         if key in station and station.get(key) is not None:
             attributes[key] = station.get(key)
+    source_history = station.get("source_history")
+    if isinstance(source_history, list) and source_history:
+        attributes["source_history"] = source_history
     return attributes
 
 
@@ -287,6 +410,8 @@ def main() -> int:
     if args.limit is not None:
         sensors = sensors[: max(0, args.limit)]
 
+    sensors, dedupe_stats = dedupe_nodes_sensors_by_site_code(sensors)
+
     connector_id = 0
     network_id: Optional[int] = None
     writer: Optional[SupabaseWriter] = None
@@ -304,7 +429,20 @@ def main() -> int:
     }
 
     if args.dry_run or not args.to_supabase:
-        print(f"Fetched {len(sensors)} Breathe London Nodes station row(s).")
+        print(f"Fetched {dedupe_stats['raw_nodes_sensors']} Breathe London Nodes station row(s).")
+        print(f"raw_nodes_sensors={dedupe_stats['raw_nodes_sensors']}")
+        print(f"unique_site_codes={dedupe_stats['unique_site_codes']}")
+        print(f"duplicate_site_codes={dedupe_stats['duplicate_site_codes']}")
+        print(f"canonical_rows={dedupe_stats['canonical_rows']}")
+        print(f"duplicate_current_site_codes_count={dedupe_stats['duplicate_current_site_codes_count']}")
+        print(
+            "duplicate_current_site_codes="
+            + (
+                ",".join(dedupe_stats["duplicate_current_site_codes"])
+                if dedupe_stats["duplicate_current_site_codes"]
+                else "none"
+            )
+        )
         print(f"Mapped {len(station_rows)} station row(s).")
         for row in station_rows[: max(0, args.sample_size)]:
             print(json.dumps(row, indent=2, sort_keys=True, default=str))
