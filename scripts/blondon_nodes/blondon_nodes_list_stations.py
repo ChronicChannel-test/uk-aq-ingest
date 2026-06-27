@@ -250,12 +250,12 @@ class SupabaseWriter:
         existing: set[int] = set()
         for idx in range(0, len(station_ids), 200):
             chunk = station_ids[idx : idx + 200]
-            resp = self.core.table("station_initial_metadata").select("station_id").in_("station_id", chunk).execute()
+            resp = self.core.table("").select("station_id").in_("station_id", chunk).execute()
             rows = resp.data if hasattr(resp, "data") else resp.get("data")
             existing.update(int(row["station_id"]) for row in rows or [] if row.get("station_id") is not None)
         now = utcnow().isoformat()
         rows = [
-            {"station_id": station_id, "attributes": attrs, "created_at": now}
+            {"station_id": station_id, "attributes": attrs, "captured_at": now, "created_at": now}
             for station_id, attrs in attributes_by_station.items()
             if station_id not in existing and attrs
         ]
