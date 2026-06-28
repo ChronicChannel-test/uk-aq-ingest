@@ -25,3 +25,5 @@ Write path:
 Null/empty handling:
 - Rows with `ScaledValue=null` are skipped, counted as `null_values_skipped`, and do not fail the run.
 - HTTP 200 with `[]` is treated as a valid empty station/species response and counted as `empty_series`.
+`RatificationStatus` is preserved as the observation `status` in the ingest DB
+write and in observs delivery. The original field remains in row metadata.

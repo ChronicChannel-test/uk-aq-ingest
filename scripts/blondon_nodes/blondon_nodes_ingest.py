@@ -15,11 +15,11 @@ import sys
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import requests
 from dotenv import load_dotenv
-from supabase import Client
+from supabase import Client, create_client
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if PROJECT_ROOT.name == "scripts":
@@ -27,7 +27,6 @@ if PROJECT_ROOT.name == "scripts":
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from scripts.blondon_communities.blondon_communities_list_stations import chunked
 from scripts.uk_aq_supabase import SupabaseSchemas, create_supabase_client
 
 load_dotenv()
@@ -52,6 +51,10 @@ SPECIES_CONFIG: Dict[str, Dict[str, str]] = {
     "PM25Index": {"label": "PM2.5 DAQI", "uom": "DAQI", "source_label": "breathelondon_nodes:pm2.5:daqi", "notation": "PM2.5 DAQI", "pollutant_label": "pm2.5", "kind": "daqi_index"},
     "NO2Index": {"label": "NO2 DAQI", "uom": "DAQI", "source_label": "breathelondon_nodes:no2:daqi", "notation": "NO2 DAQI", "pollutant_label": "no2", "kind": "daqi_index"},
 }
+
+
+def chunked(values: Sequence[Any], size: int) -> List[Sequence[Any]]:
+    return [values[index:index + size] for index in range(0, len(values), size)]
 
 
 def utcnow() -> datetime:
@@ -186,6 +189,58 @@ class PubSubPublisher:
         return self.publish(self.latest_topic, latest, ("connector_id", "timeseries_id"))
 
 
+class ObservsWriter:
+    def __init__(self, main_client: Client) -> None:
+        requested_mode = (os.getenv("OBSERVS_WRITE_MODE") or "").strip().lower()
+        self.mode = requested_mode if requested_mode in {"direct", "outbox_only", "pubsub_only"} else "outbox_only"
+        self.main_public = main_client.schema(os.getenv("UK_AQ_PUBLIC_SCHEMA") or "uk_aq_public")
+        self.publisher = PubSubPublisher() if self.mode == "pubsub_only" else None
+        self.direct = None
+        if self.mode == "direct":
+            url = (os.getenv("OBS_AQIDB_SUPABASE_URL") or "").strip()
+            key = (os.getenv("OBS_AQIDB_SECRET_KEY") or "").strip()
+            if not url or not key:
+                raise RuntimeError(
+                    "OBSERVS_WRITE_MODE=direct requires OBS_AQIDB_SUPABASE_URL and OBS_AQIDB_SECRET_KEY"
+                )
+            self.direct = create_client(url, key).schema(
+                os.getenv("OBS_AQIDB_RPC_SCHEMA") or "uk_aq_public"
+            )
+
+    @staticmethod
+    def _rows(rows: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        return [
+            {
+                "connector_id": row["connector_id"],
+                "timeseries_id": row["timeseries_id"],
+                "observed_at": row["observed_at"],
+                "value": row["value"],
+                "status": row["status"],
+            }
+            for row in rows
+        ]
+
+    def write(self, rows: Sequence[Dict[str, Any]]) -> Tuple[int, int]:
+        payload = self._rows(rows)
+        if not payload:
+            return 0, 0
+        if self.mode == "pubsub_only":
+            assert self.publisher is not None
+            return (
+                self.publisher.publish_observations(payload),
+                self.publisher.publish_latest(payload),
+            )
+        if self.mode == "direct":
+            assert self.direct is not None
+            self.direct.rpc("uk_aq_rpc_observs_observations_upsert", {"rows": payload}).execute()
+            return len(payload), 0
+        self.main_public.rpc(
+            "uk_aq_rpc_observs_outbox_enqueue",
+            {"entries": [{"payload": payload}]},
+        ).execute()
+        return 0, 0
+
+
 class SupabaseWriter:
     def __init__(self) -> None:
         self.client: Client = create_supabase_client()
@@ -217,11 +272,11 @@ class SupabaseWriter:
 
     def upsert_timeseries(self, rows: Sequence[Dict[str, Any]]) -> Dict[str, int]:
         if rows:
-            self.core.table("timeseries").upsert(list(rows), on_conflict="connector_id,service_ref,timeseries_ref").execute()
+            self.core.table("timeseries").upsert(list(rows), on_conflict="connector_id,timeseries_ref").execute()
         refs = [r["timeseries_ref"] for r in rows]
         out: Dict[str, int] = {}
         for refs_chunk in chunked(refs, 200):
-            resp = self.core.table("timeseries").select("id,timeseries_ref").eq("connector_id", rows[0]["connector_id"]).eq("service_ref", SERVICE_REF).in_("timeseries_ref", refs_chunk).execute()
+            resp = self.core.table("timeseries").select("id,timeseries_ref").eq("connector_id", rows[0]["connector_id"]).in_("timeseries_ref", refs_chunk).execute()
             for r in resp.data or []:
                 out[str(r["timeseries_ref"])] = int(r["id"])
         return out
@@ -236,7 +291,18 @@ class SupabaseWriter:
 
     def upsert_observations(self, rows: Sequence[Dict[str, Any]]) -> int:
         if rows:
-            self.core.table("observations").upsert([{"timeseries_id": r["timeseries_id"], "observed_at": r["observed_at"], "value": r["value"]} for r in rows], on_conflict="timeseries_id,observed_at").execute()
+            self.core.table("observations").upsert(
+                [
+                    {
+                        "timeseries_id": r["timeseries_id"],
+                        "observed_at": r["observed_at"],
+                        "value": r["value"],
+                        "status": r["status"],
+                    }
+                    for r in rows
+                ],
+                on_conflict="timeseries_id,observed_at",
+            ).execute()
         return len(rows)
 
     def update_timeseries_last_values(self, rows: Sequence[Dict[str, Any]]) -> None:
@@ -264,7 +330,10 @@ def build_rows(payload: Sequence[Dict[str, Any]], timeseries_id: int, connector_
         if observed is None:
             continue
         meta = {k: entry.get(k) for k in ("Units", "RatificationStatus", "Source", "Duration", "SensorContract") if entry.get(k) is not None}
-        rows.append({"connector_id": connector_id, "station_id": station_id, "timeseries_id": timeseries_id, "observed_at": observed.isoformat(), "value": value, "metadata": meta, "species": species})
+        status = entry.get("RatificationStatus")
+        if status is not None:
+            status = str(status).strip() or None
+        rows.append({"connector_id": connector_id, "station_id": station_id, "timeseries_id": timeseries_id, "observed_at": observed.isoformat(), "value": value, "status": status, "metadata": meta, "species": species})
         if last_at is None or observed > last_at:
             last_at = observed; last_value = value
     return rows, nulls, (last_at.isoformat() if last_at else None), last_value
@@ -314,7 +383,7 @@ def main() -> int:
     ts_ids = writer.upsert_timeseries(ts_rows) if not args.dry_run else {r["timeseries_ref"]: -i-1 for i, r in enumerate(ts_rows)}
     checkpoints = writer.fetch_checkpoints([int(s["id"]) for s in stations], species) if not args.dry_run else {}
     client = BreatheLondonNodesClient(api_key)
-    publisher = PubSubPublisher()
+    observs_writer = ObservsWriter(writer.client)
     end_time = floor_to_minute(parse_iso(args.end_time) or utcnow())
     poll_hours = float(connector.get("poll_window_hours") or 6)
     default_start = end_time - timedelta(hours=max(poll_hours, 0.1))
@@ -345,8 +414,9 @@ def main() -> int:
                 if rows and not args.dry_run:
                     for rows_chunk in [rows[i:i+args.batch_size] for i in range(0, len(rows), args.batch_size)]:
                         writer.upsert_observations(rows_chunk)
-                        pub_obs += publisher.publish_observations(rows_chunk)
-                        pub_latest += publisher.publish_latest(rows_chunk)
+                        written, latest = observs_writer.write(rows_chunk)
+                        pub_obs += written
+                        pub_latest += latest
                     if last_at and last_value is not None:
                         latest_updates[int(ts_id)] = {"timeseries_id": int(ts_id), "observed_at": last_at, "value": last_value}
             except Exception as exc:

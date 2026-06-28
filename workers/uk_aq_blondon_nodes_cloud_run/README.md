@@ -11,6 +11,17 @@ Defaults that do not require `.env` rows:
 - `GCP_OBSERVS_PUBSUB_TOPIC=uk-aq-observs-observations`
 - `GCP_LATEST_SNAPSHOT_PUBSUB_TOPIC=uk-aq-latest-snapshot-requests`
 
+Observation delivery follows the shared Communities modes:
+
+- `pubsub_only` publishes observation rows (including `RatificationStatus` as
+  `status`) and latest-snapshot requests.
+- `direct` calls `uk_aq_rpc_observs_observations_upsert` on Obs AQI DB.
+- `outbox_only` enqueues rows through the ingest DB observs outbox.
+
+The HTTP wrapper accepts only `start_time`, `end_time`, `site_code`, `species`,
+`max_stations`, `max_api_calls`, and `dry_run`; invalid values return HTTP 400
+without starting the ingest subprocess.
+
 Manual local dry run:
 
 ```bash

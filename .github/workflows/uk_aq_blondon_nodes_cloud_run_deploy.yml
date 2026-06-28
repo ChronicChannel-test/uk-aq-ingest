@@ -6,11 +6,8 @@ on:
       - main
     paths:
       - "workers/uk_aq_blondon_nodes_cloud_run/**"
-      - "supabase/functions/ingest_breathelondon/**"
-      - "supabase/functions/_shared/cache.ts"
-      - "supabase/functions/_shared/fetch_egress_patch.ts"
-      - "supabase/functions/_shared/egress_metrics.ts"
-      - "supabase/functions/_shared/observs_client.ts"
+      - "scripts/blondon_nodes/blondon_nodes_ingest.py"
+      - "scripts/uk_aq_supabase.py"
       - "scripts/gcp/**"
       - ".github/workflows/uk_aq_blondon_nodes_cloud_run_deploy.yml"
   workflow_dispatch:
