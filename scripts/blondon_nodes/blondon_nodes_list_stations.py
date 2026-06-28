@@ -59,8 +59,141 @@ BLONDON_NODES_CONNECTOR_CODE = "blondon_nodes"
 BLONDON_NODES_SERVICE_REF = os.getenv("BLONDON_NODES_SERVICE_REF") or "breathelondon"
 BLONDON_NODES_SERVICE_LABEL = os.getenv("BLONDON_NODES_SERVICE_LABEL") or "Breathe London"
 BLONDON_NETWORK_CODE = "breathelondon"
+STATION_INITIAL_METADATA_TABLE = "station_initial_metadata"
+assert STATION_INITIAL_METADATA_TABLE, "station_initial_metadata table name must not be blank"
+
+
+def validate_station_initial_metadata_table_name(table_name: str = STATION_INITIAL_METADATA_TABLE) -> str:
+    if table_name != "station_initial_metadata":
+        raise RuntimeError(
+            "Breathe London Nodes initial metadata must query "
+            "uk_aq_core.station_initial_metadata; got blank/invalid table name "
+            f"{table_name!r}."
+        )
+    return table_name
+
 
 UK_BBOX = {"west": -11.0, "south": 49.0, "east": 2.0, "north": 61.0}
+
+SOURCE_HISTORY_KEYS = (
+    "SiteCode",
+    "SiteName",
+    "DeviceCode",
+    "InstallationCode",
+    "StartDate",
+    "EndDate",
+    "Latitude",
+    "Longitude",
+    "SensorContract",
+    "SponsorName",
+    "PowerTag",
+)
+
+
+def parse_source_datetime(value: Any) -> Optional[datetime]:
+    text = clean_str(value)
+    if not text:
+        return None
+    try:
+        return datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def source_history_entry(station: Dict[str, Any]) -> Dict[str, Any]:
+    return {key: station.get(key) for key in SOURCE_HISTORY_KEYS if key in station}
+
+
+def dedupe_nodes_sensors_by_site_code(
+    sensors: List[Dict[str, Any]],
+) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    grouped: Dict[str, List[Tuple[int, Dict[str, Any]]]] = {}
+    missing_site_code: List[Tuple[int, Dict[str, Any]]] = []
+    for idx, station in enumerate(sensors):
+        site_code = clean_str(station.get("SiteCode"))
+        if site_code:
+            grouped.setdefault(site_code, []).append((idx, station))
+        else:
+            missing_site_code.append((idx, station))
+
+    duplicate_site_codes = sorted(site_code for site_code, rows in grouped.items() if len(rows) > 1)
+    duplicate_current_site_codes = sorted(
+        site_code
+        for site_code, rows in grouped.items()
+        if sum(1 for _idx, row in rows if clean_str(row.get("EndDate")) is None) > 1
+    )
+
+    canonical_index_rows: List[Tuple[int, Dict[str, Any]]] = []
+    for site_code in sorted(grouped):
+        rows = grouped[site_code]
+        current_rows = [(idx, row) for idx, row in rows if clean_str(row.get("EndDate")) is None]
+        if current_rows:
+            candidate_rows = current_rows
+            date_key = "StartDate"
+        else:
+            candidate_rows = rows
+            date_key = "EndDate"
+
+        parsed_rows = [
+            (parse_source_datetime(row.get(date_key)), idx, row)
+            for idx, row in candidate_rows
+        ]
+        parseable_rows = [(dt, idx, row) for dt, idx, row in parsed_rows if dt is not None]
+        unparseable_rows = [(idx, row) for dt, idx, row in parsed_rows if dt is None]
+        if unparseable_rows and len(rows) > 1:
+            LOG.warning(
+                "Missing or unparseable %s values for duplicate Nodes SiteCode=%s; rows=%s",
+                date_key,
+                site_code,
+                [source_history_entry(row) for idx, row in unparseable_rows],
+            )
+        if parseable_rows:
+            _dt, canonical_idx, canonical_row = max(parseable_rows, key=lambda item: (item[0], -item[1]))
+        else:
+            canonical_idx, canonical_row = min(candidate_rows, key=lambda item: item[0])
+            if len(rows) > 1:
+                LOG.warning(
+                    "Unable to parse %s values for duplicate Nodes SiteCode=%s; using first deterministic row. rows=%s",
+                    date_key,
+                    site_code,
+                    [source_history_entry(row) for _idx, row in rows],
+                )
+
+        if len(rows) > 1:
+            canonical_copy = dict(canonical_row)
+            canonical_copy["source_history"] = [
+                source_history_entry(row)
+                for idx, row in rows
+                if idx != canonical_idx
+            ]
+            canonical_row = canonical_copy
+        canonical_index_rows.append((canonical_idx, canonical_row))
+
+    canonical_index_rows.extend(missing_site_code)
+    canonical_index_rows.sort(key=lambda item: item[0])
+    canonical_rows = [row for _idx, row in canonical_index_rows]
+
+    stats = {
+        "raw_nodes_sensors": len(sensors),
+        "unique_site_codes": len(grouped),
+        "duplicate_site_codes": len(duplicate_site_codes),
+        "canonical_rows": len(canonical_rows),
+        "duplicate_current_site_codes_count": len(duplicate_current_site_codes),
+        "duplicate_current_site_codes": duplicate_current_site_codes,
+    }
+    LOG.info(
+        "raw_nodes_sensors=%s unique_site_codes=%s duplicate_site_codes=%s canonical_rows=%s",
+        stats["raw_nodes_sensors"],
+        stats["unique_site_codes"],
+        stats["duplicate_site_codes"],
+        stats["canonical_rows"],
+    )
+    LOG.info(
+        "duplicate_current_site_codes_count=%s duplicate_current_site_codes=%s",
+        stats["duplicate_current_site_codes_count"],
+        ",".join(duplicate_current_site_codes) if duplicate_current_site_codes else "none",
+    )
+    return canonical_rows, stats
 
 
 def utcnow() -> datetime:
@@ -119,6 +252,9 @@ def initial_metadata_attributes(station: Dict[str, Any]) -> Dict[str, Any]:
     ):
         if key in station and station.get(key) is not None:
             attributes[key] = station.get(key)
+    source_history = station.get("source_history")
+    if isinstance(source_history, list) and source_history:
+        attributes["source_history"] = source_history
     return attributes
 
 
@@ -243,6 +379,29 @@ class SupabaseWriter:
                 mapping[str(row["station_ref"])] = int(row["id"])
         return mapping
 
+    @staticmethod
+    def response_rows(resp: Any, table_name: str) -> List[Dict[str, Any]]:
+        if hasattr(resp, "data"):
+            rows = resp.data
+        elif isinstance(resp, dict):
+            rows = resp.get("data")
+        else:
+            raise RuntimeError(
+                f"Expected {table_name} response to expose data rows; "
+                f"got response type {type(resp).__name__}."
+            )
+        if rows is None:
+            return []
+        if not isinstance(rows, list) or not all(isinstance(row, dict) for row in rows):
+            raise RuntimeError(
+                f"Expected {table_name} response data to be a list of dict rows; "
+                f"got {type(rows).__name__}."
+            )
+        return rows
+
+    def station_initial_metadata_table(self) -> Any:
+        return self.core.table(validate_station_initial_metadata_table_name())
+
     def insert_initial_metadata_once(self, attributes_by_station: Dict[int, Dict[str, Any]]) -> int:
         if not attributes_by_station:
             return 0
@@ -250,9 +409,14 @@ class SupabaseWriter:
         existing: set[int] = set()
         for idx in range(0, len(station_ids), 200):
             chunk = station_ids[idx : idx + 200]
-            resp = self.core.table("").select("station_id").in_("station_id", chunk).execute()
-            rows = resp.data if hasattr(resp, "data") else resp.get("data")
-            existing.update(int(row["station_id"]) for row in rows or [] if row.get("station_id") is not None)
+            resp = (
+                self.station_initial_metadata_table()
+                .select("station_id")
+                .in_("station_id", chunk)
+                .execute()
+            )
+            rows = self.response_rows(resp, STATION_INITIAL_METADATA_TABLE)
+            existing.update(int(row["station_id"]) for row in rows if row.get("station_id") is not None)
         now = utcnow().isoformat()
         rows = [
             {"station_id": station_id, "attributes": attrs, "captured_at": now, "created_at": now}
@@ -260,7 +424,7 @@ class SupabaseWriter:
             if station_id not in existing and attrs
         ]
         if rows:
-            self.core.table("station_initial_metadata").insert(rows).execute()
+            self.station_initial_metadata_table().insert(rows).execute()
         return len(rows)
 
 
@@ -287,6 +451,8 @@ def main() -> int:
     if args.limit is not None:
         sensors = sensors[: max(0, args.limit)]
 
+    sensors, dedupe_stats = dedupe_nodes_sensors_by_site_code(sensors)
+
     connector_id = 0
     network_id: Optional[int] = None
     writer: Optional[SupabaseWriter] = None
@@ -304,7 +470,20 @@ def main() -> int:
     }
 
     if args.dry_run or not args.to_supabase:
-        print(f"Fetched {len(sensors)} Breathe London Nodes station row(s).")
+        print(f"Fetched {dedupe_stats['raw_nodes_sensors']} Breathe London Nodes station row(s).")
+        print(f"raw_nodes_sensors={dedupe_stats['raw_nodes_sensors']}")
+        print(f"unique_site_codes={dedupe_stats['unique_site_codes']}")
+        print(f"duplicate_site_codes={dedupe_stats['duplicate_site_codes']}")
+        print(f"canonical_rows={dedupe_stats['canonical_rows']}")
+        print(f"duplicate_current_site_codes_count={dedupe_stats['duplicate_current_site_codes_count']}")
+        print(
+            "duplicate_current_site_codes="
+            + (
+                ",".join(dedupe_stats["duplicate_current_site_codes"])
+                if dedupe_stats["duplicate_current_site_codes"]
+                else "none"
+            )
+        )
         print(f"Mapped {len(station_rows)} station row(s).")
         for row in station_rows[: max(0, args.sample_size)]:
             print(json.dumps(row, indent=2, sort_keys=True, default=str))
