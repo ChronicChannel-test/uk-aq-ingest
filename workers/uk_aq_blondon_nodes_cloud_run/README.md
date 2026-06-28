@@ -16,18 +16,26 @@ Defaults that do not require `.env` rows:
 - `BLONDON_NODES_BASE_URL=https://breathe-london-7x54d7qf.ew.gateway.dev`
 - `BLONDON_NODES_SERVICE_REF=breathelondon`
 - `GCP_OBSERVS_PUBSUB_TOPIC=uk-aq-observs-observations`
-- `GCP_LATEST_SNAPSHOT_PUBSUB_TOPIC=uk-aq-latest-snapshot-requests`
 
 Observation delivery follows the shared Communities modes:
 
 - `pubsub_only` publishes observation rows (including `RatificationStatus` as
-  `status`) and latest-snapshot requests.
+  `status`) to `GCP_OBSERVS_PUBSUB_TOPIC`.
 - `direct` calls `uk_aq_rpc_observs_observations_upsert` on Obs AQI DB.
 - `outbox_only` enqueues rows through the ingest DB observs outbox.
 
 `OBSERVS_WRITE_MODE` controls only this secondary Observs/obsAQIDB path.
 Unless `--dry-run` is used, Nodes observations are always written first to
 `uk_aq_core.observations`.
+
+Latest-snapshot processing consumes the same observation messages through the
+`uk-aq-latest-snapshot-sub` subscription. Nodes does not publish to or require
+a separate latest-snapshot topic. A secondary delivery failure is reported in
+the run summary but does not set station/species checkpoint errors or prevent
+checkpoint advancement after a successful core observation write. A
+secondary-only failure keeps `run_status=succeeded`, uses
+`run_message=secondary_errors`, and still updates the connector's successful
+polling timestamp.
 
 Normal scheduled runs select due active stations from
 `uk_aq_raw.blondon_nodes_station_checkpoints`. Scheduling is station-level

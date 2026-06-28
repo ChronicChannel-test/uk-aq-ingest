@@ -23,9 +23,17 @@ Write path:
 - Updates each affected timeseries without regressing its bounds: `first_value_at`
   can only move earlier, while `last_value_at` and its matching `last_value` can
   only move later.
-- Publishes written rows to the observs Pub/Sub topic (`GCP_OBSERVS_PUBSUB_TOPIC`, default `uk-aq-observs-observations`).
-- Publishes latest snapshot requests to `GCP_LATEST_SNAPSHOT_PUBSUB_TOPIC` (default `uk-aq-latest-snapshot-requests`).
+- Publishes written rows to the single Observs Pub/Sub topic
+  (`GCP_OBSERVS_PUBSUB_TOPIC`, default `uk-aq-observs-observations`).
+- Latest-snapshot processing consumes those same messages through
+  `uk-aq-latest-snapshot-sub`; Nodes has no separate latest-snapshot topic.
 - Always writes observations to ingest DB before invoking the additional Observs/obsAQIDB writer.
+- Secondary Observs/Pub/Sub failures are reported separately and do not mark a
+  station/species source ingest as failed or block checkpoint advancement after
+  the core write succeeds.
+- Secondary-only failures keep `run_status=succeeded` with
+  `run_message=secondary_errors`; fetch or core write failures retain the
+  existing partial/source-error behavior.
 - Updates `uk_aq_raw.blondon_nodes_station_checkpoints` only after station processing.
 
 Cloud Run tracking:

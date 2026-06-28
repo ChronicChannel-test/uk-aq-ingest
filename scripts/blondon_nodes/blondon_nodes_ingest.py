@@ -138,7 +138,6 @@ class PubSubPublisher:
     def __init__(self) -> None:
         self.project_id = (os.getenv("GCP_PROJECT_ID") or os.getenv("GOOGLE_CLOUD_PROJECT") or "").strip()
         self.observs_topic = (os.getenv("GCP_OBSERVS_PUBSUB_TOPIC") or "uk-aq-observs-observations").strip()
-        self.latest_topic = (os.getenv("GCP_LATEST_SNAPSHOT_PUBSUB_TOPIC") or "uk-aq-latest-snapshot-requests").strip()
         self.batch_size = int(os.getenv("OBSERVS_PUBSUB_PUBLISH_BATCH_SIZE") or "500")
 
     def _topic_path(self, topic: str) -> str:
@@ -177,18 +176,6 @@ class PubSubPublisher:
     def publish_observations(self, rows: Sequence[Dict[str, Any]]) -> int:
         return self.publish(self.observs_topic, rows, ("connector_id", "timeseries_id", "observed_at"))
 
-    def publish_latest(self, rows: Sequence[Dict[str, Any]]) -> int:
-        latest = []
-        seen: set[int] = set()
-        for row in sorted(rows, key=lambda item: str(item.get("observed_at") or ""), reverse=True):
-            ts_id = int(row["timeseries_id"])
-            if ts_id in seen:
-                continue
-            seen.add(ts_id)
-            latest.append({"connector_id": row["connector_id"], "timeseries_id": ts_id, "observed_at": row["observed_at"]})
-        return self.publish(self.latest_topic, latest, ("connector_id", "timeseries_id"))
-
-
 class ObservsWriter:
     def __init__(self, main_client: Client) -> None:
         requested_mode = (os.getenv("OBSERVS_WRITE_MODE") or "").strip().lower()
@@ -223,14 +210,13 @@ class ObservsWriter:
     def write(self, rows: Sequence[Dict[str, Any]]) -> Dict[str, int]:
         payload = self._rows(rows)
         if not payload:
-            return {"written": 0, "enqueued": 0, "pubsub_observs": 0, "pubsub_latest": 0}
+            return {"written": 0, "enqueued": 0, "pubsub_observs": 0}
         if self.mode == "pubsub_only":
             assert self.publisher is not None
             return {
                 "written": 0,
                 "enqueued": 0,
                 "pubsub_observs": self.publisher.publish_observations(payload),
-                "pubsub_latest": self.publisher.publish_latest(payload),
             }
         if self.mode == "direct":
             assert self.direct is not None
@@ -239,7 +225,6 @@ class ObservsWriter:
                 "written": len(payload),
                 "enqueued": 0,
                 "pubsub_observs": 0,
-                "pubsub_latest": 0,
             }
         self.main_public.rpc(
             "uk_aq_rpc_observs_outbox_enqueue",
@@ -249,7 +234,6 @@ class ObservsWriter:
             "written": 0,
             "enqueued": len(payload),
             "pubsub_observs": 0,
-            "pubsub_latest": 0,
         }
 
 
@@ -373,6 +357,39 @@ class SupabaseWriter:
             self.raw.table("blondon_nodes_station_checkpoints").upsert(
                 list(rows), on_conflict="station_id"
             ).execute()
+
+
+def write_secondary_rows(
+    observs_writer: Optional[ObservsWriter],
+    rows_chunks: Sequence[Sequence[Dict[str, Any]]],
+    station_ref: str,
+    species: str,
+) -> Dict[str, Any]:
+    stats: Dict[str, Any] = {
+        "written": 0,
+        "enqueued": 0,
+        "pubsub_observs": 0,
+        "errors": [],
+    }
+    if observs_writer is None:
+        return stats
+    for rows_chunk in rows_chunks:
+        try:
+            chunk_stats = observs_writer.write(rows_chunk)
+            stats["written"] += chunk_stats["written"]
+            stats["enqueued"] += chunk_stats["enqueued"]
+            stats["pubsub_observs"] += chunk_stats["pubsub_observs"]
+        except Exception as exc:
+            message = f"{station_ref}/{species}: {exc}"
+            stats["errors"].append(message)
+            LOG.warning(
+                "Secondary Observs write failed for %s %s: %s",
+                station_ref,
+                species,
+                exc,
+            )
+    return stats
+
 
 def build_rows(payload: Sequence[Dict[str, Any]], timeseries_id: int, connector_id: int, station_id: int, species: str) -> Tuple[List[Dict[str, Any]], int, Optional[str], Optional[float]]:
     rows = []
@@ -504,7 +521,11 @@ def main() -> int:
                 "observs_enqueued": 0,
                 "observs_receipts_upserted": 0,
                 "pubsub_observs": 0,
-                "pubsub_latest": 0,
+                "secondary_errors": [],
+                "secondary_error_count": 0,
+                "secondary_error_message": None,
+                "observs_error_count": 0,
+                "observs_error_message": None,
                 "null_values_skipped": 0,
                 "empty_series": 0,
                 "checkpoints": 0,
@@ -553,7 +574,11 @@ def main() -> int:
                 "observs_enqueued": 0,
                 "observs_receipts_upserted": 0,
                 "pubsub_observs": 0,
-                "pubsub_latest": 0,
+                "secondary_errors": [],
+                "secondary_error_count": 0,
+                "secondary_error_message": None,
+                "observs_error_count": 0,
+                "observs_error_message": None,
                 "null_values_skipped": 0,
                 "empty_series": 0,
                 "checkpoints": 0,
@@ -573,7 +598,15 @@ def main() -> int:
             ts_rows.append({"timeseries_ref": f"{station_ref}:{sp}", "label": f"{station_name} {cfg['label']}", "uom": cfg["uom"], "station_id": int(st["id"]), "service_ref": SERVICE_REF, "connector_id": connector_id, "phenomenon_id": phenomenon_ids.get(cfg["source_label"]), "extras": {"site_code": station_ref, "species": sp, "measurement_kind": cfg["kind"], "api_units": cfg["uom"]}})
     ts_ids = writer.upsert_timeseries(ts_rows) if not args.dry_run else {r["timeseries_ref"]: -i-1 for i, r in enumerate(ts_rows)}
     client = BreatheLondonNodesClient(api_key)
-    observs_writer = ObservsWriter(writer.client)
+    secondary_errors: List[str] = []
+    secondary_error_count = 0
+    try:
+        observs_writer: Optional[ObservsWriter] = ObservsWriter(writer.client)
+    except Exception as exc:
+        observs_writer = None
+        secondary_error_count += 1
+        secondary_errors.append(f"observs_writer_init: {exc}")
+        LOG.warning("Secondary Observs writer initialization failed: %s", exc)
     end_time = floor_to_minute(parse_iso(args.end_time) or utcnow())
     poll_hours = float(connector.get("poll_window_hours") or 6)
     default_start = floor_to_minute(utcnow()) - timedelta(
@@ -581,7 +614,7 @@ def main() -> int:
     )
     explicit_start = parse_iso(args.start_time)
     api_calls = observations_input = observations_upserted = 0
-    null_values_skipped = empty_series = pub_obs = pub_latest = 0
+    null_values_skipped = empty_series = pub_obs = 0
     observs_rows_prepared = observs_written = observs_enqueued = 0
     stations_processed = 0
     stopped_reason: Optional[str] = None
@@ -630,21 +663,35 @@ def main() -> int:
                 null_values_skipped += nulls
                 observations_input += len(rows)
                 if rows and not args.dry_run:
-                    for rows_chunk in [rows[i:i+args.batch_size] for i in range(0, len(rows), args.batch_size)]:
+                    rows_chunks = [
+                        rows[index:index + args.batch_size]
+                        for index in range(0, len(rows), args.batch_size)
+                    ]
+                    for rows_chunk in rows_chunks:
                         writer.upsert_observations(rows_chunk)
                         observations_upserted += len(rows_chunk)
                         written_observation_rows.extend(rows_chunk)
-                        observs_rows_prepared += len(rows_chunk)
-                        observs_stats = observs_writer.write(rows_chunk)
-                        observs_written += observs_stats["written"]
-                        observs_enqueued += observs_stats["enqueued"]
-                        pub_obs += observs_stats["pubsub_observs"]
-                        pub_latest += observs_stats["pubsub_latest"]
                     if last_at and last_value is not None:
                         species_last_observed[sp] = last_at
                         parsed_last_at = parse_iso(last_at)
                         if parsed_last_at:
                             successful_last_observed.append(parsed_last_at)
+                    observs_rows_prepared += len(rows)
+                    observs_stats = write_secondary_rows(
+                        observs_writer,
+                        rows_chunks,
+                        station_ref,
+                        sp,
+                    )
+                    observs_written += observs_stats["written"]
+                    observs_enqueued += observs_stats["enqueued"]
+                    pub_obs += observs_stats["pubsub_observs"]
+                    chunk_errors = observs_stats["errors"]
+                    secondary_error_count += len(chunk_errors)
+                    remaining_error_slots = max(0, 50 - len(secondary_errors))
+                    secondary_errors.extend(
+                        chunk_errors[:remaining_error_slots]
+                    )
                 species_last_error.pop(sp, None)
             except Exception as exc:
                 error = str(exc)
@@ -709,8 +756,21 @@ def main() -> int:
             str(row["observed_at"]) for row in written_observation_rows
         )
     partial = had_species_errors or stopped_reason is not None
-    run_status = "partial" if partial else ("dry_run" if args.dry_run else "succeeded")
-    run_message = stopped_reason or ("species_errors" if had_species_errors else "ok")
+    if partial:
+        run_status = "partial"
+        run_message = stopped_reason or "species_errors"
+    elif args.dry_run:
+        run_status = "dry_run"
+        run_message = "ok"
+    elif secondary_error_count:
+        run_status = "succeeded"
+        run_message = "secondary_errors"
+    else:
+        run_status = "succeeded"
+        run_message = "ok"
+    secondary_error_message = (
+        "; ".join(secondary_errors)[:4000] if secondary_errors else None
+    )
     summary = {
         "ok": True,
         "connector_id": connector_id,
@@ -731,7 +791,11 @@ def main() -> int:
         "observs_enqueued": observs_enqueued,
         "observs_receipts_upserted": 0,
         "pubsub_observs": pub_obs,
-        "pubsub_latest": pub_latest,
+        "secondary_errors": secondary_errors,
+        "secondary_error_count": secondary_error_count,
+        "secondary_error_message": secondary_error_message,
+        "observs_error_count": secondary_error_count,
+        "observs_error_message": secondary_error_message,
         "null_values_skipped": null_values_skipped,
         "empty_series": empty_series,
         "checkpoints": len(checkpoint_rows) if not args.dry_run else 0,
@@ -742,10 +806,10 @@ def main() -> int:
     LOG.info(
         "Nodes ingest complete stations=%s species=%s api_calls=%s observations=%s "
         "null_values_skipped=%s empty_series=%s checkpoints=%s "
-        "pubsub_observs=%s pubsub_latest=%s dry_run=%s",
+        "pubsub_observs=%s secondary_errors=%s dry_run=%s",
         len(stations), len(species), api_calls, observations_upserted,
         null_values_skipped, empty_series, len(checkpoint_rows),
-        pub_obs, pub_latest, args.dry_run,
+        pub_obs, secondary_error_count, args.dry_run,
     )
     emit_run_summary(summary)
     return 0

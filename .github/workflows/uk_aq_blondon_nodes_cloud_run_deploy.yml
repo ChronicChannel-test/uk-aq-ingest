@@ -45,7 +45,6 @@ jobs:
       OBS_AQIDB_RPC_SCHEMA: ${{ vars.OBS_AQIDB_RPC_SCHEMA || 'uk_aq_public' }}
       OBSERVS_WRITE_MODE: ${{ vars.BLONDON_NODES_OBSERVS_WRITE_MODE || vars.OBSERVS_WRITE_MODE || 'pubsub_only' }}
       GCP_OBSERVS_PUBSUB_TOPIC: ${{ vars.GCP_OBSERVS_PUBSUB_TOPIC || 'uk-aq-observs-observations' }}
-      GCP_LATEST_SNAPSHOT_PUBSUB_TOPIC: ${{ vars.GCP_LATEST_SNAPSHOT_PUBSUB_TOPIC || 'uk-aq-latest-snapshot-requests' }}
       OBSERVS_PUBSUB_PUBLISH_BATCH_SIZE: ${{ vars.OBSERVS_PUBSUB_PUBLISH_BATCH_SIZE || '500' }}
       BLONDON_NODES_BASE_URL: ${{ vars.BLONDON_NODES_BASE_URL || 'https://breathe-london-7x54d7qf.ew.gateway.dev' }}
       BLONDON_NODES_CONNECTOR_CODE: ${{ vars.BLONDON_NODES_CONNECTOR_CODE || 'blondon_nodes' }}
@@ -293,7 +292,6 @@ jobs:
           add_env UK_AQ_RAW_SCHEMA
           add_env OBSERVS_WRITE_MODE
           add_env GCP_OBSERVS_PUBSUB_TOPIC
-            add_env GCP_LATEST_SNAPSHOT_PUBSUB_TOPIC
           add_env OBSERVS_PUBSUB_PUBLISH_BATCH_SIZE
           add_env BLONDON_NODES_BASE_URL
           add_env BLONDON_NODES_CONNECTOR_CODE
