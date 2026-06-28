@@ -2,20 +2,27 @@
 import json
 import os
 import re
+import signal
 import subprocess
+import threading
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
 PORT = int(os.getenv("PORT", "8000"))
 SCRIPT = os.getenv("BLONDON_NODES_INGEST_SCRIPT_PATH", "/app/scripts/blondon_nodes/blondon_nodes_ingest.py")
+RUN_JOB_SCRIPT = os.getenv(
+    "BLONDON_NODES_RUN_JOB_SCRIPT_PATH",
+    "/app/workers/uk_aq_blondon_nodes_cloud_run/run_job.py",
+)
 ACCEPTED_KEYS = {
     "start_time", "end_time", "site_code", "species",
-    "max_stations", "max_api_calls", "dry_run",
+    "max_stations", "max_api_calls", "dry_run", "trigger_mode",
 }
 SITE_CODE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
 ALLOWED_SPECIES = {"PM25", "NO2", "PM25Index", "NO2Index"}
 MAX_REQUEST_BYTES = 4096
+RUN_LOCK = threading.Lock()
 
 
 class RequestValidationError(ValueError):
@@ -80,7 +87,82 @@ def validated_cli_args(payload: Any) -> list[str]:
             raise RequestValidationError("dry_run must be a boolean")
         if payload["dry_run"]:
             args.append("--dry-run")
+    if "trigger_mode" in payload:
+        trigger_mode = payload["trigger_mode"]
+        if trigger_mode not in {"scheduled", "manual"}:
+            raise RequestValidationError(
+                "trigger_mode must be scheduled or manual"
+            )
     return args
+
+
+def parse_job_summary(stdout: str) -> dict[str, Any] | None:
+    for line in reversed(stdout.splitlines()):
+        if line.startswith("JOB_SUMMARY_JSON "):
+            try:
+                value = json.loads(line[len("JOB_SUMMARY_JSON "):])
+            except json.JSONDecodeError:
+                return None
+            return value if isinstance(value, dict) else None
+    return None
+
+
+def run_job(payload: dict[str, Any], timeout: int) -> tuple[int, dict[str, Any]]:
+    process = subprocess.Popen(
+        ["python3", RUN_JOB_SCRIPT],
+        text=True,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        start_new_session=True,
+    )
+    try:
+        stdout, stderr = process.communicate(
+            json.dumps(payload, separators=(",", ":")),
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+        try:
+            process.communicate(timeout=10)
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            process.communicate()
+        recovery = subprocess.run(
+            ["python3", RUN_JOB_SCRIPT, "--record-timeout", str(timeout)],
+            text=True,
+            capture_output=True,
+            timeout=30,
+        )
+        summary = parse_job_summary(recovery.stdout) or {
+            "ok": False,
+            "run_status": "failed",
+            "run_message": f"cloud_run child_timeout after {timeout}s",
+            "timed_out": True,
+            "timeout_seconds": timeout,
+        }
+        return 504, summary
+
+    summary = parse_job_summary(stdout)
+    if summary is None:
+        summary = {
+            "ok": False,
+            "run_status": "failed",
+            "run_message": "job_summary_missing",
+            "returncode": process.returncode,
+            "stdout": stdout[-4000:],
+            "stderr": stderr[-4000:],
+        }
+    if process.returncode != 0:
+        summary["ok"] = False
+        return 500, summary
+    return 200, summary
 
 class Handler(BaseHTTPRequestHandler):
     def _json_response(self, status: int, body: dict[str, Any]) -> None:
@@ -106,9 +188,26 @@ class Handler(BaseHTTPRequestHandler):
             self._json_response(400, {"ok": False, "error": str(exc)})
             return
 
-        proc = subprocess.run(args, text=True, capture_output=True, timeout=int(os.getenv("BLONDON_NODES_MAX_RUNTIME_SECONDS", "840")))
-        body = {"ok": proc.returncode == 0, "returncode": proc.returncode, "stdout": proc.stdout[-4000:], "stderr": proc.stderr[-4000:]}
-        self._json_response(200 if proc.returncode == 0 else 500, body)
+        del args
+        if not RUN_LOCK.acquire(blocking=False):
+            self._json_response(409, {"ok": False, "error": "run_in_flight"})
+            return
+        try:
+            try:
+                status, body = run_job(
+                    payload,
+                    int(os.getenv("BLONDON_NODES_MAX_RUNTIME_SECONDS", "840")),
+                )
+            except Exception as exc:
+                status = 500
+                body = {
+                    "ok": False,
+                    "run_status": "failed",
+                    "run_message": f"cloud_run_wrapper_failed: {exc}",
+                }
+            self._json_response(status, body)
+        finally:
+            RUN_LOCK.release()
 
 
 if __name__ == "__main__":

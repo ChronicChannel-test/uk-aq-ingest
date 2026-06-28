@@ -20,10 +20,24 @@ Species/timeseries:
 
 Write path:
 - Upserts `uk_aq_core.phenomena`, `uk_aq_core.timeseries`, and `uk_aq_core.observations`.
+- Updates each affected timeseries without regressing its bounds: `first_value_at`
+  can only move earlier, while `last_value_at` and its matching `last_value` can
+  only move later.
 - Publishes written rows to the observs Pub/Sub topic (`GCP_OBSERVS_PUBSUB_TOPIC`, default `uk-aq-observs-observations`).
 - Publishes latest snapshot requests to `GCP_LATEST_SNAPSHOT_PUBSUB_TOPIC` (default `uk-aq-latest-snapshot-requests`).
 - Always writes observations to ingest DB before invoking the additional Observs/obsAQIDB writer.
 - Updates `uk_aq_raw.blondon_nodes_station_checkpoints` only after station processing.
+
+Cloud Run tracking:
+- `run_service.py` accepts `{}` as the normal Scheduler body. Optional
+  `trigger_mode` values are `scheduled` and `manual`.
+- `run_job.py` checks connector scheduling state and claims the connector
+  through `uk_aq_public.uk_aq_rpc_dispatch_claim`.
+- Claimed runs update connector `last_run_*` fields and insert a
+  `uk_aq_core.uk_aq_ingest_runs` row. Successful runs also update
+  `connectors.last_polled_at`.
+- The ingest emits a final `RUN_SUMMARY_JSON` line used for run counts and
+  status. Wrapper timeouts are recorded as failed runs and return HTTP 504.
 
 Checkpoint scheduling:
 - Scheduling is station-level because `/SensorData` requests are keyed by `SiteCode` plus species.
