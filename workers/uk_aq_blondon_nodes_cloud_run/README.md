@@ -18,6 +18,15 @@ Observation delivery follows the shared Communities modes:
 - `direct` calls `uk_aq_rpc_observs_observations_upsert` on Obs AQI DB.
 - `outbox_only` enqueues rows through the ingest DB observs outbox.
 
+`OBSERVS_WRITE_MODE` controls only this secondary Observs/obsAQIDB path.
+Unless `--dry-run` is used, Nodes observations are always written first to
+`uk_aq_core.observations`.
+
+Normal scheduled runs select due active stations from
+`uk_aq_raw.blondon_nodes_station_checkpoints`. Scheduling is station-level
+because `/SensorData` requests use `SiteCode` plus species; per-species
+progress and errors are JSONB fields on the station checkpoint row.
+
 The HTTP wrapper accepts only `start_time`, `end_time`, `site_code`, `species`,
 `max_stations`, `max_api_calls`, and `dry_run`; invalid values return HTTP 400
 without starting the ingest subprocess.

@@ -255,14 +255,23 @@ class SupabaseWriter:
             raise RuntimeError("Connector not found for blondon_nodes. Run the station import first.")
         return dict(rows[0])
 
-    def fetch_active_stations(self, connector_id: int, site_code: Optional[str], limit: Optional[int]) -> List[Dict[str, Any]]:
+    def fetch_active_stations(self, connector_id: int, site_code: Optional[str]) -> List[Dict[str, Any]]:
         query = self.core.table("stations").select("id,station_ref,station_name,label").eq("connector_id", connector_id).eq("service_ref", SERVICE_REF).filter("removed_at", "is", "null").order("station_ref")
         if site_code:
             query = query.eq("station_ref", site_code)
-        if limit:
-            query = query.limit(limit)
         resp = query.execute()
         return resp.data if hasattr(resp, "data") else resp.get("data") or []
+
+    def fetch_station_checkpoints(self, station_ids: Sequence[int]) -> Dict[int, Dict[str, Any]]:
+        out: Dict[int, Dict[str, Any]] = {}
+        for ids in chunked([str(value) for value in station_ids], 200):
+            resp = self.raw.table("blondon_nodes_station_checkpoints").select(
+                "station_id,next_due_at,last_observed_at,ingest_lag_samples,"
+                "last_polled_at,last_error,species_last_observed_at,species_last_error"
+            ).in_("station_id", ids).execute()
+            for row in resp.data or []:
+                out[int(row["station_id"])] = dict(row)
+        return out
 
     def upsert_phenomena(self, connector_id: int, species: Sequence[str]) -> Dict[str, int]:
         rows = [{"connector_id": connector_id, "label": SPECIES_CONFIG[s]["label"], "source_label": SPECIES_CONFIG[s]["source_label"], "notation": SPECIES_CONFIG[s]["notation"], "pollutant_label": SPECIES_CONFIG[s]["pollutant_label"]} for s in species]
@@ -281,19 +290,12 @@ class SupabaseWriter:
                 out[str(r["timeseries_ref"])] = int(r["id"])
         return out
 
-    def fetch_checkpoints(self, station_ids: Sequence[int], species: Sequence[str]) -> Dict[Tuple[int, str], Dict[str, Any]]:
-        out: Dict[Tuple[int, str], Dict[str, Any]] = {}
-        for ids in chunked([str(v) for v in station_ids], 200):
-            resp = self.raw.table("blondon_nodes_timeseries_checkpoints").select("station_id,species,timeseries_id,last_observed_at,last_polled_at,last_error").in_("station_id", ids).in_("species", list(species)).execute()
-            for r in resp.data or []:
-                out[(int(r["station_id"]), str(r["species"]))] = r
-        return out
-
     def upsert_observations(self, rows: Sequence[Dict[str, Any]]) -> int:
         if rows:
             self.core.table("observations").upsert(
                 [
                     {
+                        "connector_id": r["connector_id"],
                         "timeseries_id": r["timeseries_id"],
                         "observed_at": r["observed_at"],
                         "value": r["value"],
@@ -301,7 +303,7 @@ class SupabaseWriter:
                     }
                     for r in rows
                 ],
-                on_conflict="timeseries_id,observed_at",
+                on_conflict="connector_id,timeseries_id,observed_at",
             ).execute()
         return len(rows)
 
@@ -309,9 +311,11 @@ class SupabaseWriter:
         for row in rows:
             self.core.table("timeseries").update({"last_value": row["value"], "last_value_at": row["observed_at"]}).eq("id", row["timeseries_id"]).execute()
 
-    def upsert_checkpoints(self, rows: Sequence[Dict[str, Any]]) -> None:
+    def upsert_station_checkpoints(self, rows: Sequence[Dict[str, Any]]) -> None:
         if rows:
-            self.raw.table("blondon_nodes_timeseries_checkpoints").upsert(list(rows), on_conflict="station_id,species").execute()
+            self.raw.table("blondon_nodes_station_checkpoints").upsert(
+                list(rows), on_conflict="station_id"
+            ).execute()
 
     def update_connector_last_polled(self, connector_id: int) -> None:
         self.core.table("connectors").update({"last_polled_at": utcnow().isoformat()}).eq("id", connector_id).execute()
@@ -337,6 +341,56 @@ def build_rows(payload: Sequence[Dict[str, Any]], timeseries_id: int, connector_
         if last_at is None or observed > last_at:
             last_at = observed; last_value = value
     return rows, nulls, (last_at.isoformat() if last_at else None), last_value
+
+
+def select_due_stations(
+    stations: Sequence[Dict[str, Any]],
+    checkpoints: Dict[int, Dict[str, Any]],
+    now: datetime,
+    bypass_due: bool,
+    limit: Optional[int],
+) -> List[Dict[str, Any]]:
+    due = []
+    for station in stations:
+        checkpoint = checkpoints.get(int(station["id"]), {})
+        next_due = parse_iso(checkpoint.get("next_due_at"))
+        if bypass_due or next_due is None or next_due <= now:
+            due.append(station)
+
+    def sort_key(station: Dict[str, Any]) -> Tuple[Any, ...]:
+        checkpoint = checkpoints.get(int(station["id"]), {})
+        last_polled = parse_iso(checkpoint.get("last_polled_at"))
+        next_due = parse_iso(checkpoint.get("next_due_at"))
+        return (
+            last_polled is not None,
+            last_polled or datetime.min.replace(tzinfo=timezone.utc),
+            next_due is not None,
+            next_due or datetime.min.replace(tzinfo=timezone.utc),
+            str(station.get("station_ref") or ""),
+        )
+
+    due.sort(key=sort_key)
+    return due[:limit] if limit is not None else due
+
+
+def json_object(value: Any) -> Dict[str, Any]:
+    return dict(value) if isinstance(value, dict) else {}
+
+
+def lag_samples(value: Any) -> List[int]:
+    if not isinstance(value, list):
+        return []
+    samples = []
+    for item in value:
+        if isinstance(item, bool):
+            continue
+        try:
+            sample = int(item)
+        except (TypeError, ValueError):
+            continue
+        if sample >= 0:
+            samples.append(sample)
+    return samples[-10:]
 
 
 def parse_args() -> argparse.Namespace:
@@ -368,8 +422,23 @@ def main() -> int:
     connector_id = int(connector["id"])
     if connector.get("poll_enabled") is False and not (args.start_time or args.site_code):
         LOG.info("Connector blondon_nodes poll_enabled=false; exiting normal scheduled run."); return 0
-    stations = writer.fetch_active_stations(connector_id, args.site_code, args.max_stations)
-    LOG.info("Loaded %s active blondon_nodes stations.", len(stations))
+    all_stations = writer.fetch_active_stations(connector_id, args.site_code)
+    checkpoints = writer.fetch_station_checkpoints(
+        [int(station["id"]) for station in all_stations]
+    )
+    selection_time = utcnow()
+    stations = select_due_stations(
+        all_stations,
+        checkpoints,
+        selection_time,
+        bypass_due=bool(args.site_code or args.start_time),
+        limit=args.max_stations,
+    )
+    LOG.info(
+        "Selected %s of %s active blondon_nodes stations.",
+        len(stations),
+        len(all_stations),
+    )
     if not stations:
         return 0
     phenomenon_ids = writer.upsert_phenomena(connector_id, species) if not args.dry_run else {}
@@ -381,27 +450,47 @@ def main() -> int:
             cfg = SPECIES_CONFIG[sp]
             ts_rows.append({"timeseries_ref": f"{station_ref}:{sp}", "label": f"{station_name} {cfg['label']}", "uom": cfg["uom"], "station_id": int(st["id"]), "service_ref": SERVICE_REF, "connector_id": connector_id, "phenomenon_id": phenomenon_ids.get(cfg["source_label"]), "extras": {"site_code": station_ref, "species": sp, "measurement_kind": cfg["kind"], "api_units": cfg["uom"]}})
     ts_ids = writer.upsert_timeseries(ts_rows) if not args.dry_run else {r["timeseries_ref"]: -i-1 for i, r in enumerate(ts_rows)}
-    checkpoints = writer.fetch_checkpoints([int(s["id"]) for s in stations], species) if not args.dry_run else {}
     client = BreatheLondonNodesClient(api_key)
     observs_writer = ObservsWriter(writer.client)
     end_time = floor_to_minute(parse_iso(args.end_time) or utcnow())
     poll_hours = float(connector.get("poll_window_hours") or 6)
-    default_start = end_time - timedelta(hours=max(poll_hours, 0.1))
+    default_start = floor_to_minute(utcnow()) - timedelta(
+        hours=max(poll_hours, 0.1)
+    )
     explicit_start = parse_iso(args.start_time)
     api_calls = observations = null_values_skipped = empty_series = pub_obs = pub_latest = 0
-    checkpoint_rows = []
+    checkpoint_rows: List[Dict[str, Any]] = []
     latest_updates: Dict[int, Dict[str, Any]] = {}
     for st in stations:
+        if args.max_api_calls is not None and api_calls >= args.max_api_calls:
+            LOG.warning("Stopping at --max-api-calls=%s", args.max_api_calls)
+            break
         station_ref = str(st["station_ref"]); station_id = int(st["id"])
+        checkpoint = checkpoints.get(station_id, {})
+        species_last_observed = json_object(checkpoint.get("species_last_observed_at"))
+        species_last_error = json_object(checkpoint.get("species_last_error"))
+        station_errors: Dict[str, str] = {}
+        successful_last_observed: List[datetime] = []
+        station_incomplete = False
+        station_polled_at = utcnow()
         for sp in species:
             if args.max_api_calls is not None and api_calls >= args.max_api_calls:
-                LOG.warning("Stopping at --max-api-calls=%s", args.max_api_calls); break
+                LOG.warning("Stopping at --max-api-calls=%s", args.max_api_calls)
+                station_incomplete = True
+                break
             ts_ref = f"{station_ref}:{sp}"; ts_id = ts_ids.get(ts_ref)
-            cp = checkpoints.get((station_id, sp), {})
-            cp_last = parse_iso(cp.get("last_observed_at"))
-            start_time = explicit_start or max((cp_last - timedelta(minutes=max(args.overlap_minutes, 0))) if cp_last else default_start, default_start)
+            species_checkpoint = parse_iso(species_last_observed.get(sp))
+            station_checkpoint = parse_iso(checkpoint.get("last_observed_at"))
+            checkpoint_start = species_checkpoint or station_checkpoint
+            start_time = explicit_start or max(
+                (
+                    checkpoint_start - timedelta(minutes=max(args.overlap_minutes, 0))
+                    if checkpoint_start
+                    else default_start
+                ),
+                default_start,
+            )
             start_time = floor_to_minute(start_time)
-            last_error = None
             last_at = None
             last_value = None
             try:
@@ -419,18 +508,63 @@ def main() -> int:
                         pub_latest += latest
                     if last_at and last_value is not None:
                         latest_updates[int(ts_id)] = {"timeseries_id": int(ts_id), "observed_at": last_at, "value": last_value}
+                        species_last_observed[sp] = last_at
+                        parsed_last_at = parse_iso(last_at)
+                        if parsed_last_at:
+                            successful_last_observed.append(parsed_last_at)
+                species_last_error.pop(sp, None)
             except Exception as exc:
-                last_error = str(exc)
+                error = str(exc)
+                station_errors[sp] = error
+                species_last_error[sp] = error
                 LOG.warning("Failed %s %s: %s", station_ref, sp, exc)
-            checkpoint_rows.append({"station_id": station_id, "species": sp, "timeseries_id": None if int(ts_id) < 0 else int(ts_id), "last_observed_at": last_at if last_at else cp.get("last_observed_at"), "last_polled_at": utcnow().isoformat(), "last_error": last_error, "updated_at": utcnow().isoformat()})
             if args.sleep_seconds:
                 time.sleep(args.sleep_seconds)
+
+        previous_last_observed = parse_iso(checkpoint.get("last_observed_at"))
+        latest_success = max(successful_last_observed) if successful_last_observed else None
+        station_last_observed = max(
+            [value for value in (previous_last_observed, latest_success) if value is not None],
+            default=None,
+        )
+        samples = lag_samples(checkpoint.get("ingest_lag_samples"))
+        if latest_success is not None:
+            samples.append(max(0, round((station_polled_at - latest_success).total_seconds())))
+            samples = samples[-10:]
+
+        if station_errors or station_incomplete:
+            next_due_at = station_polled_at + timedelta(minutes=5)
+        elif len(samples) < 10 or station_last_observed is None:
+            next_due_at = station_polled_at + timedelta(minutes=5)
         else:
-            continue
-        break
+            next_due_at = station_last_observed + timedelta(
+                seconds=3600 + min(samples)
+            )
+
+        checkpoint_rows.append(
+            {
+                "station_id": station_id,
+                "next_due_at": next_due_at.isoformat(),
+                "last_observed_at": (
+                    station_last_observed.isoformat()
+                    if station_last_observed is not None
+                    else None
+                ),
+                "ingest_lag_samples": samples,
+                "last_polled_at": station_polled_at.isoformat(),
+                "last_error": (
+                    "; ".join(f"{sp}: {error}" for sp, error in station_errors.items())
+                    if station_errors
+                    else None
+                ),
+                "species_last_observed_at": species_last_observed,
+                "species_last_error": species_last_error,
+                "updated_at": station_polled_at.isoformat(),
+            }
+        )
     if not args.dry_run:
         writer.update_timeseries_last_values(list(latest_updates.values()))
-        writer.upsert_checkpoints(checkpoint_rows)
+        writer.upsert_station_checkpoints(checkpoint_rows)
         writer.update_connector_last_polled(connector_id)
     LOG.info("Nodes ingest complete stations=%s species=%s api_calls=%s observations=%s null_values_skipped=%s empty_series=%s checkpoints=%s pubsub_observs=%s pubsub_latest=%s dry_run=%s", len(stations), len(species), api_calls, observations, null_values_skipped, empty_series, len(checkpoint_rows), pub_obs, pub_latest, args.dry_run)
     return 0

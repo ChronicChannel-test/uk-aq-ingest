@@ -1536,4 +1536,4 @@ Notes:
 
 ## Breathe London Nodes observations
 
-- `scripts/blondon_nodes/blondon_nodes_ingest.py` ingests `connector_code='blondon_nodes'` observations from the Breathe London Nodes `/SensorData` endpoint. It reads active stations from Supabase, uses connector `poll_window_hours` for the normal window, supports explicit manual `--start-time`/`--end-time` runs, keeps raw PM2.5/NO2 separate from DAQI/index timeseries, writes observations to Supabase, publishes observs rows/latest snapshot requests to Pub/Sub, and updates `uk_aq_raw.blondon_nodes_timeseries_checkpoints`.
+- `scripts/blondon_nodes/blondon_nodes_ingest.py` ingests `connector_code='blondon_nodes'` observations from the Breathe London Nodes `/SensorData` endpoint. Normal runs select active due stations using `uk_aq_raw.blondon_nodes_station_checkpoints`; manual `--site-code`/`--start-time` runs can bypass due filtering. It keeps raw PM2.5/NO2 separate from DAQI/index timeseries, always writes ingest DB observations before the additional Observs path, and stores per-species progress/errors as JSONB on each station checkpoint row.
