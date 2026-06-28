@@ -412,7 +412,7 @@ jobs:
 
           scheduler_sa="${SCHEDULER_SERVICE_ACCOUNT:-${BLONDON_NODES_SERVICE_ACCOUNT}}"
           service_uri="$(gcloud run services describe "${SERVICE_NAME}" --region "${REGION}" --format='value(status.url)')"
-          scheduler_body='{"trigger_mode":"safety"}'
+          scheduler_body='{}'
 
           gcloud run services add-iam-policy-binding "${SERVICE_NAME}" \
             --region "${REGION}" \
