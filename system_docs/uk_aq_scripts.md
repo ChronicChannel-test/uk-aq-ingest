@@ -1533,3 +1533,7 @@ unset UK_AQ_BACKFILL_CONNECTOR_IDS
 Notes:
 - Leave `UK_AQ_BACKFILL_CONNECTOR_IDS` unset to include all available source adapters.
 - With `UK_AQ_BACKFILL_FORCE_REPLACE=false`, existing connector/day outputs are skipped.
+
+## Breathe London Nodes observations
+
+- `scripts/blondon_nodes/blondon_nodes_ingest.py` ingests `connector_code='blondon_nodes'` observations from the Breathe London Nodes `/SensorData` endpoint. It reads active stations from Supabase, uses connector `poll_window_hours` for the normal window, supports explicit manual `--start-time`/`--end-time` runs, keeps raw PM2.5/NO2 separate from DAQI/index timeseries, writes observations to Supabase, publishes observs rows/latest snapshot requests to Pub/Sub, and updates `uk_aq_raw.blondon_nodes_timeseries_checkpoints`.
