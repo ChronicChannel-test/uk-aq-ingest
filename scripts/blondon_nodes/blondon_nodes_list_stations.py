@@ -59,6 +59,19 @@ BLONDON_NODES_CONNECTOR_CODE = "blondon_nodes"
 BLONDON_NODES_SERVICE_REF = os.getenv("BLONDON_NODES_SERVICE_REF") or "breathelondon"
 BLONDON_NODES_SERVICE_LABEL = os.getenv("BLONDON_NODES_SERVICE_LABEL") or "Breathe London"
 BLONDON_NETWORK_CODE = "breathelondon"
+STATION_INITIAL_METADATA_TABLE = "station_initial_metadata"
+assert STATION_INITIAL_METADATA_TABLE, "station_initial_metadata table name must not be blank"
+
+
+def validate_station_initial_metadata_table_name(table_name: str = STATION_INITIAL_METADATA_TABLE) -> str:
+    if table_name != "station_initial_metadata":
+        raise RuntimeError(
+            "Breathe London Nodes initial metadata must query "
+            "uk_aq_core.station_initial_metadata; got blank/invalid table name "
+            f"{table_name!r}."
+        )
+    return table_name
+
 
 UK_BBOX = {"west": -11.0, "south": 49.0, "east": 2.0, "north": 61.0}
 
@@ -366,6 +379,29 @@ class SupabaseWriter:
                 mapping[str(row["station_ref"])] = int(row["id"])
         return mapping
 
+    @staticmethod
+    def response_rows(resp: Any, table_name: str) -> List[Dict[str, Any]]:
+        if hasattr(resp, "data"):
+            rows = resp.data
+        elif isinstance(resp, dict):
+            rows = resp.get("data")
+        else:
+            raise RuntimeError(
+                f"Expected {table_name} response to expose data rows; "
+                f"got response type {type(resp).__name__}."
+            )
+        if rows is None:
+            return []
+        if not isinstance(rows, list) or not all(isinstance(row, dict) for row in rows):
+            raise RuntimeError(
+                f"Expected {table_name} response data to be a list of dict rows; "
+                f"got {type(rows).__name__}."
+            )
+        return rows
+
+    def station_initial_metadata_table(self) -> Any:
+        return self.core.table(validate_station_initial_metadata_table_name())
+
     def insert_initial_metadata_once(self, attributes_by_station: Dict[int, Dict[str, Any]]) -> int:
         if not attributes_by_station:
             return 0
@@ -373,9 +409,14 @@ class SupabaseWriter:
         existing: set[int] = set()
         for idx in range(0, len(station_ids), 200):
             chunk = station_ids[idx : idx + 200]
-            resp = self.core.table("").select("station_id").in_("station_id", chunk).execute()
-            rows = resp.data if hasattr(resp, "data") else resp.get("data")
-            existing.update(int(row["station_id"]) for row in rows or [] if row.get("station_id") is not None)
+            resp = (
+                self.station_initial_metadata_table()
+                .select("station_id")
+                .in_("station_id", chunk)
+                .execute()
+            )
+            rows = self.response_rows(resp, STATION_INITIAL_METADATA_TABLE)
+            existing.update(int(row["station_id"]) for row in rows if row.get("station_id") is not None)
         now = utcnow().isoformat()
         rows = [
             {"station_id": station_id, "attributes": attrs, "captured_at": now, "created_at": now}
@@ -383,7 +424,7 @@ class SupabaseWriter:
             if station_id not in existing and attrs
         ]
         if rows:
-            self.core.table("station_initial_metadata").insert(rows).execute()
+            self.station_initial_metadata_table().insert(rows).execute()
         return len(rows)
 
 
