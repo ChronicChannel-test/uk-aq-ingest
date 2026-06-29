@@ -48,8 +48,8 @@ DEFAULT_SLEEP_SECONDS = 0.1
 SPECIES_CONFIG: Dict[str, Dict[str, str]] = {
     "PM25": {"label": "PM2.5", "uom": "ug.m-3", "source_label": "breathelondon_nodes:pm2.5", "notation": "PM2.5", "pollutant_label": "pm2.5", "kind": "pollutant"},
     "NO2": {"label": "NO2", "uom": "ug.m-3", "source_label": "breathelondon_nodes:no2", "notation": "NO2", "pollutant_label": "no2", "kind": "pollutant"},
-    "PM25Index": {"label": "PM2.5 DAQI", "uom": "DAQI", "source_label": "breathelondon_nodes:pm2.5:daqi", "notation": "PM2.5 DAQI", "pollutant_label": "pm2.5", "kind": "daqi_index"},
-    "NO2Index": {"label": "NO2 DAQI", "uom": "DAQI", "source_label": "breathelondon_nodes:no2:daqi", "notation": "NO2 DAQI", "pollutant_label": "no2", "kind": "daqi_index"},
+    "PM25Index": {"label": "PM2.5 DAQI", "uom": "DAQI", "source_label": "breathelondon_nodes:pm2.5:daqi", "notation": "PM2.5 DAQI", "pollutant_label": "daqi_pm25", "kind": "daqi_index"},
+    "NO2Index": {"label": "NO2 DAQI", "uom": "DAQI", "source_label": "breathelondon_nodes:no2:daqi", "notation": "NO2 DAQI", "pollutant_label": "daqi_no2", "kind": "daqi_index"},
 }
 
 
