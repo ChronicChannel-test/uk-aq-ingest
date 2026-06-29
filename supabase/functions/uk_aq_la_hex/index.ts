@@ -4,24 +4,26 @@ import "../_shared/fetch_egress_patch.ts";
 import { cacheControlHeaders } from "../_shared/cache.ts";
 import { createWeakEtag, ifNoneMatchMatches } from "../_shared/etag.ts";
 import { logEndpointEgress } from "../_shared/egress_metrics.ts";
+import { parsePublicNetworkFilter } from "../_shared/public_network_filter.ts";
 import { validateWorkerUpstreamAuth } from "../_shared/worker_auth.ts";
 
 const DEFAULT_LIMIT = 10000;
 const MAX_LIMIT = 20000;
 
-const SUPABASE_URL = Deno.env.get("SUPABASE_URL")
-  ?? Deno.env.get("SB_SUPABASE_URL")
-  ?? "";
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ??
+  Deno.env.get("SB_SUPABASE_URL") ??
+  "";
 const SB_SECRET_KEY = Deno.env.get("SB_SECRET_KEY") ?? "";
 const SUPABASE_PRIVILEGED_KEY = SB_SECRET_KEY;
-const UK_AQ_CORE_SCHEMA = Deno.env.get("UK_AQ_CORE_SCHEMA")
-  ?? "uk_aq_core";
-const UK_AQ_PUBLIC_SCHEMA = Deno.env.get("UK_AQ_PUBLIC_SCHEMA")
-  ?? "uk_aq_public";
+const UK_AQ_CORE_SCHEMA = Deno.env.get("UK_AQ_CORE_SCHEMA") ??
+  "uk_aq_core";
+const UK_AQ_PUBLIC_SCHEMA = Deno.env.get("UK_AQ_PUBLIC_SCHEMA") ??
+  "uk_aq_public";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, if-none-match",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type, if-none-match",
   "Access-Control-Allow-Methods": "GET, OPTIONS",
   "Access-Control-Expose-Headers": "ETag",
 };
@@ -66,7 +68,7 @@ const REGION_LA_CODES: Record<string, string[]> = {
     "E07000173",
     "E07000174",
     "E07000175",
-    "E07000176"
+    "E07000176",
   ],
   "East of England": [
     "E06000031",
@@ -113,7 +115,7 @@ const REGION_LA_CODES: Record<string, string[]> = {
     "E07000242",
     "E07000243",
     "E07000244",
-    "E07000245"
+    "E07000245",
   ],
   "London": [
     "E09000001",
@@ -148,7 +150,7 @@ const REGION_LA_CODES: Record<string, string[]> = {
     "E09000030",
     "E09000031",
     "E09000032",
-    "E09000033"
+    "E09000033",
   ],
   "North East": [
     "E06000001",
@@ -162,7 +164,7 @@ const REGION_LA_CODES: Record<string, string[]> = {
     "E08000022",
     "E08000023",
     "E08000024",
-    "E08000037"
+    "E08000037",
   ],
   "North West": [
     "E06000006",
@@ -199,7 +201,7 @@ const REGION_LA_CODES: Record<string, string[]> = {
     "E08000012",
     "E08000013",
     "E08000014",
-    "E08000015"
+    "E08000015",
   ],
   "Northern Ireland": [
     "N09000001",
@@ -212,7 +214,7 @@ const REGION_LA_CODES: Record<string, string[]> = {
     "N09000008",
     "N09000009",
     "N09000010",
-    "N09000011"
+    "N09000011",
   ],
   "Scotland": [
     "S12000005",
@@ -246,7 +248,7 @@ const REGION_LA_CODES: Record<string, string[]> = {
     "S12000047",
     "S12000048",
     "S12000049",
-    "S12000050"
+    "S12000050",
   ],
   "South East": [
     "E06000035",
@@ -312,7 +314,7 @@ const REGION_LA_CODES: Record<string, string[]> = {
     "E07000226",
     "E07000227",
     "E07000228",
-    "E07000229"
+    "E07000229",
   ],
   "South West": [
     "E06000010",
@@ -342,7 +344,7 @@ const REGION_LA_CODES: Record<string, string[]> = {
     "E07000080",
     "E07000081",
     "E07000082",
-    "E07000083"
+    "E07000083",
   ],
   "Wales": [
     "W06000001",
@@ -366,7 +368,7 @@ const REGION_LA_CODES: Record<string, string[]> = {
     "W06000021",
     "W06000022",
     "W06000023",
-    "W06000024"
+    "W06000024",
   ],
   "West Midlands": [
     "E06000019",
@@ -398,7 +400,7 @@ const REGION_LA_CODES: Record<string, string[]> = {
     "E08000028",
     "E08000029",
     "E08000030",
-    "E08000031"
+    "E08000031",
   ],
   "Yorkshire and The Humber": [
     "E06000011",
@@ -413,11 +415,13 @@ const REGION_LA_CODES: Record<string, string[]> = {
     "E08000033",
     "E08000034",
     "E08000035",
-    "E08000036"
-  ]
+    "E08000036",
+  ],
 };
 const REGION_LA_CODES_LOOKUP = new Map(
-  Object.entries(REGION_LA_CODES).map(([name, codes]) => [name.toLowerCase(), codes]),
+  Object.entries(REGION_LA_CODES).map((
+    [name, codes],
+  ) => [name.toLowerCase(), codes]),
 );
 
 function postgrestHeaders(schema = UK_AQ_CORE_SCHEMA): Record<string, string> {
@@ -441,7 +445,10 @@ async function postgrestRequest<T>(
   body?: unknown,
 ): Promise<{ data: T | null; error: { message: string } | null }> {
   if (!REST_BASE_URL || !SUPABASE_PRIVILEGED_KEY) {
-    return { data: null, error: { message: "Missing SUPABASE_URL or SB_SECRET_KEY." } };
+    return {
+      data: null,
+      error: { message: "Missing SUPABASE_URL or SB_SECRET_KEY." },
+    };
   }
   const url = new URL(`${REST_BASE_URL}/${path}`);
   for (const [key, value] of Object.entries(params ?? {})) {
@@ -455,9 +462,12 @@ async function postgrestRequest<T>(
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const contentType = resp.headers.get("content-type") ?? "";
-  const payload = contentType.includes("application/json") ? await resp.json() : await resp.text();
+  const payload = contentType.includes("application/json")
+    ? await resp.json()
+    : await resp.text();
   if (!resp.ok) {
-    const message = payload?.message || payload?.error_description || payload?.error || resp.statusText;
+    const message = payload?.message || payload?.error_description ||
+      payload?.error || resp.statusText;
     return { data: null, error: { message: String(message) } };
   }
   return { data: payload as T, error: null };
@@ -487,12 +497,22 @@ serve(async (req) => {
     });
   }
   if (!SUPABASE_URL || !SUPABASE_PRIVILEGED_KEY) {
-    return await finish(json({ error: "Missing SUPABASE_URL or SB_SECRET_KEY." }, 500), {
-      error_type: "missing_env",
-    });
+    return await finish(
+      json({ error: "Missing SUPABASE_URL or SB_SECRET_KEY." }, 500),
+      {
+        error_type: "missing_env",
+      },
+    );
   }
 
   const url = new URL(req.url);
+  const networkFilter = parsePublicNetworkFilter(url);
+  if (!networkFilter.ok) {
+    return await finish(json({ error: networkFilter.error }, 400), {
+      error_type: "invalid_public_filter",
+    });
+  }
+  const networkCode = networkFilter.networkCode;
   const laVersion = normalizeText(url.searchParams.get("la_version"));
   const region = normalizeText(url.searchParams.get("region"));
   const limit = parseLimit(url.searchParams.get("limit"), DEFAULT_LIMIT);
@@ -500,12 +520,16 @@ serve(async (req) => {
   const since = rawSince === null ? null : normalizeTimestamp(rawSince);
   if (rawSince !== null && since === null) {
     return await finish(
-      json({ error: "Invalid since timestamp. Provide ISO-8601 datetime (e.g. 2026-02-07T10:30:00Z)." }, 400),
+      json({
+        error:
+          "Invalid since timestamp. Provide ISO-8601 datetime (e.g. 2026-02-07T10:30:00Z).",
+      }, 400),
       { error_type: "invalid_since" },
     );
   }
   const ifNoneMatch = req.headers.get("if-none-match");
   const requestFields = {
+    has_network_code: Boolean(networkCode),
     has_la_version: Boolean(laVersion),
     has_region: Boolean(region),
     limit,
@@ -514,13 +538,21 @@ serve(async (req) => {
   };
 
   try {
-    const rows = await loadLatest({ laVersion, region, limit, since });
+    const rows = await loadLatest({
+      laVersion,
+      region,
+      networkCode,
+      limit,
+      since,
+    });
     const versions = Array.from(
       new Set(rows.map((row) => row.la_version).filter(Boolean)),
     ).sort();
     const lastUpdated = maxTimestamp(rows.map((row) => row.latest_value_at));
     const nextSince = lastUpdated ?? since;
     const payload = {
+      contract_version: 2,
+      network_code: networkCode,
       metric_default: "median",
       since,
       next_since: nextSince,
@@ -531,11 +563,14 @@ serve(async (req) => {
     };
     const etag = await createWeakEtag({
       endpoint: "uk_aq_la_hex",
-      version: 1,
+      version: 2,
       payload,
     });
     if (ifNoneMatchMatches(ifNoneMatch, etag)) {
-      return await finish(notModified(etag), { ...requestFields, result: "not_modified" });
+      return await finish(notModified(etag), {
+        ...requestFields,
+        result: "not_modified",
+      });
     }
     return await finish(json(payload, 200, { ETag: etag }), {
       ...requestFields,
@@ -555,6 +590,7 @@ serve(async (req) => {
 type LoadOptions = {
   laVersion: string | null;
   region: string | null;
+  networkCode: string | null;
   limit: number;
   since: string | null;
 };
@@ -564,6 +600,9 @@ type LaRow = {
   la_codes?: string[] | string | null;
   la_name: string | null;
   la_version: string | null;
+  network_id: number;
+  network_code: string;
+  network_label: string;
   station_count: number | null;
   single_site: boolean | null;
   median_value: number | null;
@@ -571,7 +610,9 @@ type LaRow = {
   latest_value_at: string | null;
 };
 
-async function loadLatest({ laVersion, region, limit, since }: LoadOptions): Promise<LaRow[]> {
+async function loadLatest(
+  { laVersion, region, networkCode, limit, since }: LoadOptions,
+): Promise<LaRow[]> {
   const regionCodes = resolveRegionCodes(region);
   if (region && !regionCodes) {
     return [];
@@ -579,6 +620,7 @@ async function loadLatest({ laVersion, region, limit, since }: LoadOptions): Pro
   const { data, error } = await callLaHexRpc({
     regionCodes,
     laVersion,
+    networkCode,
     limit,
     since,
   });
@@ -594,30 +636,13 @@ async function loadLatest({ laVersion, region, limit, since }: LoadOptions): Pro
 type LaRpcCallOptions = {
   regionCodes: string[] | null;
   laVersion: string | null;
+  networkCode: string | null;
   limit: number;
   since: string | null;
 };
 
 async function callLaHexRpc(options: LaRpcCallOptions) {
-  const { regionCodes, laVersion, limit, since } = options;
-  const cursorAttempt = await postgrestRequest<LaRow[]>(
-    "POST",
-    "rpc/uk_aq_la_hex_rpc",
-    undefined,
-    UK_AQ_PUBLIC_SCHEMA,
-    {
-      region: regionCodes,
-      la_version: laVersion,
-      limit_rows: limit,
-      since_ts: since,
-    },
-  );
-  if (!cursorAttempt.error) {
-    return cursorAttempt;
-  }
-  if (!looksLikeSinceSignatureMismatch(cursorAttempt.error.message)) {
-    return cursorAttempt;
-  }
+  const { regionCodes, laVersion, networkCode, limit, since } = options;
   return await postgrestRequest<LaRow[]>(
     "POST",
     "rpc/uk_aq_la_hex_rpc",
@@ -626,15 +651,11 @@ async function callLaHexRpc(options: LaRpcCallOptions) {
     {
       region: regionCodes,
       la_version: laVersion,
+      network_code: networkCode,
       limit_rows: limit,
+      since_ts: since,
     },
   );
-}
-
-function looksLikeSinceSignatureMismatch(message: string): boolean {
-  const normalized = String(message || "").toLowerCase();
-  return normalized.includes("could not find the function") &&
-    normalized.includes("uk_aq_la_hex_rpc");
 }
 
 function normalizeText(value: string | null): string | null {
@@ -675,13 +696,18 @@ function parseLimit(value: string | null, fallback: number): number {
   return Math.max(1, Math.min(MAX_LIMIT, Math.floor(parsed)));
 }
 
-function isTimestampAfter(candidate: string | null | undefined, since: string): boolean {
+function isTimestampAfter(
+  candidate: string | null | undefined,
+  since: string,
+): boolean {
   if (!candidate) {
     return false;
   }
   const candidateDate = new Date(candidate);
   const sinceDate = new Date(since);
-  if (Number.isNaN(candidateDate.getTime()) || Number.isNaN(sinceDate.getTime())) {
+  if (
+    Number.isNaN(candidateDate.getTime()) || Number.isNaN(sinceDate.getTime())
+  ) {
     return false;
   }
   return candidateDate.getTime() > sinceDate.getTime();
@@ -766,7 +792,11 @@ function parseLaCodes(value: string[] | string | null | undefined): string[] {
   return [];
 }
 
-function json(payload: unknown, status = 200, extraHeaders: Record<string, string> = {}): Response {
+function json(
+  payload: unknown,
+  status = 200,
+  extraHeaders: Record<string, string> = {},
+): Response {
   return new Response(JSON.stringify(payload), {
     status,
     headers: {

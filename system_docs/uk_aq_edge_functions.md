@@ -398,14 +398,14 @@ functions and fixed strict typing/lint issues without changing runtime behavior.
 - Purpose: Serve the latest values across all stations (optionally filtered by region/station/pollutant).
 - Triggered by: Web requests (read-only, no writes).
 - Auth mode: deployed with `verify_jwt=false` plus required header `X-UK-AQ-Upstream-Auth` (shared secret checked in-function).
-- Returns: flattened latest rows optimized for map clients: `id`, `last_value`, `last_value_at`, `display_name`, `connector_code`, `connector_label`, `station_id`, `station_ref`, `station_label`, `station_name`, `pcon_code`, `la_code`, `station_network_memberships`, `phenomenon_label`, `pollutant_label`, `observed_property_code`, `uom_display`.
-- Params: `region`, `station_like`, `pollutant`, `connector_id`, `limit`, `pcon_code`, `window` (`3h|6h|1d|7d|all`, default `all`), optional `caller` tag (for egress attribution telemetry).
+- Returns: contract version 2 with flattened latest rows. Public network identity is scalar `network_id`, `network_code`, and `network_label`; connector ID/code/label remain separate provenance fields.
+- Params: `region`, `station_like`, `pollutant`, `network_code`, `limit`, `pcon_code`, `window` (`3h|6h|1d|7d|all`, default `all`), optional `caller` tag (for egress attribution telemetry).
 - Notes:
   - The edge response intentionally omits nested `station` / `connector` / `phenomenon` objects to reduce payload size.
   - `window` is applied server-side using `last_value_at`; `all` disables time filtering.
+  - `connector`, `connector_id`, and `connector_code` query parameters return `400`; there is no compatibility translation.
 - RPC backing: `uk_aq_latest_rpc` via `/rest/v1/rpc/uk_aq_latest_rpc`.
 - Cache-Control: success responses use `public, max-age=60, s-maxage=180, stale-while-revalidate=300, stale-if-error=86400`; errors use `no-store`.
-- Memberships are returned as-is (no filtering by network membership).
 - Egress observability: sampled success responses plus all `304`/`4xx`/`5xx`
   are recorded via `_shared/egress_metrics.ts` (console logs + DB metrics RPC).
   PostgREST RPC calls are tagged with window-specific caller labels:
@@ -424,9 +424,9 @@ curl "https://YOUR_PROJECT.supabase.co/functions/v1/uk_aq_latest?region=London&p
 - Purpose: Serve latest values for station-search chart pages (for example Bristol/Surbiton queries) with one shared endpoint.
 - Triggered by: Web requests (read-only, no writes).
 - Auth mode: deployed with `verify_jwt=false` plus required header `X-UK-AQ-Upstream-Auth` (shared secret checked in-function).
-- Params: `station_like` (or `q`) required, `pollutant`, `connector_id`, `window` (`3h|6h|1d|7d|all`, default `all`), `limit`, optional incremental cursor (`since`, `since_id`).
-- Returns: flattened latest rows for chart pages with cursor fields (`next_since`, `next_since_id`) and map-compatible labels.
-  - Row fields include `network_name` resolved from primary station network membership when available, with fallback to connector label/code.
+- Params: `station_like` (or `q`) required, `pollutant`, `network_code`, `window` (`3h|6h|1d|7d|all`, default `all`), `limit`, optional incremental cursor (`since`, `since_id`).
+- Returns: contract version 2 flattened rows with scalar network identity, separate connector provenance, and cursor fields (`next_since`, `next_since_id`).
+- Legacy connector filter parameters return `400`.
 - `display_name` logic matches `uk_aq_latest`.
 - Conditional requests: supports `If-None-Match`; returns `304 Not Modified` with `ETag` when payload is unchanged.
 - Cache-Control: success responses use `public, max-age=60, s-maxage=300, stale-while-revalidate=300, stale-if-error=86400`; errors use `no-store`.
@@ -438,8 +438,9 @@ curl "https://YOUR_PROJECT.supabase.co/functions/v1/uk_aq_latest?region=London&p
 - Purpose: Serve station geometry for the hex map (bypasses RLS via service role).
 - Triggered by: Web requests (read-only, no writes).
 - Auth mode: deployed with `verify_jwt=false` plus required header `X-UK-AQ-Upstream-Auth` (shared secret checked in-function).
-- Returns: stations with geometry (id, station_ref, label, geometry) plus `station_network_memberships` (network codes, labels, primary flag).
-- Params: `connector_id`, `region`, `station_like`, `limit`, `page_size`.
+- Returns: contract version 2 station geometry rows with scalar network identity and separate connector provenance.
+- Params: `network_code`, `region`, `station_like`, `limit`, `page_size`.
+- Legacy connector filter parameters return `400`.
 - RPC backing: `uk_aq_stations_rpc` via `/rest/v1/rpc/uk_aq_stations_rpc`.
 - Cache-Control: success responses use `public, max-age=60, s-maxage=300, stale-while-revalidate=300, stale-if-error=86400`; errors use `no-store`.
 - Egress observability: sampled success responses plus all `304`/`4xx`/`5xx`
@@ -449,8 +450,9 @@ curl "https://YOUR_PROJECT.supabase.co/functions/v1/uk_aq_latest?region=London&p
 - Purpose: Serve LA-level latest PM2.5 summaries (median + mean) for the hex cartogram.
 - Triggered by: Web requests (read-only, no writes).
 - Auth mode: deployed with `verify_jwt=false` plus required header `X-UK-AQ-Upstream-Auth` (shared secret checked in-function).
-- Returns: rows keyed by `la_code` with `station_count`, `single_site`, `median_value`, `mean_value`, `latest_value_at` (expands `la_codes` arrays into per-code rows when present).
-- Params: `region`, `la_version`, `limit`, optional `since` (ISO-8601 timestamp; returns changed LA rows only).
+- Returns: contract version 2 rows keyed by LA and public network, including scalar network identity, `station_count`, `single_site`, `median_value`, `mean_value`, and `latest_value_at`.
+- Params: `region`, `la_version`, `network_code`, `limit`, optional `since` (ISO-8601 timestamp; returns changed LA/network rows only).
+- Legacy connector filter parameters return `400`.
 - RPC backing: `uk_aq_la_hex_rpc` via `/rest/v1/rpc/uk_aq_la_hex_rpc`.
 - Conditional requests: supports `If-None-Match`; returns `304 Not Modified` with `ETag` when payload is unchanged.
 - Cache-Control: success responses use `public, max-age=60, s-maxage=180, stale-while-revalidate=300, stale-if-error=86400`; errors use `no-store`.
@@ -461,13 +463,25 @@ curl "https://YOUR_PROJECT.supabase.co/functions/v1/uk_aq_latest?region=London&p
 - Purpose: Serve constituency-level latest PM2.5 summaries (median + mean) for the hex cartogram.
 - Triggered by: Web requests (read-only, no writes).
 - Auth mode: deployed with `verify_jwt=false` plus required header `X-UK-AQ-Upstream-Auth` (shared secret checked in-function).
-- Returns: rows keyed by `pcon_code` with `station_count`, `single_site`, `median_value`, `mean_value`, `latest_value_at`.
-- Params: `pcon_version`, `limit`, optional `since` (ISO-8601 timestamp; returns changed PCON rows only).
+- Returns: contract version 2 rows keyed by constituency and public network, including scalar network identity, `station_count`, `single_site`, `median_value`, `mean_value`, and `latest_value_at`.
+- Params: `pcon_version`, `network_code`, `limit`, optional `since` (ISO-8601 timestamp; returns changed constituency/network rows only).
+- Legacy connector filter parameters return `400`.
 - RPC backing: `uk_aq_pcon_hex_rpc` via `/rest/v1/rpc/uk_aq_pcon_hex_rpc`.
 - Conditional requests: supports `If-None-Match`; returns `304 Not Modified` with `ETag` when payload is unchanged.
 - Cache-Control: success responses use `public, max-age=60, s-maxage=300, stale-while-revalidate=300, stale-if-error=86400`; errors use `no-store`.
 - Egress observability: sampled success responses plus all `304`/`4xx`/`5xx`
   are recorded via `_shared/egress_metrics.ts`.
+
+### uk_aq_public_networks
+- Purpose: Serve the canonical catalog used to construct public website network filters.
+- Triggered by: Web requests (read-only, no writes).
+- Auth mode: deployed with `verify_jwt=false` plus required header `X-UK-AQ-Upstream-Auth`.
+- Returns: contract version 2 rows containing `network_id`, `network_code`, `network_label`, `network_type`, and `public_display_enabled`.
+- Source: the filtered `uk_aq_public.networks` view; disabled networks cannot appear.
+- Filtering: the catalog has no public filter parameters. Network and legacy connector filter parameters return `400`.
+- Conditional requests: supports `If-None-Match` and `304 Not Modified`.
+- Cache-Control: success responses use the shared five-minute metadata cache profile; errors use `no-store`.
+- Egress observability: sampled success responses plus all `304`/`4xx`/`5xx` are recorded via `_shared/egress_metrics.ts`.
 
 ### uk_aq_timeseries
 - Purpose: Serve raw observation points for a single timeseries.

@@ -13,6 +13,9 @@ verify_jwt = false
 [functions.uk_aq_stations]
 verify_jwt = false
 
+[functions.uk_aq_public_networks]
+verify_jwt = false
+
 [functions.uk_aq_timeseries]
 verify_jwt = false
 

@@ -4,25 +4,27 @@ import "../_shared/fetch_egress_patch.ts";
 import { cacheControlHeaders } from "../_shared/cache.ts";
 import { createWeakEtag, ifNoneMatchMatches } from "../_shared/etag.ts";
 import { logEndpointEgress } from "../_shared/egress_metrics.ts";
+import { parsePublicNetworkFilter } from "../_shared/public_network_filter.ts";
 import { validateWorkerUpstreamAuth } from "../_shared/worker_auth.ts";
 
 const DEFAULT_LIMIT = 1000;
 const MAX_LIMIT = 10000;
 const DEFAULT_WINDOW = "all";
 
-const SUPABASE_URL = Deno.env.get("SUPABASE_URL")
-  ?? Deno.env.get("SB_SUPABASE_URL")
-  ?? "";
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ??
+  Deno.env.get("SB_SUPABASE_URL") ??
+  "";
 const SB_SECRET_KEY = Deno.env.get("SB_SECRET_KEY") ?? "";
 const SUPABASE_PRIVILEGED_KEY = SB_SECRET_KEY;
-const UK_AQ_CORE_SCHEMA = Deno.env.get("UK_AQ_CORE_SCHEMA")
-  ?? "uk_aq_core";
-const UK_AQ_PUBLIC_SCHEMA = Deno.env.get("UK_AQ_PUBLIC_SCHEMA")
-  ?? "uk_aq_public";
+const UK_AQ_CORE_SCHEMA = Deno.env.get("UK_AQ_CORE_SCHEMA") ??
+  "uk_aq_core";
+const UK_AQ_PUBLIC_SCHEMA = Deno.env.get("UK_AQ_PUBLIC_SCHEMA") ??
+  "uk_aq_public";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, if-none-match",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type, if-none-match",
   "Access-Control-Allow-Methods": "GET, OPTIONS",
   "Access-Control-Expose-Headers": "ETag",
 };
@@ -52,7 +54,10 @@ async function postgrestRequest<T>(
   body?: unknown,
 ): Promise<{ data: T | null; error: { message: string } | null }> {
   if (!REST_BASE_URL || !SUPABASE_PRIVILEGED_KEY) {
-    return { data: null, error: { message: "Missing SUPABASE_URL or SB_SECRET_KEY." } };
+    return {
+      data: null,
+      error: { message: "Missing SUPABASE_URL or SB_SECRET_KEY." },
+    };
   }
   const url = new URL(`${REST_BASE_URL}/${path}`);
   for (const [key, value] of Object.entries(params ?? {})) {
@@ -66,9 +71,12 @@ async function postgrestRequest<T>(
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const contentType = resp.headers.get("content-type") ?? "";
-  const payload = contentType.includes("application/json") ? await resp.json() : await resp.text();
+  const payload = contentType.includes("application/json")
+    ? await resp.json()
+    : await resp.text();
   if (!resp.ok) {
-    const message = payload?.message || payload?.error_description || payload?.error || resp.statusText;
+    const message = payload?.message || payload?.error_description ||
+      payload?.error || resp.statusText;
     return { data: null, error: { message: String(message) } };
   }
   return { data: payload as T, error: null };
@@ -89,7 +97,13 @@ serve(async (req) => {
   }
   const startedAtMs = Date.now();
   const finish = (response: Response, fields: Record<string, unknown> = {}) =>
-    logEndpointEgress(req, "uk_aq_stations_chart", startedAtMs, response, fields);
+    logEndpointEgress(
+      req,
+      "uk_aq_stations_chart",
+      startedAtMs,
+      response,
+      fields,
+    );
   const auth = validateWorkerUpstreamAuth(req);
   if (!auth.ok) {
     return await finish(json({ error: auth.error }, auth.status), {
@@ -98,12 +112,22 @@ serve(async (req) => {
     });
   }
   if (!SUPABASE_URL || !SUPABASE_PRIVILEGED_KEY) {
-    return await finish(json({ error: "Missing SUPABASE_URL or SB_SECRET_KEY." }, 500), {
-      error_type: "missing_env",
-    });
+    return await finish(
+      json({ error: "Missing SUPABASE_URL or SB_SECRET_KEY." }, 500),
+      {
+        error_type: "missing_env",
+      },
+    );
   }
 
   const url = new URL(req.url);
+  const networkFilter = parsePublicNetworkFilter(url);
+  if (!networkFilter.ok) {
+    return await finish(json({ error: networkFilter.error }, 400), {
+      error_type: "invalid_public_filter",
+    });
+  }
+  const networkCode = networkFilter.networkCode;
   const stationLike = normalizeText(
     url.searchParams.get("station_like") ?? url.searchParams.get("q"),
   );
@@ -112,7 +136,6 @@ serve(async (req) => {
       error_type: "missing_station_like",
     });
   }
-  const connectorId = normalizeText(url.searchParams.get("connector_id"));
   const pollutant = normalizePollutant(url.searchParams.get("pollutant"));
   const windowLabel = normalizeWindow(url.searchParams.get("window"));
   const limit = parseLimit(url.searchParams.get("limit"), DEFAULT_LIMIT);
@@ -122,14 +145,20 @@ serve(async (req) => {
   const sinceId = rawSinceId === null ? null : normalizeCursorId(rawSinceId);
   if (rawSince !== null && since === null) {
     return await finish(
-      json({ error: "Invalid since timestamp. Provide ISO-8601 datetime (e.g. 2026-02-07T10:30:00Z)." }, 400),
+      json({
+        error:
+          "Invalid since timestamp. Provide ISO-8601 datetime (e.g. 2026-02-07T10:30:00Z).",
+      }, 400),
       { error_type: "invalid_since" },
     );
   }
   if (rawSinceId !== null && sinceId === null) {
-    return await finish(json({ error: "Invalid since_id. Provide a non-negative integer." }, 400), {
-      error_type: "invalid_since_id",
-    });
+    return await finish(
+      json({ error: "Invalid since_id. Provide a non-negative integer." }, 400),
+      {
+        error_type: "invalid_since_id",
+      },
+    );
   }
   if (!since && sinceId !== null) {
     return await finish(json({ error: "since_id requires since." }, 400), {
@@ -140,7 +169,7 @@ serve(async (req) => {
   const effectiveSinceId = since ? (sinceId ?? 0) : null;
   const requestFields = {
     station_like: stationLike,
-    has_connector_id: Boolean(connectorId),
+    has_network_code: Boolean(networkCode),
     pollutant: pollutant ?? null,
     window: windowLabel,
     limit,
@@ -153,7 +182,7 @@ serve(async (req) => {
     if (since && ifNoneMatch) {
       const hasDelta = await hasLatestDelta({
         stationLike,
-        connectorId,
+        networkCode,
         pollutant,
         windowLabel,
         limit,
@@ -162,7 +191,9 @@ serve(async (req) => {
       });
       if (!hasDelta) {
         const emptyPayload = {
+          contract_version: 2,
           station_like: stationLike,
+          network_code: networkCode,
           pollutant,
           window: windowLabel,
           since,
@@ -174,7 +205,7 @@ serve(async (req) => {
         };
         const emptyEtag = await createWeakEtag({
           endpoint: "uk_aq_stations_chart",
-          version: 1,
+          version: 2,
           payload: emptyPayload,
         });
         if (ifNoneMatchMatches(ifNoneMatch, emptyEtag)) {
@@ -192,7 +223,7 @@ serve(async (req) => {
     }
     const result = await loadLatest({
       stationLike,
-      connectorId,
+      networkCode,
       pollutant,
       windowLabel,
       limit,
@@ -200,7 +231,9 @@ serve(async (req) => {
       sinceId: effectiveSinceId,
     });
     const payload = {
+      contract_version: 2,
       station_like: stationLike,
+      network_code: networkCode,
       pollutant,
       window: windowLabel,
       since,
@@ -212,11 +245,14 @@ serve(async (req) => {
     };
     const etag = await createWeakEtag({
       endpoint: "uk_aq_stations_chart",
-      version: 1,
+      version: 2,
       payload,
     });
     if (ifNoneMatchMatches(ifNoneMatch, etag)) {
-      return await finish(notModified(etag), { ...requestFields, result: "not_modified" });
+      return await finish(notModified(etag), {
+        ...requestFields,
+        result: "not_modified",
+      });
     }
     return await finish(json(payload, 200, { ETag: etag }), {
       ...requestFields,
@@ -235,7 +271,7 @@ serve(async (req) => {
 
 type LoadOptions = {
   stationLike: string | null;
-  connectorId: string | null;
+  networkCode: string | null;
   pollutant: string | null;
   windowLabel: string;
   limit: number;
@@ -244,13 +280,13 @@ type LoadOptions = {
 };
 
 async function loadLatest(
-  { stationLike, connectorId, pollutant, windowLabel, limit, since, sinceId }:
+  { stationLike, networkCode, pollutant, windowLabel, limit, since, sinceId }:
     LoadOptions,
 ) {
   const pollutantKey = normalizePollutant(pollutant);
   const { data, error } = await callLatestRpc({
     stationLike,
-    connectorId,
+    networkCode,
     pollutant: pollutantKey,
     windowLabel,
     limit,
@@ -270,85 +306,74 @@ async function loadLatest(
     nextSince: nextCursor.since,
     nextSinceId: nextCursor.sinceId,
     rows: filtered.map((row) => {
-    const station = row.station ?? null;
-    const stationLabel = resolveStationLabel(station?.label, station?.station_ref, row.label);
-    const pollutantLabel = resolvePhenomenonLabel(
-      row.phenomenon?.observed_property_display_name,
-      row.phenomenon?.pollutant_label,
-      row.phenomenon?.label,
-      row.phenomenon?.notation,
-      row.phenomenon?.source_label ?? row.phenomenon?.eionet_uri,
-    );
-    const observedPropertyCode = normalizePollutant(
-      row.phenomenon?.observed_property_code
-        ?? row.phenomenon?.notation
-        ?? row.phenomenon?.pollutant_label
-        ?? row.phenomenon?.label
-        ?? null,
-    );
-    const connector = row.connector ?? null;
-    const stationMemberships = Array.isArray(station?.station_network_memberships)
-      ? station.station_network_memberships
-        .map((entry: any) => {
-          const networkCode = entry?.network_code ?? entry?.connector_code ?? null;
-          if (!networkCode) {
-            return null;
-          }
-          return {
-            network_code: networkCode,
-            network_label: entry?.network_label ?? entry?.label ?? null,
-            is_primary: Boolean(entry?.is_primary),
-          };
-        })
-        .filter((entry: any) => Boolean(entry))
-      : [];
-    const networkName = deriveNetworkName(
-      stationMemberships,
-      connector?.display_name ?? connector?.label ?? null,
-      connector?.connector_code ?? null,
-    );
-
-    return {
-      id: row.id ?? null,
-      last_value: row.last_value ?? null,
-      last_value_at: row.last_value_at ?? null,
-      connector_code: connector?.connector_code ?? null,
-      connector_label: connector?.display_name ?? connector?.label ?? null,
-      station_id: station?.id ?? null,
-      station_label: stationLabel,
-      display_name: formatDisplayName(
-        connector?.station_display_name_template,
-        station?.station_name,
-        stationLabel,
+      const station = row.station ?? null;
+      const stationLabel = resolveStationLabel(
+        station?.label,
         station?.station_ref,
-        station?.id,
-      ),
-      pcon_code: station?.pcon_code ?? null,
-      la_code: station?.la_code ?? null,
-      network_name: networkName,
-      station_network_memberships: stationMemberships,
-      phenomenon_label: pollutantLabel,
-      pollutant_label: pollutantLabel,
-      observed_property_code: observedPropertyCode,
-      uom_display: formatUnit(row.uom),
-    };
-  }).sort((a, b) => {
-    const aPollutant = a.phenomenon_label ?? a.pollutant_label ?? "";
-    const bPollutant = b.phenomenon_label ?? b.pollutant_label ?? "";
-    const pollutantCompare = aPollutant.localeCompare(bPollutant);
-    if (pollutantCompare !== 0) {
-      return pollutantCompare;
-    }
-    const aStation = a.station_label ?? "";
-    const bStation = b.station_label ?? "";
-    return aStation.localeCompare(bStation);
-  }),
+        row.label,
+      );
+      const pollutantLabel = resolvePhenomenonLabel(
+        row.phenomenon?.observed_property_display_name,
+        row.phenomenon?.pollutant_label,
+        row.phenomenon?.label,
+        row.phenomenon?.notation,
+        row.phenomenon?.source_label ?? row.phenomenon?.eionet_uri,
+      );
+      const observedPropertyCode = normalizePollutant(
+        row.phenomenon?.observed_property_code ??
+          row.phenomenon?.notation ??
+          row.phenomenon?.pollutant_label ??
+          row.phenomenon?.label ??
+          null,
+      );
+      const connector = row.connector ?? null;
+
+      return {
+        id: row.id ?? null,
+        last_value: row.last_value ?? null,
+        last_value_at: row.last_value_at ?? null,
+        network_id: row.network_id ?? null,
+        network_code: row.network_code ?? null,
+        network_label: row.network_label ?? null,
+        connector_id: row.connector_id ?? connector?.id ?? null,
+        connector_code: row.connector_code ?? connector?.connector_code ?? null,
+        connector_label: row.connector_label ?? connector?.display_name ??
+          connector?.label ?? null,
+        station_id: station?.id ?? null,
+        station_ref: station?.station_ref ?? null,
+        station_name: station?.station_name ?? null,
+        station_label: stationLabel,
+        display_name: formatDisplayName(
+          connector?.station_display_name_template,
+          station?.station_name,
+          stationLabel,
+          station?.station_ref,
+          station?.id,
+        ),
+        pcon_code: station?.pcon_code ?? null,
+        la_code: station?.la_code ?? null,
+        phenomenon_label: pollutantLabel,
+        pollutant_label: pollutantLabel,
+        observed_property_code: observedPropertyCode,
+        uom_display: formatUnit(row.uom),
+      };
+    }).sort((a, b) => {
+      const aPollutant = a.phenomenon_label ?? a.pollutant_label ?? "";
+      const bPollutant = b.phenomenon_label ?? b.pollutant_label ?? "";
+      const pollutantCompare = aPollutant.localeCompare(bPollutant);
+      if (pollutantCompare !== 0) {
+        return pollutantCompare;
+      }
+      const aStation = a.station_label ?? "";
+      const bStation = b.station_label ?? "";
+      return aStation.localeCompare(bStation);
+    }),
   };
 }
 
 type LatestRpcCallOptions = {
   stationLike: string | null;
-  connectorId: string | null;
+  networkCode: string | null;
   pollutant: string | null;
   windowLabel: string;
   limit: number;
@@ -360,7 +385,7 @@ type LatestRpcCallOptions = {
 async function callLatestRpc(options: LatestRpcCallOptions) {
   const {
     stationLike,
-    connectorId,
+    networkCode,
     pollutant,
     windowLabel,
     limit,
@@ -373,52 +398,24 @@ async function callLatestRpc(options: LatestRpcCallOptions) {
     region: null,
     pcon_code: null,
     station_like: stationLike,
-    connector_id: connectorId,
+    network_code: networkCode,
     pollutant,
     window_label: windowLabel,
     limit_rows: limitRows,
     since_updated_at: since,
     since_updated_id: since ? (sinceId ?? 0) : null,
   };
-  const cursorAttempt = await postgrestRequest<any[]>(
+  return await postgrestRequest<any[]>(
     "POST",
     "rpc/uk_aq_latest_rpc",
     undefined,
     UK_AQ_PUBLIC_SCHEMA,
     cursorBody,
   );
-  if (!cursorAttempt.error) {
-    return cursorAttempt;
-  }
-  if (!looksLikeCursorSignatureMismatch(cursorAttempt.error.message)) {
-    return cursorAttempt;
-  }
-  return await postgrestRequest<any[]>(
-    "POST",
-    "rpc/uk_aq_latest_rpc",
-    undefined,
-    UK_AQ_PUBLIC_SCHEMA,
-    {
-      region: null,
-      pcon_code: null,
-      station_like: stationLike,
-      connector_id: connectorId,
-      pollutant,
-      window_label: windowLabel,
-      limit_rows: limitRows,
-      since_ts: since,
-    },
-  );
-}
-
-function looksLikeCursorSignatureMismatch(message: string): boolean {
-  const normalized = String(message || "").toLowerCase();
-  return normalized.includes("could not find the function") &&
-    normalized.includes("uk_aq_latest_rpc");
 }
 
 async function hasLatestDelta(
-  { stationLike, connectorId, pollutant, windowLabel, since, sinceId }:
+  { stationLike, networkCode, pollutant, windowLabel, since, sinceId }:
     LoadOptions,
 ): Promise<boolean> {
   if (!since) {
@@ -427,7 +424,7 @@ async function hasLatestDelta(
   const pollutantKey = normalizePollutant(pollutant);
   const { data, error } = await callLatestRpc({
     stationLike,
-    connectorId,
+    networkCode,
     pollutant: pollutantKey,
     windowLabel,
     limit: 1,
@@ -487,8 +484,15 @@ function formatDisplayName(
   stationRef: string | number,
   stationId: string | number | null | undefined,
 ): string | null {
-  const refText = normalizeNonEmptyText(stationRef !== null && stationRef !== undefined ? String(stationRef) : null);
-  const fallback = formatFallbackDisplayName(stationName, stationLabel, refText, stationId);
+  const refText = normalizeNonEmptyText(
+    stationRef !== null && stationRef !== undefined ? String(stationRef) : null,
+  );
+  const fallback = formatFallbackDisplayName(
+    stationName,
+    stationLabel,
+    refText,
+    stationId,
+  );
   const effectiveTemplate = template?.trim();
   if (!effectiveTemplate) {
     return fallback;
@@ -513,7 +517,9 @@ function formatFallbackDisplayName(
   const normalizedName = normalizeNonEmptyText(stationName);
   const normalizedLabel = normalizeNonEmptyText(stationLabel);
   const normalizedRef = normalizeNonEmptyText(stationRef);
-  const normalizedId = normalizeNonEmptyText(stationId !== null && stationId !== undefined ? String(stationId) : null);
+  const normalizedId = normalizeNonEmptyText(
+    stationId !== null && stationId !== undefined ? String(stationId) : null,
+  );
   const base = normalizedName ?? normalizedLabel ?? null;
   if (!base) {
     if (normalizedRef) {
@@ -535,10 +541,14 @@ function renderDisplayTemplate(
   template: string,
   tokens: Record<string, string>,
 ): string | null {
-  const rendered = template.replace(/\{(station_name|station_label|station_ref)\}/g, (_, key) => {
-    return tokens[key] ?? "";
-  });
-  const cleaned = rendered.replace(/\s+-\s+/g, " - ").replace(/\s+/g, " ").trim();
+  const rendered = template.replace(
+    /\{(station_name|station_label|station_ref)\}/g,
+    (_, key) => {
+      return tokens[key] ?? "";
+    },
+  );
+  const cleaned = rendered.replace(/\s+-\s+/g, " - ").replace(/\s+/g, " ")
+    .trim();
   return cleaned ? cleaned : null;
 }
 
@@ -582,7 +592,9 @@ function deriveNextCursor(
   let bestId = bestSince ? (fallbackSinceId ?? 0) : null;
   let bestMs = bestSince ? Date.parse(bestSince) : Number.NEGATIVE_INFINITY;
   for (const row of rows) {
-    const rowSince = normalizeTimestamp(row?.updated_at ?? row?.last_value_at ?? "");
+    const rowSince = normalizeTimestamp(
+      row?.updated_at ?? row?.last_value_at ?? "",
+    );
     if (!rowSince) {
       continue;
     }
@@ -607,7 +619,10 @@ function deriveNextCursor(
   return { since: bestSince, sinceId: bestId ?? 0 };
 }
 
-function _maxTimestamp(values: Array<string | null | undefined>, fallback: string | null): string | null {
+function _maxTimestamp(
+  values: Array<string | null | undefined>,
+  fallback: string | null,
+): string | null {
   let best = fallback ? normalizeTimestamp(fallback) : null;
   let bestMs = best ? Date.parse(best) : Number.NEGATIVE_INFINITY;
   values.forEach((value) => {
@@ -627,7 +642,11 @@ function _maxTimestamp(values: Array<string | null | undefined>, fallback: strin
   return best;
 }
 
-function json(payload: unknown, status = 200, extraHeaders: Record<string, string> = {}): Response {
+function json(
+  payload: unknown,
+  status = 200,
+  extraHeaders: Record<string, string> = {},
+): Response {
   return new Response(JSON.stringify(payload), {
     status,
     headers: {
@@ -655,11 +674,16 @@ function deriveStationLabel(label: string | null): string | null {
     return null;
   }
   const separator = label.includes(" - ") ? " - " : "-";
-  const parts = label.split(separator).map((part) => part.trim()).filter(Boolean);
+  const parts = label.split(separator).map((part) => part.trim()).filter(
+    Boolean,
+  );
   if (!parts.length) {
     return label;
   }
-  if (parts.length > 1 && (looksLikePollutantUri(parts[0]) || looksLikeUrl(parts[0]))) {
+  if (
+    parts.length > 1 &&
+    (looksLikePollutantUri(parts[0]) || looksLikeUrl(parts[0]))
+  ) {
     return parts[parts.length - 1];
   }
   if (parts.length === 1 && looksLikeUrl(parts[0])) {
@@ -732,31 +756,14 @@ function formatUnit(unit: string | null): string | null {
   return trimmed;
 }
 
-function normalizeNonEmptyText(value: string | null | undefined): string | null {
+function normalizeNonEmptyText(
+  value: string | null | undefined,
+): string | null {
   if (value === null || value === undefined) {
     return null;
   }
   const trimmed = String(value).trim();
   return trimmed ? trimmed : null;
-}
-
-function deriveNetworkName(
-  stationMemberships: Array<{ network_label?: string | null; network_code?: string | null; is_primary?: boolean }>,
-  connectorLabel: string | null | undefined,
-  connectorCode: string | null | undefined,
-): string | null {
-  const memberships = Array.isArray(stationMemberships) ? stationMemberships : [];
-  const primary = memberships.find((entry) => Boolean(entry?.is_primary));
-  const primaryLabel = normalizeNonEmptyText(primary?.network_label ?? primary?.network_code ?? null);
-  if (primaryLabel) {
-    return primaryLabel;
-  }
-  const first = memberships[0];
-  const firstLabel = normalizeNonEmptyText(first?.network_label ?? first?.network_code ?? null);
-  if (firstLabel) {
-    return firstLabel;
-  }
-  return normalizeNonEmptyText(connectorLabel) ?? normalizeNonEmptyText(connectorCode);
 }
 
 function passesOutlierThreshold(row: any): boolean {
@@ -766,12 +773,12 @@ function passesOutlierThreshold(row: any): boolean {
     return false;
   }
   const pollutant = normalizePollutant(
-    row?.phenomenon?.observed_property_code
-      ?? row?.phenomenon?.notation
-      ?? row?.phenomenon?.pollutant_label
-      ?? row?.phenomenon?.label
-      ?? row?.phenomenon_label
-      ?? null,
+    row?.phenomenon?.observed_property_code ??
+      row?.phenomenon?.notation ??
+      row?.phenomenon?.pollutant_label ??
+      row?.phenomenon?.label ??
+      row?.phenomenon_label ??
+      null,
   );
   if (!pollutant) {
     return true;

@@ -86,6 +86,7 @@ jobs:
           deploy_function uk_aq_la_hex --no-verify-jwt
           deploy_function uk_aq_pcon_hex --no-verify-jwt
           deploy_function uk_aq_stations --no-verify-jwt
+          deploy_function uk_aq_public_networks --no-verify-jwt
           deploy_function uk_aq_timeseries --no-verify-jwt
           deploy_function uk_aq_station_snapshot
           deploy_function uk_aq_egress_monitor

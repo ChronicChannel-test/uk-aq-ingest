@@ -1,27 +1,32 @@
 //trigger deploy 2026-02-09 13:34
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import "../_shared/fetch_egress_patch.ts";
-import { cacheControlHeaders, CACHE_CONTROL_SUCCESS_SMAXAGE_300 } from "../_shared/cache.ts";
+import {
+  CACHE_CONTROL_SUCCESS_SMAXAGE_300,
+  cacheControlHeaders,
+} from "../_shared/cache.ts";
 import { createWeakEtag, ifNoneMatchMatches } from "../_shared/etag.ts";
 import { logEndpointEgress } from "../_shared/egress_metrics.ts";
+import { parsePublicNetworkFilter } from "../_shared/public_network_filter.ts";
 import { validateWorkerUpstreamAuth } from "../_shared/worker_auth.ts";
 
 const DEFAULT_LIMIT = 10000;
 const MAX_LIMIT = 20000;
 
-const SUPABASE_URL = Deno.env.get("SUPABASE_URL")
-  ?? Deno.env.get("SB_SUPABASE_URL")
-  ?? "";
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ??
+  Deno.env.get("SB_SUPABASE_URL") ??
+  "";
 const SB_SECRET_KEY = Deno.env.get("SB_SECRET_KEY") ?? "";
 const SUPABASE_PRIVILEGED_KEY = SB_SECRET_KEY;
-const UK_AQ_CORE_SCHEMA = Deno.env.get("UK_AQ_CORE_SCHEMA")
-  ?? "uk_aq_core";
-const UK_AQ_PUBLIC_SCHEMA = Deno.env.get("UK_AQ_PUBLIC_SCHEMA")
-  ?? "uk_aq_public";
+const UK_AQ_CORE_SCHEMA = Deno.env.get("UK_AQ_CORE_SCHEMA") ??
+  "uk_aq_core";
+const UK_AQ_PUBLIC_SCHEMA = Deno.env.get("UK_AQ_PUBLIC_SCHEMA") ??
+  "uk_aq_public";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, if-none-match",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type, if-none-match",
   "Access-Control-Allow-Methods": "GET, OPTIONS",
   "Access-Control-Expose-Headers": "ETag",
 };
@@ -51,7 +56,10 @@ async function postgrestRequest<T>(
   body?: unknown,
 ): Promise<{ data: T | null; error: { message: string } | null }> {
   if (!REST_BASE_URL || !SUPABASE_PRIVILEGED_KEY) {
-    return { data: null, error: { message: "Missing SUPABASE_URL or SB_SECRET_KEY." } };
+    return {
+      data: null,
+      error: { message: "Missing SUPABASE_URL or SB_SECRET_KEY." },
+    };
   }
   const url = new URL(`${REST_BASE_URL}/${path}`);
   for (const [key, value] of Object.entries(params ?? {})) {
@@ -65,9 +73,12 @@ async function postgrestRequest<T>(
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const contentType = resp.headers.get("content-type") ?? "";
-  const payload = contentType.includes("application/json") ? await resp.json() : await resp.text();
+  const payload = contentType.includes("application/json")
+    ? await resp.json()
+    : await resp.text();
   if (!resp.ok) {
-    const message = payload?.message || payload?.error_description || payload?.error || resp.statusText;
+    const message = payload?.message || payload?.error_description ||
+      payload?.error || resp.statusText;
     return { data: null, error: { message: String(message) } };
   }
   return { data: payload as T, error: null };
@@ -87,7 +98,10 @@ serve(async (req) => {
   if (req.method !== "GET") {
     return new Response("Method not allowed", {
       status: 405,
-      headers: { ...CORS_HEADERS, ...cacheControlHeaders(405, CACHE_CONTROL_SUCCESS_SMAXAGE_300) },
+      headers: {
+        ...CORS_HEADERS,
+        ...cacheControlHeaders(405, CACHE_CONTROL_SUCCESS_SMAXAGE_300),
+      },
     });
   }
   const startedAtMs = Date.now();
@@ -101,24 +115,38 @@ serve(async (req) => {
     });
   }
   if (!SUPABASE_URL || !SUPABASE_PRIVILEGED_KEY) {
-    return await finish(json({ error: "Missing SUPABASE_URL or SB_SECRET_KEY." }, 500), {
-      error_type: "missing_env",
-    });
+    return await finish(
+      json({ error: "Missing SUPABASE_URL or SB_SECRET_KEY." }, 500),
+      {
+        error_type: "missing_env",
+      },
+    );
   }
 
   const url = new URL(req.url);
+  const networkFilter = parsePublicNetworkFilter(url);
+  if (!networkFilter.ok) {
+    return await finish(json({ error: networkFilter.error }, 400), {
+      error_type: "invalid_public_filter",
+    });
+  }
+  const networkCode = networkFilter.networkCode;
   const pconVersion = normalizeText(url.searchParams.get("pcon_version"));
   const limit = parseLimit(url.searchParams.get("limit"), DEFAULT_LIMIT);
   const rawSince = url.searchParams.get("since");
   const since = rawSince === null ? null : normalizeTimestamp(rawSince);
   if (rawSince !== null && since === null) {
     return await finish(
-      json({ error: "Invalid since timestamp. Provide ISO-8601 datetime (e.g. 2026-02-07T10:30:00Z)." }, 400),
+      json({
+        error:
+          "Invalid since timestamp. Provide ISO-8601 datetime (e.g. 2026-02-07T10:30:00Z).",
+      }, 400),
       { error_type: "invalid_since" },
     );
   }
   const ifNoneMatch = req.headers.get("if-none-match");
   const requestFields = {
+    has_network_code: Boolean(networkCode),
     has_pcon_version: Boolean(pconVersion),
     limit,
     has_since: Boolean(since),
@@ -126,13 +154,15 @@ serve(async (req) => {
   };
 
   try {
-    const rows = await loadLatest({ pconVersion, limit, since });
+    const rows = await loadLatest({ pconVersion, networkCode, limit, since });
     const versions = Array.from(
       new Set(rows.map((row) => row.pcon_version).filter(Boolean)),
     ).sort();
     const lastUpdated = maxTimestamp(rows.map((row) => row.latest_value_at));
     const nextSince = lastUpdated ?? since;
     const payload = {
+      contract_version: 2,
+      network_code: networkCode,
       metric_default: "median",
       since,
       next_since: nextSince,
@@ -143,11 +173,14 @@ serve(async (req) => {
     };
     const etag = await createWeakEtag({
       endpoint: "uk_aq_pcon_hex",
-      version: 1,
+      version: 2,
       payload,
     });
     if (ifNoneMatchMatches(ifNoneMatch, etag)) {
-      return await finish(notModified(etag), { ...requestFields, result: "not_modified" });
+      return await finish(notModified(etag), {
+        ...requestFields,
+        result: "not_modified",
+      });
     }
     return await finish(json(payload, 200, { ETag: etag }), {
       ...requestFields,
@@ -166,6 +199,7 @@ serve(async (req) => {
 
 type LoadOptions = {
   pconVersion: string | null;
+  networkCode: string | null;
   limit: number;
   since: string | null;
 };
@@ -174,6 +208,9 @@ type PconRow = {
   pcon_code: string;
   pcon_name: string | null;
   pcon_version: string | null;
+  network_id: number;
+  network_code: string;
+  network_label: string;
   station_count: number | null;
   single_site: boolean | null;
   median_value: number | null;
@@ -181,9 +218,12 @@ type PconRow = {
   latest_value_at: string | null;
 };
 
-async function loadLatest({ pconVersion, limit, since }: LoadOptions): Promise<PconRow[]> {
+async function loadLatest(
+  { pconVersion, networkCode, limit, since }: LoadOptions,
+): Promise<PconRow[]> {
   const { data, error } = await callPconHexRpc({
     pconVersion,
+    networkCode,
     limit,
     since,
   });
@@ -200,29 +240,13 @@ async function loadLatest({ pconVersion, limit, since }: LoadOptions): Promise<P
 
 type PconRpcCallOptions = {
   pconVersion: string | null;
+  networkCode: string | null;
   limit: number;
   since: string | null;
 };
 
 async function callPconHexRpc(options: PconRpcCallOptions) {
-  const { pconVersion, limit, since } = options;
-  const cursorAttempt = await postgrestRequest<PconRow[]>(
-    "POST",
-    "rpc/uk_aq_pcon_hex_rpc",
-    undefined,
-    UK_AQ_PUBLIC_SCHEMA,
-    {
-      pcon_version: pconVersion,
-      limit_rows: limit,
-      since_ts: since,
-    },
-  );
-  if (!cursorAttempt.error) {
-    return cursorAttempt;
-  }
-  if (!looksLikeSinceSignatureMismatch(cursorAttempt.error.message)) {
-    return cursorAttempt;
-  }
+  const { pconVersion, networkCode, limit, since } = options;
   return await postgrestRequest<PconRow[]>(
     "POST",
     "rpc/uk_aq_pcon_hex_rpc",
@@ -230,15 +254,11 @@ async function callPconHexRpc(options: PconRpcCallOptions) {
     UK_AQ_PUBLIC_SCHEMA,
     {
       pcon_version: pconVersion,
+      network_code: networkCode,
       limit_rows: limit,
+      since_ts: since,
     },
   );
-}
-
-function looksLikeSinceSignatureMismatch(message: string): boolean {
-  const normalized = String(message || "").toLowerCase();
-  return normalized.includes("could not find the function") &&
-    normalized.includes("uk_aq_pcon_hex_rpc");
 }
 
 function normalizeText(value: string | null): string | null {
@@ -268,13 +288,18 @@ function parseLimit(value: string | null, fallback: number): number {
   return Math.max(1, Math.min(MAX_LIMIT, Math.floor(parsed)));
 }
 
-function isTimestampAfter(candidate: string | null | undefined, since: string): boolean {
+function isTimestampAfter(
+  candidate: string | null | undefined,
+  since: string,
+): boolean {
   if (!candidate) {
     return false;
   }
   const candidateDate = new Date(candidate);
   const sinceDate = new Date(since);
-  if (Number.isNaN(candidateDate.getTime()) || Number.isNaN(sinceDate.getTime())) {
+  if (
+    Number.isNaN(candidateDate.getTime()) || Number.isNaN(sinceDate.getTime())
+  ) {
     return false;
   }
   return candidateDate.getTime() > sinceDate.getTime();
@@ -293,7 +318,11 @@ function maxTimestamp(values: Array<string | null | undefined>): string | null {
   return maxValue;
 }
 
-function json(payload: unknown, status = 200, extraHeaders: Record<string, string> = {}): Response {
+function json(
+  payload: unknown,
+  status = 200,
+  extraHeaders: Record<string, string> = {},
+): Response {
   return new Response(JSON.stringify(payload), {
     status,
     headers: {
