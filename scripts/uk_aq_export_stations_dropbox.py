@@ -297,6 +297,9 @@ def _iter_stations(page_size: int) -> Iterable[Dict[str, Any]]:
           stn.pcon_version,
           stn.service_ref,
           stn.connector_id,
+          stn.network_id,
+          n.network_code,
+          n.display_name as network_label,
           stn.removed_at,
           stn.last_seen_at,
           stn.created_at,
@@ -306,6 +309,7 @@ def _iter_stations(page_size: int) -> Iterable[Dict[str, Any]]:
           c.connector_code
         from uk_aq_core.stations stn
         join uk_aq_core.connectors c on c.id = stn.connector_id
+        join uk_aq_core.networks n on n.id = stn.network_id
         order by stn.id
     """
     try:
@@ -477,6 +481,9 @@ def main() -> int:
                     "service_ref": row.get("service_ref"),
                     "connector_id": row.get("connector_id"),
                     "connector_code": row.get("connector_code"),
+                    "network_id": row.get("network_id"),
+                    "network_code": row.get("network_code"),
+                    "network_label": row.get("network_label"),
                 }
             )
 
