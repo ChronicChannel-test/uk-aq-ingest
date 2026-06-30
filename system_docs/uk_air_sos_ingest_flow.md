@@ -13,7 +13,7 @@ This page summarizes how SOS data lands in tables and how stations map to multip
 - `uk_air_sos_networks`: network lookup (source label -> internal `network_code` + UI display name).
 - `uk_air_sos_network_pollutants`: pollutant matching rules per network.
 - `uk_air_sos_station_refs`: map SOS `station_id` to `uk_air_id`.
-- `station_network_memberships`: per-station memberships (`network_code`, `is_primary`).
+- `networks`: canonical network catalog referenced by `stations.network_id`.
 
 ## Ingest Steps
 1) **SOS metadata ingest (daily)**
@@ -30,7 +30,7 @@ This page summarizes how SOS data lands in tables and how stations map to multip
 4) **Network membership backfill**
    - Collects pollutant keys from station `timeseries` -> `phenomena`.
    - Filters allowed networks via `uk_air_sos_network_pollutants`.
-   - Writes `station_network_memberships` (one row per network).
+   - Validates the station's scalar `network_id` against `networks.id`.
 
 ## Polling Flow (Observations)
 - 15-minute polling uses `timeseries_ref` to resolve `timeseries.id`.
@@ -43,10 +43,9 @@ This page summarizes how SOS data lands in tables and how stations map to multip
 - Station names are not unique and can vary; coordinates are the most stable tie-breaker.
 - Name + distance provides a reliable fallback for linking SOS stations to UK-AIR sites.
 
-## Multi-network Stations
-- The UK-AIR register lists multiple network labels per `uk_air_id`.
-- Memberships are written into `station_network_memberships` as multiple rows per station.
-- `network_code` comes from `uk_air_sos_networks`, and `network_label` is the UI name.
+## Network assignment
+- Each station has one canonical `stations.network_id`.
+- Public labels and codes come from the referenced `networks` row.
 
 ## Notes on Station Granularity
 - SOS can emit multiple `timeseries_ref` per station.

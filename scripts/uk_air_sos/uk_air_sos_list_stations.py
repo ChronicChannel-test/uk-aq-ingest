@@ -19,7 +19,7 @@ import time
 import warnings
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Set
+from typing import Any, Dict, Iterable, List, Optional, Sequence
 
 warnings.filterwarnings(
     "ignore",
@@ -62,19 +62,6 @@ UK_BBOX = {
     "east": 2.0,
     "north": 61.0,
 }
-
-NETWORK_TYPE_MAP = {
-    "AURN": "gov_uk_aurn",
-    "LAQN": "laqn",
-    "WAQN": "waqn",
-}
-
-NETWORK_LABELS = {
-    "gov_uk_aurn": "GOV.UK AURN",
-    "laqn": "LAQN",
-    "waqn": "WAQN",
-}
-
 
 _STATION_LABEL_POLLUTANT_HINTS = (
     "sulphur",
@@ -172,35 +159,6 @@ def _station_type_from_payload(station: Dict[str, Any]) -> Optional[str]:
     return props.get("stationType") or station.get("stationType")
 
 
-def _normalize_station_type(value: Optional[str]) -> Optional[str]:
-    if not value:
-        return None
-    cleaned = re.sub(r"[\s/,_-]+", " ", value.strip()).upper()
-    return cleaned or None
-
-
-def _station_network_codes(station_type: Optional[str]) -> List[str]:
-    normalized = _normalize_station_type(station_type)
-    if not normalized:
-        return []
-    codes = []
-    for token, code in NETWORK_TYPE_MAP.items():
-        if token in normalized:
-            codes.append(code)
-    if not codes:
-        return []
-    return sorted(set(codes))
-
-
-def _primary_network_codes(codes: Sequence[str]) -> Set[str]:
-    unique = sorted(set(codes))
-    if len(unique) == 1:
-        return {unique[0]}
-    if "gov_uk_aurn" in unique:
-        return {"gov_uk_aurn"}
-    return set()
-
-
 def _station_metadata_attributes(station: Dict[str, Any]) -> Dict[str, Any]:
     props = station.get("properties", {}) if isinstance(station.get("properties"), dict) else {}
     attributes: Dict[str, Any] = {}
@@ -274,43 +232,6 @@ def _select_station_row(
     if len(candidates) == 1:
         return candidates[0]
     return None
-
-
-def _build_station_membership_rows(
-    station_id: int,
-    station_type: Optional[str],
-    network_labels: Dict[str, str],
-) -> List[Dict[str, Any]]:
-    codes = _station_network_codes(station_type)
-    if not codes:
-        return []
-    primary_codes = _primary_network_codes(codes)
-    rows = []
-    for code in codes:
-        rows.append(
-            {
-                "station_id": station_id,
-                "network_code": code,
-                "network_label": network_labels.get(code, code),
-                "is_primary": code in primary_codes,
-            }
-        )
-    return rows
-
-
-def _network_label_lookup_from_register(
-    networks: Dict[str, Dict[str, Any]],
-) -> Dict[str, str]:
-    labels: Dict[str, str] = {}
-    for row in networks.values():
-        if not isinstance(row, dict):
-            continue
-        code = row.get("network_code")
-        if not code:
-            continue
-        label = row.get("network_display_name") or row.get("network_ref") or code
-        labels[str(code)] = str(label)
-    return labels
 
 
 class UkAirClient:
@@ -670,15 +591,6 @@ class SupabaseWriter:
             )
         if rows:
             self.core.table("station_metadata").upsert(rows, on_conflict="station_id").execute()
-        return len(rows)
-
-    def upsert_station_network_memberships(self, rows: List[Dict[str, Any]]) -> int:
-        if not rows:
-            return 0
-        self.core.table("station_network_memberships").upsert(
-            rows,
-            on_conflict="station_id,network_code",
-        ).execute()
         return len(rows)
 
     def upsert_station_types(self, rows: List[Dict[str, Any]]) -> int:
@@ -1324,7 +1236,6 @@ def apply_station_enrichment(
     default_service_ref: Optional[str] = None,
     update_station_type: bool = True,
     skip_metadata: bool = False,
-    skip_memberships: bool = False,
 ) -> Dict[str, int]:
     station_refs = sorted(
         {
@@ -1339,17 +1250,8 @@ def apply_station_enrichment(
     station_rows_map = _index_station_rows(station_rows)
     missing_station = 0
     ambiguous_station = 0
-    membership_rows: List[Dict[str, Any]] = []
-    membership_keys = set()
     metadata_updates: Dict[int, Dict[str, Any]] = {}
     station_type_updates: List[Dict[str, Any]] = []
-    network_label_lookup: Dict[str, str] = {}
-    if not skip_memberships:
-        network_label_lookup = _network_label_lookup_from_register(
-            writer.fetch_uk_air_sos_networks()
-        )
-        for code, label in NETWORK_LABELS.items():
-            network_label_lookup.setdefault(code, label)
 
     for station in stations:
         if not isinstance(station, dict):
@@ -1382,25 +1284,10 @@ def apply_station_enrichment(
             attributes = _station_metadata_attributes(station)
             if attributes:
                 metadata_updates[station_id] = attributes
-        if not skip_memberships:
-            for membership in _build_station_membership_rows(
-                station_id,
-                station_type,
-                network_label_lookup,
-            ):
-                key = (membership["station_id"], membership["network_code"])
-                if key in membership_keys:
-                    continue
-                membership_keys.add(key)
-                membership_rows.append(membership)
-
     if station_type_updates:
         writer.upsert_station_types(station_type_updates)
     if not skip_metadata and metadata_updates:
         writer.upsert_station_metadata(metadata_updates)
-    if not skip_memberships and membership_rows:
-        writer.upsert_station_network_memberships(membership_rows)
-
     return {
         "station_rows": len(station_rows),
         "station_refs": len(station_refs),
@@ -1408,7 +1295,6 @@ def apply_station_enrichment(
         "ambiguous_station": ambiguous_station,
         "station_type_updates": len(station_type_updates),
         "metadata_updates": len(metadata_updates),
-        "membership_rows": len(membership_rows),
     }
 
 
@@ -1448,11 +1334,6 @@ def parse_args() -> argparse.Namespace:
         "--skip-station-metadata",
         action="store_true",
         help="Skip station_metadata upserts when writing to Supabase.",
-    )
-    parser.add_argument(
-        "--skip-network-memberships",
-        action="store_true",
-        help="Skip station_network_memberships upserts when writing to Supabase.",
     )
     parser.add_argument(
         "--skip-station-type-backfill",
@@ -1586,17 +1467,11 @@ def main() -> None:
                 default_service_ref=default_service_ref,
                 update_station_type=not args.skip_station_type_backfill,
                 skip_metadata=args.skip_station_metadata,
-                skip_memberships=args.skip_network_memberships,
             )
             if not args.skip_station_type_backfill:
                 LOG.info("Backfilled station_type for %s stations.", enrichment["station_type_updates"])
             if not args.skip_station_metadata:
                 LOG.info("Upserted station_metadata for %s stations.", enrichment["metadata_updates"])
-            if not args.skip_network_memberships:
-                LOG.info(
-                    "Upserted %s station_network_memberships rows.",
-                    enrichment["membership_rows"],
-                )
             if enrichment["missing_station"]:
                 LOG.warning(
                     "Station enrichment skipped %s stations missing in DB.",

@@ -963,14 +963,11 @@ Environment:
 - `SUPABASE_URL`
 - `SB_SECRET_KEY`
 
-### `scripts/uk_aq_backfill_station_memberships.py`
+### `scripts/uk_air_sos/uk_air_sos_network_assignment_report.py`
 Purpose:
-- Backfill `station_network_memberships` from the UK-AIR monitoring sites register (via `uk_air_sos_site_register` + `uk_air_sos_networks`).
-- Store UK-AIR site ids per station in `uk_air_sos_station_refs` for repeatable joins.
-- Populate `stations.station_type` with the primary network code (single network or AURN priority).
-- Set `station_network_memberships.is_primary` for single-network stations and prioritize AURN.
-- Filter memberships by `uk_air_sos_network_pollutants` to align networks with pollutant coverage.
-- Use `--source sos` to fall back to SOS stationType values (legacy path).
+- Export and validate canonical UK-AIR SOS assignments using
+  `stations.network_id -> networks.id`.
+- Preserve connector provenance columns in the report.
 
 Common commands:
 ```
@@ -1073,7 +1070,7 @@ Notes:
 - Placeholder SOS station refs (e.g., `9999999999`) are skipped from outputs/upserts and flagged in `station_metadata` with `exclude_from_ui=true`.
 
 Writes to (when `--to-supabase` is set):
-- `connectors`, `stations`, `station_metadata`, `station_network_memberships`
+- `connectors`, `stations`, `station_metadata`
 - `phenomena`, `procedures`, `offerings` (unless `--skip-metadata` is used)
 
 ### `scripts/uk_air_sos/uk_air_sos_timeseries_metadata_sample.py`

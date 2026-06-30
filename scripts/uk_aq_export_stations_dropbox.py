@@ -350,14 +350,14 @@ def _fetch_connector_counts(conn) -> List[Dict[str, Any]]:
 def _fetch_network_counts(conn) -> List[Dict[str, Any]]:
     query = """
         select
-          snm.network_code,
-          max(snm.network_label) as network_label,
-          count(distinct snm.station_id) as station_count,
-          count(distinct snm.station_id) filter (where s.removed_at is null) as active_count
-        from uk_aq_core.station_network_memberships snm
-        join uk_aq_core.stations s on s.id = snm.station_id
-        group by snm.network_code
-        order by snm.network_code
+          n.network_code,
+          n.display_name as network_label,
+          count(s.id) as station_count,
+          count(s.id) filter (where s.removed_at is null) as active_count
+        from uk_aq_core.networks n
+        left join uk_aq_core.stations s on s.network_id = n.id
+        group by n.id, n.network_code, n.display_name
+        order by n.network_code
     """
     with conn.cursor() as cursor:
         cursor.execute(query)

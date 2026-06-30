@@ -26,7 +26,7 @@ Applied in `scripts/uk_air_sos/uk_air_sos_ingest.py`:
 - `connectors`
 - `stations`
 - `station_metadata`
-- `station_network_memberships`
+- `networks` (referenced by `stations.network_id`)
 - `timeseries`
 - `observations`
 - `phenomena`
@@ -38,17 +38,16 @@ Applied in `scripts/uk_air_sos/uk_air_sos_ingest.py`:
 ## Connector creation
 - Connector rows are created by the stations sync; ingests expect the connector to exist and do not create it.
 
-## Station metadata and memberships
-- `station_metadata` and `station_network_memberships` are populated by the station listing/backfill scripts.
-- SOS station payloads do not currently expose `stationType`; use the site register CSV for membership backfills.
+## Station metadata and network assignment
+- `station_metadata` is populated by the station listing script.
+- SOS stations use one canonical `stations.network_id` referencing `networks.id`.
 - `uk_air_sos_station_refs` stores the resolved UK-AIR site id for each SOS station to join against the site register.
 - `stations.station_type` is backfilled with the primary network code (single network or AURN-priority).
-- `station_network_memberships` is the authoritative source for SOS multi-network membership so the UI can show stations in multiple networks.
-- Memberships are filtered by `uk_air_sos_network_pollutants` so only pollutant-appropriate networks are assigned.
+- Public network code and label values come from the canonical `networks` row.
 
 ## Site register
 - `scripts/uk_air_sos/uk_air_sos_site_register.py` downloads the UK-AIR monitoring sites CSV.
-- The CSV includes network membership fields that can drive `station_network_memberships` backfills.
+- The CSV network fields remain source metadata; they do not define the public station contract.
 - Use `--load` to load the CSV into `uk_air_sos_site_register` and `uk_air_sos_networks` in the same run.
 - Use `--load-only` with `--csv-path` to load a local CSV without downloading.
 - The load step keeps existing `uk_air_sos_networks.network_display_name` values and seeds `uk_air_sos_network_pollutants`.
