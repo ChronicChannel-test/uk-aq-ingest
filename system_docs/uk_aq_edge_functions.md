@@ -717,3 +717,17 @@ Optional:
 - Edge functions send `Accept-Profile` / `Content-Profile` headers for core/raw
   schemas (core by default; raw for `error_logs` and checkpoint tables). RPC calls
   in `uk_aq_dispatch_polls` target the `public` schema.
+# Public network API contract
+
+- `/api/aq/networks` maps to `uk_aq_public_networks` and returns
+  `contract_version: 2`.
+- The catalogue returns enabled networks only and includes `network_type`.
+- Station, latest, chart, LA, and PCON rows expose scalar `network_id`,
+  `network_code`, and `network_label`; station/latest rows omit `network_type`.
+- `connector_id`, `connector_code`, and `connector_label` remain separate
+  provenance where the endpoint already exposes them.
+- Public query parameters `connector`, `connector_id`, and `connector_code`
+  are unsupported and return HTTP 400.
+- Hidden networks, including OpenAQ while disabled, do not appear in public
+  responses. Both Breathe London connectors resolve to public code
+  `breathelondon` and label `Breathe London`.

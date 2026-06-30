@@ -44,6 +44,10 @@ Applied in `scripts/uk_air_sos/uk_air_sos_ingest.py`:
 - `uk_air_sos_station_refs` stores the resolved UK-AIR site id for each SOS station to join against the site register.
 - `stations.station_type` is backfilled with the primary network code (single network or AURN-priority).
 - Public network code and label values come from the canonical `networks` row.
+- Validate assignments with
+  `python3 scripts/uk_air_sos/uk_air_sos_network_assignment_report.py --output <path.csv>`.
+  The report checks `stations.network_id -> networks.id` and keeps connector
+  provenance separate; it does not populate or repair retired membership data.
 
 ## Site register
 - `scripts/uk_air_sos/uk_air_sos_site_register.py` downloads the UK-AIR monitoring sites CSV.
