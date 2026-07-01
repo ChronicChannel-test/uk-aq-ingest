@@ -17,21 +17,9 @@ Species/timeseries:
 - `PM25Index` -> PM2.5 DAQI/index (`DAQI`).
 - `NO2Index` -> NO2 DAQI/index (`DAQI`).
 - Timeseries refs use `<SiteCode>:<Species>` so index timeseries stay separate from raw pollutant timeseries.
-- `PM25` and `NO2` are explicitly classified as AQI-eligible raw observed
-  properties (`pm25` and `no2`).
-- `PM25Index` and `NO2Index` are explicitly classified as derived indexes and
-  remain canonically unmapped.
 
 Write path:
-- Upserts phenomena through
-  `uk_aq_public.uk_aq_rpc_phenomena_upsert`; the mapping table remains
-  authoritative and RPC diagnostics are validated before timeseries creation.
-- Reconciles the transitional direct `timeseries.observed_property_id` link for
-  every existing timeseries attached to the four shared Nodes phenomena inside
-  the central RPC. The set-based update is idempotent, only writes differing
-  links, and does not download timeseries metadata to the ingest service.
-- Direct writes to `uk_aq_core.phenomena` are not used.
-- Upserts `uk_aq_core.timeseries` and `uk_aq_core.observations`.
+- Upserts `uk_aq_core.phenomena`, `uk_aq_core.timeseries`, and `uk_aq_core.observations`.
 - Updates each affected timeseries without regressing its bounds: `first_value_at`
   can only move earlier, while `last_value_at` and its matching `last_value` can
   only move later.
