@@ -9,6 +9,7 @@ WRITERS = (
     "scripts/erg_laqn/erg_laqn_ingest.py",
     "scripts/uk_air_sos/uk_air_sos_ingest.py",
     "scripts/uk_air_sos/uk_air_sos_list_stations.py",
+    "scripts/blondon_nodes/blondon_nodes_ingest.py",
 )
 
 

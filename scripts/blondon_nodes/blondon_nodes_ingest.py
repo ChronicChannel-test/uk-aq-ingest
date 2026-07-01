@@ -28,7 +28,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from scripts.uk_aq_supabase import SupabaseSchemas, create_supabase_client
-
+from scripts.uk_aq_phenomena_rpc import upsert_phenomena_via_rpc
 load_dotenv()
 
 LOG = logging.getLogger("blondon_nodes_ingest")
@@ -329,39 +329,17 @@ class SupabaseWriter:
             }
             for s in species
         ]
-        response = self.public.rpc(
-            "uk_aq_rpc_phenomena_upsert",
-            {"rows": rows},
-        ).execute()
-        result_rows = response.data if hasattr(response, "data") else response.get("data")
-        result_rows = result_rows or []
-        ids_by_source_label: Dict[str, int] = {}
-        diagnostics_by_source_label: Dict[str, Dict[str, Any]] = {}
-        for row in result_rows:
-            source_label = str(row.get("source_label") or "")
-            phenomenon_id = row.get("phenomenon_id")
-            if source_label and phenomenon_id is not None:
-                ids_by_source_label[source_label] = int(phenomenon_id)
-                diagnostics_by_source_label[source_label] = dict(row)
-
-        missing = sorted(
-            str(row["source_label"])
-            for row in rows
-            if str(row["source_label"]) not in ids_by_source_label
+        diagnostics_by_source_label = upsert_phenomena_via_rpc(
+            self.public, rows
         )
-        if missing:
-            raise RuntimeError(
-                "Central phenomena RPC did not return IDs for: " + ", ".join(missing)
-            )
+        ids_by_source_label: Dict[str, int] = {
+            source_label: int(diagnostic["phenomenon_id"])
+            for source_label, diagnostic in diagnostics_by_source_label.items()
+        }
 
         for input_row in rows:
             source_label = str(input_row["source_label"])
             diagnostic = diagnostics_by_source_label[source_label]
-            if diagnostic.get("mapping_warning"):
-                raise RuntimeError(
-                    f"Central phenomena RPC warning for {source_label}: "
-                    f"{diagnostic['mapping_warning']}"
-                )
             if diagnostic.get("mapping_kind") != input_row["mapping_kind"]:
                 raise RuntimeError(
                     f"Central phenomena RPC mapping kind mismatch for {source_label}"
