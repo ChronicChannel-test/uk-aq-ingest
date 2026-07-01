@@ -42,16 +42,6 @@ Purpose:
 - Central helper for Supabase clients that target `uk_aq_core`, `uk_aq_raw`, and `uk_aq_pop`.
 - Provides `create_supabase_client` plus `SupabaseSchemas` / `SchemaClient` wrappers for schema-specific `.table()` and `.rpc()` calls.
 
-### `scripts/uk_aq_phenomena_rpc.py`
-Purpose:
-- Shared fail-closed client contract for
-  `uk_aq_public.uk_aq_rpc_phenomena_upsert`.
-- Normalizes connector payloads, rejects duplicate source labels, validates
-  that every source receives a phenomenon ID, and raises on unknown mapping
-  warnings.
-- Supports explicit administrative mapping registration only when the caller
-  opts in.
-
 Environment:
 - `SUPABASE_URL`
 - `SB_SECRET_KEY` (or `SUPABASE_KEY` fallback)

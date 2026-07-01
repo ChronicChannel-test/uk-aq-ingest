@@ -1,10 +1,5 @@
 # ERG LAQN
 
-ERG LAQN registers its fixed species mappings through the central
-`uk_aq_public.uk_aq_rpc_phenomena_upsert` administrative mode. Raw AQ species
-carry explicit canonical codes and AQI eligibility is limited to PM2.5, PM10,
-and NO2.
-
 Placeholder documentation for the London Air Quality Network (LAQN) sourced from ERG.
 
 ## Status

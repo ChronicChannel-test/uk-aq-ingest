@@ -51,7 +51,6 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from scripts.ingest_helpers import station_coords, station_in_bbox, station_in_bbox_or_missing_coords
 from scripts.uk_aq_supabase import SupabaseSchemas, create_supabase_client
-from scripts.uk_aq_phenomena_rpc import upsert_phenomena_via_rpc
 load_dotenv()
 
 DEFAULT_LOG_LEVEL = os.getenv("UK_AIR_LOG_LEVEL", "WARNING").upper()
@@ -857,7 +856,6 @@ class SupabaseWriter:
         schemas = SupabaseSchemas.from_client(self.client)
         self.core = schemas.core
         self.raw = schemas.raw
-        self.public = self.client.schema(os.getenv("UK_AQ_PUBLIC_SCHEMA") or "uk_aq_public")
 
     def upsert_connectors(self, services: Iterable[Dict[str, Any]]) -> Optional[int]:
         return self.get_connector_id()
@@ -1005,11 +1003,9 @@ class SupabaseWriter:
             if notation and not row.get("notation"):
                 row["notation"] = notation
         payload = list(payload_by_source_label.values())
-        results = upsert_phenomena_via_rpc(self.public, payload)
-        return {
-            source_label: int(row["phenomenon_id"])
-            for source_label, row in results.items()
-        }
+        if payload:
+            self.core.table("phenomena").upsert(payload, on_conflict="connector_id,source_label").execute()
+        return self.get_phenomena_id_map(list(payload_by_source_label.keys()), connector_id)
 
     def get_ref_id_map(
         self,

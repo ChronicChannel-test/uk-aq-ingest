@@ -63,7 +63,6 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from scripts.ingest_helpers import station_coords, station_in_bbox_or_missing_coords
 from scripts.uk_aq_supabase import SupabaseSchemas, create_supabase_client
-from scripts.uk_aq_phenomena_rpc import upsert_phenomena_via_rpc
 
 load_dotenv()
 
@@ -775,7 +774,6 @@ class SupabaseWriter:
         schemas = SupabaseSchemas.from_client(self.client)
         self.core = schemas.core
         self.raw = schemas.raw
-        self.public = self.client.schema(os.getenv("UK_AQ_PUBLIC_SCHEMA") or "uk_aq_public")
 
     def upsert_connector(self) -> Tuple[int, bool]:
         row = (
@@ -884,11 +882,20 @@ class SupabaseWriter:
                     "pollutant_label": meta["pollutant_label"],
                 }
             )
-        results = upsert_phenomena_via_rpc(self.public, payload)
-        ids_by_source_label = {
-            source_label: int(row["phenomenon_id"])
-            for source_label, row in results.items()
-        }
+        self.core.table("phenomena").upsert(
+            payload, on_conflict="connector_id,source_label"
+        ).execute()
+        rows = (
+            self.core.table("phenomena")
+            .select("id,source_label")
+            .eq("connector_id", connector_id)
+            .in_("source_label", [meta["source_label"] for meta in SCOMM_PHENOMENA.values()])
+            .execute()
+        )
+        data = rows.data if hasattr(rows, "data") else rows.get("data")
+        ids_by_source_label: Dict[str, int] = {}
+        for row in data or []:
+            ids_by_source_label[str(row["source_label"])] = int(row["id"])
         ids_by_pollutant: Dict[str, int] = {}
         for pollutant, meta in SCOMM_PHENOMENA.items():
             phen_id = ids_by_source_label.get(meta["source_label"])

@@ -36,7 +36,6 @@ from scripts.erg_laqn.erg_laqn_list_stations import (
     _normalize_station_payload,
 )
 from scripts.uk_aq_supabase import SupabaseSchemas, create_supabase_client
-from scripts.uk_aq_phenomena_rpc import upsert_phenomena_via_rpc
 
 load_dotenv()
 
@@ -242,7 +241,6 @@ class SupabaseWriter:
         self.client: Client = create_supabase_client()
         schemas = SupabaseSchemas.from_client(self.client)
         self.core = schemas.core
-        self.public = self.client.schema(os.getenv("UK_AQ_PUBLIC_SCHEMA") or "uk_aq_public")
 
     def upsert_connector(self) -> int:
         row = (
@@ -291,31 +289,10 @@ class SupabaseWriter:
         payload = list(rows)
         if not payload:
             return 0
-        for row in payload:
-            raw_code = str(row.get("pollutant_label") or "").strip().lower()
-            observed_property_code = "pm25" if raw_code == "pm2.5" else raw_code
-            row.update(
-                {
-                    "source_uom": next(
-                        (
-                            config.get("uom")
-                            for config in SPECIES_CONFIG.values()
-                            if config.get("pollutant_label") == row.get("pollutant_label")
-                        ),
-                        None,
-                    ),
-                    "mapping_kind": "raw_observed_property",
-                    "observed_property_code": observed_property_code,
-                    "is_aqi_eligible": observed_property_code in ("pm25", "pm10", "no2"),
-                }
-            )
-        return len(
-            upsert_phenomena_via_rpc(
-                self.public,
-                payload,
-                allow_mapping_upsert=True,
-            )
-        )
+        self.core.table("phenomena").upsert(
+            payload, on_conflict="connector_id,source_label"
+        ).execute()
+        return len(payload)
 
     def fetch_phenomena_ids(
         self, connector_id: int, source_labels: Iterable[str]

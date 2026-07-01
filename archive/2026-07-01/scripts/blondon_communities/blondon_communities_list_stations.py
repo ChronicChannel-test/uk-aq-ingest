@@ -32,7 +32,6 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from scripts.ingest_helpers import station_coords
 from scripts.uk_aq_supabase import SupabaseSchemas, create_supabase_client
-from scripts.uk_aq_phenomena_rpc import upsert_phenomena_via_rpc
 
 load_dotenv()
 
@@ -220,7 +219,6 @@ class SupabaseWriter:
         schemas = SupabaseSchemas.from_client(self.client)
         self.core = schemas.core
         self.raw = schemas.raw
-        self.public = self.client.schema(os.getenv("UK_AQ_PUBLIC_SCHEMA") or "uk_aq_public")
 
     def upsert_connector(self) -> int:
         existing = (
@@ -508,7 +506,10 @@ class SupabaseWriter:
         payload = list(rows)
         if not payload:
             return 0
-        return len(upsert_phenomena_via_rpc(self.public, payload))
+        self.core.table("phenomena").upsert(
+            payload, on_conflict="connector_id,source_label"
+        ).execute()
+        return len(payload)
 
     def fetch_phenomena_ids(
         self, connector_id: int, source_labels: Iterable[str]

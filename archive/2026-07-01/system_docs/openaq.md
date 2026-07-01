@@ -1,11 +1,5 @@
 # OpenAQ
 
-OpenAQ phenomena are written through the central
-`uk_aq_public.uk_aq_rpc_phenomena_upsert` function. Existing OpenAQ parameter
-labels are seeded as authoritative connector mappings. A newly encountered
-parameter without policy fails closed with an `unknown_source_label` warning
-until its canonical classification is reviewed.
-
 This network uses OpenAQ's API to pull UK monitoring locations and latest values.
 
 ## Source API

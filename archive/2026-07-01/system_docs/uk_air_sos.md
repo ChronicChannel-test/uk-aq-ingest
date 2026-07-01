@@ -1,11 +1,5 @@
 # UK-AIR SOS Network
 
-UK-AIR SOS phenomena are written through the central
-`uk_aq_public.uk_aq_rpc_phenomena_upsert` function by both discovery paths.
-Verified Eionet source URIs are seeded as authoritative mappings. A new URI
-fails closed as unknown until reviewed, preventing silent canonical
-misclassification.
-
 This network pulls stations from the UK-AIR SOS API with configurable filters.
 
 ## Source

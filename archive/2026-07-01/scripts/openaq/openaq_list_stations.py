@@ -657,47 +657,53 @@ class DbWriter:
     ) -> Dict[str, int]:
         if not parameters:
             return {}
-        payload: List[Dict[str, Any]] = []
+        rows: List[Tuple[Any, ...]] = []
         for meta in parameters.values():
             name = str(meta.get("name") or "").strip()
             if not name:
                 continue
             display_name = meta.get("display_name")
-            payload.append(
-                {
-                    "connector_id": connector_id,
-                    "source_label": f"openaq:{name}",
-                    "label": display_name or name,
-                    "notation": display_name or name,
-                    "pollutant_label": name,
-                }
+            rows.append(
+                (
+                    connector_id,
+                    f"openaq:{name}",
+                    display_name or name,
+                    display_name or name,
+                    name,
+                )
             )
-        if not payload:
+        if not rows:
             return {}
-        source_labels = [str(row["source_label"]) for row in payload]
+        insert_sql = """
+            insert into uk_aq_core.phenomena (
+              connector_id,
+              source_label,
+              label,
+              notation,
+              pollutant_label
+            )
+            values %s
+            on conflict (connector_id, source_label) do update set
+              label = excluded.label,
+              notation = excluded.notation,
+              pollutant_label = excluded.pollutant_label
+        """
+        source_labels = [row[1] for row in rows]
+        ids_by_source_label: Dict[str, int] = {}
         with self.conn, self.conn.cursor() as cursor:
-            cursor.execute(
-                """
-                select source_label, phenomenon_id, mapping_warning
-                from uk_aq_public.uk_aq_rpc_phenomena_upsert(%s::jsonb)
-                """,
-                (json.dumps(payload),),
-            )
-            rpc_rows = cursor.fetchall()
-        ids_by_source_label = {
-            str(row[0]): int(row[1])
-            for row in rpc_rows
-            if row[0] is not None and row[1] is not None
-        }
-        warnings = [
-            f"{row[0]}:{row[2]}" for row in rpc_rows if row[2] is not None
-        ]
-        missing = sorted(set(source_labels) - set(ids_by_source_label))
-        if warnings or missing:
-            raise RuntimeError(
-                "Central phenomena RPC validation failed: "
-                + "; ".join(warnings + [f"missing={','.join(missing)}"])
-            )
+            self._execute_values(cursor, insert_sql, rows)
+            for chunk in chunked(source_labels, 200):
+                cursor.execute(
+                    """
+                    select id, source_label
+                    from uk_aq_core.phenomena
+                    where connector_id = %s
+                      and source_label = any(%s)
+                    """,
+                    (connector_id, chunk),
+                )
+                for row in cursor.fetchall():
+                    ids_by_source_label[str(row[1])] = int(row[0])
         ids_by_name: Dict[str, int] = {}
         for meta in parameters.values():
             name = str(meta.get("name") or "").strip()

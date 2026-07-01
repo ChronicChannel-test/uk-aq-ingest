@@ -1,10 +1,5 @@
 # Sensor.Community
 
-Sensor.Community phenomena are written through the central
-`uk_aq_public.uk_aq_rpc_phenomena_upsert` function. Its PM2.5, PM10,
-temperature, humidity, and pressure source labels use authoritative
-connector/source mappings.
-
 This network uses Sensor.Community (formerly Luftdaten) for community air quality sensors.
 
 ## Source API
