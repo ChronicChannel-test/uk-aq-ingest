@@ -1,0 +1,20 @@
+name: "Devstral Agent"
+version: "1.0.0"
+schema: "v1"
+
+models:
+  - name: "Devstral Chat"
+    provider: "mistral"
+    model: "devstral-latest"
+    apiKey: "srlRyKbIYYsqNNm627PuivlYmuO9pnGn"
+    roles:
+      - chat
+      
+  - name: "Codestral Autocomplete"
+    provider: "mistral"
+    model: "codestral-latest"
+    apiKey: "srlRyKbIYYsqNNm627PuivlYmuO9pnGn"
+    roles:
+      - autocomplete
+      - edit
+      - apply
